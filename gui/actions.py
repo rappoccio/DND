@@ -414,6 +414,29 @@ class ActionMenu:
         stats = app.combat.get_agent_stats(app.bm, agent_idx)
         out: list[Action] = []
 
+        # ── the economy-band header row (bucket 7b, M2e) ──
+        # The band's own two buttons, and the one place in §7 whose gate is not plain
+        # `not bonus_used`: an Extra Attack sequence parked in the BONUS slot still owes
+        # swings, and `mid_sequence_bonus` is what keeps the row open with the flag
+        # already set — the same distinction `_action` draws one section up. Both the
+        # LABEL and the column count follow from it, which is what made this its own
+        # bucket rather than part of 7a.
+        #
+        # **F3's second half closes here.** The panel set `btn_cbt_atk_bonus`'s rect and
+        # then drew the widget only `if _cur_has_offhand or mid_sequence_bonus`, so a
+        # click in that space fired the handler on an option it was deliberately not
+        # offering. An action the menu does not build gets no rect at all.
+        mid_sequence_bonus = (app.attacks_remaining > 0
+                              and app._attack_sequence_slot == "bonus")
+        if not app.bonus_used or mid_sequence_bonus:
+            if app._offhand_bonus_available(agent_idx) or mid_sequence_bonus:
+                out.append(Action("atk_bonus",
+                                  f"⚔ Bonus ({app.attacks_remaining})"
+                                  if mid_sequence_bonus else "⚔ Bonus Atk",
+                                  GROUP_BONUS))
+            if len(app.combat.get_agent_spells(app.bm, agent_idx)) > 0:
+                out.append(Action("spell_bonus", "✨ Spell", GROUP_BONUS))
+
         # ── ahead of the Jump/Shove row (each band-gated on its own) ──
         if not app.bonus_used:
             if (stats.character_class == rpg.CharacterClass.Wizard and

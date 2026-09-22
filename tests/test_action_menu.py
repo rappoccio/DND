@@ -33,8 +33,8 @@ import rpg_battle_map as rpg
 from gui_driver import post_click
 from test_combat_panel import (App, MAP_PATH, SEED, _build_scene, _idx, _goto,
                                _item, _reclass, _set_conditions, _set_res,
-                               _snapshot_baseline, _weapon, _preserve_cwd_logs,
-                               _restore_cwd_logs)
+                               _snapshot_baseline, _spell, _weapon,
+                               _preserve_cwd_logs, _restore_cwd_logs)
 
 
 def _app():
@@ -642,6 +642,66 @@ def test_use_item_and_extinguish_are_outside_the_band():
     print("✅ test_use_item_and_extinguish_are_outside_the_band passed")
 
 
+def test_the_economy_band_headers_are_the_bands_own_two_buttons():
+    """Bucket 7b, the half of F3 that was still open.
+
+    The row is a fixed two-column band whose members are independent: the spell half
+    follows the spell list, the attack half follows the off-hand, and a creature can
+    be offered either, both or neither while the band stands open. The panel USED to
+    set the attack half's rect and then not draw it, which is what made a click in
+    that space fire on an option it was not offering; an id the menu does not build
+    is not laid out at all.
+    """
+    app = _app()
+    aria = _goto(app, "Aria")            # an off-hand, no spells
+    got = _bonus(app, aria)
+    assert "atk_bonus" in got and "spell_bonus" not in got, got
+
+    cyra = _goto(app, "Cyra")            # spells, no off-hand
+    got = _bonus(app, cyra)
+    assert "spell_bonus" in got and "atk_bonus" not in got, got
+
+    skarn = _goto(app, "Skarn")          # neither: the band is open over an empty row
+    got = _bonus(app, skarn)
+    assert "atk_bonus" not in got and "spell_bonus" not in got, got
+
+    # Both, which is the arm checkpoint 64 had to be written to reach.
+    aria = _goto(app, "Aria")
+    app.combat.set_agent_spells(app.bm, aria, [_spell(app, "Fire Bolt")])
+    got = _bonus(app, aria)
+    assert got[:2] == ["atk_bonus", "spell_bonus"], got
+    app.combat.set_agent_spells(app.bm, aria, [])
+    print("✅ test_the_economy_band_headers_are_the_bands_own_two_buttons passed")
+
+
+def test_the_bonus_band_stays_open_for_a_bonus_slot_sequence():
+    """§7's own `mid_sequence`, and the one gate in the section that is not the band.
+
+    `bonus_used` goes True the moment an off-hand sequence starts, but the sequence
+    still owes swings — so the header row survives it and takes the count into its
+    LABEL, while the rest of §7 goes away with the band. That pairing is what made 7b
+    its own bucket: the layout and the label come from the same two fields.
+    """
+    app = _app()
+    aria = _goto(app, "Aria")
+    assert _by_id(app, aria)["atk_bonus"].label == "⚔ Bonus Atk"
+
+    app.bonus_used = True
+    assert "atk_bonus" not in _bonus(app, aria), "spent, and no sequence running"
+    assert "second_wind" not in _bonus(app, aria), "the rest of the band went with it"
+
+    app.attacks_remaining = 2
+    app._attack_sequence_slot = "bonus"
+    got = _by_id(app, aria)
+    assert got["atk_bonus"].label == "⚔ Bonus (2)", got["atk_bonus"]
+    assert "second_wind" not in got, "only the header row comes back"
+
+    # The ACTION slot's sequence is a different field and must not reopen this band.
+    app._attack_sequence_slot = "action"
+    assert "atk_bonus" not in _bonus(app, aria), _bonus(app, aria)
+    print("✅ test_the_bonus_band_stays_open_for_a_bonus_slot_sequence passed")
+
+
 def test_the_bonus_runs_are_built_in_draw_order():
     """§7's analog of `test_the_open_band_is_built_in_column_order`.
 
@@ -1005,7 +1065,10 @@ def test_the_jump_row_narrows_when_something_is_adjacent():
     app = _app()
     aria = _goto(app, "Aria")
     got = _bonus(app, aria)
-    assert got[:3] == ["long_jump", "shove_push", "shove_prone"], got[:3]
+    # The row is the band's FIRST, but not the section's first ids: the economy-band
+    # headers (bucket 7b) are built above it, in the order the panel draws them.
+    at = got.index("long_jump")
+    assert got[at:at + 3] == ["long_jump", "shove_push", "shove_prone"], got
 
     brannor = _goto(app, "Brannor")
     got = _bonus(app, brannor)
@@ -1219,6 +1282,8 @@ if __name__ == "__main__":
         test_the_bonus_section_collapses_when_the_creature_cannot_act()
         test_spending_the_bonus_action_takes_action_surge_with_it()
         test_use_item_and_extinguish_are_outside_the_band()
+        test_the_economy_band_headers_are_the_bands_own_two_buttons()
+        test_the_bonus_band_stays_open_for_a_bonus_slot_sequence()
         test_the_bonus_runs_are_built_in_draw_order()
         test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable()
         test_a_click_on_an_unoffered_bonus_action_does_nothing()

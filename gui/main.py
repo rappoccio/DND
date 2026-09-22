@@ -17025,16 +17025,6 @@ class App:
         txt(act_lbl, lx, y, COL_LABEL)
         y += 16
 
-        # Check weapon/spell capability for current agent. (§4's own weapon/spell
-        # tests moved into `ActionMenu._action`; what is left here is read by §7.)
-        _cur_has_offhand = False
-        _cur_can_spell   = False
-        _cur_has_spells  = False
-        if 0 <= cur_idx < len(agents):
-            _cur_has_offhand = self._offhand_bonus_available(cur_idx)
-            _cur_has_spells  = len(self.combat.get_agent_spells(self.bm, cur_idx)) > 0
-            _cur_can_spell   = _cur_has_spells  # can cast if has spells
-
         # Check if mid-sequence (attacks remaining, but action_used not yet set)
         mid_sequence_action = (self.attacks_remaining > 0 and self._attack_sequence_slot == "action")
 
@@ -17158,30 +17148,24 @@ class App:
             txt("[Bonus used]", lx, y, (100, 100, 120))
             y += B
         else:
-            # Update bonus button label with attack count if mid-sequence
-            if mid_sequence_bonus:
-                self.btn_cbt_atk_bonus.text = f"⚔ Bonus ({self.attacks_remaining})"
-            else:
-                self.btn_cbt_atk_bonus.text = "⚔ Bonus Atk"
-
-            # Layout depends on whether spells are available (no Pass button)
-            if _cur_can_spell and _cur_has_spells:
-                TW2_bonus = (W - gap) // 2
-                self.btn_cbt_atk_bonus.rect.x   = lx
-                self.btn_cbt_atk_bonus.rect.y   = y
-                self.btn_cbt_atk_bonus.rect.w   = TW2_bonus
-                self.btn_cbt_spell_bonus.rect.x = lx + TW2_bonus + gap
-                self.btn_cbt_spell_bonus.rect.y = y
-                self.btn_cbt_spell_bonus.rect.w = TW2_bonus
-                if _cur_has_offhand or mid_sequence_bonus:
-                    self.btn_cbt_atk_bonus.draw(self.screen)
-                self.btn_cbt_spell_bonus.draw(self.screen)
-            else:
-                self.btn_cbt_atk_bonus.rect.x  = lx
-                self.btn_cbt_atk_bonus.rect.y  = y
-                self.btn_cbt_atk_bonus.rect.w  = HW
-                if _cur_has_offhand or mid_sequence_bonus:
-                    self.btn_cbt_atk_bonus.draw(self.screen)
+            # The economy-band header row: a fixed TWO-COLUMN band, not an n-up. The
+            # menu says which of the two exist and what they read (bucket 7b); the
+            # columns are this method's, and so is the rule that a band standing open
+            # reserves its row even for a creature offered neither of them — which is
+            # why this is not a `_draw_action_row` call. The left column stays empty
+            # when only the right is offered; the width is the two-up's exactly when
+            # the spell half is there to fill it.
+            _bw = (W - gap) // 2 if "spell_bonus" in self._action_menu else HW
+            for _i, _bid in enumerate(("atk_bonus", "spell_bonus")):
+                _hdr = self._action_menu.get(_bid)
+                if _hdr is None:
+                    continue
+                _hbtn = self._cbt_btn(_bid)
+                _hbtn.text  = _hdr.label
+                _hbtn.rect.x = lx + _i * (_bw + gap)
+                _hbtn.rect.y = y
+                _hbtn.rect.w = _bw
+                _hbtn.draw(self.screen)
             y += B
 
         # Jump + Shove row — merged below into the adjacency block
@@ -19074,7 +19058,6 @@ class App:
 
                 # ── Combat panel buttons ───────────────────────────────────
                 _ev_idx = self._current_agent_idx()
-                _has_offhand = self._offhand_bonus_available(_ev_idx)
                 # §4 and §6 dispatch by action id: the weapon test, the mid-sequence
                 # test and Nick's own three-part guard are all `ActionMenu._action`'s
                 # now, and `_action_clicked` consults the offer the panel drew.
@@ -19169,9 +19152,13 @@ class App:
                 if self._action_clicked("escape_net", event):
                     self._begin_escape_net()
                 if not self.bonus_used:
-                    if _has_offhand and self.btn_cbt_atk_bonus.clicked(event):
+                    # F14: both of these stay INSIDE `not self.bonus_used`, although the
+                    # menu offers them mid-sequence in the bonus slot too — moving them
+                    # out would make a drawn-but-dead button live, which is a behaviour
+                    # change and its own item.
+                    if self._action_clicked("atk_bonus", event):
                         self._start_attack("bonus")
-                    if self.btn_cbt_spell_bonus.clicked(event):
+                    if self._action_clicked("spell_bonus", event):
                         self._start_cast_spell("bonus")
                     if self._action_clicked("shove_push", event):
                         self._start_shove("push")
