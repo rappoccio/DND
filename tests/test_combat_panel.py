@@ -30,7 +30,9 @@ five-way Action section ran — the cheapest possible check that an M2 step pres
 branch structure.
 
 Checkpoints cover the five-way Action branch (normal / action used / incapacitated /
-frightened / prone) and at least one member of each Step 0.3 bucket 7a–7e.
+frightened / prone), at least one member of each Step 0.3 bucket 7a–7e, and — 14 to 18 —
+the availability branches those thirteen never reach, each added BEFORE the M2 step that
+converts it so the extraction has something to be proven identical against.
 
 Regenerate the golden after an INTENTIONAL panel change (inspect the diff first!):
     python test_combat_panel.py --update
@@ -77,6 +79,9 @@ _SECTION_HEADS = (
     ("Initiative",  lambda s: s == "Initiative Order"),
     ("TurnInfo",    lambda s: s.startswith("Turn: ")),
     ("Action",      lambda s: s in ("Action", "Action ✓")),
+    # §6 has no heading of the usual kind — its label IS its first line, and it is
+    # drawn only when the section exists at all (checkpoint 18).
+    ("Portent",     lambda s: s == "Portent Dice:"),
     ("BonusAction", lambda s: s in ("Bonus Action", "Bonus Action ✓")),
     ("Movement",    lambda s: s == "Movement"),
     ("CombatLog",   lambda s: s == "Combat Log:"),
@@ -476,6 +481,50 @@ def build_output():
     _ws[2].permanently_armed = True
     app.combat.set_agent_weapons(app.bm, skarn2, _ws)
     out += cap.capture("16 one droppable weapon — Skarn (§9: n=1 drop row)")
+
+    # 17-18 are M2b's two blind spots, added the same way and for the same reason: the
+    # 16 checkpoints above reach all five arms of the Action branch, but neither of the
+    # two guards M2b actually MOVES is ever satisfied by this scene — `btn_cbt_nick` and
+    # `btn_cbt_use_portent` are "no" in every block. Extracting a rule the golden has
+    # only ever seen switched off proves nothing about it.
+
+    # 17 — §4's [Action used] arm is not empty after all: Nick relocates the off-hand
+    # attack into the Attack action, so its button is the one thing that arm can draw.
+    # Aria is a Fighter, so `initialize_class_resources` already gave her the
+    # "Weapon Mastery" feat (class_resources.cpp:866); all she lacks is a Nick weapon.
+    aria2 = _goto(app, "Aria")
+    _ws = app.combat.get_agent_weapons(app.bm, aria2)
+    _ws[1] = _weapon(app, "Dagger", off_hand=True)      # Dagger's mastery IS Nick
+    app.combat.set_agent_weapons(app.bm, aria2, _ws)
+    _set_conditions(app, aria2, offhand_attack_used=False)
+    app.action_used = True
+    out += cap.capture("17 nick off-hand — Aria (§4: the [Action used] arm's one button)")
+
+    # 18 — §6 in full: the Portent Dice block exists only for a Diviner Wizard holding
+    # dice, and it is a section whose HEADING and dice readout appear exactly when its
+    # button does. Cyra is re-classed rather than a fifth combatant being placed, which
+    # would reorder initiative and churn all 17 blocks above.
+    cyra2 = _goto(app, "Cyra")
+    s = app.combat.get_agent_stats(app.bm, cyra2)
+    s.set_class_level(rpg.CharacterClass.Wizard, 3)
+    s.initialize_class_resources(rpg.CharacterClass.Wizard, 3)
+    s.wizard_subclass = rpg.WizardSubclass.Diviner
+    s.portent_dice = [17, 3]
+    app.combat.set_agent_stats(app.bm, cyra2, s)
+    out += cap.capture("18 diviner with portent — Cyra (§6: the whole section)")
+
+    # 19 — combat running with NOBODY on turn (`_current_agent_idx()` out of range:
+    # combat started with no combatants, or the acting token was removed). This is the
+    # one place M2b deliberately CHANGED what the panel draws, so it is recorded here
+    # rather than only asserted about: the fused code drew Unarmed and the whole
+    # five-up posture row for a creature that does not exist — it reached them through
+    # a branch whose only per-creature guard was `_cur_has_weapons`, which is False out
+    # of range while the row itself was unguarded. `ActionMenu._action` returns nothing
+    # for an index it cannot read, so §4 is now empty here. See the plan's F7.
+    # Last, because it leaves the app with no initiative order.
+    _goto(app, "Aria")
+    app.initiative_order = []
+    out += cap.capture("19 nobody on turn — out-of-range agent (F7)")
 
     return "\n".join(out).rstrip() + "\n"
 

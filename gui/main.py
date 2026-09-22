@@ -75,6 +75,13 @@ from actions import ActionMenu
 from prompts import (PromptBus, Option, ContextMenuRenderer, SpellGridRenderer,
                      ElementPickerRenderer, options_from_pairs)
 
+# S3 (M2b): §4's three rows, as the only place row membership is written down. The
+# ActionMenu builds the Action group in column order; these say where each row breaks.
+# An arm that offers none of a tuple's ids draws no row and consumes no height.
+_ACT_ROW_ATTACK = ("atk_action", "unarmed")
+_ACT_ROW_MOVE   = ("dash", "dodge", "disengage", "hide", "standup", "prone")
+_ACT_ROW_SPELL  = ("spell_action",)
+
 # ── Summoning registry ─────────────────────────────────────────────────────
 # Maps a summon spell's name to a FIXED DND2024_MonsterStats.json key it conjures (non-scaling).
 # The 2024 "Summon X" line now uses the scaling SUMMON_SPELL_TO_SPIRIT path instead (which takes
@@ -16701,11 +16708,15 @@ class App:
         act = self._action_menu.get(action_id)
         return act is not None and act.enabled and self._cbt_btn(action_id).clicked(event)
 
-    def _draw_action_row(self, actions, lx, y, w, gap, trail=None):
+    def _draw_action_row(self, actions, lx, y, w, gap, trail=None, font=None):
         """Lay `actions` out as one equal-width row and draw them; return the new `y`.
 
         An empty row consumes no vertical space at all — that is how "the option is
         not on offer" reaches the layout now, in place of a positioning branch.
+
+        `font` draws the row in something other than the panel default and restores
+        `font_md` afterwards, which is what the narrow rows (§1's two, §4's five-up)
+        have always done by hand.
         """
         if not actions:
             return y
@@ -16717,7 +16728,11 @@ class App:
             btn.rect.x = lx + j * (tw + gap)
             btn.rect.y = y
             btn.rect.w = tw
+            if font is not None:
+                btn.font = font
             btn.draw(self.screen)
+            if font is not None:
+                btn.font = self.font_md
         return y + self._BTN_H + (gap if trail is None else trail)
 
     def _draw_combat_panel(self):
@@ -16769,20 +16784,8 @@ class App:
         y += 28
 
         # ── Pause + End Combat row ─────────────────────────────────────────
-        HW = W // 2 - 2
-        for _i, _aid in enumerate(("pause_resume", "end_combat")):
-            _act = self._action_menu.get(_aid)
-            if _act is None:
-                continue
-            _btn = self._cbt_btn(_aid)
-            _btn.text = _act.label
-            _btn.rect.x = lx + _i * (HW + 4)
-            _btn.rect.y = y
-            _btn.rect.w = HW
-            _btn.font = self.font_sm          # this row alone is small-font
-            _btn.draw(self.screen)
-            _btn.font = self.font_md
-        y += self._BTN_H + 8
+        y = self._draw_action_row(self._menu_group("session"), lx, y, W, gap,
+                                  trail=8, font=self.font_sm)
 
         # ── Initiative list ────────────────────────────────────────────────
         txt("Initiative Order", lx, y, COL_LABEL)
@@ -16964,13 +16967,12 @@ class App:
         txt(act_lbl, lx, y, COL_LABEL)
         y += 16
 
-        # Check weapon/spell capability for current agent.
-        _cur_has_weapons = False
+        # Check weapon/spell capability for current agent. (§4's own weapon/spell
+        # tests moved into `ActionMenu._action`; what is left here is read by §7.)
         _cur_has_offhand = False
         _cur_can_spell   = False
         _cur_has_spells  = False
         if 0 <= cur_idx < len(agents):
-            _cur_has_weapons = len(self.combat.get_agent_weapons(self.bm, cur_idx)) > 0
             _cur_has_offhand = self._offhand_bonus_available(cur_idx)
             _cur_has_spells  = len(self.combat.get_agent_spells(self.bm, cur_idx)) > 0
             _cur_can_spell   = _cur_has_spells  # can cast if has spells
@@ -16982,6 +16984,10 @@ class App:
         cur_cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
         _is_incapacitated = (cur_cond.incapacitated or cur_cond.unconscious) if cur_cond else False
 
+        # The five-way branch survives here as five arms of TEXT and of ROW SHAPE;
+        # WHICH buttons each arm has to place is `ActionMenu._action`'s answer now.
+        # Three of the arms are a single full-width row and say so; the fourth is the
+        # full band, whose three rows are named by the `_ACT_ROW_*` tuples below.
         if _is_incapacitated:
             reason = "Unconscious" if (cur_cond and cur_cond.unconscious) else "Incapacitated"
             txt(f"[Cannot act — {reason}]", lx, y, (120, 80, 80))
@@ -16989,96 +16995,19 @@ class App:
         elif self.action_used and not mid_sequence_action:
             txt("[Action used]", lx, y, (100, 100, 120))
             y += B
-            # Nick: after the Attack action, relocate the off-hand attack here (frees the bonus
-            # action). Only when the off-hand weapon has Nick + the agent has Weapon Mastery + the
-            # off-hand attack hasn't been spent (checked by _nick_offhand_idx).
-            if self._nick_offhand_idx(cur_idx) >= 0:
-                self.btn_cbt_nick.rect.x = lx
-                self.btn_cbt_nick.rect.y = y
-                self.btn_cbt_nick.rect.w = W
-                self.btn_cbt_nick.draw(self.screen)
-                y += B + gap
+            # Nick, if the menu offers it — the only button this arm can show.
+            y = self._draw_action_row(self._menu_group("action"), lx, y, W, gap)
+        elif cur_cond and cur_cond.frightened:
+            txt("Frightened — must Dash", lx, y, (180, 100, 200))  # Purple
+            y += B
+            y = self._draw_action_row(self._menu_group("action"), lx, y, W, gap)
         else:
-            is_frightened = cur_cond.frightened if cur_cond else False
-
-            if is_frightened:
-                # Frightened: only Dash button allowed
-                txt("Frightened — must Dash", lx, y, (180, 100, 200))  # Purple
-                y += B
-                self.btn_cbt_dash.rect.x = lx
-                self.btn_cbt_dash.rect.y = y
-                self.btn_cbt_dash.rect.w = W
-                self.btn_cbt_dash.draw(self.screen)
-                y += B + gap
-            else:
-                # Attack and Pass buttons
-                # Update Attack button label with attack count if mid-sequence
-                if mid_sequence_action:
-                    self.btn_cbt_atk_action.text = f"⚔ Attack ({self.attacks_remaining})"
-                else:
-                    self.btn_cbt_atk_action.text = "⚔ Attack"
-
-                TW2_action = (W - gap) // 2
-                self.btn_cbt_atk_action.rect.x  = lx
-                self.btn_cbt_atk_action.rect.y  = y
-                self.btn_cbt_atk_action.rect.w  = TW2_action
-                self.btn_cbt_unarmed.rect.x     = lx + TW2_action + gap
-                self.btn_cbt_unarmed.rect.y     = y
-                self.btn_cbt_unarmed.rect.w     = TW2_action
-                if _cur_has_weapons:
-                    self.btn_cbt_atk_action.draw(self.screen)
-                self.btn_cbt_unarmed.draw(self.screen)
-                y += B + gap
-
-                # Dash, Dodge, Disengage, Hide, Prone/StandUp — one row of 5
-                TW5 = (W - 16) // 5
-                cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
-                is_prone = cond.prone if cond else False
-                self.btn_cbt_dash.rect.x       = lx
-                self.btn_cbt_dash.rect.y       = y
-                self.btn_cbt_dash.rect.w       = TW5
-                self.btn_cbt_dodge.rect.x      = lx + TW5 + gap
-                self.btn_cbt_dodge.rect.y      = y
-                self.btn_cbt_dodge.rect.w      = TW5
-                self.btn_cbt_disengage.rect.x  = lx + 2 * (TW5 + gap)
-                self.btn_cbt_disengage.rect.y  = y
-                self.btn_cbt_disengage.rect.w  = TW5
-                self.btn_cbt_hide.rect.x       = lx + 3 * (TW5 + gap)
-                self.btn_cbt_hide.rect.y       = y
-                self.btn_cbt_hide.rect.w       = TW5
-                _row5_btns = [self.btn_cbt_dash, self.btn_cbt_dodge,
-                              self.btn_cbt_disengage, self.btn_cbt_hide]
-                for _b in _row5_btns:
-                    _b.font = self.font_sm
-                self.btn_cbt_dash.draw(self.screen)
-                self.btn_cbt_dodge.draw(self.screen)
-                self.btn_cbt_disengage.draw(self.screen)
-                self.btn_cbt_hide.draw(self.screen)
-                if is_prone:
-                    self.btn_cbt_standup.rect.x = lx + 4 * (TW5 + gap)
-                    self.btn_cbt_standup.rect.y = y
-                    self.btn_cbt_standup.rect.w = TW5
-                    self.btn_cbt_standup.font = self.font_sm
-                    self.btn_cbt_standup.draw(self.screen)
-                    self.btn_cbt_standup.font = self.font_md
-                else:
-                    self.btn_cbt_prone.rect.x = lx + 4 * (TW5 + gap)
-                    self.btn_cbt_prone.rect.y = y
-                    self.btn_cbt_prone.rect.w = TW5
-                    self.btn_cbt_prone.font = self.font_sm
-                    self.btn_cbt_prone.draw(self.screen)
-                    self.btn_cbt_prone.font = self.font_md
-                for _b in _row5_btns:
-                    _b.font = self.font_md
-                y += B + gap
-
-                # Cast Spell button (if available)
-                if _cur_can_spell and _cur_has_spells:
-                    self.btn_cbt_spell_action.rect.x = lx
-                    self.btn_cbt_spell_action.rect.y = y
-                    self.btn_cbt_spell_action.rect.w = W
-                    self.btn_cbt_spell_action.draw(self.screen)
-                    y += B + gap
+            y = self._draw_action_row(self._menu_group("action", only=_ACT_ROW_ATTACK),
+                                      lx, y, W, gap)
+            y = self._draw_action_row(self._menu_group("action", only=_ACT_ROW_MOVE),
+                                      lx, y, W, gap, font=self.font_sm)
+            y = self._draw_action_row(self._menu_group("action", only=_ACT_ROW_SPELL),
+                                      lx, y, W, gap)
 
         # ── Spell Slots / N/day display ────────────────────────────────────
         if 0 <= cur_idx < len(agents):
@@ -17144,26 +17073,18 @@ class App:
         y += section_gap
 
         # ── Portent Dice section (Diviner Wizards) ─────────────────────────
-        if 0 <= cur_idx < len(agents):
-            stats = self.combat.get_agent_stats(self.bm, cur_idx)
-            is_wizard = stats.character_class == rpg.CharacterClass.Wizard
-            is_diviner = stats.wizard_subclass == rpg.WizardSubclass.Diviner
-            if is_wizard and is_diviner:
-                portent_res = stats.get_resource("Portent Dice")
-                if portent_res and len(stats.portent_dice) > 0:
-                    txt("Portent Dice:", lx, y, (200, 180, 100), self.font_sm)
-                    y += 14
-                    # Show available dice
-                    dice_str = ", ".join(str(d) for d in stats.portent_dice)
-                    txt(f"  [{dice_str}]", lx, y, (220, 200, 120), self.font_sm)
-                    y += 14
-                    # Use Portent button
-                    self.btn_cbt_use_portent.rect.x = lx
-                    self.btn_cbt_use_portent.rect.y = y
-                    self.btn_cbt_use_portent.rect.w = W
-                    self.btn_cbt_use_portent.draw(self.screen)
-                    y += B + gap
-                    y += section_gap
+        # The whole section exists exactly when the button is on offer — Diviner, and
+        # dice left — so the menu answers that too, and what stays here is the dice
+        # readout's text.
+        if "use_portent" in self._action_menu:
+            txt("Portent Dice:", lx, y, (200, 180, 100), self.font_sm)
+            y += 14
+            dice_str = ", ".join(str(d) for d in
+                                 self.combat.get_agent_stats(self.bm, cur_idx).portent_dice)
+            txt(f"  [{dice_str}]", lx, y, (220, 200, 120), self.font_sm)
+            y += 14
+            y = self._draw_action_row(self._menu_group("portent"), lx, y, W, gap)
+            y += section_gap
 
         # ── Bonus Action section ───────────────────────────────────────────
         bon_lbl = "Bonus Action" + (" ✓" if self.bonus_used else "")
@@ -20108,28 +20029,27 @@ class App:
 
                 # ── Combat panel buttons ───────────────────────────────────
                 _ev_idx = self._current_agent_idx()
-                _has_wpn = (0 <= _ev_idx < len(self.bm.placed_agents) and
-                            len(self.combat.get_agent_weapons(self.bm, _ev_idx)) > 0)
                 _has_offhand = self._offhand_bonus_available(_ev_idx)
-                # The Attack button also continues an in-progress Extra Attack sequence: mid-sequence
-                # the Action is already marked used, but the standing "⚔ Attack (N)" button must
-                # still resume the remaining attacks. A FRESH Attack needs an unused Action.
-                _mid_seq_atk = (self.attacks_remaining > 0 and self._attack_sequence_slot == "action")
-                if _has_wpn and (not self.action_used or _mid_seq_atk) and \
-                        self.btn_cbt_atk_action.clicked(event):
+                # §4 and §6 dispatch by action id: the weapon test, the mid-sequence
+                # test and Nick's own three-part guard are all `ActionMenu._action`'s
+                # now, and `_action_clicked` consults the offer the panel drew.
+                if self._action_clicked("atk_action", event):
                     self._start_attack("action")
                 # Nick: relocate the off-hand attack into the Attack action (frees the bonus action).
-                # Ungated by action_used — the button is only drawn after the Attack action is taken.
-                _nick_idx = self._nick_offhand_idx(_ev_idx)
-                if _nick_idx >= 0 and self.btn_cbt_nick.clicked(event):
-                    self._start_extra_attack(weapon_idx=_nick_idx, offhand=True, slot="action",
+                if self._action_clicked("nick", event):
+                    self._start_extra_attack(weapon_idx=self._nick_offhand_idx(_ev_idx),
+                                             offhand=True, slot="action",
                                              label="Nick: off-hand attack (part of Attack action)")
                 # Unarmed Strike (Punch/Grapple/Push) is part of the Attack action, so it also
                 # resumes mid-sequence (Extra Attack: grapple, then strike, or vice versa).
-                if (not self.action_used or _mid_seq_atk) and self.btn_cbt_unarmed.clicked(event):
+                if self._action_clicked("unarmed", event):
                     self._show_unarmed_menu(pygame.mouse.get_pos())
+                # D-M2-4: these five are DRAWN mid-sequence (the band stays open for
+                # the swings still owed) and refused here, exactly as End Turn is
+                # refused while paused. The gate is a handler rule, not availability —
+                # moving it into the menu would make the row vanish mid-attack.
                 if not self.action_used:
-                    if self.btn_cbt_dash.clicked(event):
+                    if self._action_clicked("dash", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             agent = self.bm.placed_agents[idx]
@@ -20141,19 +20061,19 @@ class App:
                             self._combat_log_add(f"{agent.name}: Dashing (+{self.combat.get_agent_stats(self.bm, idx).speed_walk}ft)")
                             self._update_reach()
                         self.action_used = True
-                    if self.btn_cbt_dodge.clicked(event):
+                    if self._action_clicked("dodge", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.bm.placed_agents[idx].dodge()
                             self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Dodging")
                         self.action_used = True
-                    if self.btn_cbt_disengage.clicked(event):
+                    if self._action_clicked("disengage", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.bm.placed_agents[idx].disengage()
                             self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Disengaging")
                         self.action_used = True
-                    if self.btn_cbt_hide.clicked(event):
+                    if self._action_clicked("hide", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             in_combat = len(self.initiative_order) > 0
@@ -20163,7 +20083,7 @@ class App:
                             else:
                                 self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide failed - {result.log_message}")
                         self.action_used = True
-                    if self.btn_cbt_prone.clicked(event):
+                    if self._action_clicked("prone", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
                             self.combat.apply_prone(self.bm, idx)
@@ -20171,7 +20091,7 @@ class App:
                             self._update_reach()
                             self._update_attack_overlay()
                         self.action_used = True
-                    if self.btn_cbt_spell_action.clicked(event):
+                    if self._action_clicked("spell_action", event):
                         self._start_cast_spell("action")
                 # Long Jump costs a Bonus Action (and movement) — available regardless of the
                 # Action, but only while the bonus action is unspent.
@@ -20179,7 +20099,7 @@ class App:
                     if not self.pending_spell_slot:  # Don't allow jump while casting spell
                         self._toggle_jump_overlay()
                 # Stand up doesn't use an action, so it's available regardless of action_used
-                if self.btn_cbt_standup.clicked(event):
+                if self._action_clicked("standup", event):
                     idx = self._current_agent_idx()
                     if 0 <= idx < len(self.bm.placed_agents):
                         self.combat.standup(self.bm, idx)
@@ -20191,7 +20111,7 @@ class App:
                         self._combat_log_add(f"{agent.name}: Standing up")
                         self._update_reach()
                         self._update_attack_overlay()
-                if self.btn_cbt_use_portent.clicked(event):
+                if self._action_clicked("use_portent", event):
                     self._show_portent_dice_menu()
                 if self.btn_cbt_grapple_drop.clicked(event):
                     self._execute_grapple_drop()

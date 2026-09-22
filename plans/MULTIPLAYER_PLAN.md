@@ -394,6 +394,18 @@ Pure reading; no source file was changed. All line numbers are `gui/main.py`.
 > landing on what this section says is there). They are *not* rewritten here, because M2a's
 > first act invalidates them again. Navigate by name:
 > `grep -n 'btn_cbt_<name>' gui/main.py`.
+>
+> ### Re-derived again after M2b, 2026-09-22 — only the panel's size moved
+>
+> **110 named buttons** (M2b deleted none), **118 clickable widgets**, `METAMAGIC_OPTIONS`
+> still 9. `_draw_combat_panel` is now **1,781 lines** (1,896 → 1,875 → 1,781).
+>
+> **Eighteen names have now left the draw pass** — M2a's seven plus M2b's eleven
+> (`atk_action`, `unarmed`, `dash`, `dodge`, `disengage`, `hide`, `standup`, `prone`,
+> `spell_action`, `nick`, `use_portent`). The grep stays correct for the **92** still
+> fused; for the other 18, navigate by action id in `gui/actions.py`. Sections 4 and 6
+> below are now history, not a map of the code: what they describe lives in
+> `ActionMenu._action` / `._portent`.
 
 ### Correcting the count
 
@@ -446,8 +458,13 @@ plus a green determinism run):
   branches" was wrong, and usefully so: §9 has three — concentration, the droppable-slot
   filter, and the n-up row width that follows from it. They are the reason M2a has an
   oracle diff to talk about at all.)*
-- **M2b** — section 6 (1) + section 4 (10). First real branch structure; small enough to
-  eyeball the whole diff.
+- **M2b** ☑ (done 2026-09-22) — section 6 (1) + section 4 (10). First real branch
+  structure. See [M2b — what was built](#m2b--what-was-built-done-2026-09-22).
+  *(The handoff's claim that "checkpoints 01/02/04/05/06 already cover all five arms,
+  so the oracle needs no extending" was half right and had to be checked: the five ARMS
+  were covered, but neither guard M2b actually moves — Nick's and Portent's — was ever
+  satisfied by the scene, so both buttons read `no` in all 17 blocks. Checkpoints 17/18
+  were added first, against the old fused code.)*
 - **M2c** — bucket 7a (~60). Long but mechanical; batch ~10 at a time by class.
 - **M2d** — buckets 7e, then 7c. Clusters and the spatial predicates.
 - **M2e** — buckets 7b and 7d. Last, because they are the two that force the `ActionMenu`
@@ -474,12 +491,18 @@ Each becomes its own item. None of them blocks Step 0.
   pass — so the stale-rect guard parks them at `x = -10000` on every frame and they are
   permanently unreachable. `_reposition_panel:1211,1217` still lays two of them out, which is
   what makes this look alive. **Deleting them is the cheapest possible M2a warm-up.**
-- **F3 — two buttons are invisible but clickable.** `btn_cbt_atk_action` has its rect set at
-  `16839` and is drawn at `16846` only `if _cur_has_weapons`; `btn_cbt_atk_bonus` is set at
-  `17008` and drawn at `17015` only `if _cur_has_offhand or mid_sequence_bonus`. In both
-  cases the rect is live while the button is not rendered, so a click in that space fires the
-  handler on an option the panel is deliberately not offering. This is precisely the
-  legality/layout fusion M2 exists to remove; M2b deletes the failure mode by construction.
+- **F3 — two buttons are invisible but clickable. HALF CLOSED by M2b, 2026-09-22.**
+  `btn_cbt_atk_action` (rect at `16839`, drawn at `16846` only `if _cur_has_weapons`) is
+  gone: an action the ActionMenu does not build has no rect set at all. **That half was
+  also vacuous** — `_cur_has_weapons` is `len(get_agent_weapons(...)) > 0`, and
+  `PlacedAgent.weapons` defaults to a 3-vector (`battle_map.hpp:302`) that
+  `setAgentWeapons` re-pads to ≥3, so no creature could ever fail it. The predicate is
+  kept in `ActionMenu._action` as a statement of the rule, not as a live branch.
+  **`btn_cbt_atk_bonus` (set `17008`, drawn `17015` only `if _cur_has_offhand or
+  mid_sequence_bonus`) is real and still open** — it is bucket 7b, so it is M2e's.
+  Original finding: in both cases the rect is live while the button is not rendered, so a
+  click in that space fires the handler on an option the panel is deliberately not
+  offering. This is precisely the legality/layout fusion M2 exists to remove.
 - **F4 — the stale-rect guard has a hole.** `16547-16549` iterates `vars(self).items()` and
   filters on `isinstance(_btn, Button)` — so the `btn_cbt_metamagic` **dict** is skipped and
   its 9 buttons keep their last drawn position when they stop being offered. The click handler
@@ -487,6 +510,14 @@ Each becomes its own item. None of them blocks Step 0.
   metamagic toggle whose Sorcery Points have since been spent below its cost remains clickable
   at its stale location. The guard's own comment ("All `btn_cbt_*` buttons are drawn
   exclusively within this method, so this is safe") is true but insufficient.
+- **F7 — with nobody on turn, §4 drew six buttons for a creature that does not exist.
+  CLOSED by M2b, 2026-09-22** (and it is a behaviour change, recorded as such). See
+  [M2b — what was built](#m2b--what-was-built-done-2026-09-22). Short form: with
+  `combat_active` but `_current_agent_idx()` out of range, the fused code fell through to
+  the open-band arm and drew Unarmed + the whole five-up posture row, because the arm's
+  only per-creature guard was `_cur_has_weapons` and the five-up row had none. Checkpoint
+  19 pins the corrected behaviour; the old one was captured side by side before the change
+  was accepted.
 - **F5 — the precedent already exists.** `metamagic_offered(option, learned_values,
   sp_available, sp_cost)` (`dialogs.py:659`) is a pure, documented, unit-testable availability
   predicate that the panel calls at `18219`. It is exactly the shape `ActionMenu.build`
@@ -2130,7 +2161,7 @@ consumes no vertical space, which is how "not on offer" now reaches the layout i
 of a positioning branch). `_handle_events` dispatches the eight through
 `_action_clicked(id, event)`, which consults the menu the panel actually drew.
 
-#### The three decisions worth carrying into M2b
+#### The three decisions worth carrying forward (all three still stand after M2b)
 
 - **D-M2-1 — `enabled` is built but never false.** `widgets.Button` draws exactly one
   way; there is no grey state to render a disabled option into. So an unavailable
@@ -2146,7 +2177,7 @@ of a positioning branch). `_handle_events` dispatches the eight through
   buttons. For the converted eight it is now redundant, and `_action_clicked` is what
   actually holds; the guard can only be deleted in M2e, when the last button leaves.
   Step 0.3's **F4** (the `btn_cbt_metamagic` dict escapes the guard entirely) is
-  therefore still open and is M2e's to close.
+  therefore still open and is M2e's to close. *(After M2b it protects 92, not 103.)*
 
 #### How "structurally identical" was actually proven
 
@@ -2174,6 +2205,113 @@ negative test fails when you break the thing it guards.*
 None of the above looks at the panel. A **manual VNC smoke pass** (`./run.sh <map>`,
 then `localhost:6080/vnc.html`) is still owed for these eight buttons, and for every
 later M2 group — the suite can prove the rects and the dispatch, not the appearance.
+
+---
+
+### M2b — what was built (done 2026-09-22)
+
+Section 6 (`use_portent`, 1 button) and section 4 (10 buttons, the five-way Action
+branch). `gui/actions.py` **+97 lines** (`_action`, `_portent`), `gui/main.py` **net
+−80**, `tests/test_action_menu.py` 12 → **22 checks**, `tests/test_combat_panel.py`
+17 → **20 checkpoints**. Suite: **149 passed, 1 failed** — the pre-existing
+`test_monk.py`, failing identically before this work. `test_determinism.py` green.
+
+#### What moved
+
+| Step 0.3 § | Buttons | What is now data |
+| ---------- | ------- | ---------------- |
+| 4 | `atk_action`, `unarmed`, `dash`, `dodge`, `disengage`, `hide`, `standup`, `prone`, `spell_action`, `nick` | the whole five-way branch: incapacitated/unconscious, spent-Action (and Nick's three-part guard inside it), frightened, the open band, and prone's swap of Stand Up into the fifth column — plus the `⚔ Attack (N)` label |
+| 6 | `use_portent` | Diviner + subclass + resource + dice-left, which is also the guard on the section's *heading*, so §6 collapsed to a dice readout and one row |
+
+**How the branch survived the split.** `ActionMenu._action` answers *which buttons*;
+`_draw_combat_panel` still runs the same five arms, because each one prints a line of
+text ("[Action used]", "Frightened — must Dash") that is display, not an option — and
+because `_is_incapacitated` and `mid_sequence_action` are read again by §7, which this
+phase has not reached. Three arms are one full-width row; the open band is three rows
+named by `_ACT_ROW_ATTACK` / `_ACT_ROW_MOVE` / `_ACT_ROW_SPELL` in `main.py`, the only
+place row membership is written down. The menu builds the group **in column order**, so
+`_draw_action_row`'s positional layout is correct by construction —
+`test_the_open_band_is_built_in_column_order` is what pins that.
+
+`_draw_action_row` grew one parameter, `font`, and §1's hand-rolled two-up row became
+its first caller (identical arithmetic: `W // 2 - 2 == (W - 4) // 2` for every `W`).
+That is where a good part of the −80 comes from.
+
+#### F3 is closed, and half of it was already vacuous
+
+`btn_cbt_atk_action`'s rect was set at `16839` and drawn only `if _cur_has_weapons` —
+the classic invisible-but-clickable shape. It is gone by construction: an action the
+menu does not build has no rect set at all. **But that half of F3 could never fire**:
+`_cur_has_weapons` was `len(get_agent_weapons(...)) > 0`, and `PlacedAgent.weapons`
+defaults to a 3-vector (`battle_map.hpp:302`) which `setAgentWeapons` re-pads to ≥3, so
+the test is `3 > 0` for every creature that exists. The predicate is kept in
+`ActionMenu._action` because it states the rule the panel meant to state, not because
+anything reaches it. **F3's other half — `btn_cbt_atk_bonus`, gated on
+`_cur_has_offhand or mid_sequence_bonus` — is real and is still open**; it is bucket
+7b, so M2e closes it.
+
+#### F7 — the one place M2b changed what the panel draws *(new finding, and it is a fix)*
+
+With combat active and **nobody on turn** (`_current_agent_idx()` out of range: combat
+started with no combatants, or the acting token was removed), the fused code fell
+through to the open-band arm and drew **six buttons for a creature that does not
+exist** — Unarmed, Dash, Dodge, Disengage, Hide, Go Prone. It reached them because the
+arm's only per-creature guard was `_cur_has_weapons` (False out of range, so Attack
+alone was suppressed) while the five-up row had no guard at all. Clicking any of them
+ran a handler whose `0 <= idx < len(...)` test no-opped — except that Dash/Dodge/etc.
+then set `action_used = True` for nobody.
+
+`ActionMenu._action` returns `[]` for an index it cannot read, so §4 is now empty in
+that state. This is outside the "no behaviour change" rule and was **verified by
+capture, not asserted**: the old and new panels were driven into the state side by side
+before the change was accepted. **Checkpoint 19** pins the new behaviour and
+`test_out_of_range_agent_yields_only_the_creature_free_groups` pins the menu.
+
+#### D-M2-4 — the mid-sequence refusal is a handler rule, like the paused one
+
+Mid-attack-sequence (`action_used` True, `attacks_remaining > 0`, slot `"action"`) the
+band stays open for the swings still owed — so Dash, Dodge, Disengage, Hide, Go Prone
+and Cast Spell are **drawn**, and the handler's `if not self.action_used:` refuses them
+anyway. That gate looks like availability and is not: moving it into `ActionMenu` would
+make the whole row vanish in the middle of an Extra Attack. It is D-M2-2's shape exactly,
+and `test_dash_is_drawn_mid_sequence_but_the_click_is_refused` pins it.
+(Whether drawing a live-looking Dash there is *right* is a separate question, and a
+separate item — M2 does not answer it.)
+
+#### The negatives were broken on purpose before being believed
+
+M2a's note said to check that a negative test fails when the thing it guards is broken.
+Both of M2b's were:
+
+- `test_stand_up_from_a_stale_rect_does_nothing` — `btn_cbt_standup`'s handler has **no
+  gate of its own** (Stand Up costs no action), so availability is the only thing
+  standing between a stale rect and a creature standing up it never knocked down. Swap
+  `_action_clicked("standup", …)` back to `.clicked(event)` → *"an unoffered Stand Up
+  fired from a stale rect"*.
+- `test_dash_is_drawn_mid_sequence_but_the_click_is_refused` — replace `if not
+  self.action_used:` with `if True:` → *"Dash was honoured with the Action already
+  spent"*.
+
+#### Re-derived after M2b
+
+**110 named buttons** (unchanged — M2b deleted none), **118 clickable widgets**
+(unchanged), `METAMAGIC_OPTIONS` still 9, `_draw_combat_panel` now **1,781 lines**
+(was 1,875 after M2a, 1,896 originally). **18 of the 110 no longer appear in the draw
+pass at all** (M2a's 7 + M2b's 11); `grep -n 'btn_cbt_<name>'` stays correct for the
+remaining **92**, and a converted button is navigated by its action id in
+`gui/actions.py`.
+
+#### Carried into M2c
+
+- **All of D-M2-1/2/3 still stand.** `enabled` is still never false; End Turn is still
+  unconditional; the stale-rect guard still protects the 92, and F4 (the
+  `btn_cbt_metamagic` dict escapes it) is still M2e's.
+- **Dead `_reposition_panel` lines.** `1239-1250` still re-`update()`s `atk_action`,
+  `unarmed`, `dash`, `dodge`, `disengage`, `spell_action` (and, from M2a, `end_turn`
+  and `end_combat`) on window resize. Harmless — the draw pass sets x/y/w every frame —
+  but they are now dead weight for 8 of the 18 converted names. Sweep them when the
+  guard goes in M2e, not before; they are a resize path nothing in the suite exercises.
+- **Manual VNC smoke pass still owed**, for M2a's eight and M2b's eleven.
 
 ---
 

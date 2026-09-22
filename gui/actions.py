@@ -35,6 +35,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# The engine, for the class/subclass enums §6 compares against. `actions.py` is allowed
+# to read the engine — it is the *panel* half of the seam that must not leak in here.
+import rpg_battle_map as rpg
+
 # The panel's visual sections, as Step 0.3 numbered them. `group` is the projection a
 # renderer batches by — the DM panel draws a section per group, and M4's client will
 # too — so it is part of the model and not a comment.
@@ -46,7 +50,7 @@ GROUP_BONUS   = "bonus"      # §7  the Bonus Action mega-section    (M2c-e)
 GROUP_UTILITY = "utility"    # §9  visibility + drops
 
 # Which groups `build` actually populates today. See "Scope" above.
-BUILT_GROUPS = (GROUP_SESSION, GROUP_TURN, GROUP_UTILITY)
+BUILT_GROUPS = (GROUP_SESSION, GROUP_TURN, GROUP_ACTION, GROUP_PORTENT, GROUP_UTILITY)
 
 # Step 0.5's `expects` vocabulary, repeated rather than imported: `prompts.py` owns the
 # wire and must not grow a dependency on the panel model. Keep the two in step.
@@ -91,6 +95,8 @@ class ActionMenu:
         out: list[Action] = []
         out += ActionMenu._session(app)
         out += ActionMenu._turn(app, agent_idx)
+        out += ActionMenu._action(app, agent_idx)
+        out += ActionMenu._portent(app, agent_idx)
         out += ActionMenu._utility(app, agent_idx)
         return out
 
@@ -113,6 +119,96 @@ class ActionMenu:
         # no-behaviour-change rule forbids — it is an `enabled=False` waiting for a
         # renderer that can show it.
         return [Action("end_turn", "End Turn", GROUP_TURN)]
+
+    # ── §4 — the Action economy band ───────────────────────────────────────────
+    @staticmethod
+    def _action(app, agent_idx: int) -> list[Action]:
+        """The five-way branch, as five returns.
+
+        The panel still computes `incapacitated` / `mid_sequence` / `frightened` for
+        itself, because each arm prints a *line of text* ("[Action used]", "Frightened
+        — must Dash") that is display, not an option, and because two of the three are
+        read again by sections this phase has not reached. The duplication is one
+        expression per arm and is the price of converting §4 without also converting
+        §7; it goes away when the last group does.
+        """
+        agents = app.bm.placed_agents
+        if not (0 <= agent_idx < len(agents)):
+            return []
+
+        cond = app.combat.get_agent_conditions(app.bm, agent_idx)
+        if cond.incapacitated or cond.unconscious:
+            return []                       # arm 1 — the band collapses to a message
+
+        # `action_used` goes True the moment an Attack action starts, but an Extra
+        # Attack sequence still owes swings; `mid_sequence` is what keeps the band
+        # open for them, and it is why "[Action used]" and `action_used` are not the
+        # same question.
+        mid_sequence = (app.attacks_remaining > 0 and
+                        app._attack_sequence_slot == "action")
+
+        if app.action_used and not mid_sequence:
+            # arm 2 — spent. Exactly one thing can still be offered: Nick relocating
+            # the off-hand attack into the Attack action that was just taken.
+            if app._nick_offhand_idx(agent_idx) >= 0:
+                return [Action("nick", "🗡 Nick: Off-hand Atk", GROUP_ACTION)]
+            return []
+
+        if cond.frightened:
+            return [Action("dash", "Dash", GROUP_ACTION)]   # arm 3 — Dash or nothing
+
+        # arms 4 and 5 — the full band; `prone` chooses between the last two.
+        out: list[Action] = []
+        # `BattleMap::getAgentWeapons` pads every slot list to three
+        # (`battle_map.hpp:302`, `setAgentWeapons`), so no creature can fail this test
+        # today. It is kept because it states the rule the panel meant to state, and
+        # dropped from the widget row rather than left invisible-but-live — which is
+        # Step 0.3's **F3**, deleted here by construction.
+        if len(app.combat.get_agent_weapons(app.bm, agent_idx)) > 0:
+            out.append(Action("atk_action",
+                              f"⚔ Attack ({app.attacks_remaining})" if mid_sequence
+                              else "⚔ Attack",
+                              GROUP_ACTION))
+        out.append(Action("unarmed", "👊 Unarmed", GROUP_ACTION))
+
+        out += [Action("dash",      "Dash",      GROUP_ACTION),
+                Action("dodge",     "Dodge",     GROUP_ACTION),
+                Action("disengage", "Disengage", GROUP_ACTION),
+                Action("hide",      "Hide",      GROUP_ACTION)]
+        # Always exactly one of these two: the fifth column of that row is "change
+        # your posture", and `prone` only decides which way it points. Build order is
+        # what puts it in that column, so it is appended last of the five.
+        out.append(Action("standup", "Stand Up", GROUP_ACTION) if cond.prone
+                   else Action("prone", "Go Prone", GROUP_ACTION))
+
+        if len(app.combat.get_agent_spells(app.bm, agent_idx)) > 0:
+            out.append(Action("spell_action", "✨ Cast Spell", GROUP_ACTION))
+        return out
+
+    # ── §6 — Portent dice ──────────────────────────────────────────────────────
+    @staticmethod
+    def _portent(app, agent_idx: int) -> list[Action]:
+        """Diviner Wizards, while any die is left unspent.
+
+        §6 is the one section whose *heading* is the same predicate as its button —
+        the panel prints "Portent Dice:" and the readout exactly when Use Portent Die
+        is on offer — so converting the one button converts the whole section, and
+        the panel's remaining job there is the dice readout's text.
+
+        Note what is NOT here: the incapacitated gate. §4 collapses when a creature
+        cannot act and §6 does not, which is the panel's behaviour today; Portent is
+        a no-action reroll, so that is arguably right, but either way M2 preserves it.
+        """
+        if not (0 <= agent_idx < len(app.bm.placed_agents)):
+            return []
+        stats = app.combat.get_agent_stats(app.bm, agent_idx)
+        if stats.character_class != rpg.CharacterClass.Wizard:
+            return []
+        if stats.wizard_subclass != rpg.WizardSubclass.Diviner:
+            return []
+        if not stats.get_resource("Portent Dice") or len(stats.portent_dice) == 0:
+            return []
+        return [Action("use_portent", "Use Portent Die", GROUP_PORTENT)]
 
     # ── §9 — visibility + drops ────────────────────────────────────────────────
     @staticmethod
