@@ -5,7 +5,10 @@ Everything the player-facing server needs lives under this package, never in
 the ``GameView`` projection and the transport arrive in M1/M3/M4.
 
 Nothing in here may touch the ``CombatEngine`` or the ``BattleMap`` off the
-pygame thread (constraint NN1) — read or write. This package is import-safe
-without pygame and without the C++ extension, which is what lets the M0 tests
-run headless.
+pygame thread (constraint NN1) — read or write.
+
+``roster.py`` is import-safe without pygame and without the C++ extension, which
+is what lets the M0 tests run headless. ``view.py`` (M3) is not, and cannot be:
+its subject *is* the ``BattleMap``, so it imports the extension and must run on
+the pygame thread like every other reader of the map. Neither imports ``main``.
 """

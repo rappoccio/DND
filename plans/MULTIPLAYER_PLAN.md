@@ -2921,6 +2921,119 @@ byte-identical across every conversion commit.
 
 ### M3 — `GameView`
 
+> **Frozen 2026-09-22 (Step 0, M3).** Four of the six items below **amend** the shape and
+> filter table that follow. Implement from this block; the table is orientation once it
+> disagrees.
+
+#### D-M3-1 — `seq` is a parameter, not a counter M3 invents
+
+`EventStream` is seam S3 and does not exist in the tree: `grep` finds it in this document
+and nowhere in `gui/`. `Prompt.to_wire(seq=0)` (`gui/prompts.py:138`) already set the
+precedent — the prompt projection takes the cursor from its caller rather than reaching
+for a clock. `GameView` does the same:
+
+```python
+build_view(app, viewer, seq: int = 0) -> dict
+```
+
+M4 supplies a real cursor when S3 lands. M3 adds no counter, because a counter added here
+would be an `EventStream` with one field and no consumer, and S3 would then have to
+dislodge it.
+
+#### D-M3-2 — the fog predicate is extracted, not copied a fourth time
+
+The same test — *every cell of a non-party token's footprint is unexplored* — is written
+out three times today:
+
+| Site | Purpose |
+| ---- | ------- |
+| `main.py:16609` (`_draw_agents`) | don't paint the token |
+| `main.py:15559` (`_draw_agent_hover_name`) | don't leak the name on hover |
+| `main.py:3080` (`_npc_anim_agent_fogged`) | resolve its Move/Announce silently |
+
+`build_view` would be the fourth, and the only one whose drift is a security bug rather
+than a cosmetic one. So M3 lands `App._agent_fogged(idx)` first and repoints all three
+existing sites at it, **as a no-behaviour-change commit of its own**, with the 71 panel
+checkpoints as the oracle — byte-identical, or the extraction is wrong.
+
+This is the one M3 change that touches `main.py`'s draw pass. Everything after it is
+additive.
+
+#### D-M3-3 — concealment is a filter rule, alongside fog
+
+**Amends the filter table.** The DM's screen hides an enemy through *two* gates, and the
+table names one. `_npc_concealed_from_party` (`main.py:15255`) drops an automated
+non-party token that is Hidden, or Invisible with no living party member whose senses
+pierce it — the same gate targeting uses. `_draw_agents` and `_draw_agent_hover_name` both
+apply it immediately after the fog check.
+
+A `GameView` that applied only fog would render, on a player's canvas, an ambusher the
+DM's own console is deliberately not drawing. That is precisely the sentence the table
+opens with ("a client can never see something the DM's own render hides"), so the omission
+is an error in the table and not a decision. **Both gates apply**, in the draw pass's
+order.
+
+#### D-M3-4 — the agent projection is new code, not the save path filtered
+
+**Amends "a filtered projection of what the saves already serialize".** It cannot be.
+`_save_agents` (`main.py:12743`) skips every token with `summoner_idx >= 0` or
+`removed_from_play` and renumbers what survives — which is exactly why `gui/net/roster.py`
+refuses to persist an index at all. Ground rule 5 requires the wire to carry **live**
+`BattleMap` indices, so a projection built on the save's numbering would address the wrong
+creature the moment a summon is on the map.
+
+`build_view` therefore walks `bm.placed_agents` directly and shares no code with
+`_save_agents`. The two disagree about their subject as well as their numbering: the save
+wants every field needed to reconstruct a creature, the view wants a band where the save
+wants a number.
+
+#### D-M3-5 — omission wins over "verbatim" for terrain, doors and lighting
+
+**Amends `"terrain": …, "lighting": …, "effects": …, // the existing sidecar shapes,
+verbatim`.** That line and the table's *"Unexplored cells — omitted entirely"* row cannot
+both hold: `_save_terrain` (`main.py:14864`) writes every region, every door with its
+`locked` / `lock_dc` / `link_target`, every ladder and its global target. Sent verbatim to
+a player, that is the floor plan of the wing they have not entered, including which doors
+are locked and where the staples lead — the same class of leak as sending the enemy token,
+arriving by a quieter route.
+
+For a non-DM viewer, terrain regions, doors, ladders and light sources are **filtered
+against the explored mask** and omitted when no cell of theirs is explored. A DM viewer
+gets them verbatim. The byte-level assertion covers map structure as well as agents.
+
+#### D-M3-6 — `viewer` is a `Principal`; the DM-prompt rule costs one predicate
+
+`build_view(app, viewer, …)` takes a `Principal` (`gui/net/roster.py`), not an id, so
+`roster.authorize()` is callable on it directly. Entitlement and visibility stay two
+checks, as the Identity section requires, and neither is inferred from the other.
+
+The obligation recorded as *"M3 owes one filtering rule (the six renderers)"* discharges
+differently than either M2 or the first draft of this block expected, and the difference is
+worth recording because it removes a rule rather than writing one.
+
+Prompts do not ride in the `view` envelope at all — only `you.prompt_id` does. And the six
+DM-console-only dialogs **never become `Prompt`s**: `grep -n "render=" gui/main.py` finds
+thirteen sites, all `"picker"` or `"grid"`, and the bus registers exactly three renderers
+(`main.py:659`). `NamePromptDialog`, `GridSpanDialog`, `TeamPickerDialog`,
+`MobSelectionDialog` and `SpellSelectionDialog` are all called directly, outside the bus.
+Nothing that reaches `you.prompt_id` can therefore be one of them.
+
+So M3 owes **no renderer blocklist**. It owes the gate that was always the right one:
+
+```python
+you["prompt_id"] = p.id if roster.authorize(viewer, Action.ANSWER_PROMPT,
+                                            PromptTarget(p.id)) else None
+```
+
+That is strictly stronger than a blocklist — it is scoped to the *prompt's owner* rather
+than to the widget that happens to draw it, it runs through the NN6 chokepoint instead of
+beside it, and it cannot rot when a seventh DM dialog is written. A blocklist would have
+had to be maintained forever to keep saying what ownership already says.
+
+**M4 still inherits the obligation**, because the `prompt` envelope is where a prompt body
+actually crosses the wire, and M4 is the phase that can first send one.
+
+
 `gui/net/view.py` (new): `build_view(app, viewer) -> dict`.
 
 **Shape** — a filtered projection of what the saves already serialize:
@@ -2954,6 +3067,29 @@ client can never see something the DM's own render hides:
 enemy contains no reference to that agent anywhere in the serialized bytes. That is the
 whole security model of a spectator client, and it deserves a byte-level assertion, not a
 field-level one.
+
+#### Landed 2026-09-22
+
+`gui/net/view.py`, and `App._agent_fogged` (D-M3-2) as a separate no-behaviour-change
+change ahead of it — the 71 panel checkpoints byte-identical across it, which is what
+licensed touching the draw pass at all.
+
+`tests/test_gameview.py`, **13 checks**, registered in `run_all_tests.py` beside the other
+oracles. The suite is **151 pass / 1 fail** (`test_monk.py`, pre-existing and unrelated).
+
+Every headline check was run against a deliberately broken projection before being
+believed, because a byte-level assertion that cannot fail is worse than none:
+
+| Mutant | Caught by |
+| ------ | --------- |
+| agent fog + concealment gates removed | `the creature's name reached a player's wire` |
+| initiative not cut to the visible set | `initiative names {3}, which no token explains` |
+| `_visible()` forced to `True` (map rides verbatim) | `a door behind the fog reached a player` |
+| `is_dm` forced to `True` (DM fields ungated) | `the creature's name reached a player's wire` |
+
+**Carried out of M3**: nothing new. `GameView` is a pure read — M4 owes the transport, the
+`ANSWER_PROMPT` gate again on the `prompt` envelope (D-M3-6), and the `_pump_net()` fix in
+the six blocking modals.
 
 ---
 

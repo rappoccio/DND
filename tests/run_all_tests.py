@@ -57,6 +57,12 @@ test_scripts = [
     # is now the only coverage of main.py's reaction path.
     "test_prompts.py",
 
+    # The GameView projection (MULTIPLAYER_PLAN.md M3, seam S1) — the per-viewer read
+    # filter, and the only thing a remote client is ever sent. Kept with the oracles
+    # because its acceptance criterion is a BYTE-level assertion: a regression here does
+    # not break a feature, it quietly hands a player the enemy they cannot see.
+    "test_gameview.py",
+
     # Core mechanics
     "test_conditions.py",
     "test_combat.py",
