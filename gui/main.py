@@ -3077,19 +3077,6 @@ class App:
         a = self._npc_anim
         return a is not None and idx in a["draw_dead"]
 
-    def _npc_anim_agent_fogged(self, idx):
-        """True when idx's whole footprint sits in never-explored fog (mirrors _draw_agents'
-        fog gate). Its Move/Announce events resolve instantly and silently — no info leak,
-        no dead air staring at an empty map."""
-        if not self._fog_active() or idx < 0 or idx >= len(self.bm.placed_agents):
-            return False
-        pt = self.bm.placed_agents[idx]
-        if pt.faction == PC_FACTION:
-            return False
-        fp = [rpg.Cell(pt.origin.col + dc, pt.origin.row + dr)
-              for dc in range(pt.size) for dr in range(pt.size)]
-        return bool(fp) and all(not self.bm.is_explored(c) for c in fp)
-
     # ── Per-frame advance (called from the main loop) ─────────────────────
     def _advance_npc_playback(self):
         """Advance the active playback one frame. Instant events chain within the frame;
@@ -3108,7 +3095,7 @@ class App:
             if ev.kind == self._NPC_EV_MOVE:
                 path  = ev.path
                 steps = len(path) - 1
-                if steps <= 0 or self._npc_anim_agent_fogged(ev.agent_idx):
+                if steps <= 0 or self._agent_fogged(ev.agent_idx):
                     if steps > 0:   # fogged mover: commit the destination, skip the slide
                         a["pos"][ev.agent_idx] = (float(path[-1].col), float(path[-1].row))
                     self._npc_anim_next(now)
@@ -3126,7 +3113,7 @@ class App:
                                           c0.row + f * (c1.row - c0.row))
                 return
             if ev.kind == self._NPC_EV_ANNOUNCE:
-                if self._npc_anim_agent_fogged(ev.agent_idx):
+                if self._agent_fogged(ev.agent_idx):
                     self._npc_anim_next(now)
                     continue
                 dur = len(ev.text) / NPC_TYPEWRITER_CPS * 1000.0 + NPC_ANNOUNCE_HOLD_MS
@@ -15254,6 +15241,36 @@ class App:
                 and not self.lighting_editor.active
                 and not self.terrain_editor.active)
 
+    def _agent_fogged(self, idx: int, pt=None) -> bool:
+        """True when a non-party token's whole footprint sits in never-explored fog.
+
+        The single home of the fog-of-war reveal gate. It used to be written out three
+        times — the draw pass, the hover tooltip and NPC playback — and MULTIPLAYER_PLAN
+        D-M3-2 collapsed them here before `GameView` became a fourth copy, because a
+        projection that drifts from what the DM's screen draws is a state leak rather
+        than a cosmetic bug.
+
+        Party-faction tokens are never fogged. `pt` is accepted so a caller already
+        holding the record does not pay for a second lookup; it must be `placed_agents[idx]`.
+
+        Callers rely on the consequences differing: the draw pass skips the sprite, the
+        hover tooltip withholds the name, and playback resolves the token's Move/Announce
+        events instantly and silently — no info leak, and no dead air spent staring at an
+        apparently empty map.
+        """
+        if not self._fog_active():
+            return False
+        agents = self.bm.placed_agents
+        if idx < 0 or idx >= len(agents):
+            return False
+        if pt is None:
+            pt = agents[idx]
+        if pt.faction == PC_FACTION:
+            return False
+        fp = [rpg.Cell(pt.origin.col + dc, pt.origin.row + dr)
+              for dc in range(pt.size) for dr in range(pt.size)]
+        return bool(fp) and all(not self.bm.is_explored(c) for c in fp)
+
     def _npc_concealed_from_party(self, idx: int, pt) -> bool:
         """True when an automated enemy token should not be drawn because the party
         can't perceive it (Hidden, or Invisible with no sense that pierces it).
@@ -15556,11 +15573,8 @@ class App:
             return
         pt = self.bm.placed_agents[idx]
         # Fog of war: don't reveal a hidden non-party token's name.
-        if self._fog_active() and pt.faction != PC_FACTION:
-            fp = [rpg.Cell(pt.origin.col + dc, pt.origin.row + dr)
-                  for dc in range(pt.size) for dr in range(pt.size)]
-            if fp and all(not self.bm.is_explored(c) for c in fp):
-                return
+        if self._agent_fogged(idx, pt):
+            return
         # Concealed automated NPC (Hidden/unpierced Invisible): no name tooltip either,
         # or hovering the empty-looking cell would betray the ambush.
         if self._npc_concealed_from_party(idx, pt):
@@ -16606,11 +16620,8 @@ class App:
             # Fog of war: hide a non-party token whose whole footprint sits in cells the
             # party has never seen. Party-faction tokens are always drawn. Keyed off the
             # same explored mask as _draw_fog_overlay, so a sprite can never sit on fog.
-            if self._fog_active() and pt.faction != PC_FACTION:
-                fp = [rpg.Cell(pt.origin.col + dc, pt.origin.row + dr)
-                      for dc in range(pt.size) for dr in range(pt.size)]
-                if fp and all(not self.bm.is_explored(cell) for cell in fp):
-                    continue
+            if self._agent_fogged(i, pt):
+                continue
             # Concealment: an automated enemy that is Hidden or Invisible (and not
             # pierced by any party member's senses) is not drawn at all. It reappears
             # through the usual mechanics — detection/attacking clears Hidden, and
