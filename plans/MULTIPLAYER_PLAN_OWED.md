@@ -134,6 +134,11 @@ Checked while writing this: the `zealous_presence` line two below it also reads 
 and that one is **right** — `class_resources.cpp:83` grants Zealous Presence at 10. F9 is
 Berserker-only; don't "fix" its neighbour.
 
+**LANDED 2026-09-24.** One digit and a comment that now says what the engine says. The
+panel golden came back **byte-identical** — all 71 checkpoints match, `.golden.txt`
+untouched — which is the prediction this entry made and the confirmation that 10–13 really
+was dead. `zealous_presence` was left alone. Suite **159/159**.
+
 ---
 
 ## 4. F12 — cosmetic, and the golden will move

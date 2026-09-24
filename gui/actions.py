@@ -640,10 +640,13 @@ class ActionMenu:
         if cls == CC.Barbarian:
             if not cond.raging and _res(stats, "Rage") > 0:
                 out.append(Action("rage", "Rage (Bonus)", GROUP_BONUS))
-            # The panel says level 10 and the engine grants the resource at 14, so
-            # 10-13 can never reach the draw. Preserved, and recorded as F9.
+            # F9: the gate used to read `lvl >= 10`, which the engine never agreed with —
+            # `class_resources.cpp` grants Intimidating Presence at 14 (L10 Berserker is
+            # Retaliation, a reaction that needs no resource), so `ip > 0` dominated and
+            # 10-13 was a branch that could not reach the draw. The level now matches the
+            # grant, and no pixel moves: the button never drew at 10-13.
             ip = _res(stats, "Intimidating Presence")
-            if (stats.barbarian_subclass == rpg.BarbianSubclass.Berserker and lvl >= 10
+            if (stats.barbarian_subclass == rpg.BarbianSubclass.Berserker and lvl >= 14
                     and ip > 0):
                 out.append(Action("intimidating_presence",
                                   f"Intimidating Presence ({ip})", GROUP_BONUS))
