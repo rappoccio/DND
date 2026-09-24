@@ -34,8 +34,9 @@ an iCloud-synced directory where `build/` artifacts corrupted the cache; the rep
   `.DS_Store`, loose `.md` files, `replay_log.txt`). **Stage files by name.**
 - Staging `build/` or `replay_log.txt`.
 
-**How to build (Docker; there is no native cmake/ninja on the macOS host, and the `.so` is
-a Linux/py3.12 build):**
+**How to build and test — always in the container, never on the host.** The `.so` is a
+Linux/py3.12 build and the host has no toolchain; see *This project runs in Linux* below,
+which is the rule the rest of this file assumes.
 ```bash
 ./test.sh                      # configure + build + install + run the whole suite
 ./build.sh                     # build only
@@ -44,7 +45,13 @@ docker run --rm -v "$HOME":/home/user rpg_map \
   -c "cd /home/user/Claude/DND && python3 tests/test_prompts.py"
 ```
 
-Pure `main.py` edits need no rebuild — only C++ / binding changes do.
+**Never run `python3 tests/…` or `python main.py` on the macOS host.** It does not fail
+usefully: it reports ~151 failed suites, all of them `ModuleNotFoundError:
+rpg_battle_map`, which reads like a catastrophic regression and is in fact the host's
+PYTHONPATH. Run the container line above instead.
+
+Pure `main.py` edits need no rebuild — only C++ / binding changes do. The user re-runs
+`./run.sh`, which is a container launch like everything else.
 
 This section survives context compaction because it is in CLAUDE.md.
 
@@ -58,35 +65,51 @@ This is a D&D 5e battle map viewer with a **two-layer architecture**:
 
 The pybind11 bindings are defined entirely in `rpg_bindings.cpp` — the canonical reference for the Python-facing API surface (snake_case names differ from C++ camelCase).
 
+## ⚠️ This project runs in Linux, in the container. Never natively on the host.
+
+**The `rpg_map` Docker image is the only supported environment**, for building, for
+testing and for running the app. There is no native macOS path and none should be added:
+
+- the installed `rpg_battle_map.so` is a **Linux / py3.12** build, so a host Python cannot
+  import it — a host test run fails 151 suites and is reporting its own PYTHONPATH, not a
+  regression (see *Tests* below);
+- the host has no cmake/ninja/OpenCV toolchain, and acquiring one would create a second
+  `.so` that disagrees with the committed one;
+- pygame on macOS hits the XQuartz GLX crash the container's Xvfb + x11vnc + noVNC exists
+  to avoid.
+
+So every command below is a container command. If a recipe anywhere starts `cmake …` or
+`python main.py …` with no `docker run` around it, it is a recipe to run **inside** the
+image — never on the host.
+
 ## Build
 
 ```bash
-# Configure and build the pybind11 extension (fetches pybind11 v2.13.1 automatically)
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-
-# Install the .so next to main.py so Python can import it
-cmake --install build
+./build.sh                     # the supported way
 ```
 
-Requires: CMake ≥ 3.25, C++23 compiler, OpenCV 4.x, Python 3 with dev headers.
+Under the hood, inside the image (`compile.sh`):
+
+```bash
+cmake -S ./gui -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+cmake --install build          # puts the .so next to main.py
+```
+
+The image already carries CMake ≥ 3.25, a C++23 compiler, OpenCV 4.x, Python 3 with dev
+headers, and (since M4) `aiohttp`. Nothing needs installing on the host but Docker.
 
 ## Run
 
 ```bash
-# After building and installing:
-python main.py <map_image.png>
+./run.sh maps/TestDNDMap.png
 ```
 
-## Docker (display via browser — no XQuartz needed)
-
-```bash
-docker build -t rpg_map .
-docker run --rm -p 6080:6080 -v ~/my_maps:/app/maps rpg_map /app/maps/mymap.png
-# Open http://localhost:6080/vnc.html in any browser
-```
-
-The container uses Xvfb + x11vnc + noVNC to avoid the XQuartz GLX crash on macOS.
+Then open **http://localhost:6080/vnc.html** — the DM console, over noVNC. `run.sh`
+publishes 6080 on `127.0.0.1` only (it is an unauthenticated `x11vnc -nopw` session, so
+anyone who reaches it *is* the DM) and publishes the M4 player server on `6081` to the
+LAN. Rebuilding the image is `docker build -t rpg_map .`, and is needed when the
+`Dockerfile` changes — a new pip dependency, most recently.
 
 ## Tests
 
@@ -99,6 +122,12 @@ cwd-relative JSON loads resolve. New tests go in `tests/` and must be registered
 in `tests/run_all_tests.py`. Test fixtures (e.g. `*.golden.txt`) live in `tests/`
 alongside their test; shared data JSONs stay in `gui/`. `test_helpers.py` provides
 the common setup helpers.
+
+**The suite runs in the container and nowhere else** — `./test.sh`, or a single suite
+through `docker run` as shown above. Two files are deliberate exceptions and neither is a
+licence to run the rest on the host: `tests/test_mapimg.py` is PIL-only and imports no
+extension, and `tests/manual_fog_xvfb.py` needs the container *plus* an Xvfb display and
+is not in the runner at all.
 
 ## Key Design Decisions
 

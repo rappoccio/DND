@@ -1196,6 +1196,20 @@ One pip line in the `Dockerfile` (which today installs only `Pillow` and `pygame
 `pip install aiohttp` in whatever environment `python gui/main.py` is launched from. Both
 run paths are in use and either may be the one a session starts from.
 
+**Amended 2026-09-24 — there is only one run path, and it is the container** (reason: user
+decision, this project runs in Linux in the `rpg_map` image and never natively on the
+macOS host). The sentence above is retired: a bare `python gui/main.py` on the host is not
+a supported deployment and cannot be one — the installed extension is a Linux/py3.12 build
+that a host Python cannot import. So the `Dockerfile` pip line is the whole of D1's
+dependency story, and the image must be rebuilt when that line changes.
+
+**The soft dependency stays anyway, and its justification changes.** It was justified by
+"a machine without `aiohttp`", which no longer exists as a supported case. It is kept
+because it is free and because it is what keeps `net/` honest: the guarded import is the
+reason `App` has no hard edge against the transport, which is what lets every headless
+suite construct an `App` with `self._net = None` and no socket. Nothing in the tree should
+be rewritten to *rely* on the absent-aiohttp path being a deployment.
+
 Chosen over stdlib-only and over `websockets`+`http.server` because **A9 requires one
 middleware point**, and only a combined HTTP+WS server gives all five M4 routes a single
 place to hang the `Origin` → credential → revocation → `authorize()` chain. The plan's
@@ -1206,7 +1220,9 @@ remote play is "works at the table, not for the remote player."
 **`gui/net/` is imported lazily.** The DM console starts normally when `aiohttp` is absent —
 the player server is simply unavailable, logged once at startup. This keeps
 `python gui/main.py map.png` working untouched on a machine without the dependency, and
-makes the dependency soft on both paths.
+makes the dependency soft on both paths. *(Per the 2026-09-24 amendment above, "both
+paths" is now one path plus the headless suites; the laziness is kept for the suites'
+sake, not for a host deployment's.)*
 
 ### D2 — Port: 6081, published to the LAN
 

@@ -18,7 +18,10 @@ a map image and run encounters turn by turn.
   and the JSON stat blocks / spell lists the engine loads.
 
 Everything runs inside a Docker image (`rpg_map`) that bundles the toolchain and
-a virtual display served to your browser over noVNC.
+a virtual display served to your browser over noVNC. **That image is the only
+supported environment** — building, testing and playing all happen in Linux, in
+the container. The installed `rpg_battle_map` extension is a Linux/py3.12 build,
+so a host Python cannot import it; there is no native macOS path.
 
 ## Build
 
@@ -56,8 +59,13 @@ runs each suite with its working directory set to `gui/`. To run a single suite
 directly, do the same:
 
 ```bash
-cd gui && python3 ../tests/test_monk.py
+docker run --rm -v "$HOME":/home/user rpg_map \
+  -c "cd /home/user/Claude/DND/gui && python3 ../tests/test_monk.py"
 ```
+
+The `cd gui` is the working-directory requirement above; the `docker run` is the
+environment requirement. Running that inner command on the host instead fails with
+`ModuleNotFoundError: rpg_battle_map` — the extension is a Linux build.
 
 ### The one C++ suite: `test_rules`
 
@@ -68,8 +76,11 @@ reports through the same runner. `./test.sh` therefore covers it automatically;
 to run it on its own:
 
 ```bash
-./build/test_rules
+docker run --rm -v "$HOME":/home/user rpg_map \
+  -c "cd /home/user/Claude/DND && ./build/test_rules"
 ```
+
+It is an ELF binary built in the image, so it is a container command too.
 
 It unit-tests `gui/rules.hpp`'s free functions — dice, weapon attack/damage
 modifiers, spell save DCs, and `CombatContext`'s JSON round-trip — **directly,

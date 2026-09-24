@@ -22,15 +22,25 @@ git lock issues. The user fixed the root cause by moving the repo to `~/Claude/D
 (outside iCloud), so builds no longer corrupt anything.
 
 **How to build (verified env 2026-06-02, still current 2026-09-21):**
-- No native `cmake`/`ninja` on the macOS host; the produced `.so` is a Linux/py3.12 build.
-  Always build inside the `rpg_map` Docker image.
+- **Everything runs in Linux, in the `rpg_map` image — building, testing AND running the
+  app. There is no supported native macOS path** (user decision 2026-09-24: "I don't want
+  to run this on the native MacOS, it should always be in Linux"). No native
+  `cmake`/`ninja` on the host, and the produced `.so` is a Linux/py3.12 build a host
+  Python cannot import.
+- **Never reach for a quick host test run.** It fails ~151 suites with
+  `ModuleNotFoundError: rpg_battle_map`, which reads like a catastrophic regression and is
+  only the host's PYTHONPATH. Two files are deliberate exceptions and license nothing
+  else: `tests/test_mapimg.py` (PIL-only, host-runnable, good for fast mutant cycling) and
+  `tests/manual_fog_xvfb.py` (container *plus* an Xvfb display, not in the runner).
 - Image `ENTRYPOINT` is `/bin/bash` — pass `-c "..."` directly (do NOT write `bash -c`).
 - `./test.sh` does configure + build + install + the whole suite. `./build.sh` builds only.
 - One suite, incremental:
   ```
   docker run --rm -v "$HOME":/home/user rpg_map -c "cd /home/user/Claude/DND && python3 tests/test_prompts.py"
   ```
-- Pure `main.py` edits need no rebuild.
+- Pure `main.py` edits need no rebuild. Re-running is `./run.sh`, also a container launch.
+- A `Dockerfile` change (a new pip dependency — `aiohttp` for M4) needs
+  `docker build -t rpg_map .`, which installs, so it is the user's call.
 
 **Git, unchanged:** the user owns git. **Commit only when asked** — a direct request is
 enough and is common ("commit and mark it done"); **pushing is a separate ask** and every
