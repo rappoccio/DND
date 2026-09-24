@@ -749,7 +749,8 @@ M3 specifies, with the wire-level details pinned here:
            "prompt_id": "pr_00291" }, // or null — the full prompt arrives in its own envelope
   "map":  { "page": "wachterhaus", "cell_px": 70, "cols": 40, "rows": 30,
             "image": "/map.png?v=<content-hash>" },
-  "fog":  { "active": true, "explored": [[c, r], …] },   // from bm.explored_cells()
+  "fog":  { "active": true,
+            "explored_runs": [[row, c0, c1], …] },  // inclusive spans; D-M4-2 amended 2026-09-23
   "combat": { "active": true, "paused": false, "round": 3, "turn_idx": 2,
               "initiative": [ { "agent": 4, "total": 19 }, … ] },
   "agents":   [ … ],                  // see the filter table below
@@ -1326,11 +1327,29 @@ So the route masks before it serves, and the rules are:
 - **Staleness is safe in exactly one direction.** A masked PNG that lags the mask shows
   *more* fog than the party has earned, never less. Any later debounce or throttle must
   preserve that direction; this sentence is the invariant it has to be checked against.
+- **Amended 2026-09-23 — the image key lags on purpose** (reason: measured, an exploration
+  delta re-keys the PNG and costs each player a fresh 0.8-2.5 MB fetch of the largest page).
+  The debounce this bullet anticipated is now specified, and it is the *published snapshot*
+  that lags, not the render — so the `?v=` in a view always names a picture the route can
+  actually serve, and a client never chases a key that does not exist yet. The policy:
+  · at most one re-key per **3 s**, and always one at a turn boundary;
+  · the client draws fog from the view's own (live) fog block, so a cell the party has just
+    earned reads as dark art until the next re-key — the lag is visible, and it is fog;
+  · **the lag is allowed only while the published mask is a subset of the live one.** Page
+    switch, fog toggled *on*, and a mask that shrank (a save loaded) each publish
+    immediately, because in those three the lagged image is not foggier — it is *wrong*, and
+    in the fog-on case it is a leak. Subset is the machine-checkable form of the invariant
+    above, and the code asserts it rather than trusting the three cases to be exhaustive.
+  Worst case is still one page per viewer per 3 s (~0.85 MB/s on `wachterhaus`). If the
+  table finds that too much, the answer remains tiles, in M4b — never a rawer image.
 - **Cost, named:** the mask changes on every newly-explored cell, so this is one full-page
   PNG re-encode per exploration delta. Regenerate lazily, on request, off the frame thread —
   and **measure it on the largest page in the tree before M4 calls the route done.** If the
   encode is not affordable there, the answer is a cheaper mask representation, never a
-  rawer image.
+  rawer image. *(Measured 2026-09-23 — see [The masked page image](#the-masked-page-image--landed-2026-09-23).
+  The encode passes at 95 ms worst case. The bullet named the encode and not the
+  **download**, which is the cost that does not pass: a decision is owed before the route
+  is wired.)*
 
 ### D-M4-2 — M4 ships snapshot-only; Envelope 3 and the animation are M4b
 
@@ -1348,11 +1367,28 @@ current snapshot on prepare, so late-joiner resync already fell out of the spike
 own mutant pass.
 
 **Snapshot-only is not a strict subset — it has its own bandwidth profile, so the cadence
-is frozen with it.** A full view carries `fog.explored` as a cell list (up to 1200 pairs on
-a 40×30 page, more on larger ones), and a push per token move is the traffic Envelope 3
-exists to avoid. M4 therefore **coalesces**: at most one push per viewer per 250 ms, always
-one at a turn boundary, always one when a prompt is addressed to that viewer, and never two
-in flight. Without this rule M4b arrives to fix a problem M4 invented.
+is frozen with it.** A full view carries the party's explored mask, and a push per token
+move is the traffic Envelope 3 exists to avoid. M4 therefore **coalesces**: at most one push
+per viewer per 250 ms, always one at a turn boundary, always one when a prompt is addressed
+to that viewer, and never two in flight. Without this rule M4b arrives to fix a problem M4
+invented.
+
+**Amended 2026-09-23 — the mask crosses as row runs, not cell pairs** (reason: measured,
+this paragraph's "up to 1200 pairs on a 40×30 page" was 7x low — the real pages in this tree
+have ~10 px cells, and a fully-explored `wachterhaus` is 8918 pairs, 85 KB of JSON on every
+push, 341 KB/s per viewer at the frozen cadence). The field is **renamed as well as
+reshaped**, to `fog.explored_runs`, carrying `[row, col_start, col_end]` inclusive spans:
+
+- 8918 pairs become **91 runs**, and the 12×12 test scene's 49 pairs become 7. The cadence
+  rule above stands unchanged; it was necessary and it was not sufficient.
+- The rename is the point of doing it now. A client that read pairs would misread runs
+  silently, and M4's client does not exist yet, so the shape change costs nothing today and
+  a rename costs nothing ever.
+- A bitmap is smaller still and was rejected: the byte-level discipline M3 was built on
+  depends on being able to read a leak out of the serialized bytes, and base64 rows cannot
+  be read that way.
+- Runs are emitted row-major with `col_start` ascending, so the encoding is canonical and a
+  byte-level assertion over it is stable.
 
 ### D-M4-3 — `_pump_net()` pumps the command queue and nothing that redraws
 
@@ -3205,7 +3241,7 @@ actually crosses the wire, and M4 is the phase that can first send one.
 {
   "seq": 1284,                       // EventStream cursor this view is consistent with
   "map":  {"page": "wachterhaus", "cell_px": 70, "cols": 40, "rows": 30, "image": "/map.png?v=…"},
-  "fog":  {"explored": [[c,r], …]},  // party mask, from exploredCells()
+  "fog":  {"explored_runs": [[row,c0,c1], …]},  // row runs, D-M4-2 amended 2026-09-23
   "combat": {"active": true, "round": 3, "turn_idx": 2,
              "initiative": [{"agent": 4, "total": 19}, …]},
   "agents": [ … ],                   // filtered; see below
@@ -3274,7 +3310,7 @@ Routes:
 | `GET /` | the client (static HTML/JS, served from `gui/net/static/`) |
 | `POST /join` | join code → **bearer token** (A3) → principal. Never a cookie. |
 | `GET /state` | full `GameView` for the authenticated principal |
-| `GET /map.png` | the current page's map image, **masked server-side for a player viewer** (D-M4-1): opaque fog over unexplored cells, cached by mask hash; the DM viewer gets it raw, cached by content hash |
+| `GET /map.png` | the current page's map image, **masked server-side for a player viewer** (D-M4-1): opaque fog over unexplored cells, cached by mask hash; the DM viewer gets it raw, cached by content hash. *(The masking core landed 2026-09-23; the handler is owed with the server.)* |
 | `WS /live` | push: **a full `view` per update in M4** (D-M4-2; `{seq, events[]}` deltas are M4b); `{prompt}` when one is addressed to you. **Authenticates by first frame, not by header** (A3) — the browser `WebSocket` API cannot set one. |
 
 Every route goes through one middleware point (A9) that does: `Origin` check
@@ -3288,7 +3324,10 @@ validation, revocation check, then `authorize()`. Even in M4 — where the only 
 command queue and **nothing that redraws**, and F3's owed look on a real display is M4's.
 
 **Client**: canvas. Map image + grid + tokens + fog rectangles + initiative list + combat
-log, redrawn from each snapshot — **tokens jump rather than walk in M4**. Animating
+log, redrawn from each snapshot — **tokens jump rather than walk in M4**. Fog rectangles come
+from `fog.explored_runs`, which is live, while `map.image` lags up to 3 s (D-M4-1 as amended):
+**the client may not assume the picture and the mask agree**, and a just-earned cell reads as
+dark art until the next re-key. Animating
 `NpcVisualEvent` `Move` paths the way `_npc_anim_start` does on the DM screen is **M4b**,
 because it needs Envelope 3 (D-M4-2). Read-only — no input surface at all in this phase.
 
@@ -3296,6 +3335,114 @@ because it needs Envelope 3 (D-M4-2). Read-only — no input surface at all in t
 per-viewer *filtered projection* with its own byte-level test, not a `seq` field bolted to
 the push. Then the client animates `Move`. Its mutant table is owed on the same terms M3's
 was.
+
+#### The masked page image — landed 2026-09-23
+
+D-M4-1's half that needs no socket: `gui/net/mapimg.py`, the `image` field `_map()` never
+emitted, and `tests/test_mapimg.py` (**14 checks**, registered beside the other oracles).
+Suite **153 pass / 1 fail** (`test_monk.py`, pre-existing and unrelated). The route handler
+itself lands with the server — this is the thing it will serve.
+
+`mapimg.py` imports no pygame and no extension, the way `roster.py` does not: it takes a
+frozen `PageImage` snapshot (page path, grid lines as **raw image px**, the explored set,
+`fog_on`) and renders from that, so the encode happens off the frame thread and the handoff
+cannot tear. `view.page_image(app)` is the one place the pygame thread reads it, and it
+reuses the `explored` set `build_view` has already paid for.
+
+**The render starts opaque and punches out the explored cells** rather than painting fog
+over the unexplored ones. The two differ on the margins — image area outside the outermost
+grid lines, and any cell the line lists are too short to describe — and on this page tree
+those margins are real: `wachterhaus.png` has 17 px outside the grid on the left and 17 at
+the bottom. Punch-out's failure mode is extra fog; paint-over's is a strip of floor plan.
+
+**D-M4-1's acceptance gate, measured in the container** on the largest page in the tree.
+First, a correction the measurement forced: this document's example geometry for
+`wachterhaus` (`40x30`, `cell_px: 70`) is illustrative and wrong. `analyze_grid()` finds
+**98x91 at ~10 px/cell — 8918 cells**, 7.4x the example's cell count, so the gate was
+measured against the page as the engine actually sees it.
+
+| Page | Mask | Render | On the wire | Cache hit |
+| ---- | ---- | ------ | ----------- | --------- |
+| `wachterhaus.png` 1084x1504, 98x91 (3.05 MB raw) | a quarter seen | 63 ms | 0.80 MB | 0.2 us |
+| | half seen | 69 ms | 1.32 MB | |
+| | fully explored | 95 ms | 2.51 MB | |
+| `ChurchOfStAndral.png` 50x44 (0.33 MB raw) | half seen | 20 ms | 0.18 MB | 0.2 us |
+| `TestDNDMap.png` 20x16 (0.15 MB raw) | half seen | 15 ms | 0.07 MB | 0.2 us |
+
+**The encode is the whole cost, and the profile is what set the constants:**
+
+- **`compress_level=1`, measured rather than defaulted.** The mask build and the composite
+  together are under 5 ms at every exploration level; Pillow's default level 6 spends
+  330-430 ms on the same image level 1 encodes in 60-72 ms, for 6% fewer bytes. A route
+  that re-encodes on an exploration delta buys the time.
+- **A fully-opaque alpha channel is dropped.** Every page in this tree is RGBA with alpha
+  255 everywhere: a quarter of the bytes and a sixth of the encode carrying nothing. Art
+  that really is translucent keeps its channel, and a test holds that line.
+- **Row-run merging was measured and rejected.** Merging adjacent explored cells took 8918
+  rectangles to 91 and saved ~3 ms of a ~95 ms render. Not worth the code.
+- **The cache hit went from ~1.8 ms to 0.2 us** by memoizing the key on the snapshot. It was
+  re-hashing all 8918 explored cells per request *and* per view build.
+
+| Mutant | Caught by |
+| ------ | --------- |
+| fog composited at `FOG_COL`'s alpha 245 | `cell (2, 0) carries 2 colours` |
+| cell geometry multiplied by a screen scale | `the fog starts a px late` |
+| fog painted over cells instead of punched out | `margin px (0, 0) was served` |
+| the DM's content hash reused as a player's key | `the DM and a player share a key` |
+
+The FOG_COL mutant has a check of its own that states the reasoning rather than the
+symptom: it composites the DM's own constant at alpha 245, runs the contrast stretch anyone
+reading their own traffic would run, and asserts the floor plan comes back — then asserts
+the frozen mask, given identical treatment, stays a single flat value.
+
+**What the measurement cost was not the encode.** The gate D-M4-1 set is passed — 95 ms
+worst case, off the frame thread, one render for the whole party. What that decision did not
+name is the **download**: the player's `?v=` is the mask hash, so it changed on *every*
+newly-explored cell, and each change cost that player a fresh 0.8-2.5 MB fetch of the largest
+page. And the same 10 px-cell geometry made `fog.explored` 8918 pairs — 85 KB of JSON on
+*every* push, 341 KB/s per viewer at the frozen cadence, against the 1200 pairs D-M4-2 froze
+its coalescing rule around.
+
+Both were taken the same day, as dated amendments to the blocks they belong to, and both are
+implemented here:
+
+- **The image key lags on purpose** (D-M4-1, amended): at most one re-key per 3 s, always one
+  at a turn boundary, and the lag lives in the *published snapshot* so a view never names a
+  `?v=` the route cannot serve. `_lag_is_only_fog()` is the invariant as code — same page,
+  same fog state, and a mask that has only grown — and it is checked on every publish rather
+  than trusted to three remembered cases. A page switch, fog toggled back **on**, and a mask
+  that shrank because a save was loaded each publish immediately; the fog-on case is the one
+  that would otherwise serve the unmasked page.
+- **The mask crosses as row runs** (D-M4-2, amended): `fog.explored_runs`, inclusive
+  `[row, col_start, col_end]` spans, row-major and canonical. 8918 pairs become 91 runs; the
+  test scene's 49 become 7. Renamed as well as reshaped, because a client written against
+  pairs would misread runs in silence and M4's client does not exist yet.
+
+| Mutant (the amendments) | Caught by |
+| ----------------------- | --------- |
+| fog toggled back on, and the raw render kept its publish | `fog came back up and the unmasked page stayed published` |
+| a mask that shrank treated as a lag | `a mask that shrank was lagged` |
+| a turn boundary that does not re-key | `a turn boundary must re-key` |
+| the lag never expiring | `the cache served the old mask` |
+| a run walking one cell past its gap | `[[0, 0, 2], [0, 3, 4], [2, 9, 9]]` |
+| rows emitted in arbitrary order | `[[6, 0, 6], [5, 0, 6], …]` |
+
+**One of those mutants survived first time round, and that is the finding worth keeping.** A
+run reaching one cell too far *inside* a row passed the whole suite, because the 7x7 explored
+block in `test_gameview.py`'s scene is contiguous in every row and never exercises the branch
+that closes a run mid-row. `test_row_runs_split_on_a_gap` feeds the encoder a mask with a gap
+directly. A byte-level scene is only as good as the shapes it contains.
+
+**And one byte-level probe had to get sharper.** `map.image` puts a 16-char hex key in every
+view, and `SECRET_LADDER_TARGET`'s `61` began matching it by luck. That is exactly what that
+file's own comment warned about ("a DC of 15 would collide with half the integers in a view"),
+so the fix was a more distinctive probe — the targets are now 4281-4286 — and **not** a
+narrower search. The checks still read the whole blob.
+
+**Still owed on this route**: the handler itself (ETag / `Cache-Control` off the same key), the
+once-per-push-cycle `publish()` call from the pygame thread, and the 6081 port and `aiohttp`
+line D1/D2 specify. All three land with the server. If the 3 s lag still moves too many bytes
+at a real table, the answer remains tiles, in M4b — never a rawer image.
 
 **Deployment**: the Docker image already runs Xvfb + x11vnc + noVNC on 6080. Add one
 *separate* published port for the player server — never a second view onto 6080.

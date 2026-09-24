@@ -42,6 +42,7 @@ import os
 
 import rpg_battle_map as rpg
 
+from net import mapimg
 from net.roster import (Action, PC_FACTION, PROTOCOL_VERSION, Principal,
                         PromptTarget, TokenTarget)
 
@@ -96,9 +97,9 @@ def build_view(app, viewer: Principal, seq: int = 0) -> dict:
         "t":       "view",
         "seq":     int(seq),
         "you":     _you(app, roster, viewer, shown),
-        "map":     _map(app),
+        "map":     _map(app, _published_page(app, explored, fog_on), is_dm),
         "fog":     {"active": fog_on,
-                    "explored": sorted([c, r] for (c, r) in explored)},
+                    "explored_runs": explored_runs(explored)},
         "combat":  _combat(app, shown),
         "agents":  agents,
         "terrain": _terrain(app, is_dm, hide_map, explored),
@@ -268,16 +269,103 @@ def _you(app, roster, viewer, shown: set[int]) -> dict:
             "prompt_id": prompt_id}
 
 
-def _map(app) -> dict:
-    """Page identity and grid geometry. The image is named, never inlined: M4 serves it
-    from ``GET /map.png`` so it caches by content hash instead of riding every view."""
+def page_image(app, explored=None, fog_on=None) -> mapimg.PageImage | None:
+    """Snapshot the page art and the mask that hides it, for ``GET /map.png``.
+
+    The one place the pygame thread reads what the net thread needs (D-M4-1): the page
+    file, the grid lines **as raw image px**, and the party's explored mask. Everything
+    downstream of here is plain data, so the mask-and-encode happens off the frame thread
+    and is stale only in the safe direction.
+
+    ``explored`` and ``fog_on`` are accepted because ``build_view`` has already paid for
+    both and a second ``explored_cells()`` per viewer is a C++ round trip for nothing.
+    Returns ``None`` when there is no page file to serve, which is how ``_map`` decides to
+    omit the field rather than name an image that 404s.
+    """
+    path = getattr(app, "_map_path", "") or ""
+    if not path or not os.path.isfile(path):
+        return None
+    bm = app.bm
+    if fog_on is None:
+        fog_on = bool(app._fog_active())
+    if explored is None:
+        explored = {(c.col, c.row) for c in bm.explored_cells()}
+    return mapimg.PageImage(
+        path=path,
+        cols=int(bm.grid_cols),
+        rows=int(bm.grid_rows),
+        v_lines=tuple(int(x) for x in bm.v_line_positions),
+        h_lines=tuple(int(y) for y in bm.h_line_positions),
+        explored=frozenset(explored),
+        fog_on=bool(fog_on),
+    )
+
+
+def explored_runs(explored) -> list[list[int]]:
+    """The party's mask as ``[row, col_start, col_end]`` inclusive spans (D-M4-2, amended
+    2026-09-23).
+
+    Cell pairs were measured at 8918 of them — 85 KB of JSON — on a fully-explored
+    `wachterhaus`, on *every* push; the same mask is 91 runs. The field was renamed along
+    with the reshape because a client written against pairs would misread runs in silence.
+
+    Row-major, ``col_start`` ascending, so the encoding is canonical: the same mask always
+    serializes to the same bytes, which is what makes a byte-level assertion over it mean
+    anything.
+    """
+    by_row: dict[int, list[int]] = {}
+    for col, row in explored:
+        by_row.setdefault(row, []).append(col)
+    runs: list[list[int]] = []
+    for row in sorted(by_row):
+        cols = sorted(by_row[row])
+        start = prev = cols[0]
+        for col in cols[1:]:
+            if col == prev + 1:
+                prev = col
+                continue
+            runs.append([row, start, prev])
+            start = prev = col
+        runs.append([row, start, prev])
+    return runs
+
+
+def _published_page(app, explored, fog_on) -> mapimg.PageImage | None:
+    """The snapshot the route can actually serve right now.
+
+    The ``?v=`` a view names must be a picture ``GET /map.png`` will hand over, or the client
+    chases a key that does not exist yet. So this reads what the push cycle *published*
+    rather than the live mask: the image key lags on purpose (D-M4-1 as amended), and the
+    lag lives in the published snapshot.
+
+    With no cache on the ``App`` — the M3 tests, anything headless — there is no transport to
+    lag behind, and the live mask is the honest answer.
+    """
+    cache = getattr(app, "map_images", None)
+    published = cache.page if cache is not None else None
+    return published if published is not None else page_image(app, explored, fog_on)
+
+
+def _map(app, page_img, is_dm: bool) -> dict:
+    """Page identity, grid geometry, and the name of the image.
+
+    The image is named, never inlined: ``GET /map.png`` serves it so it caches instead of
+    riding every view. The ``?v=`` is **the mask hash for a player and the content hash
+    for the DM** (D-M4-1) — a player's image changes every time the party earns a cell, so
+    a content hash would pin them to the first mask their browser saw. The two viewers get
+    two different keys for the same page, which is the point: they are two different
+    pictures.
+    """
     page = getattr(app, "dungeon_page", None)
     name = getattr(page, "id", None) or os.path.splitext(
         os.path.basename(getattr(app, "_map_path", "") or ""))[0]
-    return {"page":     name,
-            "cell_px":  int(app.bm.cell_pixel_size),
-            "cols":     int(app.bm.grid_cols),
-            "rows":     int(app.bm.grid_rows)}
+    out = {"page":     name,
+           "cell_px":  int(app.bm.cell_pixel_size),
+           "cols":     int(app.bm.grid_cols),
+           "rows":     int(app.bm.grid_rows)}
+    if page_img is not None:
+        out["image"] = f"/map.png?v={page_img.key(is_dm)}"
+    return out
 
 
 def _combat(app, shown: set[int]) -> dict:

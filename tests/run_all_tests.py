@@ -63,6 +63,12 @@ test_scripts = [
     # not break a feature, it quietly hands a player the enemy they cannot see.
     "test_gameview.py",
 
+    # The masked page image (MULTIPLAYER_PLAN.md M4, D-M4-1) — `GET /map.png`. Kept with
+    # the oracles for the same reason as the view: it is the one place the map crosses the
+    # wire as ART, so a regression here undoes D-M3-5's filtering in a form no field-level
+    # check can see. These read pixels.
+    "test_mapimg.py",
+
     # Atomic encounter saves (MULTIPLAYER_PLAN.md standalone item S1) — the two writes a
     # crash could tear. Kept with the oracles because NN7's autosave ring is built on the
     # assumption these are atomic, and the only way to see the fix is to force the write

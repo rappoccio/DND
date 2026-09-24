@@ -28,6 +28,9 @@ Covered here:
   · DM-channel FIELDS never reach a player, seen or not      (test_dm_only_fields_never_reach_a_player)
   · fog down shows a player what the DM's screen shows       (test_fog_down_matches_the_dm_screen)
   · D-M3-6: prompt_id is gated by ANSWER_PROMPT              (test_prompt_id_only_for_its_owner)
+  · D-M4-2: the fog mask crosses as row runs, not pairs      (test_fog_crosses_as_row_runs)
+  · ...and a run closes on a gap rather than walking past it (test_row_runs_split_on_a_gap)
+  · D-M4-1: the map image is keyed per viewer                (test_map_names_an_image_keyed_per_viewer)
   · a spectator gets a view and controls nothing             (test_spectator_gets_a_view)
   · an unseated principal is refused outright                (test_unseated_principal_refused)
 """
@@ -50,7 +53,7 @@ import tempfile
 import rpg_battle_map as rpg
 
 from net.roster import DM_PRINCIPAL_ID, PC_FACTION, Role
-from net.view import build_view
+from net.view import build_view, explored_runs
 from main import App
 
 MAP_PATH = os.path.join(_ROOT, "maps", "TestGrid12x12.png")
@@ -62,10 +65,15 @@ EXPLORED = [(c, r) for c in range(7) for r in range(7)]
 
 # Distinctive numbers, so a byte search for one of them means something. A DC of 15 would
 # collide with half the integers in a view; 4271 collides with nothing.
+#
+# The ladder targets were two-digit until 2026-09-23, when M4's `map.image` put a 16-char
+# hex cache key in every view and `61` started matching it by luck. That is what the comment
+# above was always warning about, so the fix is a more distinctive probe rather than a
+# narrower search: the byte-level checks keep reading the WHOLE blob.
 SECRET_LOCK_DC = 4271
 SEEN_LOCK_DC   = 4272
-SECRET_LADDER_TARGET = [61, 62, 63]
-SEEN_LADDER_TARGET   = [64, 65, 66]
+SECRET_LADDER_TARGET = [4281, 4282, 4283]
+SEEN_LADDER_TARGET   = [4284, 4285, 4286]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -400,6 +408,63 @@ def test_unseated_principal_refused():
     print("✅ test_unseated_principal_refused")
 
 
+def test_fog_crosses_as_row_runs():
+    """D-M4-2 as amended 2026-09-23: the mask is ``[row, col_start, col_end]`` spans.
+
+    Measured: cell pairs are 8918 of them — 85 KB of JSON — on a fully-explored
+    ``wachterhaus``, paid on *every* push. The 7×7 block here is 7 runs instead of 49 pairs.
+    The field is renamed as well as reshaped, because a client written against pairs would
+    misread runs in silence; the ``"explored" not in`` assertion is that rename.
+
+    The expansion check matters more than the encoding: a run that reached one cell too far
+    would hand a player a cell the party has not earned, which is the leak D-M3-5 spent a
+    filter table on.
+    """
+    def check(app, kira, _spectator):
+        fog = build_view(app, kira)["fog"]
+        assert "explored" not in fog, "the pair-shaped field is still on the wire"
+        runs = fog["explored_runs"]
+        assert runs == [[r, 0, 6] for r in range(7)], runs
+        expanded = {(c, r) for r, c0, c1 in runs for c in range(c0, c1 + 1)}
+        assert expanded == set(EXPLORED), "the runs do not expand to the party's mask"
+        assert runs == sorted(runs), "the encoding is not canonical"
+    _run(check)
+    print("✅ test_fog_crosses_as_row_runs")
+
+
+def test_row_runs_split_on_a_gap():
+    """The encoder itself, on a mask the shared scene cannot produce.
+
+    The 7x7 block is contiguous in every row, so a view built from it never exercises the
+    branch that *closes* a run mid-row — and a mutant that walked that run one cell too far
+    passed the whole suite. A leak needs one gap to show itself, so here is the gap: two
+    runs in one row, a single-cell run, and a row with nothing in it at all.
+    """
+    mask = {(0, 0), (1, 0), (3, 0), (4, 0), (9, 2)}
+    assert explored_runs(mask) == [[0, 0, 1], [0, 3, 4], [2, 9, 9]], explored_runs(mask)
+    for run in explored_runs(mask):
+        row, c0, c1 = run
+        assert all((c, row) in mask for c in range(c0, c1 + 1)), \
+            f"run {run} covers a cell the party has not earned"
+    assert explored_runs(set()) == []
+    print("✅ test_row_runs_split_on_a_gap")
+
+
+def test_map_names_an_image_keyed_per_viewer():
+    """D-M4-1: a player's ``?v=`` is the mask hash and the DM's is the content hash, so the
+    same page is two URLs — which is the point, because it is two pictures. A shared key
+    would mean one of them is being served the other's image."""
+    def check(app, kira, spectator):
+        player = build_view(app, kira)["map"]["image"]
+        crowd  = build_view(app, spectator)["map"]["image"]
+        dm     = build_view(app, app.roster.get(DM_PRINCIPAL_ID))["map"]["image"]
+        assert player.startswith("/map.png?v="), player
+        assert player == crowd, "fog is party-scoped; two players must share one image"
+        assert player != dm, "a player and the DM were handed the same picture"
+    _run(check)
+    print("✅ test_map_names_an_image_keyed_per_viewer")
+
+
 def test_view_envelope_shape():
     """Ground rules 1 and 5: every frame carries a `v` and a `t`, and `seq` is the
     caller's (D-M3-1) rather than something this module invents."""
@@ -427,5 +492,8 @@ if __name__ == "__main__":
     test_prompt_id_only_for_its_owner()
     test_spectator_gets_a_view()
     test_unseated_principal_refused()
+    test_fog_crosses_as_row_runs()
+    test_row_runs_split_on_a_gap()
+    test_map_names_an_image_keyed_per_viewer()
     test_view_envelope_shape()
     print("\nAll GameView tests passed! 🎉")
