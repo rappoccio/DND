@@ -23,6 +23,47 @@ of those need a decision before any code is written.
 
 ---
 
+## Pick up here — 2026-09-24, after the first manual pass
+
+**State**: `./test.sh` green at **160 suites / 0 failures**. Items **1–7 have landed**, one
+commit each, `8cec103` … `0b0f561`. Item 8 is **IN PROGRESS** — its manual pass has run once
+and produced five findings (four real defects, one authored-scene misread); commits
+`1005a5d`, `b4a92a0`, `5bb8681`, `c1e4e61`. Items **9 and 10 are untouched**.
+
+**The next step is finishing item 8's manual pass**, not writing code. The pass exists to
+answer four questions the suite cannot, and *none of them has been answered yet* — every
+session so far was spent on defects that blocked getting far enough to ask:
+
+1. Do the fog rectangles line up with the art? M4e predicts they do **not** — the client's
+   lattice is nominal `col * cell_px` while the console and the server's mask use the real
+   detected grid-line positions. A mismatch here is **M4b**'s, not this file's.
+2. Do tokens sit on their cells?
+3. Do the initiative list and the log fill as the DM plays rounds?
+4. Does a reload of the phone keep the seat? (`5bb8681` should have made this true; it has
+   not been confirmed by a human.)
+
+**How to run it**: the DM launches `./run.sh maps/TestDNDMap.png` (it publishes ports — ask),
+reads the join code off the console, and opens the URL on a phone; the next session reads the
+console log and probes the live server from the host rather than guessing. The map is now lit
+(`c1e4e61`), so fog reveal finally does something — **reload the encounter** after launching
+if the app was already up, since lighting is read at load.
+
+**Two housekeeping rules that have bitten twice.** `maps/TestDNDMap_agents.json` is *tracked*
+and is `test_replay_roundtrip.py`'s fixture; the app overwrites it on save, so
+`git checkout -- maps/TestDNDMap_agents.json` after any manual pass on that map.
+`encounters/simplemap_strahd_feastofstandral_terrain.json` and `maps/TestDNDMap_terrain.json`
+stay staged-and-dirty — every commit uses `git commit -m … --only -- <explicit paths>`.
+
+**If code is wanted instead**, there are exactly two things ready to start, and they are
+independent of each other and of the pass:
+· **Item 7's remainder** — the right-click map menu (14 prompt sites still inline in
+  `App._handle_events`) and the panel rendering helpers M2 left behind. Next slice, same
+  shape as slices 1–4.
+· **Item 10** — the lighting editor's missing base-light button. Small, UI-only, and the
+  reason finding 5 cost a session.
+
+---
+
 ## 1. `test_monk.py`'s Deflect fixture — the red suite, and it is not a Deflect bug
 
 Every handoff since M3 has called this "a Deflect Attacks damage assertion in the combat
