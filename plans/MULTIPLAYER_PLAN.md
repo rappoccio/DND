@@ -1291,6 +1291,34 @@ be durable across power loss, and it costs a sync per autosave, which NN7 does a
 times a session. If the ring ever needs power-loss durability, that is the line to add and
 the trade-off to re-take.
 
+**Discharged 2026-09-24 — `test_fsync_precedes_replace`, and the paragraph above was half
+wrong.** The *durability* is what no test in this tree can observe; the **call** is
+observable, and three separate things about it can be wrong while the suite stays green.
+`os.fstat` on the descriptor answers all three, because a write-only fd still stats:
+
+- **which file** — `(st_dev, st_ino)` at sync time, compared against the target *after* the
+  swap. `os.replace` carries the temp file's inode onto the target, so the file sitting at
+  `path` **is** the descriptor that was synced, and a helper that synced the directory (or
+  a second handle, or the wrong file) fails the comparison.
+- **whether Python had let go of the bytes** — `st_size` counts only what reached the OS, so
+  a sync called before `f.flush()` reads short. The doc is sized to outrun the io buffer on
+  purpose; at 324 KB a premature sync sees 319 KB, and a one-line doc would have seen the
+  whole thing and passed.
+- **whether the swap had already happened** — the journal records `fsync` and `replace` in
+  order, so a sync moved after `os.replace` (on a reopened handle, which is the plausible
+  way to write it wrong) fails on the order alone.
+
+| Mutant | Caught by |
+| ------ | --------- |
+| `os.fsync(f.fileno())` deleted | `the temp file was not fsynced exactly once: ['replace']` |
+| the sync moved above `f.flush()` | `the fsync ran before the flush: 319634 of 324309 bytes` |
+| the *directory* synced instead of the file | `the fsync was not on the file descriptor that became the save` |
+| the sync moved after the swap | `the fsync must happen before the swap: ['replace', 'fsync']` |
+
+What is still not asserted is unchanged and is the honest remainder: that the platform's
+`fsync` reaches the platter, and the deliberately-absent directory sync. Neither is
+observable from inside this process, and the trade-off above stands.
+
 ---
 
 ## Step 0.9 — M4's frozen decisions (frozen 2026-09-23)

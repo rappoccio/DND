@@ -17,6 +17,8 @@ old file whole, so every check here forces a failure rather than asserting a hap
     same forced failure through a real App                     (test_save_agents_is_atomic)
   · `_save_combat_state` likewise, and it still swallows the
     OSError it always swallowed                                (test_save_combat_state_is_atomic)
+  · the fsync is on the temp fd, after the flush and before
+    the swap                                                   (test_fsync_precedes_replace)
 """
 
 import os
@@ -64,6 +66,43 @@ class _replace_fails:
 
     def __exit__(self, *exc):
         atomic_io.os.replace = self._real
+        return False
+
+
+class _fsync_journal:
+    """Record every fsync and replace the helper makes, in order.
+
+    The fsync's DURABILITY cannot be observed from inside this process — that needs a
+    power cut — but three things about the call can be, and each is a way the line can be
+    wrong while the suite stays green: which file descriptor was synced, whether the
+    Python buffer had reached the OS by then, and whether the swap had already happened.
+    `os.fstat` on the fd answers all three, because a write-only fd still stats: the
+    inode says which file, and `st_size` counts only bytes the OS has — a buffer Python
+    is still holding does not appear in it.
+    """
+
+    def __enter__(self):
+        self.events = []
+        self._real_fsync = atomic_io.os.fsync
+        self._real_replace = atomic_io.os.replace
+        ev = self.events
+
+        def fsync(fd):
+            st = os.fstat(fd)
+            ev.append(("fsync", (st.st_dev, st.st_ino), st.st_size))
+            return self._real_fsync(fd)
+
+        def replace(src, dst):
+            ev.append(("replace", src, dst))
+            return self._real_replace(src, dst)
+
+        atomic_io.os.fsync = fsync
+        atomic_io.os.replace = replace
+        return self
+
+    def __exit__(self, *exc):
+        atomic_io.os.fsync = self._real_fsync
+        atomic_io.os.replace = self._real_replace
         return False
 
 
@@ -151,6 +190,48 @@ def test_unserializable_doc_keeps_old_file():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_fsync_precedes_replace():
+    """S1 said the helper fsyncs and nothing asserted it. This does — as far as a process
+    can, which is the ordering and the target, not the durability.
+
+    A doc large enough to outrun the io buffer, so an fsync called before the flush is
+    caught by a short `st_size` rather than by luck.
+    """
+    tmp = tempfile.mkdtemp()
+    try:
+        path = os.path.join(tmp, "doc.json")
+        doc = {"pages": [{"n": i, "cells": list(range(64))} for i in range(400)]}
+
+        with _fsync_journal() as j:
+            atomic_write_json(path, doc)
+
+        kinds = [e[0] for e in j.events]
+        assert kinds.count("fsync") == 1, f"the temp file was not fsynced exactly once: {kinds}"
+        assert kinds == ["fsync", "replace"], \
+            f"the fsync must happen before the swap, not after it: {kinds}"
+
+        (_, synced_id, synced_size) = j.events[0]
+
+        # os.replace carries the temp file's inode over to the target, so the file sitting
+        # at `path` now IS the fd that was synced. A helper that synced the directory, or
+        # a second handle, or the wrong file, fails here.
+        final = os.stat(path)
+        assert synced_id == (final.st_dev, final.st_ino), \
+            "the fsync was not on the file descriptor that became the save"
+
+        # And the bytes had left Python before the sync was asked for.
+        assert synced_size == final.st_size, \
+            (f"the fsync ran before the flush: {synced_size} of {final.st_size} bytes had "
+             f"reached the OS")
+        assert synced_size > 0
+
+        with open(path) as f:
+            assert json.load(f) == doc
+        print("✅ test_fsync_precedes_replace passed")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  The two save paths S1 names
 # ─────────────────────────────────────────────────────────────────────────────
@@ -219,6 +300,7 @@ if __name__ == "__main__":
     test_round_trip_and_no_litter()
     test_failed_replace_keeps_old_file()
     test_unserializable_doc_keeps_old_file()
+    test_fsync_precedes_replace()
     test_save_agents_is_atomic()
     test_save_combat_state_is_atomic()
     print("\n✅ All atomic-save tests passed!")
