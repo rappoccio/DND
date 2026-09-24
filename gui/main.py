@@ -10880,15 +10880,25 @@ class App:
         return agents[agent_idx].name if 0 <= agent_idx < len(agents) else "?"
 
     def _agent_screen_pos(self, agent_idx: int) -> tuple:
-        """Get screen position of agent for context menu anchor."""
+        """Screen position of a token's cell centre — the anchor every prompt opens at.
+
+        It has to agree with what the map draws, so it goes through `_cell_to_screen`
+        (real grid-line positions, `map_scale`, pan) and takes the midpoint of the cell's
+        own two corners rather than half a nominal `cell_pixel_size`: that is the drawn
+        centre even where the detected grid is uneven, and it inherits `_cell_to_screen`'s
+        clamp for a token saved outside the current grid.
+
+        The old form multiplied the cell index by `cell_pixel_size` and ignored scale and
+        pan entirely, which put all 82 `_ask_actor`/`_ask_dm` popups at an unpanned,
+        unzoomed position — off by a whole cell at this map's fit-to-window scale alone.
+        """
         agents = self.bm.placed_agents
-        if agent_idx >= len(agents):
+        if not (0 <= agent_idx < len(agents)):
             return (100, 100)
-        ag = agents[agent_idx]
-        cpx = int(self.bm.cell_pixel_size)
-        x = ag.origin.col * cpx + cpx // 2
-        y = ag.origin.row * cpx + cpx // 2
-        return (x, y)
+        o = agents[agent_idx].origin
+        x0, y0 = self._cell_to_screen(o.col, o.row)
+        x1, y1 = self._cell_to_screen(o.col + 1, o.row + 1)
+        return ((x0 + x1) // 2, (y0 + y1) // 2)
 
 
     def _after_move_committed(self, idx: int):

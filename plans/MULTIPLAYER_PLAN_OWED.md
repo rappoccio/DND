@@ -94,6 +94,22 @@ is the test, because nothing in the suite pans or zooms: every headless check ru
 That is why it has survived this long. Write the check that pans and zooms first, watch it
 fail, then fix the two lines.
 
+**LANDED 2026-09-24**, and it was worse than this entry says. The check was written first
+and failed on its *first* case, before any pan or zoom: `map_scale` does not start at 1, it
+starts at the fit-to-window scale, which is below 1 for any map wider than the viewport
+(0.867 on `TestGrid12x12.png`). Measured on the untouched view, the anchor for a token on
+cell (5, 5) was (550, 550) — inside cell **(6, 6)**. So this was not "panned or zoomed maps"
+but *every* map that gets scaled down to fit, which is most of them. The suite never saw it
+because a headless `App` is built and read, never looked at.
+
+The fix goes through `_cell_to_screen` twice and takes the midpoint of the cell's own two
+corners, rather than adding half a nominal `cell_pixel_size`: same answer on a uniform grid,
+and the drawn centre on an uneven one. The test is
+`test_prompts.py::test_prompt_anchor_follows_pan_and_zoom`, and it states the invariant as
+`_screen_to_cell(anchor) == the token's cell` — the inverse the mouse itself goes through —
+with the scale-1/pan-0 case pinned to the old formula so the agreement view stays fixed.
+Suite **159/159**.
+
 ---
 
 ## 3. F9 — one digit, and it should move no pixels

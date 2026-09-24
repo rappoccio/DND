@@ -678,6 +678,62 @@ def test_spell_grid_renderer_answers_and_dismisses():
     print("✅ test_spell_grid_renderer_answers_and_dismisses passed")
 
 
+def test_prompt_anchor_follows_pan_and_zoom():
+    """The anchor `_ask_actor` defaults to must land on the token *as drawn*.
+
+    `_agent_screen_pos` used to multiply the cell index by the nominal
+    `cell_pixel_size`, ignoring `map_scale` and the pan offset that `_cell_to_screen` —
+    the transform the map itself draws with — applies to every other pixel on screen. So
+    all 67 `_ask_actor` and all 15 `_ask_dm` sites opened their popup at an unpanned,
+    unzoomed position. Nothing in the suite noticed, because nothing in it moved the view.
+
+    It is worse than "panned or zoomed maps", which is why the first case below is the
+    untouched view: `map_scale` starts at the *fit-to-window* scale, which is under 1 for
+    any map wider than the viewport (0.867 for this one). Measured before the fix, the
+    default anchor for the token on cell (5, 5) was (550, 550) — inside cell (6, 6).
+
+    The invariant is stated the way the DM sees it: feed the anchor back through
+    `_screen_to_cell`, the same inverse the mouse goes through, and it must name the
+    token's own cell. That holds for an unevenly detected grid too, which a pixel-for-pixel
+    comparison against one formula would not.
+    """
+    app, atk, _ = _two_agents()
+    col, row = _pos(app, atk)
+
+    # 1. The view as loaded — already scaled to fit, and never once exercised.
+    assert app.map_scale != 1.0 and (app.pan_x, app.pan_y) == (0, 0), \
+        "this map loads fit-to-window; the case below is the one that used to be wrong"
+    fitted = app._agent_screen_pos(atk)
+    assert app._screen_to_cell(*fitted) == rpg.Cell(col, row), \
+        f"the popup opens off the token at the default view: {fitted}"
+    assert fitted == cell_center(app, col, row), \
+        "and it agrees with the drawn cell centre the click harness uses"
+
+    # 2. Scale 1, no pan: the one view where the old formula happened to be right, so
+    #    the fix must not move anything here.
+    app.map_scale, app.pan_x, app.pan_y = 1.0, 0, 0
+    cpx = int(app.bm.cell_pixel_size)
+    assert app._agent_screen_pos(atk) == (col * cpx + cpx // 2, row * cpx + cpx // 2), \
+        "at scale 1 / pan 0 the anchor is exactly what it always was"
+
+    # 3. A zoom about the viewport centre and a pan, the way the wheel and a middle-drag
+    #    leave the view mid-session.
+    app.map_scale = app.base_map_scale
+    app._zoom_by(1.75)
+    app.pan_x -= 137
+    app.pan_y += 46
+    moved = app._agent_screen_pos(atk)
+    assert moved != fitted, "the anchor moved with the view"
+    assert app._screen_to_cell(*moved) == rpg.Cell(col, row), \
+        f"the popup opens off the token: {moved} is not in cell {(col, row)}"
+    assert moved == cell_center(app, col, row), \
+        "and it agrees with the drawn cell centre, pan and scale included"
+
+    # The out-of-range guard is unchanged: a bad index still falls back rather than raising.
+    assert app._agent_screen_pos(len(app.bm.placed_agents)) == (100, 100)
+    print("✅ test_prompt_anchor_follows_pan_and_zoom passed")
+
+
 def main():
     tests = [
         test_wire_projection,
@@ -700,6 +756,8 @@ def main():
         test_dm_menu_submenu_chain_carries_parent,
         test_picker_renderer_answers_and_cancels,
         test_spell_grid_renderer_answers_and_dismisses,
+        # The anchor every one of those sites defaults to
+        test_prompt_anchor_follows_pan_and_zoom,
     ]
     failed = 0
     for t in tests:
