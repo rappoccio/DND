@@ -19162,13 +19162,20 @@ class App:
                     self._resolve_extinguish()
                 if self._action_clicked("escape_net", event):
                     self._begin_escape_net()
+                # F14, closed: the bonus band's attack header is the mirror of
+                # `atk_action` above and is dispatched the same way — ungated, on the
+                # offer the panel drew. `bonus_used` is already True while an off-hand
+                # or Flurry sequence is parked in the bonus slot, so the header the menu
+                # labels "⚔ Bonus (N)" used to be a button that counted the swings it
+                # could not take; `_start_attack` re-arms the parked sequence rather
+                # than seeding a new one (`attacks_remaining != 0` skips the seed).
+                if self._action_clicked("atk_bonus", event):
+                    self._start_attack("bonus")
                 if not self.bonus_used:
-                    # F14: both of these stay INSIDE `not self.bonus_used`, although the
-                    # menu offers them mid-sequence in the bonus slot too — moving them
-                    # out would make a drawn-but-dead button live, which is a behaviour
-                    # change and its own item.
-                    if self._action_clicked("atk_bonus", event):
-                        self._start_attack("bonus")
+                    # `spell_bonus` stays behind the gate, and that is D-M2-4 rather
+                    # than F14: it is `spell_action`'s mirror, drawn mid-sequence with
+                    # the band and refused here, because a Bonus Action spell cannot be
+                    # cast with the Bonus Action already spent on the sequence.
                     if self._action_clicked("spell_bonus", event):
                         self._start_cast_spell("bonus")
                     if self._action_clicked("shove_push", event):

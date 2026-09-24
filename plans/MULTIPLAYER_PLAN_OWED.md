@@ -202,6 +202,23 @@ harmless in play, because the remaining swings are driven by map clicks through
 live, stop drawing it mid-sequence, or keep it and say so in the code — and only the first
 two are work. Whoever picks needs to have played a multiattack round.
 
+**DECIDED 2026-09-24 by the user: make it live — and it is only half the item.** The two
+headers are not the same button. `atk_bonus` is `atk_action`'s mirror: the Action side has
+dispatched its attack header ungated since F3, on the offer the menu drew, precisely so a
+parked sequence can be resumed. That handler is now ungated too, and `_start_attack` resumes
+rather than reseeds (`attacks_remaining != 0` skips the seed), so the click means what the
+label says.
+
+`spell_bonus` is **not** that mirror and stays refused. Its opposite number is
+`spell_action`, which is one of D-M2-4's five: drawn mid-sequence because the band stands
+open, refused by the handler because the economy is spent. A Bonus Action spell cannot be
+cast with the Bonus Action already gone into the sequence, so making that one live would
+have been a rules bug wearing F14's clothes.
+
+Two checks, each verified against its own mutant — put the handler back inside the gate and
+`test_the_bonus_attack_header_is_clickable_mid_sequence` fails; ungate `spell_bonus` and
+`test_the_bonus_spell_header_is_drawn_mid_sequence_but_refused` fails. Suite **159/159**.
+
 ---
 
 ## 6. F11 — an unreachable arm (needs a decision)

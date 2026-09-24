@@ -701,6 +701,78 @@ def test_the_bonus_band_stays_open_for_a_bonus_slot_sequence():
     print("✅ test_the_bonus_band_stays_open_for_a_bonus_slot_sequence passed")
 
 
+def test_the_bonus_attack_header_is_clickable_mid_sequence():
+    """F14, closed. The header the test above proves the menu KEEPS mid-sequence — the
+    one whose label counts the swings still owed — could not be pressed: its handler sat
+    inside `not self.bonus_used`, and `bonus_used` is True from the moment an off-hand or
+    Flurry sequence starts. So the button that said "⚔ Bonus (2)" was drawn, offered, and
+    dead.
+
+    It is dispatched ungated now, exactly as `atk_action` is on the Action side, because
+    the offer is the menu's to make and `_action_clicked` consults it. `_start_attack`
+    re-arms the parked sequence rather than seeding a new one (`attacks_remaining != 0`
+    skips the seed), which is what makes the click a RESUME and not a second sequence.
+
+    `spell_bonus` is the other half and deliberately stays refused — see the check below.
+    """
+    app = _app()
+    aria = _goto(app, "Aria")           # Fighter 5, longsword + off-hand shortsword
+    app.bonus_used = True
+    app.attacks_remaining = 2
+    app._attack_sequence_slot = "bonus"
+    app.pending_attack_slot = ""
+    app.pending_weapon_idx = -1
+
+    _draw(app)
+    assert app._action_menu["atk_bonus"].label == "⚔ Bonus (2)", app._action_menu["atk_bonus"]
+
+    _click_action(app, "atk_bonus")
+    assert app.pending_attack_slot == "bonus", \
+        "the header did not reach the handler — F14 has come back"
+    assert app.attacks_remaining == 2, "the parked sequence was reseeded, not resumed"
+    assert app._attack_sequence_slot == "bonus"
+
+    # And with the Bonus Action merely spent — no sequence owed — the menu does not
+    # offer it, so the newly ungated handler still has nothing to fire on.
+    app.attacks_remaining = 0
+    app._attack_sequence_slot = ""
+    app.pending_attack_slot = ""
+    _draw(app)
+    assert "atk_bonus" not in app._action_menu, "offered with the Bonus Action spent"
+    _click_action(app, "atk_bonus")
+    assert app.pending_attack_slot == "", "a stale rect armed an attack that is not on offer"
+    print("✅ test_the_bonus_attack_header_is_clickable_mid_sequence passed")
+
+
+def test_the_bonus_spell_header_is_drawn_mid_sequence_but_refused():
+    """The other half of F14, and the reason it did not become one fix.
+
+    `spell_bonus` is `spell_action`'s mirror, not `atk_action`'s: a Bonus Action spell
+    cannot be cast with the Bonus Action already spent on the sequence. So it keeps the
+    D-M2-4 shape — drawn with the band that stays open, refused by the handler — which is
+    the same pairing `test_dash_is_drawn_mid_sequence_but_the_click_is_refused` pins one
+    section up.
+    """
+    app = _app()
+    aria = _goto(app, "Aria")
+    app.combat.set_agent_spells(app.bm, aria, [_spell(app, "Fire Bolt")])
+    app.bonus_used = True
+    app.attacks_remaining = 2
+    app._attack_sequence_slot = "bonus"
+
+    _draw(app)
+    assert "spell_bonus" in app._action_menu, "the band's header row stays open"
+    before = app.combat_log[-1] if app.combat_log else None
+    _click_action(app, "spell_bonus")
+    assert not app.spell_grid_menu.visible, \
+        "a Bonus Action spell was offered a target with the Bonus Action already spent"
+    assert (app.combat_log[-1] if app.combat_log else None) == before, \
+        "the refused click still reached the handler"
+
+    app.combat.set_agent_spells(app.bm, aria, [])
+    print("✅ test_the_bonus_spell_header_is_drawn_mid_sequence_but_refused passed")
+
+
 def test_the_metamagic_toggles_answer_to_the_purse_and_not_the_band():
     """Bucket 7d's dict, and the reason `economy` exists.
 
@@ -1397,6 +1469,8 @@ if __name__ == "__main__":
         test_use_item_and_extinguish_are_outside_the_band()
         test_the_economy_band_headers_are_the_bands_own_two_buttons()
         test_the_bonus_band_stays_open_for_a_bonus_slot_sequence()
+        test_the_bonus_attack_header_is_clickable_mid_sequence()
+        test_the_bonus_spell_header_is_drawn_mid_sequence_but_refused()
         test_the_metamagic_toggles_answer_to_the_purse_and_not_the_band()
         test_the_metamagic_tick_is_the_armed_state()
         test_haste_grants_an_action_the_bonus_action_cannot_take()
