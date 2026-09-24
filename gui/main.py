@@ -56,7 +56,7 @@ from helpers import (
 )
 from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog
 from dialogs_conditions import ConditionsDialog
-from menus import riders
+from menus import reactions, riders
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph, draw_ladder_glyph, door_link_key
@@ -6182,7 +6182,7 @@ class App:
         elif has_guided_strike:
             riders.offer_guided_strike(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_restore_balance_miss:
-            self._offer_restore_balance_miss(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            reactions.offer_restore_balance_miss(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_maneuver:
             riders.offer_maneuver(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_precision:
@@ -6192,15 +6192,15 @@ class App:
         elif has_homing_strike:
             riders.offer_homing_strike(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_riposte:
-            self._offer_riposte(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            reactions.offer_riposte(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_protective_field:
-            self._offer_protective_field(atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            reactions.offer_protective_field(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_interception:
-            self._offer_interception(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            reactions.offer_interception(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_sentinel_guard:
-            self._offer_sentinel_guard(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            reactions.offer_sentinel_guard(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_soul_of_vengeance:
-            self._offer_soul_of_vengeance(action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            reactions.offer_soul_of_vengeance(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_push:
             riders.offer_push(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_topple:
@@ -6473,38 +6473,6 @@ class App:
                 out.append(ci)
         return out
 
-    def _offer_restore_balance_miss(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
-        """After a disadvantaged miss, offer Clockwork Restore Balance to cancel the Disadvantage (raise
-        d20 → d20_primary) via an eligible ally. apply_restore_balance_miss_to_attack re-validates in C++
-        and rolls/applies damage if the cancel turns the miss into a hit."""
-        agents = self.bm.placed_agents
-        eligible = self._eligible_restore_balance_clockworks(atk_idx, result)
-
-        def _apply(reactor_idx):
-            if reactor_idx is not None:
-                self.combat.apply_restore_balance_miss_to_attack(self.bm, action, reactor_idx, result)
-                if result.hit:
-                    dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
-                    dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
-                    self._combat_log_add(
-                        f"{atk_name}→{tgt_name}: Restore Balance cancels Disadvantage → HIT {result.total_damage}"
-                        f"{self._damage_breakdown_str(result)} {dmg_type_str}{' — DOWN' if result.target_down else ''}")
-                else:
-                    self._combat_log_add(
-                        f"{atk_name}→{tgt_name}: Restore Balance cancels Disadvantage → still misses "
-                        f"(roll {result.total_roll} vs AC {result.target_ac})")
-            else:
-                self._combat_log_add(atk_msg)
-            self._flush_combat_log()
-            self._sync_spell_effect_cache()
-            self._update_attack_overlay()
-
-        options = []
-        for ri in eligible:
-            options.append((f"Restore Balance: {agents[ri].name} reacts (cancel Disadvantage)",
-                            (lambda r=ri: _apply(r))))
-        options.append(("Skip Restore Balance", lambda: _apply(None)))
-        self._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Restore Balance", options)
 
 
 
@@ -6684,158 +6652,8 @@ class App:
 
 
 
-    def _offer_riposte(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
-        """Offer a Battle Master DEFENDER a Riposte after a melee attack misses them: spend the
-        reaction + 1 Superiority Die to make a melee attack back at the attacker, adding the die to
-        the damage on a hit. The reactor is the TARGET of the missed attack. Mirrors _offer_reckless_reroll."""
-        def _apply():
-            # Riposte = the target (defender) attacks the original attacker.
-            rip = self.combat.apply_riposte(self.bm, target_idx, atk_idx, action.weapon_idx)
-            self._combat_log_add(atk_msg)   # the original miss still happened
-            if rip.valid and rip.hit:
-                dmg_parts = self._get_damage_type_names(rip.magic_damage_types, rip.physical_damage_types)
-                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
-                self._combat_log_add(
-                    f"{tgt_name}→{atk_name}: Riposte → HIT {rip.total_damage}"
-                    f"{self._damage_breakdown_str(rip)} {dmg_type_str}"
-                    f"{' CRIT!' if rip.critical else ''}{' — DOWN' if rip.target_down else ''}")
-                self._spawn_flash(atk_idx, f"Hit ({rip.total_damage})",
-                                  FLASH_CRIT if rip.critical else FLASH_GOOD)
-                if rip.target_down:
-                    self._drop_concentration_for_agent(atk_idx)
-            elif rip.valid:
-                self._combat_log_add(
-                    f"{tgt_name}→{atk_name}: Riposte → misses "
-                    f"(roll {rip.total_roll} vs AC {rip.target_ac})")
-                self._spawn_flash(atk_idx, "Miss", FLASH_BAD)
-            self._flush_combat_log()
-            self._sync_spell_effect_cache()
-            self._update_attack_overlay()
-            self._continue_attack_sequence_after_rider(atk_idx)
 
-        def _skip():
-            self._combat_log_add(atk_msg)
-            self._flush_combat_log()
-            self._continue_attack_sequence_after_rider(atk_idx)
 
-        options = [
-            ("Riposte — melee attack back (reaction + 1 Superiority Die)", _apply),
-            ("Skip", _skip),
-        ]
-        # The reactor is the DEFENDER, so `owner` follows target_idx and not the actor —
-        # _ask_actor derives it from whoever is anchored (Step 0.2's G3).
-        self._ask_actor(target_idx, "reaction", f"{tgt_name} may Riposte {atk_name}", options)
-
-    def _offer_sentinel_guard(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
-        """Offer a Sentinel BYSTANDER a Guardian reaction after an adjacent enemy attacks an ally: spend
-        the reaction to make a melee attack at the attacker. The reactor is a third creature within 5 ft
-        of the attacker (NOT the attacker or the attack's target). Scans for the first eligible Sentinel
-        via can_sentinel_guard. Fires on a hit OR a miss; never alters the original attack. Mirrors
-        _offer_riposte, but the reactor is found by scan (like _offer_guided_strike)."""
-        agents = self.bm.placed_agents
-        sentinel_idx = -1
-        for i in range(len(agents)):
-            if self.combat.can_sentinel_guard(self.bm, action, i):
-                sentinel_idx = i
-                break
-        if sentinel_idx < 0:                       # eligibility lapsed since the flag was set
-            self._combat_log_add(atk_msg)
-            self._flush_combat_log()
-            self._continue_attack_sequence_after_rider(atk_idx)
-            return
-        sent_name = agents[sentinel_idx].name if sentinel_idx < len(agents) else "?"
-        # First melee weapon the Sentinel wields (mirrors C++ riposteWeaponIdx; the engine re-validates).
-        widx = next((i for i, w in enumerate(self.combat.get_agent_weapons(self.bm, sentinel_idx))
-                     if w.type == rpg.WeaponType.Melee), -1)
-
-        def _apply():
-            self._combat_log_add(atk_msg)          # the original attack still happened
-            grd = self.combat.apply_sentinel_guard(self.bm, sentinel_idx, atk_idx, widx)
-            if grd.valid and grd.hit:
-                dmg_parts = self._get_damage_type_names(grd.magic_damage_types, grd.physical_damage_types)
-                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
-                self._combat_log_add(
-                    f"{sent_name}→{atk_name}: Sentinel Guardian → HIT {grd.total_damage}"
-                    f"{self._damage_breakdown_str(grd)} {dmg_type_str}"
-                    f"{' CRIT!' if grd.critical else ''}{' — DOWN' if grd.target_down else ''}")
-                if grd.target_down:
-                    self._drop_concentration_for_agent(atk_idx)
-            elif grd.valid:
-                self._combat_log_add(
-                    f"{sent_name}→{atk_name}: Sentinel Guardian → misses "
-                    f"(roll {grd.total_roll} vs AC {grd.target_ac})")
-            self._flush_combat_log()
-            self._sync_spell_effect_cache()
-            self._update_attack_overlay()
-            self._continue_attack_sequence_after_rider(atk_idx)
-
-        def _skip():
-            self._combat_log_add(atk_msg)
-            self._flush_combat_log()
-            self._continue_attack_sequence_after_rider(atk_idx)
-
-        options = [
-            (f"Sentinel Guardian — {sent_name} melee attacks the attacker (reaction)", _apply),
-            ("Skip", _skip),
-        ]
-        self._ask_actor(sentinel_idx, "reaction",
-                        f"{sent_name} may guard {tgt_name} — Sentinel reaction vs {atk_name}",
-                        options)
-
-    def _offer_soul_of_vengeance(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
-        """Offer a Vengeance paladin (L15+) a Soul of Vengeance reaction after its sworn foe (under the
-        paladin's Vow of Enmity) makes an attack: spend the reaction to make a melee attack at that foe.
-        The reactor is found by scan via can_soul_of_vengeance. Fires on a hit OR a miss; never alters the
-        original attack. Mirrors _offer_sentinel_guard."""
-        agents = self.bm.placed_agents
-        pal_idx = -1
-        for i in range(len(agents)):
-            if self.combat.can_soul_of_vengeance(self.bm, action, i):
-                pal_idx = i
-                break
-        if pal_idx < 0:                            # eligibility lapsed since the flag was set
-            self._combat_log_add(atk_msg)
-            self._flush_combat_log()
-            self._continue_attack_sequence_after_rider(atk_idx)
-            return
-        pal_name = agents[pal_idx].name if pal_idx < len(agents) else "?"
-        # First melee weapon the paladin wields (mirrors C++ riposteWeaponIdx; the engine re-validates).
-        widx = next((i for i, w in enumerate(self.combat.get_agent_weapons(self.bm, pal_idx))
-                     if w.type == rpg.WeaponType.Melee), -1)
-
-        def _apply():
-            self._combat_log_add(atk_msg)          # the original attack still happened
-            grd = self.combat.apply_soul_of_vengeance(self.bm, pal_idx, atk_idx, widx)
-            if grd.valid and grd.hit:
-                dmg_parts = self._get_damage_type_names(grd.magic_damage_types, grd.physical_damage_types)
-                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
-                self._combat_log_add(
-                    f"{pal_name}→{atk_name}: Soul of Vengeance → HIT {grd.total_damage}"
-                    f"{self._damage_breakdown_str(grd)} {dmg_type_str}"
-                    f"{' CRIT!' if grd.critical else ''}{' — DOWN' if grd.target_down else ''}")
-                if grd.target_down:
-                    self._drop_concentration_for_agent(atk_idx)
-            elif grd.valid:
-                self._combat_log_add(
-                    f"{pal_name}→{atk_name}: Soul of Vengeance → misses "
-                    f"(roll {grd.total_roll} vs AC {grd.target_ac})")
-            self._flush_combat_log()
-            self._sync_spell_effect_cache()
-            self._update_attack_overlay()
-            self._continue_attack_sequence_after_rider(atk_idx)
-
-        def _skip():
-            self._combat_log_add(atk_msg)
-            self._flush_combat_log()
-            self._continue_attack_sequence_after_rider(atk_idx)
-
-        options = [
-            (f"Soul of Vengeance — {pal_name} melee attacks its sworn foe (reaction)", _apply),
-            ("Skip", _skip),
-        ]
-        self._ask_actor(pal_idx, "reaction",
-                        f"{pal_name} may strike back at {atk_name} — Soul of Vengeance",
-                        options)
 
     def _can_protective_field(self, target_idx, result):
         """Eligibility gate for the Psi Warrior Protective Field reaction (mirrors the checks in
@@ -6862,36 +6680,6 @@ class App:
         ped = s.get_resource("Psionic Energy")
         return ped is not None and ped.current > 0
 
-    def _offer_protective_field(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
-        """Offer a Psi Warrior DEFENDER (Fighter L3+) Protective Field after they're hit: spend the
-        reaction + 1 Psionic Energy die to reduce the damage by (die + INT mod), healing back what the
-        hit actually cost. The reactor is the TARGET of the hit. apply_protective_field re-validates and
-        applies in C++. Mirrors _offer_riposte (DEFENDER reaction keyed on the target)."""
-        def _apply():
-            self._combat_log_add(atk_msg)   # the hit (and its damage) still landed
-            prevented = self.combat.apply_protective_field(self.bm, target_idx, result.total_damage)
-            if prevented > 0:
-                self._combat_log_add(
-                    f"{tgt_name}: Protective Field — prevents {prevented} damage (reaction + 1 Psionic die).")
-            else:
-                self._combat_log_add(f"{tgt_name}: Protective Field had no effect.")
-            self._flush_combat_log()
-            self._sync_spell_effect_cache()
-            self._update_attack_overlay()
-            self._continue_attack_sequence_after_rider(atk_idx)
-
-        def _skip():
-            self._combat_log_add(atk_msg)
-            self._flush_combat_log()
-            self._continue_attack_sequence_after_rider(atk_idx)
-
-        options = [
-            ("Protective Field — reduce damage (reaction + 1 Psionic die)", _apply),
-            ("Skip", _skip),
-        ]
-        self._ask_actor(target_idx, "reaction",
-                        f"{tgt_name} may blunt {atk_name}'s hit — Protective Field",
-                        options)
 
     def _find_interceptor(self, action, target_idx, result):
         """Return the first agent eligible to use the Interception fighting style against this hit, or
@@ -6908,40 +6696,6 @@ class App:
                 return i
         return -1
 
-    def _offer_interception(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
-        """Offer a bystander with the Interception fighting style (holding a Shield/weapon, within 5 ft
-        of the target) to spend its reaction reducing the damage by 1d10 + PB. The reactor is a THIRD
-        creature (not the target). apply_interception re-validates and heals the target back in C++.
-        Mirrors _offer_protective_field but keyed on the interceptor."""
-        agents = self.bm.placed_agents
-        interceptor_idx = self._find_interceptor(action, target_idx, result)
-        itc_name = agents[interceptor_idx].name if 0 <= interceptor_idx < len(agents) else "Ally"
-
-        def _apply():
-            self._combat_log_add(atk_msg)   # the hit (and its damage) still landed
-            prevented = self.combat.apply_interception(self.bm, interceptor_idx, target_idx, result.total_damage)
-            if prevented > 0:
-                self._combat_log_add(
-                    f"{itc_name}: Interception — prevents {prevented} damage to {tgt_name} (reaction + 1d10 + PB).")
-            else:
-                self._combat_log_add(f"{itc_name}: Interception had no effect.")
-            self._flush_combat_log()
-            self._sync_spell_effect_cache()
-            self._update_attack_overlay()
-            self._continue_attack_sequence_after_rider(atk_idx)
-
-        def _skip():
-            self._combat_log_add(atk_msg)
-            self._flush_combat_log()
-            self._continue_attack_sequence_after_rider(atk_idx)
-
-        options = [
-            (f"Interception — {itc_name} reduces damage (reaction + 1d10 + PB)", _apply),
-            ("Skip", _skip),
-        ]
-        self._ask_actor(interceptor_idx if interceptor_idx >= 0 else target_idx, "reaction",
-                        f"{itc_name} may intercept {atk_name}'s hit on {tgt_name}",
-                        options)
 
     def _create_unarmed_punch_weapon(self):
         """Create a synthetic unarmed punch weapon (1 + STR bludgeoning)."""

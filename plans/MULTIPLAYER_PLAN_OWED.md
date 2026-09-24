@@ -299,8 +299,9 @@ the live `App` (`actions.py`'s `ActionMenu.build(app, idx)` set that precedent),
 | slice | module | methods | lines out of `main.py` |
 |---|---|---|---|
 | 1 | `menus/riders.py` — the post-hit attack riders | 25 | 845 |
+| 2 | `menus/reactions.py` — the defender/third-party reactions | 6 | 246 |
 
-`main.py`: **20,191 → 19,347**.
+`main.py`: **20,191 → 19,101**.
 
 ---
 

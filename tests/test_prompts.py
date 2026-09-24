@@ -67,7 +67,7 @@ from prompts import (PromptBus, Prompt, Option, Response, PromptState,
                      ERR_PROTOCOL)
 from net.roster import SessionRoster, Role, DM_PRINCIPAL_ID
 from main import App
-from menus import riders
+from menus import reactions, riders
 from gui_driver import (click_menu, click_away, menu_labels, screenshot,
                         cell_center, post_click,
                         picker_labels, click_picker, dismiss_picker,
@@ -568,8 +568,8 @@ def test_defender_reaction_is_owned_by_the_defender():
     app.bm.set_agent_controller(tgt, theo.id)
     app._sync_roster_tokens()
 
-    app._offer_protective_field(atk, tgt, "Striker", "Victim",
-                                rpg.AttackResult(), "Striker→Victim: HIT 7")
+    reactions.offer_protective_field(app, atk, tgt, "Striker", "Victim",
+                                     rpg.AttackResult(), "Striker→Victim: HIT 7")
     p = app.prompts.live
     assert p is not None and p.kind == "reaction"
     assert p.actor_idx == tgt, "the reactor is the DEFENDER"
