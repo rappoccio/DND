@@ -85,6 +85,12 @@ test_scripts = [
     "test_join.py",
     "test_state.py",
 
+    # The blocking-modal fix (MULTIPLAYER_PLAN.md M4d, D-M4-3 / D-M4d-1..4) — the six
+    # nested event loops that used to stall the command queue for as long as a DM read a
+    # dialog. Kept with the oracles because the failure it prevents is invisible from the
+    # DM's own screen: the app looks fine, and every player's request times out.
+    "test_modal_pump.py",
+
     # Atomic encounter saves (MULTIPLAYER_PLAN.md standalone item S1) — the two writes a
     # crash could tear. Kept with the oracles because NN7's autosave ring is built on the
     # assumption these are atomic, and the only way to see the fix is to force the write

@@ -978,6 +978,10 @@ class App:
         # server. `GET /state` is its first caller; D-M4-3's `_pump_net()` in the blocking
         # modals and M5's `submit` are the other two.
         self._net_commands = CommandQueue()
+        # D-M4d-4's guard. A command is a read that returns freshly-built data and draws
+        # nothing; opening a modal violates both, and this is what makes that a refusal
+        # rather than a note in the plan.
+        self._net_pumping = False
         # NOT started here. `__init__` builds an App; `run()` starts one (see `net.link`).
 
         # NOTE: dungeon manifests are opened explicitly (Dungeon Configuration →
@@ -2858,6 +2862,7 @@ class App:
         ov_hits: dict = {}          # page id → rect, rebuilt by the overview each frame
 
         while True:
+            self._pump_net()      # D-M4-3: a modal is not a quiescent point, and must not stall the queue
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return None
@@ -13258,6 +13263,7 @@ class App:
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 170))
         while True:
+            self._pump_net()      # D-M4-3: a modal is not a quiescent point, and must not stall the queue
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return None
@@ -13315,6 +13321,7 @@ class App:
             render()
             return
         while True:
+            self._pump_net()      # D-M4-3: a modal is not a quiescent point, and must not stall the queue
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return
@@ -13364,6 +13371,7 @@ class App:
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 170))
         while True:
+            self._pump_net()      # D-M4-3: a modal is not a quiescent point, and must not stall the queue
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return None
@@ -13939,6 +13947,7 @@ class App:
         content_rect = pygame.Rect(lx, box.y + 60, W - 40, H - 120)
 
         while True:
+            self._pump_net()      # D-M4-3: a modal is not a quiescent point, and must not stall the queue
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return
@@ -14093,6 +14102,7 @@ class App:
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 170))
         while True:
+            self._pump_net()      # D-M4-3: a modal is not a quiescent point, and must not stall the queue
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return None
@@ -19983,6 +19993,47 @@ class App:
         button("Floor -", "floor_down", (page.z - 1) in floors, lx + bw2 + gap,   row2_y, bw2)
 
     # ─────────────────────────────────────────────────────────────────────
+    #  The net thread's turn on this thread
+    # ─────────────────────────────────────────────────────────────────────
+    def _pump_net(self):
+        """Run what the net thread has queued (D-M4-3, MULTIPLAYER_PLAN.md M4d).
+
+        One line, and it exists because there are seven callers: the frame loop, and the
+        six blocking modals that would otherwise stall the queue for as long as a DM
+        reads a dialog. The plan has called it `_pump_net()` since Step 0.7's spike; this
+        is where the name stops being a convention.
+
+        **It pumps the command queue and nothing that redraws.** That is the whole of
+        D-M4-3, and it is what makes the six call sites safe: state may advance while a
+        modal owns the screen, but nothing draws underneath one.
+
+        Placement inside those loops is first-in-the-body, above `pygame.event.get()`, so
+        a command queued while the modal was opening runs on the first iteration instead
+        of losing a race to an event that returns out of the loop.
+
+        Not inside *work* — only inside a loop that is waiting for input (D-M4d-3). The
+        terrain carve and the dungeon build run after their dialogs close, and a command
+        is `build_view`, which reads `app.bm`; pumping one mid-rebuild is a read of the
+        `BattleMap` while it is being rewritten, which is the C++ invariant NN1's
+        tightening is about. So M4d bounds the 503 window rather than removing it.
+
+        **Reentrancy is refused, and that is D-M4d-4 with teeth.** A command that opened a
+        modal would enter that modal's loop from inside a pump, and the loop's own first
+        line would pump again — re-entering `pygame.event.get()` at a depth the outer loop
+        does not know about. The guard turns that into an exception on the first line of
+        the nested loop, before it draws anything, which `CommandQueue.pump` then carries
+        to the future (rule 2) and the route turns into a status. The frame loop survives,
+        which is the only outcome that matters.
+        """
+        if self._net_pumping:
+            raise RuntimeError("a command may not open a modal or pump the queue (D-M4d-4)")
+        self._net_pumping = True
+        try:
+            return net_link.pump_commands(self)
+        finally:
+            self._net_pumping = False
+
+    # ─────────────────────────────────────────────────────────────────────
     #  Main loop
     # ─────────────────────────────────────────────────────────────────────
     def run(self):
@@ -19996,7 +20047,7 @@ class App:
             self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
             self._advance_npc_playback()        # NPC turn playback: animate the recorded turn
             self._refresh_fog()                 # fog of war: monotonic reveal when marked stale
-            net_link.pump_commands(self)        # M4c: answer what the net thread asked for
+            self._pump_net()                    # M4c: answer what the net thread asked for
             net_link.push_cycle(self)           # M4: publish the party's page image to the net thread
             self.screen.fill(COL_BG)
             self._draw_map()

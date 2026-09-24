@@ -1602,6 +1602,11 @@ modals, a `GET /state` issued while *Generate Dungeon* is open parks for the ful
 returns 503. That is D-M4-3's whole point arriving one commit late, and it is a wrong answer
 rather than a hang — which is why the split is acceptable.
 
+*(Closed 2026-09-24 by M4d. The 503 did not go away and was never going to: D-M4d-3 shows
+the authoring **work** after a dialog closes still blocks the frame loop, and must, because
+a command reads `app.bm`. What changed is the bound — from as long as a DM reads a dialog to
+as long as the carve runs. `test_a_wedged_frame_loop_is_a_503` is unchanged and still green.)*
+
 ### D-M4c-3 — the pre-auth exemption skips the 401, and nothing else
 
 The middleware today denies every request without a valid bearer, deliberately: with no
@@ -1677,6 +1682,214 @@ beyond it. **A9's log is still a counter**, which is the honest description of i
 
 M4c holds nothing that needs a browser or a display, which is why the line falls there.
 F3's look is a real-display observation and it belongs beside the code it observes.
+
+*(Amended 2026-09-24 — **M4d splits again**, into M4d (the six pump sites + F3's look) and
+M4e (`WS /live` + the client). Reason: the temporary 503 above is live in `main`, and the
+half that closes it needs neither a browser nor a socket. See
+[D-M4d-0](#d-m4d-0--the-split-splits-again).)*
+
+## Step 0.11 — M4d/M4e's decisions (frozen 2026-09-24)
+
+Four questions were put to the user on 2026-09-24 and answered; this section is the
+write-down of those answers plus the consequences they force, in the form the other Step 0
+sections take. **User signed off 2026-09-24.** Frozen on the same terms as Step 0.1, Step
+0.9 and Step 0.10: changes need a dated amendment with a one-line reason.
+
+### D-M4d-0 — the split splits again
+
+*(Amendment to Step 0.10's split table, 2026-09-24. Reason: the temporary 503 is live in
+`main` today, and the half that closes it needs neither a browser nor a socket.)*
+
+| | Contents | Testable by |
+| - | -------- | ----------- |
+| **M4d** | `_pump_net()` in the six blocking modals, F3's owed real-display look | headless suites + an Xvfb rig for the look |
+| **M4e** | `WS /live`, the client under `gui/net/static/`, `GET /` and its assets | the above, plus a real socket |
+
+Step 0.10 drew the line at "needs a browser or a display". That line is still right and
+this is a second cut inside M4d, not a redrawing of it: the modal pump is the only piece
+that **removes** a known-wrong answer rather than adding a route, and it is the piece with
+no dependency on either half of M4e. Landing it first means the window in which
+`GET /state` answers 503 because a DM is reading a dialog is measured in one commit.
+
+### D-M4d-1 — the pump goes where a loop waits, never where one works
+
+**The six sites, verified rather than listed from the plan** (`gui/main.py`):
+
+| Modal | `def` | loop | pump |
+| ----- | ----- | ---- | ---- |
+| `_modal_dungeon_pages` | 2817 | 2864 | 2865 |
+| `_modal_text_prompt` | 13252 | 13265 | 13266 |
+| `_modal_message` | 13293 | 13323 | 13324 |
+| `_modal_generate_terrain` | 13335 | 13373 | 13374 |
+| `_modal_select_items` | 13925 | 13949 | 13950 |
+| `_modal_generate_dungeon` | 14024 | 14104 | 14105 |
+
+*(Line numbers refreshed 2026-09-24 after the pump landed; the `def`/loop pairs this section
+was frozen with were the pre-M4d ones and differ by the inserted lines.)*
+
+All six are the **same shape** — `while True:` → `for event in pygame.event.get():` →
+render → `self.clock.tick(60)` — which is why this is six identical one-line edits and not
+six decisions. A seventh `while True:` at 3119 is `_advance_npc_playback`, which is not a
+modal and is not a site.
+
+**The line goes first in the loop body, above `pygame.event.get()`.** A command queued
+while the modal was opening then runs on the first iteration, rather than losing a race to
+an event that returns out of the loop. Consistent placement across all six is itself worth
+something: six lines that differ only in indentation are six lines a reader checks once.
+
+**Through `App._pump_net()`, a one-line method.** `run()` calls `net_link.pump_commands(self)`
+directly today (`main.py:19999`); seven call sites of one expression is where the plan's own
+name for it (D-M4-3 says `_pump_net()`, and so did the spike) stops being a convention and
+starts being a method. It gives the rig one thing to observe and the tests one thing to
+substitute.
+
+**The rule the six sites are an instance of: the pump belongs in a loop that is *waiting for
+input*, and never inside work.** `_modal_generate_dungeon` returns its params and the carve
+runs afterwards, outside any loop, announced by a `_modal_message(..., blocking=False)` that
+draws one frame and returns. Nothing pumps during the carve, and D-M4d-3 says why that is
+correct rather than merely unimplemented.
+
+Note for the reader who goes looking: `_modal_select_items` is called from *inside*
+`_modal_generate_dungeon`'s loop (`main.py:14132`, `14142`), so the pump runs at two modal
+depths. That is fine — the queue holds no depth and `pump` is reentrant only in the sense
+that it is not called from inside a command (D-M4d-4).
+
+### D-M4d-2 — the projection the pump cannot widen, and the one that widens without it
+
+The question a reviewer asks first: **can a command pumped inside a DM modal see a wider
+projection than the same command on the frame tick?** For these six, no — and the answer is
+a fact, not a hope:
+
+- `build_view` gates on `app._fog_active()` (`view.py:92`), which is False while
+  `terrain_editor.active` or `lighting_editor.active` (`main.py:15273`). With fog off,
+  `hide_map` is False and a **player's view carries the whole map**.
+- Neither editor is a blocking modal. Both are flag-and-handler dialogs driven by `run()`'s
+  own loop, so that widening happens on the ordinary frame tick and is reachable through
+  `GET /state` in `main` today. It is not M4d's, and M4d does not touch it.
+- **The six modals cannot be reached while either editor is open.** `_handle_events`
+  gives the editors first pick and `continue`s (`main.py:17889-17908`), swallowing every
+  event, so no top-bar menu opens and none of the six entry points (G10) is clickable.
+
+So the pump adds no path to the wide projection. **What it does add is state advancing while
+a modal owns the screen** — D-M4-3's named consequence, and exactly what F3's look is for.
+
+**Owed, named, not bundled.** The editor path itself deserves the question `_agent_fogged`'s
+Xvfb look already asked of the filter table: *the DM's screen drawing a thing is not licence
+to send it.* An editor session is a DM authoring the map, and a player's device showing the
+unfogged board for its duration is the floor argument doing more work than it can carry. It
+is a decision for M7 or a standalone item, and this plan's standing rule is that no phase
+bundles one.
+
+### D-M4d-3 — what the pump does not close, stated before someone measures it
+
+`_pump_net()` in the six modals does **not** make the frame loop continuously pumpable. The
+generation work each authoring flow runs after its dialog closes — the terrain carve, the
+dungeon build, the per-floor map writes — blocks `run()` for as long as it takes, and
+nothing pumps through it.
+
+**That is correct and not a gap.** A command is `build_view`, which reads `app.bm`; running
+one mid-carve is a read of the `BattleMap` while it is being rebuilt, which is the C++
+invariant NN1's tightening exists to name. The distinction `server.py` already draws — dict
+and dataclass reads under the GIL are safe, C++ invariants mid-mutation are not — lands
+exactly here.
+
+So the honest claim for M4d is a **change of bound, not a removal**: the 503 window goes
+from *as long as the DM reads the dialog* (unbounded; a coffee break is a minute of 503s) to
+*as long as the carve runs* (bounded by the work, seconds). `test_a_wedged_frame_loop_is_a_503`
+keeps its meaning and stays green, because a wedged frame loop is still a 503 — M4d changes
+how often the loop is wedged, not what happens when it is.
+
+### D-M4d-4 — a command may not open a modal
+
+With the pump inside modal loops, a command that opened a modal would open one *from inside*
+another one's event loop, re-entering `pygame.event.get()` at a depth the first loop does not
+know about. Today every command is `build_view` and the question is theoretical; it is
+written down here because the next two callers (D-M4-3's own sites, and M5's `submit`) are
+exactly where someone reaches for a confirmation dialog.
+
+**A command is a read that returns freshly-built data** (D-M4c-1, rule 3) **and draws
+nothing** (D-M4-3). Opening a modal violates both. Tested by submitting one that tries.
+
+### D-M4d-5 — F3's owed look
+
+`tests/manual_modal_pump_xvfb.py`, on the pattern `manual_fog_xvfb.py` set: real pixels
+through pygame → X11 → Xvfb, back via `PIL.ImageGrab`, **not** registered in
+`run_all_tests.py` because it needs a display. Its output is PNGs for a human plus the cheap
+assertions a screenshot cannot make on its own.
+
+What it has to show, each against its own control, because a rig that only shows absence
+proves nothing:
+
+| | With the pump | Control (pump removed) |
+| --- | --- | --- |
+| a command submitted while the modal is open | runs, future resolves | still pending when the modal closes |
+| the frame under the modal | unchanged across the pump | unchanged (the point: the pump is not why) |
+| the modal itself | drawn, on top, unperturbed | drawn, on top |
+
+The middle row is F3's actual worry and is the one that needs real pixels: *pumping inside a
+modal means a DM authoring modal stops being a quiescent point.* The assertion is that the
+screen outside the dialog is byte-identical across a pump that ran a command — state may
+advance, the **screen** may not, which is precisely D-M4-3's "pumps the command queue and
+nothing that redraws" made observable.
+
+### M4e's decisions, frozen here so M4e does not rediscover them
+
+**D-M4e-1 — the client's assets are explicit `GET` routes, one exact pair each.**
+`aiohttp`'s `add_static` registers a *prefix* resource whose `canonical` is the prefix, so a
+`PRE_AUTH_ROUTES` membership test against it would exempt the entire subtree — the precise
+hazard D-M4c-3 wrote "never a prefix" about, arriving through the router rather than through
+a URL. So: `GET /`, `GET /app.js`, `GET /app.css` as real routes, three exact pairs, and
+adding a file means adding a line. That friction is the feature.
+
+**This is the commit where path-only matching stops being harmless.** `_is_pre_auth` asks
+the router which resource matched, and for a method with no route the router answers `None`
+before the pair is ever compared — so a mutant collapsing the pair to a path alone survives
+on today's route table. `test_the_exemption_is_a_method_and_a_path` stands up a subclass
+carrying a real `GET /join` to make the rule observable; M4e is where a second method on a
+path exists for real.
+
+**D-M4e-2 — the credential lives in `sessionStorage`.** A reload keeps the seat; closing the
+tab drops it. It is not a cookie, it is never sent automatically, it is scoped to the origin
+and the tab — so it adds nothing to the CSRF surface A3's "never a cookie" is about — and its
+lifetime matches the credential's own (A5: the signing key is minted in memory at process
+start, so a credential cannot usefully outlive the tab by much). `localStorage` was rejected
+for storing a longer-lived secret that is usually already dead.
+
+**D-M4e-3 — no `prompt` envelope in M4e.** *(Amendment to the M4 route table, 2026-09-24.
+Reason: the client is read-only in M4, and the envelope's gate is worth testing beside the
+path that can answer it.)* `WS /live` pushes `view` and nothing else. `you.prompt_id` is
+already in the view and already gated by `ANSWER_PROMPT` (`view.py:269`, D-M3-6), so a client
+can say *Kira is being asked something* without the body crossing. The body, and D-M3-6's
+gate applied a second time with its own byte-level test, move to **M5**, where the submit
+path that answers it lands too. M1's prompt sites are not all routed yet, so an M4e test of
+that gate would be partly synthetic — which is the other half of the reason.
+
+**D-M4e-4 — the push needs the *reverse* handoff, and it is not `commands.py`.**
+`build_view` is a pygame-thread reader, so a push is built on the frame tick — but the frame
+tick has to know **who is connected**, and the sockets live on the net thread. That is a
+second crossing, in the opposite direction to D-M4c-1's, and `CommandQueue` does not carry
+it.
+
+The shape it must have, from F5's one legal push direction (game thread may only
+*schedule*: `call_soon_threadsafe` → `ensure_future` → send on the net loop):
+
+- `push_cycle` (`link.py:80`) already owns the cadence — 250 ms coalescing, forced at a
+  `(combat_active, round_num, turn_idx)` boundary. The view snapshot joins **there**, on that
+  same tick, beside `map_images.publish`.
+- It reads a **snapshot of connected principals** published by the net thread, the way
+  `MapImageCache` publishes a picture the other way, and builds one view per *connected
+  socket* — not per seated principal. This is the thing D-M4c-1 rejected for `/state`
+  ("builds N views per cycle whether or not anyone is listening") and it is correct here for
+  the reason that rejection turned on: a socket **is** a listener.
+- "Never two in flight" is per-connection state on the net thread's side, read through the
+  same snapshot: a connection with a send outstanding is skipped this cycle rather than
+  queued behind it. A slow client coalesces to the next boundary; it never grows a backlog.
+- Late-joiner resync falls out of sending the current snapshot on `prepare`, as the spike
+  found (F5) — no separate resync path in M4e.
+
+The snapshot's exact type is M4e's to choose; that it is a published immutable snapshot and
+not a lock over the connection table is decided here, because it is the same decision
+`MapImageCache` already made and reversing it on one thread is how the seam stops being one.
 
 ---
 
@@ -3847,8 +4060,10 @@ headless suite runs in, which is why the behaviour still matters.)*
   which `GET /state`, D-M4-3's `_pump_net()` and M5's `submit` all share), the `POST /join`
   pre-auth exemption, `POST /join` with D-M4-4 *as amended 2026-09-24* and its own mutant
   pass, and `GET /state`. Nothing in it needs a browser or a display.
-- **M4d** — `WS /live`, the client under `gui/net/static/`, `_pump_net()` in the six blocking
-  modals, and F3's owed real-display look.
+- **M4d** — *(landed 2026-09-24, below.)* `_pump_net()` in the six blocking modals, and
+  F3's owed real-display look. Split out of the item below by **Step 0.11's D-M4d-0**.
+- **M4e** — `WS /live` and the client under `gui/net/static/`. Its decisions are frozen in
+  Step 0.11 (D-M4e-1 through D-M4e-4) rather than left for it to rediscover.
 
 Read D-M4c-1 through D-M4c-5 before writing any of it; the short version is that `GET /state`
 is **not** a call to `build_view` — that function is a pygame-thread reader (`view.py:94`) and
@@ -3937,11 +4152,77 @@ rather than bundled in.
 | a raising command taking the frame loop with it | `the pump stopped after a command raised` |
 | the pump unbounded | `one pump ran 49 commands, not 32` |
 
-**Still owed — M4d**: `WS /live`, the client under `gui/net/static/`, `_pump_net()` in the
-six blocking modals, and F3's owed real-display look. Until that third item lands, a
-`GET /state` issued while a DM authoring modal is open parks for the frozen 5 s and returns
-`503` — D-M4-3's whole point, arriving one commit late, in the form of a wrong answer rather
-than a hang.
+**Still owed — M4e**: `WS /live` and the client under `gui/net/static/`. What used to stand
+here — that a `GET /state` issued while a DM authoring modal is open parks for the frozen
+5 s and returns `503` — is closed by M4d, below, though not in the way "closed" usually
+means: the 503 is still reachable and D-M4d-3 says why it has to be.
+
+#### The blocking-modal fix — landed 2026-09-24
+
+M4d, from Step 0.11. `self._pump_net()` at the top of the six blocking modal loops, and
+F3's owed look at what that does to a screen a DM is holding.
+
+- **`App._pump_net()`** (`main.py:19998`), one line of work and seven callers: the frame
+  loop, which used to call `net_link.pump_commands(self)` directly, and the six modals. The
+  plan has used that name since Step 0.7's spike; this is where it stopped being a
+  convention.
+- **The six sites**, first-in-the-body and above `pygame.event.get()` (D-M4d-1), at
+  `main.py` 2865, 13266, 13324, 13374, 13950 and 14105.
+- **D-M4d-4 is enforced, not documented.** `_pump_net` refuses to reenter. Without it, a
+  command that opens a modal does not fail — it **spins forever**, which is how the mutant
+  pass found out: the first version of the guard's checks hung the suite for the full ten
+  minutes instead of failing. The three checks now queue a `QUIT` first, so removing the
+  guard makes the suite *fail* rather than *hang*.
+- **`tests/test_modal_pump.py`** — 9 checks, registered. Suite **157 pass / 1 fail**
+  (`test_monk.py::test_deflect_attacks_reduces_physical`, pre-existing and unrelated; the
+  baseline was 156/1).
+- **`tests/manual_modal_pump_xvfb.py`** — D-M4d-5's rig, not registered, needs a display.
+
+**The check that would have caught a seventh modal.** `test_every_event_draining_loop_has_a_pump`
+reads `main.py` with `ast` and asserts that **every** `while True:` whose body drains
+`pygame.event.get()` opens with `self._pump_net()` — six of them, no more and no less. The
+rule is what makes the site list a consequence rather than a copy: `_advance_npc_playback`'s
+`while True:` (`main.py:3119`) drains a recorded event list rather than pygame's queue, which
+is why the count is six.
+
+| Mutant | Caught by |
+| ------ | --------- |
+| the pump moved below the event drain (all six) | `the modal's first two acts were ['drain', 'pump'], not a pump then a drain` |
+| the pump removed from one modal | `_modal_generate_dungeon returned without draining the command queue` |
+| the reentrancy guard removed | `a command opened a modal and nothing stopped it` |
+| the guard set but never cleared (no `finally`) | `a command may not open a modal or pump the queue (D-M4d-4)` |
+| the pump draws one pixel | `the pump changed the screen` |
+
+#### F3's look, and the finding it made
+
+`manual_modal_pump_xvfb.py` observes from **inside a command**, which is the only place the
+instant exists: a command runs on the pygame thread, inside `_pump_net`, inside the modal's
+own loop. So the rig submits screenshot-taking commands from the net thread and lets the
+pump run them. Two frames, back to back inside one open `_modal_message`:
+
+| | What it shows |
+| --- | --- |
+| A — a bare grab | the dialog, 1,435,200 pixels different from the plain board |
+| B — a real `build_view(app, kira)`, then a grab | **identical to A**, whole frame and dialog alike |
+
+So the projection ran, the party's whole state was read across the seam, and not one pixel
+moved. That is D-M4-3's *"pumps the command queue and nothing that redraws"* as pixels
+rather than as a surface comparison. The control is the mutant: with `_pump_net` stubbed,
+the command is still on the deque when the modal closes.
+
+**The finding, and it is neither a bug nor M4d's.** The board behind an open modal is
+**saturated black**, not dimmed — 412 distinct colours in the whole frame, all of them in
+the dialog. `_modal_message.render()` blits its alpha-170 overlay over the *previous* frame
+every iteration, so `0.333^5` of the board survives five frames, which is 0.4%. All six do
+this and all six always have; the loops are untouched by M4d. It is recorded because it is
+invisible headlessly, because it is the answer to "why is the map not dimly visible in these
+PNGs", and because it made the rig's first `drift == 0` weaker than it looked — a whole-frame
+comparison of two nearly-black frames. The rig now also asserts the lit region is rich (412
+colours) before believing that zero.
+
+It is also worth setting beside D-M4d-2. The DM's own screen shows *nothing* of the board
+while one of these modals is open, which is one more reason the filter table's floor — *a
+client can never see something the DM's own render hides* — is a floor and not a rule.
 
 **Deployment**: the Docker image already runs Xvfb + x11vnc + noVNC on 6080. Add one
 *separate* published port for the player server — never a second view onto 6080.
