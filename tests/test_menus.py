@@ -19,6 +19,8 @@ Two checks, and between them they cover the whole class:
 
 The builders that need a resolved attack (the riders, the defender reactions) are not
 callable from here; they are `test_prompts.py`'s, which drives two of them end to end.
+The board's right-click menus need a token and a click position rather than a resolved
+attack, so they get a test of their own below, which opens every submenu as well.
 """
 
 import ast
@@ -35,11 +37,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rpg_battle_map as rpg
 
 from main import App
-from menus import dm, features, reactions, riders
+from menus import board, dm, features, reactions, riders
 
 MAP_PATH = os.path.join(_ROOT, "maps", "TestGrid12x12.png")
 SEED = 20260924
-MODULES = {"riders": riders, "reactions": reactions, "dm": dm, "features": features}
+MODULES = {"riders": riders, "reactions": reactions, "dm": dm, "features": features,
+           "board": board}
 
 
 def _app():
@@ -116,6 +119,60 @@ def test_every_solo_builder_builds_its_prompt():
           f"({built} prompts built, {declined} declined)")
 
 
+def _assert_rows(where, p):
+    assert p is not None, f"{where} opened no prompt"
+    assert p.options, f"{where} opened an empty prompt"
+    for opt in p.options:
+        assert isinstance(opt.label, str) and opt.label, f"{where} has a row with no label"
+        assert opt.on_choose is None or callable(opt.on_choose), \
+            f"{where}: row {opt.label!r} is not callable"
+
+
+def test_board_menus_build_with_every_submenu():
+    """The right-click map menus (`board.py`), which the solo sweep cannot reach: they
+    take the token and the click position. The agent menu's submenus are closures that
+    capture `app` and open their own `_ask_dm`, so each one is opened too, from a
+    freshly built root, which is the exact path the Agents bug would have taken.
+
+    The probe is made a level-10 Fiend Warlock so Fiendish Resilience, the one
+    conditional submenu, is on the menu."""
+    app = _app()
+    stats = app.combat.get_agent_stats(app.bm, 0)
+    stats.character_class = rpg.CharacterClass.Warlock
+    stats.warlock_subclass = rpg.WarlockSubclass.Fiend
+    stats.char_level = 10
+    app.combat.set_agent_stats(app.bm, 0, stats)
+    pos = (100, 100)
+
+    board.show_agent_menu(app, 0, pos)
+    root = app.prompts.live
+    _assert_rows("board.show_agent_menu", root)
+    subs = [o.label for o in root.options if o.label.endswith("▸")
+            or o.label == "Fiendish Resilience"]
+    assert "Fiendish Resilience" in subs, "the Fiend probe did not reach its submenu"
+    assert len(subs) == 3, f"expected three submenus, found {subs}"
+    app.prompts.cancel()
+
+    for label in subs:
+        board.show_agent_menu(app, 0, pos)
+        parent = app.prompts.live
+        assert app.prompts.choose_label(label).ok, f"could not choose {label!r}"
+        child = app.prompts.live
+        _assert_rows(f"agent menu › {label}", child)
+        assert child.parent_id == parent.id, f"{label!r} did not name its parent"
+        app.prompts.cancel()
+
+    board.show_fog_menu(app, pos)
+    _assert_rows("board.show_fog_menu", app.prompts.live)
+    app.prompts.cancel()
+
+    app.bm.set_agent_on_deck(0, True)
+    board.show_on_deck_recall_menu(app, 0, pos)
+    _assert_rows("board.show_on_deck_recall_menu", app.prompts.live)
+    app.prompts.cancel()
+    print(f"✅ test_board_menus_build_with_every_submenu passed ({len(subs)} submenus)")
+
+
 def test_the_seam_did_not_move():
     """`_ask_actor` and `_ask_dm` stay on `App`: they hold the owner defaulting and the
     anchor, which is where authorization lives. Every relocated builder reaches them
@@ -136,6 +193,7 @@ def test_the_seam_did_not_move():
 def main():
     tests = [test_every_app_attribute_a_menu_names_exists,
              test_every_solo_builder_builds_its_prompt,
+             test_board_menus_build_with_every_submenu,
              test_the_seam_did_not_move]
     failed = 0
     for t in tests:

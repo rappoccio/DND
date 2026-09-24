@@ -10,8 +10,9 @@ They go on the bus all the same, because the bus is what `authorize()` reads and
 a scripted test drives an authoring menu exactly as it drives a combat prompt
 (`test_prompts.test_dm_menu_submenu_chain_carries_parent`).
 
-Not here: the right-click map menu itself, which is still built inline in
-`App._handle_events` and is the largest single prompt site left in `main.py`.
+Not here: the right-click map menus (the agent's DM menu, the On Deck recall, fog of
+war), which are `board.py`'s. They end in `_ask_dm` too, but they are what a click on
+the board opens, not a panel button.
 """
 
 import rpg_battle_map as rpg

@@ -31,9 +31,10 @@ and the two it failed became item 11 — the phone stretched the page's margins 
 board, and then kept the stretched picture through a reload because the image key did not
 change with the render. Item **9 is untouched** and belongs to another document.
 
-**The one thing ready to start** is **item 7's remainder** — the right-click map menu (14
-prompt sites still inline in `App._handle_events`) and the panel rendering helpers M2 left
-behind. Next slice, same shape as slices 1–4.
+**The one thing ready to start** is **item 7's remainder**. Slice 5 moved the right-click
+map menu to `menus/board.py`. Slice 6 moves the six `_ask_actor` action-button sites still
+inline in `App._handle_events` into `menus/features.py`, and after that come the panel
+rendering helpers M2 left behind. Same shape as slices 1–5.
 
 **Two housekeeping rules that have bitten twice.** `maps/TestDNDMap_agents.json` is *tracked*
 and is `test_replay_roundtrip.py`'s fixture; the app overwrites it on save, so
@@ -328,8 +329,22 @@ the live `App` (`actions.py`'s `ActionMenu.build(app, idx)` set that precedent),
 | 2 | `menus/reactions.py` — the defender/third-party reactions | 6 | 246 |
 | 3 | `menus/dm.py` — the authoring menus, all `_ask_dm` | 9 | 178 |
 | 4 | `menus/features.py` — the per-feature menus | 16 | 495 |
+| 5 | `menus/board.py` — the right-click map menus, all `_ask_dm` | 3 | 292 |
 
-`main.py`: **20,191 → 18,419**, which is the reversal M1 Step 3 expected and did not get.
+`main.py`: **20,191 → 18,152**, which is the reversal M1 Step 3 expected and did not get.
+
+**Slice 5, the right-click map menu.** `_handle_events` keeps what is about the event —
+button 3, on the map, combat or not, which cell — and calls `board.show_agent_menu`,
+`show_on_deck_recall_menu` or `show_fog_menu`. The move is mechanical: the block was
+lifted, dedented, and rewritten `self.`→`app.`, `event.pos`→`pos`, with no other edits. The
+module is `board`, not `map`, because `from menus import map` would shadow the builtin
+in `main.py`. The builders take a token and a position, so the solo sweep cannot build
+them. `test_menus.test_board_menus_build_with_every_submenu` builds all three, and it
+opens each of the agent menu's three submenus from a fresh root, with a Fiend Warlock
+probe so Fiendish Resilience is on the menu. Deleting `board.py`'s `net.roster` import
+passes the static check and fails this test, because only the Controller submenu's
+closure reads `DM_PRINCIPAL_ID`. `test_prompts` G9 already drove the menu with a real
+right-click, and it stayed green.
 
 **What slice 3 shipped broken, and what closed the hole.** The rewrite repointed *calls*
 (`self._x(…)`) and not bare *references*, so `show_agents_menu`'s `("Create PC…",
@@ -348,8 +363,12 @@ there, which is the direction that already exists), and Wild Shape's `beast_form
 was `os.path.dirname(__file__)` — main.py's directory when the code lived there, and one
 level too deep once it did not.
 
-**Still owed on item 7**: the right-click map menu, still built inline in `_handle_events`
-(the 14 sites there), and the panel's rendering helpers M2 left behind.
+**Still owed on item 7**: six `_ask_actor` sites still inline in `_handle_events`. They are
+panel action-button handlers, not the map menu: Elemental Attunement, Metamagic
+Transmuted and four more in the same stretch. They go to `menus/features.py` as slice 6.
+After that come the panel's rendering helpers M2 left behind. (Earlier notes counted
+"14 sites" in the right-click menu. That was all of `_handle_events`: 8 map-menu
+`_ask_dm` sites, which slice 5 moved, and these 6.)
 
 ---
 
