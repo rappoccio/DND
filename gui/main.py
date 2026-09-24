@@ -63,6 +63,8 @@ from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
 from dungeon import Dungeon, MapPage, dungeon_path_for
 from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
+# S1: every save that a crash could tear goes through this (MULTIPLAYER_PLAN.md).
+from atomic_io import atomic_write_json
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
@@ -13024,9 +13026,8 @@ class App:
             cd["agent_idx"]  = old_to_new[c.agent_idx]
             cd["caster_idx"] = old_to_new.get(c.caster_idx, -1)
             conditions_data.append(cd)
-        with open(path, "w") as f:
-            json.dump({"agents": data, "map_items": items_data,
-                       "active_conditions": conditions_data}, f, indent=2)
+        atomic_write_json(path, {"agents": data, "map_items": items_data,
+                                 "active_conditions": conditions_data})
 
         # Keep the engine's resume sidecar in step with the file just written — every
         # path that persists the active encounter has to persist the matching combat
@@ -13081,8 +13082,7 @@ class App:
             ],
         }
         try:
-            with open(path, "w") as f:
-                json.dump(doc, f, indent=2)
+            atomic_write_json(path, doc)
         except OSError as e:
             print(f"Warning: could not save combat state: {e}")
 

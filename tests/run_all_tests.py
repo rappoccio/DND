@@ -63,6 +63,12 @@ test_scripts = [
     # not break a feature, it quietly hands a player the enemy they cannot see.
     "test_gameview.py",
 
+    # Atomic encounter saves (MULTIPLAYER_PLAN.md standalone item S1) — the two writes a
+    # crash could tear. Kept with the oracles because NN7's autosave ring is built on the
+    # assumption these are atomic, and the only way to see the fix is to force the write
+    # to fail and find the previous save still whole.
+    "test_atomic_saves.py",
+
     # Core mechanics
     "test_conditions.py",
     "test_combat.py",

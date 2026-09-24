@@ -24,11 +24,12 @@ import enum
 import hashlib
 import hmac
 import json
-import os
 import secrets
 import time
 from dataclasses import dataclass, replace
 from typing import Callable, Iterable
+
+from atomic_io import atomic_write_json
 
 # The DM console's principal id. A token whose controller is this (the default for every
 # agent record) is DM-driven. It is a reserved id: a player can never be minted with it.
@@ -425,25 +426,8 @@ class SessionRoster:
         return r
 
     def save(self, path: str) -> None:
-        """Write the session file atomically: serialize to a temp file in the same
-        directory, then os.replace(). A crash leaves the old file or the new one, never a
-        truncated one (NN7)."""
-        tmp = f"{path}.tmp.{os.getpid()}"
-        d = os.path.dirname(path)
-        if d:
-            os.makedirs(d, exist_ok=True)
-        try:
-            with open(tmp, "w") as f:
-                json.dump(self.to_dict(), f, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(tmp, path)
-        except OSError:
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
-            raise
+        """Write the session file atomically (NN7) — see ``atomic_io``."""
+        atomic_write_json(path, self.to_dict())
 
     @classmethod
     def load(cls, path: str) -> "SessionRoster":
