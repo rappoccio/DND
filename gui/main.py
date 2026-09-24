@@ -56,7 +56,7 @@ from helpers import (
 )
 from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog
 from dialogs_conditions import ConditionsDialog
-from menus import reactions, riders
+from menus import dm, reactions, riders
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph, draw_ladder_glyph, door_link_key
@@ -2343,26 +2343,6 @@ class App:
         if self._switch_to_page(below):
             self._flash_status(f"Floor {target_z}: {below.id}")
 
-    # ─────────────────────────────────────────────────────────────────────
-    #  Grouped panel menus: the Agents… / Terrain… / Lighting… buttons each
-    #  pop a ContextMenu of that group's actions (replacing the old wall of
-    #  per-action buttons in the setup panel).
-    # ─────────────────────────────────────────────────────────────────────
-    def _show_agents_menu(self):
-        """Popup for the "Agents…" panel button: encounter save/load plus the ways
-        to add individual agents (Create Mob/PC replace the old Select Mob/PC)."""
-        items = [
-            ("Load…",       self._open_load_agents_browser),
-            ("Import DDB…", self._import_ddb_character),
-            ("Save…",       self._open_save_agents_browser),
-            ("Load PCs…",   self._open_load_pcs_browser),
-            ("Create Mob…", lambda: self.mob_dialog.show(
-                                lambda mob: self._on_mob_selected(mob))),
-            ("Create PC…",  self._show_pc_class_menu),
-            ("Clear",       self._clear_agents),
-        ]
-        self._ask_dm("action", "Agents", items,
-                     anchor=(self.btn_agents.rect.x, self.btn_agents.rect.y))
 
     def _clear_agents(self):
         """Remove every placed agent (plus their spell terrain effects and any
@@ -2434,25 +2414,7 @@ class App:
             title="Load PCs",
         )
 
-    def _show_pc_class_menu(self):
-        pc_classes = ["Barbarian", "Bard", "Cleric", "Druid", "Fighter", "Monk",
-                      "Paladin", "Ranger", "Rogue", "Sorcerer", "Warlock", "Wizard"]
-        options = [(cls, lambda c=cls: self._on_pc_class_selected(c)) for cls in pc_classes]
-        self._ask_dm("action", "Create PC — class", options,
-                     anchor=(self._panel_x() + self._PANEL_PAD, 100))
 
-    def _show_terrain_menu(self):
-        """Popup for the "Terrain…" panel button."""
-        items = [
-            ("Edit…",     self._open_terrain_editor),
-            ("Load…",     self._open_load_terrain_browser),
-            ("Save…",     self._open_save_terrain_browser),
-            ("Generate…", self._on_generate_terrain),
-            ("Hide" if self.show_terrain else "Show", self._toggle_show_terrain),
-            ("Clear",     self._clear_terrain),
-        ]
-        self._ask_dm("action", "Terrain", items,
-                     anchor=(self.btn_terrain.rect.x, self.btn_terrain.rect.y))
 
     def _open_terrain_editor(self):
         # These full-map editors blit map_surf at (0,0) and map clicks via native
@@ -2510,16 +2472,6 @@ class App:
             self._update_attack_overlay()
         self._flash_status("Terrain cleared.")
 
-    def _show_lighting_menu(self):
-        """Popup for the "Lighting…" panel button."""
-        items = [
-            ("Edit…", self._open_lighting_editor),
-            ("Load…", self._open_load_lighting_browser),
-            ("Hide" if self.show_lighting_overlay else "Show",
-             self._toggle_lighting_overlay),
-        ]
-        self._ask_dm("action", "Lighting", items,
-                     anchor=(self.btn_lighting.rect.x, self.btn_lighting.rect.y))
 
     def _open_lighting_editor(self):
         """Open the lighting editor primed with the encounter's saved lighting."""
@@ -2576,30 +2528,6 @@ class App:
     def _toggle_lighting_overlay(self):
         self.show_lighting_overlay = not self.show_lighting_overlay
 
-    # ─────────────────────────────────────────────────────────────────────
-    #  Dungeon manifest management (Phase 6): New / Open / Save / Add Page,
-    #  plus the Pages overview that places pages on the global grid.
-    #  The manifest is placement-only; each page's scene lives in its own
-    #  encounter sidecars (agents/terrain/lighting/effects).
-    # ─────────────────────────────────────────────────────────────────────
-    def _show_dungeon_menu(self):
-        """Popup for the "Dungeon Configuration" panel button. The item set depends
-        on whether a manifest is currently open."""
-        if self.dungeon is None:
-            items = [
-                ("New Dungeon (this map)", self._dungeon_new),
-                ("Open Dungeon…",          self._dungeon_open_browser),
-            ]
-        else:
-            items = [
-                ("Pages / Overview…", self._dungeon_pages_overview),
-                ("Add Page…",         self._dungeon_add_page_browser),
-                ("Save Dungeon",      self._dungeon_save),
-                ("Open Dungeon…",     self._dungeon_open_browser),
-                ("Close Dungeon",     self._dungeon_close),
-            ]
-        self._ask_dm("action", "Dungeon configuration", items,
-                     anchor=(self.btn_dungeon.rect.x, self.btn_dungeon.rect.y))
 
     def _dungeon_dir(self) -> str:
         """The folder a page's relative ``png`` / ``encounter_base`` resolves against: the
@@ -5031,18 +4959,6 @@ class App:
         print(f"[_drop_weapon DEBUG] After set_agent_weapons: weapons_after[{slot_idx}].name = '{weapons_after[slot_idx].name}'")
         self._combat_log_add(f"{agent.name} drops {weapon.name}.")
 
-    # FLAG: Move to C++
-    def _show_item_pickup_menu(self, cell, items, agent_idx, pos):
-        """Show context menu to pick up one of the items at this cell."""
-        menu_items = []
-        for item in items:
-            def _pickup(i=item, a=agent_idx):
-                self._pickup_item(i, a)
-            menu_items.append((f"Pick up {item.weapon.name}", _pickup))
-        if menu_items:
-            self._ask_actor(agent_idx, "action",
-                            f"{self._agent_name(agent_idx)}: pick up an item", menu_items,
-                            anchor=pos)
 
     def _pickup_item(self, item, agent_idx: int):
         """Take a weapon off the ground: pick the slot here, let the engine do the assignment.
@@ -5067,16 +4983,6 @@ class App:
         else:
             self._combat_log_add(f"{agent.name} picks up {name}.")
 
-    # FLAG: Move to C++
-    def _show_item_context_menu(self, cell, items, pos):
-        """DM right-click menu for dropped weapons on a cell: remove each item.
-        (Relocation is done by left-click dragging the item — see the drag handlers.)"""
-        menu_items = []
-        for item in items:
-            nm = item.weapon.name or "item"
-            menu_items.append((f"Delete {nm}", lambda i=item: self._delete_item(i)))
-        if menu_items:
-            self._ask_dm("action", "Dropped items on this cell", menu_items, anchor=pos)
 
     def _delete_item(self, item):
         """Remove a dropped weapon from the map entirely."""
@@ -5092,91 +4998,7 @@ class App:
                  cell.row - (agent.origin.row + agent.size - 1), 0)
         return max(dc, dr) <= 1
 
-    def _show_door_menu(self, cell, pos):
-        """Context menu for a door cell: Open/Close (object interaction) and Pick Lock
-        (an action). Knock is cast as a normal spell at the cell, not from here.
 
-        During combat the acting creature must be adjacent; out of combat the DM acts
-        freely (pick-lock uses the currently selected agent)."""
-        di = self.bm.door_at(cell)
-        if di < 0:
-            return
-        door = self.bm.doors[di]
-        actor = self._current_agent_idx() if self.combat_active else self.selected_idx
-
-        if self.combat_active:
-            if actor < 0:
-                return
-            agent = self.bm.placed_agents[actor]
-            # A wide door is reachable from any of its cells, not just the clicked one.
-            if not any(self._cell_adjacent_to_agent(agent, c) for c in door.cells):
-                self._combat_log_add("Move adjacent to the door to interact with it.")
-                return
-
-        options = []
-        door_id = door.id
-        if door.broken:
-            # Smashed off its frame — nothing left to open, close, or lock.
-            options.append(("Door broken (smashed off its frame)",
-                            lambda: self._combat_log_add(
-                                "The door has been smashed off its frame; it can't be closed.")))
-        elif door.open:
-            options.append(("Close door", lambda d=door_id: self._door_close(d)))
-        else:
-            if door.arcane_lock:
-                options.append(("Locked (Arcane Lock — needs Knock/Dispel)",
-                                lambda: self._combat_log_add(
-                                    "The door is held by an Arcane Lock; only Knock or Dispel Magic opens it.")))
-            elif door.locked:
-                options.append((f"Pick Lock (DC {door.lock_dc})",
-                                lambda a=actor, d=door_id: self._door_pick_lock(a, d)))
-            else:
-                options.append(("Open door", lambda d=door_id: self._door_open(d)))
-
-            # Force it (Strength/Athletics) — available on any closed door, even a locked
-            # or arcane-locked one (you're smashing the door, not defeating the magic). An
-            # active Arcane Lock stiffens the door by +10 to the break DC.
-            break_dc = door.break_dc + (10 if (door.arcane_lock and
-                                               door.arcane_suppressed_turns <= 0) else 0)
-            options.append((f"Break Down (DC {break_dc})",
-                            lambda a=actor, d=door_id: self._door_break_down(a, d)))
-
-        # Cross-map staple (Floors Phase 5): an open, linked door offers passage to the
-        # abutting page. A locked/arcane-locked (thus closed) door blocks it — the option
-        # only appears once the door is open. Explicit action, matching the ladder menu.
-        link = self._door_link_at(door)
-        if link is not None and door.open:
-            options.append((f"Go through door (to floor {link[2]})",
-                            lambda a=actor, d=door_id: self._use_door_link(d, a)))
-
-        if options:
-            # Out of combat `actor` is the selected token (or -1), and controller_of folds
-            # an unknown index to the DM — which is the right owner for DM-side authoring.
-            self._ask_actor(actor, "action", "Door", options, anchor=pos)
-
-    def _show_ladder_menu(self, cell, pos):
-        """Context menu for a ladder cell: a "Use Ladder" action that carries the acting
-        (or selected) creature to the target floor via the dungeon manifest.
-
-        Out-of-combat only for the MVP (see Floors plan Known Limitations); the actual
-        page switch is gated by _switch_to_page's combat guard, which flashes if in combat."""
-        li = self._ladder_at(cell)
-        if li < 0:
-            return
-        lad = self._ladders[li]
-        X, Y, Z = lad["target"]
-        actor = self._current_agent_idx() if self.combat_active else self.selected_idx
-
-        if self.combat_active:
-            agent = self.bm.placed_agents[actor] if actor >= 0 else None
-            if agent is not None and not any(
-                    self._cell_adjacent_to_agent(agent, rpg.Cell(c[0], c[1])) for c in lad["cells"]):
-                self._combat_log_add("Move adjacent to the ladder to use it.")
-                return
-
-        label = f"Use Ladder (to floor {Z})"
-        options = [(label, lambda a=actor, l=li: self._use_ladder(l, a))]
-        self._ask_actor(actor, "action", f"Ladder to floor {Z}", options, anchor=pos)
 
     def _use_ladder(self, ladder_idx: int, actor_idx: int):
         """Resolve a ladder's global target to a page + local cell and switch to it,
@@ -17487,7 +17309,7 @@ class App:
                 if cell is not None and self._agent_at(cell) < 0:
                     items_at_cell = self.bm.get_items_at_cell(cell)
                     if items_at_cell:
-                        self._show_item_context_menu(cell, items_at_cell, event.pos)
+                        dm.show_item_context_menu(self, cell, items_at_cell, event.pos)
 
             # Right-click an empty map cell (no agent, no items) → DM fog-of-war menu.
             # Manual overrides on the persistent explored mask: reveal everything, or
@@ -17684,9 +17506,9 @@ class App:
                             self._resolve_vitality_target(hit)
                         elif hit < 0 and self.bm.door_at(cell) >= 0:
                             # No pending action and an empty door cell: offer door interaction.
-                            self._show_door_menu(cell, event.pos)
+                            dm.show_door_menu(self, cell, event.pos)
                         elif hit < 0 and self._ladder_at(cell) >= 0:
-                            self._show_ladder_menu(cell, event.pos)
+                            dm.show_ladder_menu(self, cell, event.pos)
                         else:
                             # When paused, allow dragging any agent; otherwise only the current
                             # combatant — or the legendary creature performing an out-of-turn Dash.
@@ -17709,9 +17531,9 @@ class App:
                         # Normal mode: door interaction, drag any agent, or deselect.
                         # But disable dragging if jump overlay is active (use jump instead)
                         if hit < 0 and self.bm.door_at(cell) >= 0:
-                            self._show_door_menu(cell, event.pos)
+                            dm.show_door_menu(self, cell, event.pos)
                         elif hit < 0 and self._ladder_at(cell) >= 0:
-                            self._show_ladder_menu(cell, event.pos)
+                            dm.show_ladder_menu(self, cell, event.pos)
                         elif hit >= 0 and not self.jump_overlay_active:
                             pt = self.bm.placed_agents[hit]
                             self.drag_idx    = hit
@@ -17790,7 +17612,7 @@ class App:
                                 dr = max(agent.origin.row - origin.row,
                                          origin.row - (agent.origin.row + agent.size - 1), 0)
                                 if max(dc, dr) <= 1:
-                                    self._show_item_pickup_menu(origin, items_at_cell, cur_idx, event.pos)
+                                    dm.show_item_pickup_menu(self, origin, items_at_cell, cur_idx, event.pos)
                 self._clear_item_drag()
                 continue
 
@@ -17900,7 +17722,7 @@ class App:
 
                 # Agents… — encounter save/load, Import DDB, Load PCs, Create Mob/PC
                 if _hit(self.btn_agents):
-                    self._show_agents_menu()
+                    dm.show_agents_menu(self)
 
                 # Clear All — full scene wipe (agents + terrain + lighting);
                 # the agents-only clear lives in the Agents… menu.
@@ -17934,11 +17756,11 @@ class App:
 
                 # Terrain… — edit / load / save / generate / show-hide / clear
                 if _hit(self.btn_terrain):
-                    self._show_terrain_menu()
+                    dm.show_terrain_menu(self)
 
                 # Lighting… — edit / load / show-hide overlay
                 if _hit(self.btn_lighting):
-                    self._show_lighting_menu()
+                    dm.show_lighting_menu(self)
 
                 # Generate Dungeon — fill the map's rooms with a progressive encounter
                 if _hit(self.btn_generate_dungeon):
@@ -17947,7 +17769,7 @@ class App:
                 # Dungeon Configuration — New / Open / Save a multi-map dungeon
                 # manifest, edit pages
                 if _hit(self.btn_dungeon):
-                    self._show_dungeon_menu()
+                    dm.show_dungeon_menu(self)
 
                 # Toggle Wall Auto-Detection
                 if _hit(self.btn_toggle_walls):
@@ -18900,7 +18722,7 @@ class App:
                             dr = max(agent.origin.row - cell.row,
                                     cell.row - (agent.origin.row + agent.size - 1), 0)
                             if max(dc, dr) <= 1:
-                                self._show_item_pickup_menu(cell, items_at_cell, cur_idx, event.pos)
+                                dm.show_item_pickup_menu(self, cell, items_at_cell, cur_idx, event.pos)
 
         return True
 

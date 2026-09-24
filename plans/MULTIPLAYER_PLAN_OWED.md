@@ -300,8 +300,9 @@ the live `App` (`actions.py`'s `ActionMenu.build(app, idx)` set that precedent),
 |---|---|---|---|
 | 1 | `menus/riders.py` — the post-hit attack riders | 25 | 845 |
 | 2 | `menus/reactions.py` — the defender/third-party reactions | 6 | 246 |
+| 3 | `menus/dm.py` — the authoring menus, all `_ask_dm` | 9 | 178 |
 
-`main.py`: **20,191 → 19,101**.
+`main.py`: **20,191 → 18,923**.
 
 ---
 
