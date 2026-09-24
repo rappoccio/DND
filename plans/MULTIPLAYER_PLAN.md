@@ -4326,6 +4326,17 @@ now bounds that `await` with `wait_for` and reports the named message, so the mu
 half a second instead of timing out the container. Twice now, on this seam, a missing guard
 has presented as a hang; a check that exercises one should assume that shape.
 
+**The A1–A9 check, run and written down.** M8's section asks for it at the end of *each*
+phase and no phase had recorded the result, so M4e is where it stops being an intention.
+Five greps over `net/` including `static/`: no cookie anywhere but the comment explaining
+why there is none (A3); no `role ==` or `== "dm"` branch outside `roster.py`, where A8 puts
+it — the client colours a token by the entitlement it was *granted* (`hp.cur` present) and
+never by who it thinks it is; no identity derived from an address (`request.remote` reaches
+the limiter and nothing else, and `X-Forwarded-For` is still unread on purpose); no display
+name used as a key; and **seven routes, one middleware** — every route on the application
+that middleware is constructed with, the socket included. Clean, and the greps are cheap
+enough that the next phase has no excuse either.
+
 **Owed, and named rather than bundled:**
 
 - **The client cannot mark whose turn it is.** `combat.turn_idx` indexes the *unfiltered*
