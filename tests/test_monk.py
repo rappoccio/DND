@@ -451,6 +451,14 @@ def test_l2_uncanny_metabolism():
 # L3 Deflect Attacks / L13 Deflect Energy (OnHit defender reaction)
 # ─────────────────────────────────────────────────────────────────────────────
 
+# The defender in these tests is a Monk, so Unarmored Defense (10 + DEX + WIS) decides its AC
+# and `base_ac` is ignored — see `_hittable_monk_defender`. The attacker is `_soft_target`
+# (Fighter 1, STR 8), so it swings at about +1 on its own. `bonus_hit` is what actually makes
+# these weapons the "guaranteed hit" their docstrings claim: +50 clears any AC the fixture can
+# produce, and only a natural 1 (an auto-miss the engine applies before the modifier) can miss.
+_SURE_HIT_BONUS = 50
+
+
 def _slashing_weapon():
     """A guaranteed-hit Slashing melee weapon (B/P/S) for the attacker."""
     w = rpg.Weapon()
@@ -460,6 +468,7 @@ def _slashing_weapon():
     w.reach_ft = 5
     w.range_short_feet = 5
     w.range_long_feet = 5
+    w.bonus_hit = _SURE_HIT_BONUS
     roll = rpg.PhysicalDamageRoll()
     roll.type = rpg.PhysicalDamage.Slashing
     roll.num_dice = 2
@@ -477,6 +486,7 @@ def _fire_weapon():
     w.reach_ft = 5
     w.range_short_feet = 30
     w.range_long_feet = 30
+    w.bonus_hit = _SURE_HIT_BONUS
     mr = rpg.MagicDamageRoll()
     mr.type = rpg.MagicDamage.Fire
     mr.num_dice = 4
@@ -486,10 +496,15 @@ def _fire_weapon():
 
 
 def _hittable_monk_defender(engine, bm, idx):
-    """Drop the Monk's AC to 1 so a 50-bonus attack always lands; give it a big HP pool so the
-    triggering hit can't drop it to 0 (which would disqualify the reaction)."""
+    """Give the Monk defender a big HP pool so the triggering hit can't drop it to 0 (which
+    would disqualify the reaction).
+
+    It deliberately does NOT try to lower the AC. The old `base_ac = 1` here was a no-op:
+    Unarmored Defense computes 10 + DEX + WIS and ignores `base_ac`, so the Monk's AC was 15
+    the whole time and the "50-bonus attack" of the old docstring did not exist either. The
+    hit is guaranteed on the attacker's side instead, by `_SURE_HIT_BONUS`.
+    """
     ms = engine.get_agent_stats(bm, idx)
-    ms.base_ac = 1
     ms.hp_max = 200
     ms.hp_cur = 200
     engine.set_agent_stats(bm, idx, ms)
