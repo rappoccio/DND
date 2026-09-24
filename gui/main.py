@@ -69,6 +69,7 @@ from atomic_io import atomic_write_json
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
 from net.mapimg import MapImageCache
+from net.commands import CommandQueue
 from net import link as net_link
 # S3 (M2): what the combat panel may offer, as data. `actions.Action` is the game
 # option; `net.roster.Action` above is the authorization verb — unrelated, so only
@@ -972,6 +973,11 @@ class App:
         self._net         = None    # PlayerServer, or None when aiohttp is absent (D1)
         self._net_push_ms = 0       # pygame ticks at the last push cycle (D-M4-2's 250 ms)
         self._net_turn    = None    # last (combat_active, round, turn) — the boundary test
+        # The net thread → frame tick handoff (M4c, D-M4c-1). Exists with or without a
+        # transport for the same reason the image cache does: it is the seam, not the
+        # server. `GET /state` is its first caller; D-M4-3's `_pump_net()` in the blocking
+        # modals and M5's `submit` are the other two.
+        self._net_commands = CommandQueue()
         # NOT started here. `__init__` builds an App; `run()` starts one (see `net.link`).
 
         # NOTE: dungeon manifests are opened explicitly (Dungeon Configuration →
@@ -19990,6 +19996,7 @@ class App:
             self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
             self._advance_npc_playback()        # NPC turn playback: animate the recorded turn
             self._refresh_fog()                 # fog of war: monotonic reveal when marked stale
+            net_link.pump_commands(self)        # M4c: answer what the net thread asked for
             net_link.push_cycle(self)           # M4: publish the party's page image to the net thread
             self.screen.fill(COL_BG)
             self._draw_map()

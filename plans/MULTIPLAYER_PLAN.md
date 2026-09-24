@@ -1449,9 +1449,13 @@ principal or creates a new one". The matching rule:
 
 1. A live, unrevoked credential re-attaches to **its own principal**, by `kid`. Names are
    not consulted.
-2. Only when the credential is gone does the join fall back to matching `display_name`
+2. *(Amended 2026-09-24 — Envelope 1 carries an optional `principal_id` this rule never
+   mentioned, and R3's restart case is the one it exists for.)* Only when the credential is
+   gone does an explicit `principal_id` claim that principal — **if it names an existing
+   principal whose role is `PLAYER`**.
+3. Only when neither resolves does the join fall back to matching `display_name`
    **case-insensitively** against existing player principals.
-3. No match creates a new principal.
+4. No match creates a new principal.
 
 The order matters: two players who both type "Kira" race under name-matching alone, and the
 second silently takes a seat the token could have resolved without the DM touching
@@ -1459,6 +1463,14 @@ anything. Name-matching is acceptable as the fallback because R2 already accepts
 anyone holding the code can claim to be Kira, and the DM sees and can reassign every seat
 (NN4). `display_name` remains "never a key" (`net/roster.py:73`) for storage and ownership —
 this is a join-time hint, not an identity.
+
+**Two limits on the amended step 2, both of them the difference between a re-claim and an
+escalation.** A `principal_id` naming the **DM** is not claimable: R2 accepts that a
+code-holder can claim to be Kira, not that they can become the DM, and the roster's own seat
+is the one principal a join may never resolve to. A `principal_id` naming **nothing** falls
+through to step 3 rather than failing — an error that distinguishes "no such seat" from "not
+your seat" is an oracle for which ids exist, and Step 0.5's closed `error` set is closed for
+exactly this reason. Neither path renames anything it matches (D-M4c-4).
 
 ### D-M4-5 — `AppRunner` + `TCPSite` + `run_forever`
 
@@ -1479,6 +1491,192 @@ the IP varies with the network. So:
 A configured allowlist is rejected because it cannot be written down correctly in advance,
 and "just skip `Origin` on the LAN" is rejected because it is the version that makes the
 DM's own browser a CSRF vector into the player server.
+
+---
+
+## Step 0.10 — M4c/M4d's frozen decisions (frozen 2026-09-24)
+
+User signed off 2026-09-24 on **D-M4c-1** (the seam), on the **M4c/M4d split**, and on
+**D-M4-4's `principal_id` amendment**. The rest are write-downs of consequences those three
+force, recorded here so M4c does not rediscover them. **Frozen** on the same terms as
+Step 0.1 and Step 0.9: changes need a dated amendment with a one-line reason.
+
+### The correction that forced this section
+
+The M4 route table says `GET /state` returns "full `GameView` for the authenticated
+principal", and M3 built exactly that: `build_view(app, viewer, seq=0)` at
+`gui/net/view.py:71`, byte-level tested. It is tempting to read that as *the route is a
+function call*, and the transport skeleton's own docstring encourages it by calling the
+remaining routes ones that "add no new machinery".
+
+They do add one. `build_view` reads `app.bm` (`view.py:94`) and `app._fog_active()`
+(`view.py:92`) — it is a **pygame-thread reader by construction**, which is precisely why
+`view.py` imports the extension and why `server.py` holds no `App`. NN1 forbids the net
+thread from calling it. So `GET /state` is not a projection problem, which is solved; it is
+a **thread-handoff** problem, which is not. `GET /map.png` only looked free because M4
+already paid this cost for it, in `MapImageCache`.
+
+There are two ways to pay it, and they are not equivalent — one of them is also the
+machinery two later features need.
+
+### D-M4c-1 — the view crosses the seam on a command queue, not in a cache
+
+**A second cache was rejected.** Mirroring `MapImageCache` — `push_cycle` building one view
+per seated principal every 250 ms and publishing an immutable snapshot — makes `/state` a
+dict read with no parking, no timeout and no new failure mode. It also builds N views per
+cycle whether or not anyone is listening, answers every request up to 250 ms stale, and,
+decisively, **leaves D-M4-3's `_pump_net()` with nothing to pump**. The blocking-modal fix
+is a *named M4 task*; a design that defers the only machinery it can be built from has moved
+M4's work into M5 without saying so.
+
+**The queue, as F1 measured it.** The handler parks on an `asyncio.Future` that the frame
+tick resolves through `loop.call_soon_threadsafe`. F1 recorded 0.76 s in flight with the
+game thread not ticking, returning on the first `_pump_net()`; F2 recorded the steady-state
+cost as "time to the next pump" — ≤16 ms at 60 fps. This is the same object M5's `submit`
+needs (F1 says so in as many words: *"this is the shape of every `submit` in M5"*) and the
+same object the six blocking modals pump. **It is built once, in M4c, for three callers.**
+
+**Where it lives.** `gui/net/commands.py` — a new module, import-safe without pygame,
+without the extension and without `aiohttp`, the way `roster.py` and `mapimg.py` are. It is
+neither thread's half: `server.py` holds no `App` and `link.py` holds nothing else, while a
+queue is the thing *between* them, which is the same reason `MapImageCache` lives in
+`mapimg.py` rather than in either.
+
+**The shape, frozen:**
+
+- `CommandQueue.submit(fn) -> asyncio.Future` — called on the **net thread**, inside its
+  running loop. Appends `(fn, loop, future)` to a `collections.deque` and returns the
+  future. No lock: `append` and `popleft` are atomic under the GIL, and the queue holds no
+  invariant spanning two operations.
+- `CommandQueue.pump(app, budget=32) -> int` — called on the **pygame thread**. Pops up to
+  `budget` commands, calls `fn(app)`, and schedules the resolution back. Returns how many
+  ran, so a caller can tell a drained queue from a capped one.
+- **`budget` is a bound, not a tuning knob.** An unbounded drain makes a flood of requests a
+  frame-time attack from the one route that has no authentication in front of it. 32 per
+  frame is ~1,900 commands/s at 60 fps, which is far past any real table, and the remainder
+  waits exactly one frame.
+
+**Three things the obvious implementation gets wrong, and they are the mutant list:**
+
+1. **Resolution must be scheduled, never performed.** The pygame thread may not touch the
+   future — F5's rule, for the same reason. `loop.call_soon_threadsafe(resolver)` where
+   `resolver` runs **on the net loop** and checks `future.done()` first. A client that
+   disconnected or timed out has already cancelled its future, and a bare `set_result` on it
+   raises `InvalidStateError` *on the net loop*, where nothing is waiting to catch it.
+2. **A command that raises may not kill the frame loop.** `fn(app)` is wrapped;
+   the exception is carried to the future via `set_exception` and the route turns it into a
+   status. `PermissionError` from `build_view` is the realistic one — a principal whose seat
+   was pulled between the middleware and the pump — and it is a 403, not a 500.
+3. **A command returns freshly-built data the caller owns.** `build_view` already satisfies
+   this: every block is constructed per call and `log` is `list(app.combat_log)`. Returning a
+   live `App` structure would hand the net thread a reference into game state and make NN1 a
+   matter of what the handler happens not to read. **Stated as an invariant here because the
+   type system will not state it**, and tested by mutating the log after the response.
+
+**Serialization happens on the net thread.** The command returns a `dict`; `json.dumps` runs
+in the handler. The frame tick pays for the projection and not for the encoding — the same
+division `GET /map.png` makes when it runs the 95 ms PNG encode in an executor.
+
+### D-M4c-2 — `GET /state`, and the timeout Envelope 2 has no room for
+
+Authenticated like every other route (it is not exempt), `authorize(VIEW_SESSION)` at the
+top, then `await asyncio.wait_for(queue.submit(...), 5.0)`.
+
+**Five seconds, and then a 503.** F1's number, chosen there because a wedged frame loop
+should be visible to a client as a hung request rather than a silent stall. Step 0.5's fifth
+`error` member `"timeout"` belongs to `submit_ack`; **Envelope 2 is a view and has no error
+shape at all**, so the timeout is an HTTP status and not an envelope: `503` with
+`Retry-After: 1`. Inventing a `{"t": "view", "ok": false}` would give the one envelope with
+a byte-level test a second, untested shape.
+
+**`Cache-Control: no-store`**, and no ETag. A view is per-viewer live state that changes on
+every tick; the conditional-request machinery `GET /map.png` earned is exactly wrong here,
+where nothing repeats.
+
+**`seq` is 0.** `EventStream` is seam S3 and does not exist; D-M3-1 froze the caller as the
+supplier of `seq` and M4c has nothing to supply. M4b's Envelope 3 is where a real cursor
+arrives.
+
+**Known, temporary, and named on purpose**: until M4d puts `_pump_net()` in the six blocking
+modals, a `GET /state` issued while *Generate Dungeon* is open parks for the full 5 s and
+returns 503. That is D-M4-3's whole point arriving one commit late, and it is a wrong answer
+rather than a hang — which is why the split is acceptable.
+
+### D-M4c-3 — the pre-auth exemption skips the 401, and nothing else
+
+The middleware today denies every request without a valid bearer, deliberately: with no
+`POST /join`, an exemption list with no members is a hole waiting for a typo. `POST /join`
+gives it its first member, and the exemption is narrower than "skip the middleware":
+
+- **The `Origin` check still runs.** D-M4-6 is step 1 and applies to `/join` most of all —
+  a cross-origin page that can mint principals is a defacement vector even though A3 stops
+  it from reading the response.
+- **Verification still runs.** The exemption suppresses the **401**, not the
+  `verify_credential` call. This is not a nicety: D-M4-4's step 1 *is* "a live, unrevoked
+  credential re-attaches to its own principal", and that is exactly what a successful
+  verification of the request's own `Authorization: Bearer` header answers. So the route
+  reads `request["principal"]`, where `None` means "not authenticated" rather than "denied",
+  and M8 still replaces one function.
+- **The list matches `(method, path)` pairs exactly** — never a path prefix, and never a
+  path alone. `GET /join` is not a member, and a prefix match is how `/join/../state`
+  becomes one. M4d adds `GET /` and whatever shape its static files need, and that shape is
+  M4d's decision, not a generalization taken in advance here.
+- **An exempt route may not call `_authorize()`**, and `authorize()` already enforces the
+  other half: `principal is None` is denied everything, without exception
+  (`roster.py:329`).
+
+### D-M4c-4 — what `POST /join` answers, and the one thing it may not do
+
+Envelope 1 is frozen and unchanged. The statuses it does not name:
+
+| Case | Status | Body |
+| ---- | ------ | ---- |
+| join code accepted | `202` | the `auth` envelope, `ok: true` |
+| join code absent or wrong | `403` | `{"v":1,"t":"auth","ok":false,"error":"denied"}` |
+| body not JSON, wrong `v`, or `t != "auth"` | `400` | `…"error":"protocol"` |
+| too many failed joins from this address | `429` | `…"error":"denied"` (D-M4c-5) |
+
+`"expired"` and `"revoked"` are never emitted by `/join`: a dead credential is not a failure
+there, it is step 1 falling through to step 2. They remain the WS's and M6's.
+
+`seated` is `bool(roster.controlled_by(principal.id))` — answerable on the net thread,
+because `TokenInfo` exists so ownership can be (Step 0.4). `server_seq` is `0`, per D-M4c-2.
+
+**The join never renames an existing principal.** Accepting the body's `display_name` as an
+update is the obvious implementation and it hands anyone holding the join code the ability
+to relabel another player's seat — through the *`principal_id`* path, a seat they did not
+otherwise touch. Renaming is the DM's, through the roster UI (NN4). `display_name` on a
+re-join is a **matching hint and nothing else**, which is what `roster.py:73`'s "never a key"
+has said all along.
+
+### D-M4c-5 — the join is rate-limited, because it is the one route with nothing in front of it
+
+The join code is 6 characters of a 31-symbol alphabet — 887,503,681 codes. Unthrottled, an
+attacker already on the LAN at 100 req/s has an even chance inside **51 days**, which is a
+long weekend more than a lifetime. A9 owes rate limiting and has none; this route is where
+the debt comes due.
+
+**Per source address, 10 failed joins per rolling 60 s, then `429`.** A success does not
+count against the bucket, so a table typing the code correctly never meets it, and one
+player fat-fingering it cannot lock out another. At 10/min the search is ~168 years.
+
+`request.remote` is the address, and **`X-Forwarded-For` is not consulted** — A6/A7 put any
+proxy outside this process, and trusting a header a client writes converts the limiter into
+a per-attacker bucket. The documented consequence: behind a reverse proxy this degrades to
+one global bucket. M7 revisits it; M4c states it.
+
+The existing `denials` counter keeps counting, and this adds nothing to A9's audit log
+beyond it. **A9's log is still a counter**, which is the honest description of it.
+
+### The split — M4c and M4d
+
+| | Contents | Testable by |
+| - | -------- | ----------- |
+| **M4c** | `net/commands.py`, the `/join` exemption, `POST /join` with D-M4-4 as amended, `GET /state` | real socket + stdlib `urllib`, no browser, no display |
+| **M4d** | `WS /live`, the client under `gui/net/static/`, `_pump_net()` in the six modals, F3's owed real-display look | the above, plus an Xvfb rig for the look |
+
+M4c holds nothing that needs a browser or a display, which is why the line falls there.
+F3's look is a real-display observation and it belongs beside the code it observes.
 
 ---
 
@@ -3387,8 +3585,8 @@ Routes:
 | Route | Purpose |
 | ----- | ------- |
 | `GET /` | the client (static HTML/JS, served from `gui/net/static/`) |
-| `POST /join` | join code → **bearer token** (A3) → principal. Never a cookie. |
-| `GET /state` | full `GameView` for the authenticated principal |
+| `POST /join` | join code → **bearer token** (A3) → principal. Never a cookie. The one pre-auth route, and the exemption suppresses only the 401 (D-M4c-3). Seat matching is D-M4-4 as amended. *(2026-09-24.)* |
+| `GET /state` | full `GameView` for the authenticated principal — built on the **frame tick** and handed back over `net/commands.py`, because `build_view` reads the `BattleMap` (D-M4c-1). *(2026-09-24.)* |
 | `GET /map.png` | the current page's map image, **masked server-side for a player viewer** (D-M4-1): opaque fog over unexplored cells, cached by mask hash; the DM viewer gets it raw, cached by content hash. *(Masking core 2026-09-23; route, middleware and server thread 2026-09-24.)* |
 | `WS /live` | push: **a full `view` per update in M4** (D-M4-2; `{seq, events[]}` deltas are M4b); `{prompt}` when one is addressed to you. **Authenticates by first frame, not by header** (A3) — the browser `WebSocket` API cannot set one. |
 
@@ -3587,11 +3785,11 @@ spends one conditional request instead of 0.8-2.5 MB.
    the table. 6081 is **published** to the host, so the address to read out belongs to the
    host and only the host can measure it. `run.sh` now does
    (`ipconfig getifaddr en0`, falling back to `en1` and then to `hostname -I`) and passes it
-   as `PLAYER_ADVERTISE_HOST`, which `_lan_ip()` prefers over the routing-table answer; with
-   the variable unset — a bare `python gui/main.py` — the old path is still correct, and it
-   is the one that was right all along for that case. This is the kind of thing the frozen
-   procedure exists to catch: it does not add a step, it makes step 2 print a URL that
-   works.
+   as `PLAYER_ADVERTISE_HOST`, which `_lan_ip()` prefers over the routing-table answer. The
+   routing-table fallback is kept for any launch that does not come through `run.sh` — not
+   for a host deployment, which D1's 2026-09-24 amendment rules out. This is the kind of
+   thing the frozen procedure exists to catch: it does not add a step, it makes step 2
+   print a URL that works.
 
 **The push cycle** (`net/link.py`) is D-M4-2's cadence with only the image in it so far:
 coalesced at `view.PUSH_INTERVAL_MS` (250 ms), forced at a turn boundary, and run after
@@ -3626,8 +3824,10 @@ everybody — R3's case, arriving a milestone early.)*
 `-p 6081:6081` on `run.sh` — published on every interface on purpose, since a phone at the
 table has to reach it, while 6080 stays on `127.0.0.1` (S2/A10). D1's soft dependency was
 re-checked on an image *without* `aiohttp` and behaves as F7 recorded: one line,
-`[net] player server unavailable: No module named 'aiohttp'`, `self._net = None`, and
-`python gui/main.py map.png` otherwise untouched.
+`[net] player server unavailable: No module named 'aiohttp'`, `self._net = None`, and the
+app otherwise untouched. *(That check was run against the pre-rebuild image. Per D1's
+2026-09-24 amendment it is no longer a deployment being verified — it is the state every
+headless suite runs in, which is why the behaviour still matters.)*
 
 | Mutant | Caught by |
 | ------ | --------- |
@@ -3641,10 +3841,107 @@ re-checked on an image *without* `aiohttp` and behaves as F7 recorded: one line,
 | `If-None-Match` always matching | `a non-matching If-None-Match was not served` |
 | an unpublished page as an empty 200 | `an unpublished page returned 200` |
 
-**Still owed on this route**: `POST /join` (with D-M4-4's credential-first matching rule and
-its own mutant pass), `GET /state`, `WS /live`, the client, and D-M4-3's `_pump_net()` in the
-six blocking modals — F3's real-display look rides with it. A9's audit log is a `denials`
-counter and nothing more; rate limiting has a place to live and no implementation.
+**Still owed on this route**, and split in two by **Step 0.10 (frozen 2026-09-24)**:
+
+- **M4c** — *(landed 2026-09-24, below.)* `net/commands.py` (the command queue F1 measured,
+  which `GET /state`, D-M4-3's `_pump_net()` and M5's `submit` all share), the `POST /join`
+  pre-auth exemption, `POST /join` with D-M4-4 *as amended 2026-09-24* and its own mutant
+  pass, and `GET /state`. Nothing in it needs a browser or a display.
+- **M4d** — `WS /live`, the client under `gui/net/static/`, `_pump_net()` in the six blocking
+  modals, and F3's owed real-display look.
+
+Read D-M4c-1 through D-M4c-5 before writing any of it; the short version is that `GET /state`
+is **not** a call to `build_view` — that function is a pygame-thread reader (`view.py:94`) and
+NN1 puts it out of the net thread's reach. A9's audit log is a `denials` counter and nothing
+more; rate limiting gets its first implementation in M4c, on `POST /join` only (D-M4c-5).
+
+#### The join and the view — landed 2026-09-24
+
+M4c, as Step 0.10 froze it: `gui/net/commands.py`, the `POST /join` exemption, `POST /join`
+and `GET /state`. `tests/test_join.py` (**11 checks**) and `tests/test_state.py`
+(**11 checks**), both registered beside the other oracles. Suite **156 pass / 1 fail**
+(`test_monk.py`'s `test_deflect_attacks_reduces_physical`, pre-existing and unrelated).
+
+**The queue is the whole of the new machinery**, and it is 120 lines. `CommandQueue.submit`
+on the net thread, `pump(app, budget=32)` on the frame tick, resolution scheduled back
+through `call_soon_threadsafe`. Import-safe without pygame, the extension or `aiohttp`,
+because it is neither thread's half — `server.py` holds no `App` and `link.py` holds nothing
+else, so the queue between them belongs to neither. `main.py` grew one attribute and one
+frame-loop line; `net/link.py` grew `pump_commands()`, which is the function D-M4-3's six
+call sites will call in M4d.
+
+**`server.py` does not import `net.view`, and that is structural rather than tidy.**
+`net.view` imports the C++ extension at module scope; a net-thread module that *requires*
+the thing NN1 forbids it to touch is a contradiction worth not writing down. So
+`build_view` is handed to `PlayerServer.__init__` by `net.link`, which holds a live `App`
+already and is the half allowed to. It also made the NN1 check below possible: the test
+substitutes its own builder and asks which thread ran it.
+
+**The headline check is about a thread, not a payload.** A handler that called `build_view`
+itself would serve a byte-identical view and read the `BattleMap` off the pygame thread on
+every request — and *no assertion about the response can see that*.
+`test_the_view_is_built_on_the_pumping_thread` injects a builder that records
+`threading.get_ident()` and compares it against the pumping thread's, and against the
+requesting thread's, so a route that quietly went direct fails on the only evidence there is.
+
+**Two findings from running it.**
+
+1. **A mutant survived, and the reason is a fact about aiohttp worth keeping.** D-M4c-3 says
+   the exemption matches `(method, path)` pairs and never a path alone; the obvious check is
+   that `GET /join` returns 401. It passes **either way**. `_is_pre_auth` asks the router
+   which resource matched, and for a method with no route the router answers `None` before
+   the pair is ever compared — so on today's route table, path-only matching is
+   *behaviourally identical*. It stops being identical the moment M4d adds `GET /` and its
+   static files, which is exactly when a silent hole would open.
+   `test_the_exemption_is_a_method_and_a_path` therefore stands up a `PlayerServer` subclass
+   that **does** carry a `GET /join`, and requires it to still refuse an anonymous caller.
+   The rule now has a test instead of a claim.
+2. **Two mutants died illegibly, which is a defect in the checks.** One turned a join into a
+   500 and the suite reported `JSONDecodeError` on aiohttp's HTML error page; one tripped a
+   bare `assert … == 202` inside a loop. Both are caught, and neither said what broke. The
+   fix is in the helpers rather than in the checks: `_body()` asserts the status before it
+   parses, and the loop names which iteration failed. A mutant that dies on a stack trace is
+   a mutant whose next reader re-derives it.
+
+**The rig grew a frame tick.** `test_mapserver.py`'s `_server` takes `pump=True` and runs
+`CommandQueue.pump` on a thread of its own — the test's own thread is blocked in `urlopen`,
+which is precisely the deadlock the real frame loop is arranged to avoid. `GET /map.png`'s
+eight checks default to `pump=False` and run in exactly the conditions they were written in.
+
+**What `POST /join` mutates, and from where.** `add_principal` now runs on the **net
+thread**, which the skeleton's docstring previously said happened only on the pygame thread.
+Deliberate: a join routed through the queue would be a join that hangs behind whichever modal
+the DM has open, and D-M4c-4 computes `seated` from `controlled_by()` precisely because
+`TokenInfo` makes ownership answerable off-thread. `sync_tokens` rebinds `_tokens` rather
+than mutating it, so a concurrent `_rebuild_ownership()` iterates a dict nothing will touch
+again. The one exposure left is a DM seating a principal by hand in the same instant as a
+join, which can make `players()` iterate a dict that grew under it: a 500 on that one join,
+and a retry. Hardening the roster needs a lock it does not have, and is written down here
+rather than bundled in.
+
+| Mutant | Caught by |
+| ------ | --------- |
+| the exemption matched by path alone | `GET /join was exempt — the pair collapsed to a path` |
+| the exemption skipping the `Origin` check | `a cross-origin join with a good code returned 202` |
+| the exemption skipping `verify_credential` | `a live credential did not re-attach to its own principal` |
+| the name consulted before the credential | `a live credential did not re-attach to its own principal` |
+| name matching made case-sensitive | `'kira' did not match Kira — a second player would take her seat` |
+| `principal_id` honoured for any principal | `a join code claimed the DM's seat` |
+| an unknown `principal_id` refused instead of falling through | `the join returned 500, not 202` |
+| the join renaming the seat it matched | `the join renamed the seat it matched` |
+| a successful join spending the limiter's bucket | `successful join 0 returned 429 — a success spent the bucket` |
+| the view built on the net thread | `an authenticated /state returned 500` |
+| `wait_for` removed | the request never returns — `TimeoutError` at the client |
+| `PermissionError` not distinguished from a bug | `a refused viewer got 500, not 403` |
+| the cancelled-future `done()` check dropped | `an authenticated /state returned 503` |
+| a raising command taking the frame loop with it | `the pump stopped after a command raised` |
+| the pump unbounded | `one pump ran 49 commands, not 32` |
+
+**Still owed — M4d**: `WS /live`, the client under `gui/net/static/`, `_pump_net()` in the
+six blocking modals, and F3's owed real-display look. Until that third item lands, a
+`GET /state` issued while a DM authoring modal is open parks for the frozen 5 s and returns
+`503` — D-M4-3's whole point, arriving one commit late, in the form of a wrong answer rather
+than a hang.
 
 **Deployment**: the Docker image already runs Xvfb + x11vnc + noVNC on 6080. Add one
 *separate* published port for the player server — never a second view onto 6080.

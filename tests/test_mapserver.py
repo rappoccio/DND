@@ -33,9 +33,12 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "gui"))
 sys.path.insert(0, os.path.join(_ROOT, "tests"))
 
+import json
 import shutil
 import socket
 import tempfile
+import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -64,23 +67,65 @@ class _server:
 
     Bound to 127.0.0.1 rather than `PLAYER_HOST`: the suite has no business publishing a
     port to the LAN, and the bind address is not what any of these checks are about.
+
+    `pump=True` starts a stand-in for the frame tick (M4c). `GET /state` parks on a future
+    only the pygame thread can resolve, so a suite that never pumps is a suite where every
+    view request times out — and the thread is not a convenience, it is the half of the
+    handoff under test. `GET /map.png` needs none of it and defaults to off, so those eight
+    checks run in exactly the conditions they were written in.
     """
+
+    def __init__(self, pump: bool = False):
+        self._pump = pump
+        self._ticker = None
+        self._pumping = False
 
     def __enter__(self):
         self.tmp = tempfile.mkdtemp()
-        self.app, self.kira, _spectator = _scene(self.tmp)
+        self.app, self.kira, self.spectator = _scene(self.tmp)
         self.srv = PlayerServer(self.app.roster, self.app.map_images,
+                                self.app._net_commands, net_view.build_view,
                                 host="127.0.0.1", port=_free_port())
         self.srv.start()
         self.base = f"http://127.0.0.1:{self.srv.port}"
         self.player = self.app.roster.mint_credential(self.kira.id)
         self.dm = self.app.roster.mint_credential(DM_PRINCIPAL_ID)
+        if self._pump:
+            self.start_pump()
         return self
 
     def __exit__(self, *exc):
+        self.stop_pump()
         self.srv.stop()
         shutil.rmtree(self.tmp, ignore_errors=True)
         return False
+
+    # ── The frame tick, such as it is ───────────────────────────────────────
+
+    def start_pump(self, interval: float = 0.002):
+        """Drain the command queue on a thread of its own, the way `run()` does per frame.
+
+        Faster than 60 fps so a check is not measuring the tick rate, and on a thread
+        because the test's own thread spends its time blocked in `urlopen` — which is
+        precisely the deadlock the real frame loop is arranged to avoid.
+        """
+        if self._ticker is not None:
+            return
+        self._pumping = True
+        self._ticker = threading.Thread(target=self._tick, args=(interval,),
+                                        daemon=True, name="fake-frame-tick")
+        self._ticker.start()
+
+    def stop_pump(self):
+        self._pumping = False
+        ticker, self._ticker = self._ticker, None
+        if ticker is not None:
+            ticker.join(2.0)
+
+    def _tick(self, interval):
+        while self._pumping:
+            self.app._net_commands.pump(self.app)
+            time.sleep(interval)
 
     def publish(self, boundary=True):
         """One push cycle's worth, by hand — `_push_cycle` is the frame tick's caller and
@@ -90,7 +135,17 @@ class _server:
 
     def get(self, path="/map.png", credential=None, origin=None, inm=None):
         """`(status, headers, body)`. A 4xx is a result here, never an exception."""
-        req = urllib.request.Request(self.base + path)
+        return self._send(urllib.request.Request(self.base + path),
+                          credential, origin, inm)
+
+    def post(self, path="/join", data=None, credential=None, origin=None, raw=None):
+        """A JSON POST. `raw` sends bytes verbatim, which is how a malformed body is sent."""
+        body = raw if raw is not None else json.dumps(data or {}).encode()
+        req = urllib.request.Request(self.base + path, data=body, method="POST")
+        req.add_header("Content-Type", "application/json")
+        return self._send(req, credential, origin, None)
+
+    def _send(self, req, credential, origin, inm, timeout=15):
         if credential is not None:
             req.add_header("Authorization", f"Bearer {credential}")
         if origin is not None:
@@ -98,7 +153,7 @@ class _server:
         if inm is not None:
             req.add_header("If-None-Match", inm)
         try:
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 return r.status, dict(r.headers), r.read()
         except urllib.error.HTTPError as e:
             return e.code, dict(e.headers), e.read()

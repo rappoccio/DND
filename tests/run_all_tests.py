@@ -76,6 +76,15 @@ test_scripts = [
     # the difference between a masked page and the whole floor plan.
     "test_mapserver.py",
 
+    # The join and the view over the wire (MULTIPLAYER_PLAN.md M4c, D-M4-4 / D-M4c-1..5) —
+    # `POST /join` and `GET /state`. Kept with the oracles because `/join` is the ONLY
+    # route reachable without proving anything, so its matching order is what decides
+    # whose seat a stranger lands in; and because `/state` is the one place a view
+    # crosses a thread boundary, where a regression is not a broken feature but
+    # `build_view` quietly reading the BattleMap off the pygame thread.
+    "test_join.py",
+    "test_state.py",
+
     # Atomic encounter saves (MULTIPLAYER_PLAN.md standalone item S1) — the two writes a
     # crash could tear. Kept with the oracles because NN7's autosave ring is built on the
     # assumption these are atomic, and the only way to see the fix is to force the write

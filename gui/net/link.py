@@ -1,25 +1,30 @@
-"""The seam between the running `App` and the transport (MULTIPLAYER_PLAN.md M4).
+"""The seam between the running `App` and the transport (MULTIPLAYER_PLAN.md M4/M4c).
 
-Two functions, both of which run on the **pygame thread** and both of which read a live
+Three functions, all of which run on the **pygame thread** and all of which read a live
 `App` — so they belong here for the same reason `view.py` does, and for the opposite
 reason `server.py` does not. `server.py` is the net thread's half and may hold no `App` at
 all (NN1); this is the frame tick's half, and holding one is its whole job.
 
 It lives in `net/` rather than in `main.py` because NN3 says so — new subsystems go in new
 modules, and `main.py`'s net line count trends down. What stays in `main.py` is the
-rewiring these two are called from: one line in `run()`, one in the frame loop, one on the
-way out, and the attributes themselves.
+rewiring these are called from: one line in `run()`, two in the frame loop, one on the way
+out, and the attributes themselves.
 
 This module imports no `aiohttp`. `net.server` does, at module scope, and the guarded
 import here is D1's soft dependency: an absent module is a printed line and `app._net`
 stays `None`, which is also the state every headless suite runs in.
+
+It is also the module that hands `net.view.build_view` to the server (M4c). `server.py`
+cannot import it — `net.view` imports the C++ extension, and a net-thread module that
+requires the thing NN1 forbids it to touch is a contradiction. This half already holds a
+live `App`, so holding the function that reads one costs it nothing.
 """
 
 from __future__ import annotations
 
 import pygame
 
-from net import view as net_view
+from net import commands, view as net_view
 
 
 def start_player_server(app) -> None:
@@ -38,7 +43,8 @@ def start_player_server(app) -> None:
     except ImportError as exc:
         print(f"[net] player server unavailable: {exc}")
         return
-    server = PlayerServer(app.roster, app.map_images)
+    server = PlayerServer(app.roster, app.map_images,
+                          app._net_commands, net_view.build_view)
     try:
         server.start()
     except Exception as exc:                       # a taken 6081 is the realistic one
@@ -47,6 +53,23 @@ def start_player_server(app) -> None:
     app._net = server
     print(f"[net] players join at {server.url}")
     print(f"[net] join code: {app.roster.join_code}")
+
+
+def pump_commands(app, budget: int = commands.DEFAULT_BUDGET) -> int:
+    """Run what the net thread has queued, on the frame tick (D-M4c-1).
+
+    The queue exists whether or not a transport does, so this is unconditional and needs
+    no `_net` guard: a headless suite with no `aiohttp` simply pumps an empty deque, which
+    is one `popleft` raising `IndexError`.
+
+    **This is what D-M4-3's `_pump_net()` pumps, and it is deliberately all it pumps.**
+    Nothing here redraws. Pumping inside a blocking modal means a DM authoring modal stops
+    being a quiescent point — state can advance while *Generate Dungeon* is open — and F3
+    found that acceptable only for work that does not also touch the screen the modal owns.
+    The six call sites are M4d's; this function is M4c's, and the split is exactly that
+    line.
+    """
+    return app._net_commands.pump(app, budget)
 
 
 def push_cycle(app) -> None:
