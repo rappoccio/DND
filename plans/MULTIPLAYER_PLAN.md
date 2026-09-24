@@ -3797,11 +3797,11 @@ Routes:
 
 | Route | Purpose |
 | ----- | ------- |
-| `GET /` | the client (static HTML/JS, served from `gui/net/static/`) |
+| `GET /` | the client (static HTML/JS/CSS from `gui/net/static/`), as **three explicit routes and three exact pre-auth pairs** — never `add_static`, whose prefix resource would exempt a whole subtree (D-M4e-1). *(2026-09-24.)* |
 | `POST /join` | join code → **bearer token** (A3) → principal. Never a cookie. The one pre-auth route, and the exemption suppresses only the 401 (D-M4c-3). Seat matching is D-M4-4 as amended. *(2026-09-24.)* |
 | `GET /state` | full `GameView` for the authenticated principal — built on the **frame tick** and handed back over `net/commands.py`, because `build_view` reads the `BattleMap` (D-M4c-1). *(2026-09-24.)* |
 | `GET /map.png` | the current page's map image, **masked server-side for a player viewer** (D-M4-1): opaque fog over unexplored cells, cached by mask hash; the DM viewer gets it raw, cached by content hash. *(Masking core 2026-09-23; route, middleware and server thread 2026-09-24.)* |
-| `WS /live` | push: **a full `view` per update in M4** (D-M4-2; `{seq, events[]}` deltas are M4b); `{prompt}` when one is addressed to you. **Authenticates by first frame, not by header** (A3) — the browser `WebSocket` API cannot set one. |
+| `WS /live` | push: **a full `view` per update in M4** (D-M4-2; `{seq, events[]}` deltas are M4b). **Authenticates by first frame, not by header** (A3) — the browser `WebSocket` API cannot set one. The `{prompt}` envelope moved to M5 with the submit path that answers it (D-M4e-3). *(2026-09-24.)* |
 
 Every route goes through one middleware point (A9) that does: `Origin` check
 (same-origin against the request's own `Host`, per D-M4-6 — never a configured list), bearer
@@ -3820,6 +3820,8 @@ from `fog.explored_runs`, which is live, while `map.image` lags up to 3 s (D-M4-
 dark art until the next re-key. Animating
 `NpcVisualEvent` `Move` paths the way `_npc_anim_start` does on the DM screen is **M4b**,
 because it needs Envelope 3 (D-M4-2). Read-only — no input surface at all in this phase.
+*(Landed 2026-09-24 as M4e; the client draws the live mask over the lagging picture in the
+server's own fog colour, so the two disagree invisibly rather than wrongly.)*
 
 **M4b — the event stream and the animation.** Envelope 3 as Step 0.5 specifies it: a
 per-viewer *filtered projection* with its own byte-level test, not a `seq` field bolted to
@@ -3939,7 +3941,11 @@ at a real table, the answer remains tiles, in M4b — never a rawer image.
 All four of the items above, and nothing else: `gui/net/server.py` is the thread, the one
 middleware point A9 requires, and `GET /map.png`. `POST /join`, `GET /state`, `WS /live`
 and the client add routes to it and no new machinery — which is the test of whether it is a
-skeleton or a first draft. `tests/test_mapserver.py`, **8 checks**, registered beside the
+skeleton or a first draft. **Answered, 2026-09-24**: `POST /join`, `GET /state` and the
+client's three files added routes and nothing else; `WS /live` added exactly one thing the
+skeleton did not have, and it is the one the skeleton could not have had — the *reverse*
+handoff (D-M4e-4), because a push is the frame tick looking for requesters rather than a
+requester waiting for the frame tick. `tests/test_mapserver.py`, **8 checks**, registered beside the
 other oracles, driving a real `aiohttp` server on a real port with **stdlib `urllib`** — the
 Step 0.7 spike's discipline: the exercised path should be the browser's, not the library
 talking to itself.
@@ -4062,8 +4068,9 @@ headless suite runs in, which is why the behaviour still matters.)*
   pass, and `GET /state`. Nothing in it needs a browser or a display.
 - **M4d** — *(landed 2026-09-24, below.)* `_pump_net()` in the six blocking modals, and
   F3's owed real-display look. Split out of the item below by **Step 0.11's D-M4d-0**.
-- **M4e** — `WS /live` and the client under `gui/net/static/`. Its decisions are frozen in
-  Step 0.11 (D-M4e-1 through D-M4e-4) rather than left for it to rediscover.
+- **M4e** — *(landed 2026-09-24, below.)* `WS /live` and the client under
+  `gui/net/static/`. Its decisions were frozen in Step 0.11 (D-M4e-1 through D-M4e-4)
+  rather than left for it to rediscover, and it spent none of its day rediscovering them.
 
 Read D-M4c-1 through D-M4c-5 before writing any of it; the short version is that `GET /state`
 is **not** a call to `build_view` — that function is a pygame-thread reader (`view.py:94`) and
@@ -4152,10 +4159,10 @@ rather than bundled in.
 | a raising command taking the frame loop with it | `the pump stopped after a command raised` |
 | the pump unbounded | `one pump ran 49 commands, not 32` |
 
-**Still owed — M4e**: `WS /live` and the client under `gui/net/static/`. What used to stand
-here — that a `GET /state` issued while a DM authoring modal is open parks for the frozen
-5 s and returns `503` — is closed by M4d, below, though not in the way "closed" usually
-means: the 503 is still reachable and D-M4d-3 says why it has to be.
+**Owed when this was written, and landed below as M4e**: `WS /live` and the client under
+`gui/net/static/`. What used to stand here — that a `GET /state` issued while a DM authoring
+modal is open parks for the frozen 5 s and returns `503` — is closed by M4d, though not in
+the way "closed" usually means: the 503 is still reachable and D-M4d-3 says why it has to be.
 
 #### The blocking-modal fix — landed 2026-09-24
 
@@ -4223,6 +4230,129 @@ colours) before believing that zero.
 It is also worth setting beside D-M4d-2. The DM's own screen shows *nothing* of the board
 while one of these modals is open, which is one more reason the filter table's floor — *a
 client can never see something the DM's own render hides* — is a floor and not a rule.
+
+#### The push socket and the client — landed 2026-09-24
+
+M4e, exactly as Step 0.11 froze it: `WS /live`, `GET /` and the two files beside it, and the
+reverse handoff the push needs. With this the M4 route table is complete and a player at the
+table sees the board on their own phone.
+
+- **The client's three files as three routes** (D-M4e-1) — `GET /`, `GET /app.js`,
+  `GET /app.css`, and three exact pairs in `PRE_AUTH_ROUTES`. Not `add_static`, whose prefix
+  resource has the *prefix* as its `canonical`: one membership test against it exempts
+  everything underneath, which is D-M4c-3's "never a prefix" arriving through the router
+  instead of through a URL. Adding a file means adding two lines, and the friction is the
+  feature. Served `no-store`, because a player running last week's client against this
+  week's server is a bug report with no evidence in it.
+- **`WS /live`**, pre-auth in the middleware and authenticating itself on the first frame
+  (A3). Until that frame verifies, the socket is prepared and *nothing else*: nothing is
+  sent, no view is built, and it is not in the connection table. One close code
+  (`4401`) for every failure, for the reason `_auth_error` has one shape. `heartbeat=20 s`
+  and a 64 KB message cap, the latter because 4 MB of aiohttp default on a route reachable
+  before a credential exists is 4 MB an anonymous peer can make the net loop assemble.
+- **The reverse handoff** (D-M4e-4) — `_LiveConnections` publishes an immutable tuple of
+  connected principals on every change, `link._push_views` reads it on the frame tick and
+  builds **one view per connected socket**, and `PlayerServer.push_views` schedules the
+  whole cycle in one `call_soon_threadsafe`. F5's direction, unchanged: the game thread
+  schedules and never sends. Late-joiner resync is `_live_resync`, which asks the same
+  `CommandQueue` `GET /state` asks, so a client connecting mid-combat sees the board now —
+  and M4e needs no resync path of its own.
+- **`sessionStorage`** (D-M4e-2), every access guarded: a private-browsing tab throws rather
+  than returning `null`, and a player who cannot store a credential should still play until
+  they reload.
+- **No `prompt` envelope** (D-M4e-3). The socket carries `view` and nothing else, and the
+  client sends exactly one frame in its life — the auth frame. That count is a registered
+  check, so wiring a button fails the suite rather than shipping an ungated submit.
+- **Zero lines in `main.py`.** The frame loop already called `push_cycle` and `stop()`
+  already released the port, so the entire phase landed in `net/`, `net/static/` and
+  `tests/` — which is NN3 arriving at the case it was written for.
+- **`tests/test_live.py`** — **17 checks**, registered, driven by a hand-rolled WebSocket
+  client over a raw socket. `aiohttp`'s own client would have been five lines and would have
+  been the library talking to itself; what a browser does — the upgrade handshake, the mask
+  bit on every client frame, the close code — is what these read. Suite **158 pass / 1 fail**
+  (`test_monk.py::test_deflect_attacks_reduces_physical`, pre-existing and unrelated; the
+  baseline M4d left was 157/1).
+
+**The finding: a socket is one request an hour long.** A5 says the revocation check runs on
+every request, and every route in front of this one satisfies that by construction — a
+request arrives, the middleware verifies. A connection does not: it authenticates once and
+then receives for as long as it stays open, so a DM revoking a credential or unseating a
+player would have been a kick that takes effect whenever the player next chose to reconnect.
+So `_push_views` re-verifies **per viewer per cycle** and `drop_viewer` closes the socket the
+moment it stops verifying — four HMACs a second per player, which is why it is affordable to
+put A5 where it belongs rather than where it is cheap. This is not in Step 0.11; it is what
+M4e found, and `test_a_revoked_credential_closes_the_socket` is its witness.
+
+**`test_the_exemption_is_a_method_and_a_path` stopped needing its subclass.** Step 0.11
+predicted that M4e would be the commit where path-only matching stops being harmless, and it
+is — through a route nobody registered. `add_get` registers **HEAD on the same resource**,
+whose `canonical` is the same path, so `HEAD /` is a second method on an exempt path: the
+pair refuses it (401) and a path alone serves it. The 401 is deliberate and the direction is
+the safe one — nothing in the client issues a HEAD — and it makes the rule observable on the
+real route table rather than only inside `test_join.py`'s `_AlsoGet`.
+
+**Where "never two in flight" actually lives.** Not in the snapshot: a snapshot read and a
+schedule are two operations with a whole 250 ms cycle between them, so a guarantee resting
+there would be a race with a comfortable margin. It lives in `_send`, which reads and sets
+the flag with no `await` between, on the one loop that touches it. A view arriving while a
+send is outstanding is **dropped, not queued** — the next cycle is fresher — and the
+snapshot's exclusion of an in-flight connection is the *economy* that keeps the frame tick
+from building a view that is about to be discarded.
+
+| Mutant | Caught by |
+| ------ | --------- |
+| the exemption collapsed to a path alone | `HEAD / answered 200 — the exemption collapsed to a path alone` |
+| the first frame's credential trusted rather than verified | `a forged credential: the socket was sent a text` |
+| the resync sent on `prepare`, before the first frame | `an unauthenticated socket was sent a text ({"v": 1, "t": "view", …` |
+| the in-flight guard dropped | `a second send started while one was in flight — the guard is gone` |
+| the credential not re-checked on the push cycle | `a revoked credential kept its socket (closed with None)` |
+| an `add_static` mount beside the three routes | `the router holds ['PlainResource', 'StaticResource'] — a prefix resource is a whole subtree` |
+| ...and its prefix exempted, which is D-M4e-1's actual hazard | `/static/app.js answered 200 to an anonymous caller` |
+
+**Two of those mutants are worth more than their row.**
+
+*The static mount survived the first pass.* Every check in the file asked what a path
+answers, and an `add_static` mount answers **401** for exactly as long as nobody puts its
+prefix in `PRE_AUTH_ROUTES` — so the harmless half of the mutant passed 16 checks while
+leaving the dangerous half one line away. The answer was not a sharper response check but a
+statement of the rule: `test_no_route_is_a_prefix` asserts that **every resource on this
+router is a `PlainResource`** and pins the seven canonical paths. Both halves now die, on
+different messages, and the route table stops being able to grow a subtree quietly.
+
+*Dropping the in-flight guard hung the suite rather than failing it* — the same way removing
+D-M4d-4's reentrancy guard did, and for the same reason: without the guard the second send
+does not return a wrong answer, it blocks on the gate the first one is holding. The check
+now bounds that `await` with `wait_for` and reports the named message, so the mutant fails in
+half a second instead of timing out the container. Twice now, on this seam, a missing guard
+has presented as a hang; a check that exercises one should assume that shape.
+
+**Owed, and named rather than bundled:**
+
+- **The client cannot mark whose turn it is.** `combat.turn_idx` indexes the *unfiltered*
+  initiative order (`view.py`'s `_combat`, deliberately — a renumbered cursor would mean
+  something different everywhere else in the protocol), and the `initiative` list in a view
+  is cut to the tokens that view explains. So the active row cannot be resolved client-side,
+  and counting rows would mark the wrong creature exactly when a hidden one exists. It needs
+  a cursor Envelope 2 does not carry; adding one is an M3-frozen envelope change, so it is
+  M4b's or a standalone item. The client shows the round and the order, and marks nothing.
+- **The client's lattice is nominal.** `map` carries `cell_px`, `cols` and `rows`, so the
+  client draws cell *n* at `n * cell_px`, while the DM console (`_cell_to_screen`) and the
+  server-side mask both use the page's **real** grid-line positions. Evenly-spaced grids
+  agree exactly; an offset or jittery one puts a token up to one line-spacing from its art.
+  Same envelope question as above, same answer.
+- **The push serializes on the net loop.** `send_json` is `json.dumps` of a whole view —
+  tens of KB on a small page, and unbounded in principle by the terrain cell list — inside
+  the loop that also answers `GET /map.png`. It is the same division `GET /state` already
+  makes and it has the same ceiling; the PNG encode was moved to an executor when it reached
+  95 ms, and this has not been measured at a real table.
+- **The client is checked, not run.** Three of its properties are asserted by reading the
+  file (sessionStorage, no `localStorage`, one `send`). Nothing in the suite executes the
+  JavaScript, so a rendering bug in `app.js` is invisible to `./test.sh` — the same shape as
+  F3's owed look, and it wants a browser rather than a display.
+- **`_fog_active()` is False while a map-authoring editor is open** (`main.py:15273`), so a
+  player's view — and now a player's *push*, four times a second — carries the whole map for
+  as long as a DM edits terrain or lighting. Reachable in `main` before M4e and untouched by
+  it (D-M4d-2 named it); M4e only makes it arrive faster. M7's or a standalone item.
 
 **Deployment**: the Docker image already runs Xvfb + x11vnc + noVNC on 6080. Add one
 *separate* published port for the player server — never a second view onto 6080.

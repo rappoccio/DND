@@ -3,7 +3,18 @@
 One `aiohttp` application on an asyncio loop of its own, on a thread of its own, inside
 the pygame process. The skeleton — the thread, the single middleware point A9 requires,
 and `GET /map.png` — landed in M4; `POST /join` and `GET /state` (M4c) added two routes,
-one pre-auth exemption and one shared queue, and `WS /live` and the client are still owed.
+one pre-auth exemption and one shared queue; `WS /live`, `GET /` and the two files beside
+it are M4e's, and with them the route table the plan wrote down is complete.
+
+**The socket is the one route that authenticates itself.** A browser cannot put a header on
+a WebSocket handshake (A3), so `GET /live` is pre-auth in the middleware and validates its
+own first frame — sending nothing, registering nothing and building no view until it does.
+
+**It is also the one route the pygame thread talks back to.** `GET /state` is a request that
+waits for the frame tick; a push is the frame tick looking for requesters, which means this
+thread has to publish *who is connected* in the direction `MapImageCache` publishes a
+picture (D-M4e-4). `live_viewers()` is that snapshot and `push_views()` is the only way the
+other thread may act on it — it schedules, and F5 allows it nothing else.
 
 **`GET /state` is not a call to `build_view`.** That function reads `app.bm`, so it is a
 pygame-thread reader and NN1 puts it out of this thread's reach (D-M4c-1). The route
@@ -51,6 +62,8 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import dataclasses
+import json
 import os
 import socket
 import threading
@@ -78,11 +91,63 @@ STATE_TIMEOUT_S = 5.0
 JOIN_FAILURE_LIMIT = 10
 JOIN_FAILURE_WINDOW_S = 60.0
 
+# A3's ~5 s, for the one window where a connected socket has proved nothing. Patched down
+# by the suite the way `STATE_TIMEOUT_S` is, and asserted at this value there so the patch
+# cannot hide a changed freeze.
+LIVE_AUTH_TIMEOUT_S = 5.0
+
+# A frame arriving on this socket is an auth envelope (~200 bytes) and, from M5, one submit.
+# aiohttp's default cap is 4 MB — on a route that is reachable *before* a credential exists,
+# which makes it 4 MB an unauthenticated peer can ask the net loop to assemble. 64 KB is
+# three orders of magnitude above anything the protocol defines.
+LIVE_MAX_MSG_BYTES = 64 * 1024
+
+# aiohttp pings on this interval and closes a socket that stops answering. A phone that
+# walks out of range otherwise sits in the connection table forever — and D-M4e-4 makes that
+# cost real, because the frame tick builds a view per connected socket whether or not
+# anything is still on the other end of it.
+LIVE_HEARTBEAT_S = 20.0
+
+# One close code for every authentication failure on the socket, for the same reason
+# `_auth_error` has one shape: a forged credential, a malformed first frame and a client
+# that never speaks are one answer on the wire and three lines in A9's counter. 4401 is in
+# the 4000-4999 range RFC 6455 leaves to the application.
+WS_CLOSE_UNAUTHENTICATED = 4401
+WS_CLOSE_GOING_AWAY = 1001          # the server is stopping, not the client's fault
+
 # D-M4c-3. Exact `(method, path)` pairs, matched against the *registered* route rather
 # than the requested string — never a prefix and never a path alone. `GET /join` is not a
-# member, and a prefix is how `/join/../state` becomes one. M4d adds `GET /` and whatever
-# shape its static files need; that shape is M4d's decision and is not generalized here.
-PRE_AUTH_ROUTES = frozenset({("POST", "/join")})
+# member, and a prefix is how `/join/../state` becomes one.
+PRE_AUTH_ROUTES = frozenset({
+    ("POST", "/join"),
+    # D-M4e-1: the client's three files, as three exact pairs. **Never `add_static`** — a
+    # prefix resource's `canonical` IS the prefix, so one membership test against it would
+    # exempt the whole subtree. That is D-M4c-3's "never a prefix" arriving through the
+    # router rather than through a URL, which is the more dangerous of the two because no
+    # request has to look strange for it to happen. Adding a file to the client means adding
+    # a line here, and the friction is the feature.
+    ("GET", "/"),
+    ("GET", "/app.js"),
+    ("GET", "/app.css"),
+    # A3: the browser `WebSocket` API cannot set a handshake header, so the socket connects
+    # unauthenticated and its first frame carries the credential. The exemption suppresses
+    # the 401 and **nothing else** — `_live` sends nothing, registers nothing and builds no
+    # view until that frame verifies, and the `Origin` check still runs in front of it,
+    # which matters more here than anywhere: a browser does not apply same-origin to a
+    # WebSocket by itself.
+    ("GET", "/live"),
+})
+
+# Deliberately **not** in that set: `("HEAD", "/")`. `add_get` registers HEAD on the same
+# resource, whose `canonical` is the same path, so a `HEAD /` is a second method on an
+# exempt path and answers 401. That is the pair being a pair, observable on the real route
+# table rather than only in a test's subclass — and the error leans the safe way, since
+# nothing in the client HEADs anything.
+
+# The client, as three files this module names literally. There is no path parameter in any
+# of the three routes, so there is no traversal surface to defend: `..` cannot be smuggled
+# through a name that is a constant in this file.
+_STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 
 # ── Origin (A6, D-M4-6) ─────────────────────────────────────────────────────
@@ -182,6 +247,90 @@ class _JoinLimiter:
                 del self._failures[addr]
 
 
+# ── The connected sockets (D-M4e-4) ─────────────────────────────────────────
+
+@dataclasses.dataclass(frozen=True)
+class LiveViewer:
+    """One entry in the snapshot the frame tick reads: who is listening, and as whom.
+
+    Immutable, and carrying **no socket**. The pygame thread is allowed to learn that a
+    viewer exists so it can build that viewer's view; it is not handed the object it is
+    forbidden to send on (F5). `id` is how it names the connection back — an opaque string
+    the net loop resolves, so a stale id is a lookup that misses rather than a reference to
+    a socket that has gone.
+
+    The credential rides because A5's revocation check has to keep running on a connection
+    that is one request an hour long, and `push_cycle` is the only tick that happens.
+    """
+    id: str
+    principal: object
+    credential: str
+
+
+@dataclasses.dataclass
+class _LiveConn:
+    """A connected socket, owned entirely by the net loop. Never crosses the seam."""
+    id: str
+    ws: object
+    principal: object
+    credential: str
+    in_flight: bool = False
+
+
+class _LiveConnections:
+    """The sockets, and the immutable snapshot of them the frame tick reads (D-M4e-4).
+
+    Every mutation happens on the net loop — `_live` adds and removes, `_send` flips
+    `in_flight` — so this holds no lock, for the same reason `_JoinLimiter` holds none.
+    What crosses to the pygame thread is a **tuple, republished whole on every change**,
+    which is the decision `MapImageCache` already made in the other direction. A lock over
+    the connection table would be a lock the frame loop waits on while the net loop is
+    inside a send.
+
+    A connection with a send outstanding is left **out** of the snapshot, so the frame tick
+    does not pay to build a view for a client that will not receive it. That is an economy,
+    not the guarantee: "never two in flight" is enforced in `_send`, on the loop that owns
+    the flag, because a snapshot read and a schedule are two operations with 250 ms of
+    someone else's timing between them.
+    """
+
+    def __init__(self) -> None:
+        self._conns: dict[str, _LiveConn] = {}
+        self._snapshot: tuple[LiveViewer, ...] = ()
+        self.connected = 0          # cumulative; the suite reads it, the routes never do
+
+    # ── The net loop's half ─────────────────────────────────────────────────
+
+    def add(self, ws, principal, credential) -> _LiveConn:
+        self.connected += 1
+        conn = _LiveConn(id=f"live-{self.connected}", ws=ws, principal=principal,
+                         credential=credential)
+        self._conns[conn.id] = conn
+        self.republish()
+        return conn
+
+    def remove(self, conn: _LiveConn) -> None:
+        self._conns.pop(conn.id, None)
+        self.republish()
+
+    def get(self, conn_id: str) -> _LiveConn | None:
+        return self._conns.get(conn_id)
+
+    def all(self) -> tuple[_LiveConn, ...]:
+        return tuple(self._conns.values())
+
+    def republish(self) -> None:
+        """Rebuild the published tuple. One store of one immutable object."""
+        self._snapshot = tuple(LiveViewer(c.id, c.principal, c.credential)
+                               for c in self._conns.values() if not c.in_flight)
+
+    # ── The pygame thread's half: one attribute read ─────────────────────────
+
+    @property
+    def snapshot(self) -> tuple[LiveViewer, ...]:
+        return self._snapshot
+
+
 # ── The server ──────────────────────────────────────────────────────────────
 
 class PlayerServer:
@@ -206,6 +355,7 @@ class PlayerServer:
         self._commands = commands
         self._build_view = build_view
         self._joins = _JoinLimiter()
+        self._live_conns = _LiveConnections()
         self._host = host
         self._port = port
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -297,9 +447,17 @@ class PlayerServer:
 
     def _build(self) -> web.Application:
         app = web.Application(middlewares=[self._authenticate])
+        # The client first, because the route table is the order a player meets it in.
+        app.router.add_get("/", self._index)
+        app.router.add_get("/app.js", self._app_js)
+        app.router.add_get("/app.css", self._app_css)
         app.router.add_get("/map.png", self._map_png)
         app.router.add_post("/join", self._join)
         app.router.add_get("/state", self._state)
+        app.router.add_get("/live", self._live)
+        # `stop()` stops the loop and then runs `runner.cleanup()`, which fires this.
+        # Without it a player's browser holds a half-open socket to a process that has gone.
+        app.on_shutdown.append(self._close_live)
         return app
 
     @web.middleware
@@ -511,9 +669,11 @@ class PlayerServer:
                 self._commands.submit(lambda app: self._build_view(app, viewer)),
                 STATE_TIMEOUT_S)
         except asyncio.TimeoutError:
-            # The frame loop is not pumping — a DM modal is open (until M4d puts
-            # `_pump_net()` in the six of them), or the app is wedged. F1: a hung request
-            # is strictly better than a silent stall, and this is the bounded form of it.
+            # The frame loop is not pumping. Since M4d that is no longer a DM reading a
+            # dialog — the six modals pump — but generation work still blocks it, and
+            # D-M4d-3 says why nothing pumps through a terrain carve: a command reads
+            # `app.bm` while the carve is rewriting it. F1: a hung request is strictly
+            # better than a silent stall, and this is the bounded form of it.
             # Envelope 2 has no error shape and is not given one; `"timeout"` in Step 0.5
             # belongs to `submit_ack`, and inventing a second `view` shape would put an
             # untested variant beside the one envelope with a byte-level test.
@@ -529,6 +689,254 @@ class PlayerServer:
         # A view is per-viewer live state that changes every tick. The conditional-request
         # machinery `GET /map.png` earned is exactly wrong here, where nothing repeats.
         return web.json_response(view, headers={"Cache-Control": "no-store"})
+
+    # ── The client's three files (D-M4e-1) ──────────────────────────────────
+
+    async def _index(self, request):
+        return self._client_file("index.html", "text/html")
+
+    async def _app_js(self, request):
+        return self._client_file("app.js", "application/javascript")
+
+    async def _app_css(self, request):
+        return self._client_file("app.css", "text/css")
+
+    def _client_file(self, name: str, content_type: str):
+        """One named file out of `static/`, read per request.
+
+        Read rather than cached at startup: three files of a few KB, fetched once per page
+        load, are not a cost worth a cache-invalidation question — and a DM who edits the
+        client gets the edited client on the next reload instead of on the next restart.
+        The read is a few microseconds on the net loop, which is the reason it is not in an
+        executor the way the 95 ms PNG encode is.
+
+        `no-store`, not the `no-cache` + ETag `GET /map.png` earned. These bytes *are* the
+        client: a player running last week's copy against this week's server is a bug report
+        with no evidence in it, and the whole client is ~20 KB over a LAN.
+        """
+        try:
+            with open(os.path.join(_STATIC_DIR, name), "rb") as fh:
+                body = fh.read()
+        except OSError:
+            # A tree without `static/` still runs — the DM console is unaffected and this
+            # is the only route that notices. Not a 500: nothing failed, there is no client.
+            return web.Response(status=404, text="no client")
+        return web.Response(body=body, content_type=content_type, charset="utf-8",
+                            headers={"Cache-Control": "no-store"})
+
+    # ── WS /live (A3 first-frame auth, D-M4e-3 / D-M4e-4) ───────────────────
+
+    async def _live(self, request):
+        """The push socket: authenticate by first frame, then one `view` per push cycle.
+
+        Pre-auth in the middleware and **not** unauthenticated: A3's first frame is the
+        credential, because the browser `WebSocket` API cannot set a header. Until that
+        frame verifies, this socket is prepared and nothing else — it is sent nothing, it is
+        not in the connection table, and no view is built for it.
+
+        The order is the same order every other route follows, with one step moved: the
+        `Origin` check ran in the middleware (and is the whole of the browser defense here,
+        since a browser does not apply same-origin to a WebSocket by itself), the credential
+        is verified below instead of above, and `authorize()` is then the same call through
+        the same chokepoint (NN6).
+
+        In M4e the socket carries **`view` and nothing else** (D-M4e-3). `you.prompt_id` is
+        already in the view and already gated, so a client can say *Kira is being asked
+        something* without the prompt body crossing; the body and its second gate are M5's,
+        beside the submit path that answers it.
+        """
+        ws = web.WebSocketResponse(heartbeat=LIVE_HEARTBEAT_S,
+                                   max_msg_size=LIVE_MAX_MSG_BYTES)
+        ready = ws.can_prepare(request)
+        if not ready.ok:
+            # Not an upgrade at all — a browser pointed at `/live`, or a probe.
+            return web.Response(status=400, text="protocol")
+        await ws.prepare(request)
+
+        principal, credential = await self._live_authenticate(ws)
+        if principal is None:
+            self.denials += 1
+            await ws.close(code=WS_CLOSE_UNAUTHENTICATED, message=b"unauthenticated")
+            return ws
+
+        # The first frame's principal is written where the middleware would have written a
+        # header's, so `_authorize` is the same call here as on every other route.
+        request["principal"] = principal
+        if not self._authorize(request, Action.VIEW_SESSION):
+            await ws.close(code=WS_CLOSE_UNAUTHENTICATED, message=b"unauthenticated")
+            return ws
+
+        conn = self._live_conns.add(ws, principal, credential)
+        try:
+            await self._live_resync(conn)
+            async for _msg in ws:
+                # M4e's client speaks exactly once, to authenticate (D-M4e-3). A later
+                # frame is a client ahead of its server: it is read and dropped, which keeps
+                # the socket alive and the pongs flowing. M5's `submit` is the branch that
+                # lands here, and it lands with its own authorization.
+                pass
+        finally:
+            self._live_conns.remove(conn)
+        return ws
+
+    async def _live_authenticate(self, ws):
+        """Read the one frame a socket may send before it has proved anything (A3).
+
+        Returns `(principal, credential)`, or `(None, "")` for every failure alike: a
+        malformed frame, the wrong envelope, a forged credential and a client that never
+        speaks are one answer on the wire. The caller counts them in A9's tally, which is
+        where the distinction belongs.
+
+        An `Authorization` header is **not honoured here**, even though the middleware would
+        have verified one and left the principal in `request`. A browser can never send it,
+        so honouring it would add a second authentication path that the only real client
+        cannot exercise — and then A3's first frame would be the untested one of the two.
+        """
+        try:
+            msg = await asyncio.wait_for(ws.receive(), LIVE_AUTH_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            return None, ""
+        if msg.type is not web.WSMsgType.TEXT:
+            return None, ""
+        try:
+            frame = json.loads(msg.data)
+        except Exception:
+            return None, ""
+        if (not isinstance(frame, dict) or frame.get("v") != PROTOCOL_VERSION
+                or frame.get("t") != "auth"):
+            return None, ""
+        credential = str(frame.get("credential") or "")
+        principal = self._roster.verify_credential(credential) if credential else None
+        return principal, (credential if principal is not None else "")
+
+    async def _live_resync(self, conn) -> None:
+        """The current view, immediately on connect — F5's free late-joiner resync.
+
+        Through the same queue `GET /state` uses, because it is the same problem: a view
+        reads `app.bm` and this thread may not (NN1). So a client that connects mid-combat
+        sees the board now rather than at the next cycle boundary, and M4e needs no resync
+        path of its own.
+
+        A timeout here is **not** a closed socket. It means the frame loop is busy — a
+        terrain carve is running, which D-M4d-3 says the pump deliberately does not reach —
+        and the next push cycle carries the view anyway. Closing would turn a two-second
+        stall into a simultaneous reconnect from every connected player.
+        """
+        try:
+            view = await asyncio.wait_for(
+                self._commands.submit(lambda app: self._build_view(app, conn.principal)),
+                STATE_TIMEOUT_S)
+        except Exception:
+            # Including `PermissionError` for a seat pulled in the handshake window: the
+            # next push cycle re-verifies the credential and drops the socket properly.
+            return
+        await self._send(conn, view)
+
+    # ── The push, on the net loop ───────────────────────────────────────────
+
+    def _dispatch(self, views: dict) -> None:
+        """One scheduled hop's worth of sends (F5's middle step). Runs on the net loop.
+
+        An id that no longer resolves is a socket that closed between the frame tick's
+        snapshot read and this callback. Dropping its view here is the whole of that
+        cleanup, and it is why the snapshot may carry a stale entry safely.
+        """
+        for conn_id, view in views.items():
+            conn = self._live_conns.get(conn_id)
+            if conn is not None:
+                asyncio.ensure_future(self._send(conn, view))
+
+    async def _send(self, conn, view) -> None:
+        """One push to one socket, and the whole of "never two in flight" (D-M4e-4).
+
+        The flag is read and set with no `await` between, on the one loop that touches it,
+        which is what makes this a guarantee instead of a race. A view arriving while a send
+        is outstanding is **dropped, not queued**: the next cycle is at most 250 ms away and
+        carries fresher state, so a queue here would be a backlog of snapshots that are
+        already wrong by the time they leave. A slow client coalesces to the next boundary
+        and never grows one.
+
+        `send_json` serializes here rather than on the frame tick — the same division
+        `GET /state` makes when the projection is built on the pygame thread and the JSON
+        encoding is not.
+        """
+        if conn.in_flight:
+            return
+        conn.in_flight = True
+        self._live_conns.republish()
+        try:
+            await conn.ws.send_json(view)
+        except Exception:
+            # A client that went away mid-send. `_live`'s own `finally` unregisters it; this
+            # only declines to take the loop down on its behalf.
+            pass
+        finally:
+            conn.in_flight = False
+            self._live_conns.republish()
+
+    def _close_one(self, conn_id: str, code: int) -> None:
+        conn = self._live_conns.get(conn_id)
+        if conn is None:
+            return
+        self.denials += 1          # A9: a socket closed under a viewer IS a denial
+        asyncio.ensure_future(conn.ws.close(code=code, message=b"unauthenticated"))
+
+    async def _close_live(self, _app=None) -> None:
+        """Close every socket as the runner shuts down (registered in `_build`)."""
+        for conn in self._live_conns.all():
+            try:
+                await conn.ws.close(code=WS_CLOSE_GOING_AWAY, message=b"shutting down")
+            except Exception:
+                pass
+
+    # ── The reverse handoff, called on the PYGAME thread (D-M4e-4, F5) ──────
+
+    def live_viewers(self) -> tuple:
+        """Who is listening, as the net loop last published it.
+
+        One attribute read of a tuple that is replaced whole — never a walk of the
+        connection table and never a lock. It is stale in two directions and neither is a
+        correctness problem: a socket that closed a moment ago is still listed, and the view
+        built for it is dropped in `_dispatch`; a socket that connected a moment ago is not
+        listed, and costs one 250 ms cycle its own resync has already covered.
+        """
+        return self._live_conns.snapshot
+
+    def push_views(self, views: dict) -> None:
+        """Hand the frame tick's freshly-built views to the net loop. **Schedule only** (F5).
+
+        One `call_soon_threadsafe` for the whole cycle rather than one per socket: the
+        pygame thread's cost is a single hop whatever the table size, and the sends are the
+        loop's from there.
+
+        The dicts must be freshly built, which is `CommandQueue`'s rule 3 arriving on the
+        other side of the seam: they are read on the net thread after this call returns, so
+        a view aliasing live game state would hand it a reference NN1 forbids.
+        """
+        loop = self._loop
+        if loop is None or not views:
+            return
+        try:
+            loop.call_soon_threadsafe(self._dispatch, views)
+        except RuntimeError:
+            pass          # the loop closed while the frame was drawing; the server is going
+
+    def drop_viewer(self, conn_id: str,
+                    code: int = WS_CLOSE_UNAUTHENTICATED) -> None:
+        """Close one socket, from the pygame thread, by scheduling it (F5).
+
+        `push_cycle` calls this when a credential stops verifying mid-socket. A5 says the
+        revocation check runs on every request, and a socket that lives for an hour is *one*
+        request — so without this, revoking a credential or unseating a player would be a
+        kick that takes effect when they choose to reconnect.
+        """
+        loop = self._loop
+        if loop is None:
+            return
+        try:
+            loop.call_soon_threadsafe(self._close_one, conn_id, code)
+        except RuntimeError:
+            pass
 
 
 def _auth_error(status: int, error: str):

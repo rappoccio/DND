@@ -42,7 +42,7 @@ import time
 import urllib.error
 import urllib.request
 
-from net import mapimg, view as net_view
+from net import link as net_link, mapimg, view as net_view
 from net.server import PlayerServer
 from net.roster import DM_PRINCIPAL_ID
 
@@ -73,10 +73,16 @@ class _server:
     view request times out — and the thread is not a convenience, it is the half of the
     handoff under test. `GET /map.png` needs none of it and defaults to off, so those eight
     checks run in exactly the conditions they were written in.
+
+    `push=True` is M4e's half of the same stand-in: it points `app._net` at the server the
+    way `run()` does and runs `push_cycle` on that same thread, because a push is the frame
+    tick looking for requesters rather than the other way round (D-M4e-4). Off by default,
+    so no suite written before it pays for a socket it does not have.
     """
 
-    def __init__(self, pump: bool = False):
+    def __init__(self, pump: bool = False, push: bool = False):
         self._pump = pump
+        self._push = push
         self._ticker = None
         self._pumping = False
 
@@ -90,7 +96,11 @@ class _server:
         self.base = f"http://127.0.0.1:{self.srv.port}"
         self.player = self.app.roster.mint_credential(self.kira.id)
         self.dm = self.app.roster.mint_credential(DM_PRINCIPAL_ID)
-        if self._pump:
+        if self._push:
+            # `run()`'s one line, which the rig otherwise never reaches: without it
+            # `push_cycle` returns on its first check and every push test passes vacuously.
+            self.app._net = self.srv
+        if self._pump or self._push:
             self.start_pump()
         return self
 
@@ -125,6 +135,10 @@ class _server:
     def _tick(self, interval):
         while self._pumping:
             self.app._net_commands.pump(self.app)
+            if self._push:
+                # Both halves on one thread, because in `run()` they are one thread: the
+                # pump answers what was asked and the cycle pushes what nobody asked for.
+                net_link.push_cycle(self.app)
             time.sleep(interval)
 
     def publish(self, boundary=True):

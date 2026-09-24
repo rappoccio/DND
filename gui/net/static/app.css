@@ -1,0 +1,149 @@
+/*
+ * The player's client, styled for the device it is actually read on: a phone held in one
+ * hand, in a dim room, next to a lit map. Dark by default rather than by media query —
+ * there is no light-room version of this page.
+ *
+ * MULTIPLAYER_PLAN.md M4e. No CDN font, no build step (D-M4e-1).
+ */
+
+:root {
+  --bg:        #101014;
+  --panel:     #17171d;
+  --line:      #2a2a33;
+  --ink:       #e8e8ef;
+  --ink-dim:   #9a9aa8;
+  --mask:      rgb(24, 24, 28);   /* net/mapimg.py MASK_RGB — the server's own fog colour */
+  --you:       #f0c040;
+  --ally:      #5aa9e6;
+  --other:     #e06666;
+  --ok:        #5ac47a;
+  --warn:      #e0a33a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+h1 { font-size: 1.25rem; margin: 0 0 4px; }
+h2 { font-size: 0.95rem; margin: 0 0 8px; font-weight: 600; letter-spacing: 0.02em; }
+
+.hint     { color: var(--ink-dim); font-weight: 400; }
+.error    { color: var(--other); }
+
+/* ── The join card ──────────────────────────────────────────────────────── */
+
+.card {
+  max-width: 22rem;
+  margin: 10vh auto 0;
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+form { display: flex; flex-direction: column; gap: 4px; }
+label { margin-top: 10px; font-size: 0.85rem; color: var(--ink-dim); }
+
+input {
+  padding: 10px;
+  font: inherit;
+  color: var(--ink);
+  background: #0c0c10;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+input:focus { outline: 2px solid var(--ally); outline-offset: 1px; }
+
+button {
+  margin-top: 16px;
+  padding: 11px;
+  font: inherit;
+  font-weight: 600;
+  color: #0c0c10;
+  background: var(--you);
+  border: 0;
+  border-radius: 6px;
+}
+button[disabled] { opacity: 0.55; }
+
+/* ── The session ────────────────────────────────────────────────────────── */
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.status { font-size: 0.8rem; color: var(--ink-dim); }
+.status[data-live="yes"] { color: var(--ok); }
+.status[data-live="no"]  { color: var(--other); }
+
+.banner {
+  margin: 0 0 10px;
+  padding: 9px 11px;
+  background: #2b2312;
+  border-left: 3px solid var(--warn);
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.board {
+  background: var(--mask);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* The canvas carries the page's own resolution and is scaled by the browser, so a phone
+   gets the whole board and a laptop gets it sharp. */
+canvas { display: block; width: 100%; height: auto; }
+
+.panels {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 46rem) {
+  .panels { grid-template-columns: 1fr 1fr 1.4fr; }
+}
+
+.panel {
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.initiative, .tokens, .log { margin: 0; padding: 0; list-style: none; }
+.initiative li, .tokens li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.9rem;
+}
+.initiative li:last-child, .tokens li:last-child { border-bottom: 0; }
+
+.tokens .conds { color: var(--ink-dim); font-size: 0.78rem; }
+.mine  { color: var(--you); font-weight: 600; }
+.ally  { color: var(--ally); }
+.other { color: var(--other); }
+
+.log {
+  max-height: 14rem;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  color: var(--ink-dim);
+}
+.log li { padding: 2px 0; }
+.log li:last-child { color: var(--ink); }

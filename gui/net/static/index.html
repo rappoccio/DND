@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<!--
+  The player's client (MULTIPLAYER_PLAN.md M4e, D-M4e-1 through D-M4e-4).
+
+  Read-only, on purpose and for this phase only: there is no control in this document that
+  submits a game decision. The two forms of input it has are the join code and the display
+  name, which buy a seat rather than take a turn. M5 adds the submit path.
+
+  Three files, served by three explicit routes (D-M4e-1) — `GET /`, `GET /app.js`,
+  `GET /app.css`. Adding a fourth means adding a route AND a line in `PRE_AUTH_ROUTES`,
+  because `add_static` would have exempted a whole subtree from authentication.
+
+  No framework, no CDN, no build step. A player at the table opens a URL on a phone that
+  may have no route to the internet at all; every byte this page needs comes from the DM's
+  laptop.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Battle Map</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <!-- The join card: the whole of the page until a credential exists. -->
+  <section id="join" class="card" hidden>
+    <h1>Join the table</h1>
+    <p class="hint">Your DM reads the code off their screen.</p>
+    <form id="join-form" autocomplete="off">
+      <label for="code">Join code</label>
+      <input id="code" name="code" inputmode="text" autocapitalize="characters"
+             spellcheck="false" maxlength="12" required>
+      <label for="name">Your name <span class="hint">(optional)</span></label>
+      <input id="name" name="name" maxlength="40" spellcheck="false">
+      <button type="submit" id="join-go">Join</button>
+    </form>
+    <p id="join-error" class="error" hidden></p>
+  </section>
+
+  <!-- The session: a board, and everything the view says about it. -->
+  <main id="session" hidden>
+    <header>
+      <span id="who">&nbsp;</span>
+      <span id="status" class="status">connecting…</span>
+    </header>
+
+    <p id="prompt-banner" class="banner" hidden>
+      You are being asked for a decision — answer it at the table.
+    </p>
+
+    <div class="board">
+      <canvas id="board" width="16" height="16"></canvas>
+    </div>
+
+    <div class="panels">
+      <section class="panel">
+        <h2>Round <span id="round">–</span> <span id="combat-state" class="hint"></span></h2>
+        <ol id="initiative" class="initiative"></ol>
+      </section>
+
+      <section class="panel">
+        <h2>On the board</h2>
+        <ul id="tokens" class="tokens"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>Log</h2>
+        <ol id="log" class="log"></ol>
+      </section>
+    </div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

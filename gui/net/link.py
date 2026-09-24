@@ -1,7 +1,7 @@
 """The seam between the running `App` and the transport (MULTIPLAYER_PLAN.md M4/M4c).
 
-Three functions, all of which run on the **pygame thread** and all of which read a live
-`App` — so they belong here for the same reason `view.py` does, and for the opposite
+Three entry points, all of which run on the **pygame thread** and all of which read a
+live `App` — so they belong here for the same reason `view.py` does, and for the opposite
 reason `server.py` does not. `server.py` is the net thread's half and may hold no `App` at
 all (NN1); this is the frame tick's half, and holding one is its whole job.
 
@@ -80,9 +80,10 @@ def push_cycle(app) -> None:
     the turn machinery, because that tuple is already the whole answer and a hook is a
     thing that can be forgotten at the one call site that matters.
 
-    In M4 the cycle carries the page image and nothing else; the `view` snapshot joins it
-    when the socket does, on this same cadence and this same boundary. Called after
-    `_refresh_fog` on purpose, so the mask published here is the one that frame draws.
+    Since M4e the cycle carries two things on that one cadence: the page image, which is
+    party-scoped and published for whoever asks, and one `view` per connected socket, which
+    is per-viewer and can only be built here. Called after `_refresh_fog` on purpose, so the
+    mask published here is the one that frame draws.
     """
     if app._net is None:
         return
@@ -96,3 +97,42 @@ def push_cycle(app) -> None:
     # publish() decides whether the new snapshot actually replaces the published one: the
     # image key lags 3 s, but only while the lag is nothing worse than extra fog (D-M4-1).
     app.map_images.publish(net_view.page_image(app), boundary=boundary)
+    _push_views(app)
+
+
+def _push_views(app) -> None:
+    """One `view` per connected socket, built here because a view can only be built here.
+
+    D-M4e-4's reverse handoff, on this side of it: read the snapshot the net loop published,
+    build what it asked for, hand it back. One view per **connected socket** and not per
+    seated principal — which is the arithmetic D-M4c-1 rejected for `GET /state` ("builds N
+    views per cycle whether or not anyone is listening"), correct here for the reason that
+    rejection turned on: a socket *is* a listener. With nobody connected this is one
+    attribute read per frame and no projection at all.
+
+    Two sockets held by the same principal get two views rather than one shared object,
+    because the thing being sent is per-connection state on the far side and `CommandQueue`'s
+    rule 3 applies whoever the viewer is.
+
+    **The credential is re-verified per viewer per cycle**, which is where A5's "the check
+    runs on every request" lands on a connection that is one request an hour long: a revoked
+    credential, or a seat the DM pulled, stops the next push and closes the socket instead of
+    waiting for the player to reconnect. `verify_credential` is a signature, an expiry, the
+    revoked set and a dict lookup — cheap enough to pay 4 times a second per player, and the
+    roster is the one object both threads are allowed to read.
+    """
+    viewers = app._net.live_viewers()
+    if not viewers:
+        return
+    views = {}
+    for viewer in viewers:
+        if app.roster.verify_credential(viewer.credential) is None:
+            app._net.drop_viewer(viewer.id)
+            continue
+        try:
+            views[viewer.id] = net_view.build_view(app, viewer.principal)
+        except PermissionError:
+            # A seat that went away between the snapshot and this build. The check above
+            # catches it properly on the next cycle; this frame simply has nothing to send.
+            continue
+    app._net.push_views(views)

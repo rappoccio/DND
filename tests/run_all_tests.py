@@ -91,6 +91,15 @@ test_scripts = [
     # DM's own screen: the app looks fine, and every player's request times out.
     "test_modal_pump.py",
 
+    # The push socket and the client it serves (MULTIPLAYER_PLAN.md M4e, D-M4e-1..4) —
+    # `WS /live`, `GET /` and the two files beside it, over a real socket with a hand-rolled
+    # WebSocket client. Kept with the oracles because this is the route that authenticates
+    # ITSELF: the middleware cannot 401 a browser's handshake (A3), so a regression in the
+    # first-frame check hands the whole session to anyone who can reach the port — and
+    # because it is the first place the frame tick sends a view nobody asked for, where a
+    # projection built on the wrong thread is a silent NN1 violation four times a second.
+    "test_live.py",
+
     # Atomic encounter saves (MULTIPLAYER_PLAN.md standalone item S1) — the two writes a
     # crash could tear. Kept with the oracles because NN7's autosave ring is built on the
     # assumption these are atomic, and the only way to see the fix is to force the write
