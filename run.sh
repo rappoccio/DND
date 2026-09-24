@@ -47,5 +47,8 @@ echo ""
 CONTAINER_DIR="/home/user${SCRIPT_DIR#$HOME}"
 
 # Entrypoint is /bin/bash, so run the display+game launcher script explicitly.
-docker run --rm -v "$HOME":/home/user -p 6080:6080 rpg_map \
+# 6080 is the DM console over noVNC and initgui.sh starts x11vnc -nopw, so anyone who
+# can reach it IS the DM. Bind it to loopback: the DM browses from this machine, and
+# the player server (6081, M4) is the only port that ever faces the LAN.
+docker run --rm -v "$HOME":/home/user -p 127.0.0.1:6080:6080 rpg_map \
   /entrypoint.sh "$CONTAINER_DIR" "$CONTAINER_MAP_PATH"
