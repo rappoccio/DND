@@ -18,8 +18,11 @@ class LightingEditorDialog:
         self.bm = None
         self.app = None
 
-        # Lighting configuration
-        self.default_light = rpg.VisibilityLevel.Dark
+        # Lighting configuration. Both readers of the lighting file default an absent
+        # "default_light" to BrightLight (`_open_lighting_editor`, `_load_lighting`), so
+        # start where they do: a dialog that opened before anything was handed to it must
+        # not claim the map is Dark when every other reader would call it lit.
+        self.default_light = rpg.VisibilityLevel.Clear
         self.light_sources = []  # list of {"name": str, "level": VisibilityLevel, "cells": [...]}
         self.selected_source_idx = -1
         self.placing_light = False
@@ -40,10 +43,13 @@ class LightingEditorDialog:
     def _init_buttons(self):
         """Initialize dialog buttons."""
         self.buttons['add'] = Button(pygame.Rect(10, 10, 100, 30), "Add Light", font=self.font_sm)
-        self.buttons['remove'] = Button(pygame.Rect(120, 10, 80, 30), "Remove", font=self.font_sm)
-        self.buttons['cycle_level'] = Button(pygame.Rect(10, 50, 190, 30), "Light Level: Sunlight", font=self.font_sm)
-        self.buttons['done'] = Button(pygame.Rect(10, 90, 100, 30), "Done", font=self.font_sm)
-        self.buttons['cancel'] = Button(pygame.Rect(120, 90, 80, 30), "Cancel", font=self.font_sm)
+        self.buttons['remove'] = Button(pygame.Rect(120, 10, 100, 30), "Remove", font=self.font_sm)
+        # Two different levels, and reading one as the other is what cost a session: the
+        # first sets the level of the NEXT PLACED SOURCE, the second the whole-map base.
+        self.buttons['cycle_level'] = Button(pygame.Rect(10, 50, 210, 30), "New Light: Sunlight", font=self.font_sm)
+        self.buttons['cycle_base'] = Button(pygame.Rect(10, 90, 210, 30), "Base Light: Clear/BrightLight", font=self.font_sm)
+        self.buttons['done'] = Button(pygame.Rect(10, 130, 100, 30), "Done", font=self.font_sm)
+        self.buttons['cancel'] = Button(pygame.Rect(120, 130, 100, 30), "Cancel", font=self.font_sm)
 
     def open(self, map_surf, bm, app, light_sources, default_light=None):
         """Open the dialog for editing lighting."""
@@ -58,6 +64,11 @@ class LightingEditorDialog:
         # Store default light level if provided, otherwise use current default
         if default_light is not None:
             self.default_light = default_light
+        # Both labels carry state, so refresh them here rather than only on a click:
+        # the base is handed in from the file and would otherwise read as whatever the
+        # previous encounter was cycled to.
+        self._update_level_button()
+        self._update_base_button()
 
     def close(self):
         """Close the dialog without saving."""
@@ -110,11 +121,27 @@ class LightingEditorDialog:
             next_idx = (current_idx + 1) % len(self.light_level_choices)
             self.pending_light_level, _ = self.light_level_choices[next_idx]
             self._update_level_button()
+        elif button_name == 'cycle_base':
+            # Cycle the WHOLE-MAP base level. Without this, a map authored as
+            # "default_light": "Darkness" could only be lit by hand-editing its JSON,
+            # sprinkling 5-cell torches, or deleting the file: a party with no darkvision
+            # reveals nothing in the dark, including the cell it stands on, so the board
+            # stays fogged for the DM and every player. Fallback -1 is deliberate — a
+            # level this list does not carry (HeavilyObscured) cycles first to Clear,
+            # which is the press a DM in the dark is reaching for.
+            current_idx = next((i for i, (lvl, _) in enumerate(self.light_level_choices)
+                               if lvl == self.default_light), -1)
+            next_idx = (current_idx + 1) % len(self.light_level_choices)
+            self.default_light, _ = self.light_level_choices[next_idx]
+            self._update_base_button()
         elif button_name == 'done':
             self.active = False
             if self.app:
-                # Apply effects to the battle map first
-                self.app._apply_light_effects(self.light_sources)
+                # Apply base level and effects to the battle map first. The base has to
+                # travel with the sources: Done is the only thing that applies the
+                # editor's work without a reload, and a base the file knows about but the
+                # map does not is a light switch that does nothing.
+                self.app._apply_light_effects(self.light_sources, self.default_light)
                 # Then save the configuration to disk (without reloading, since we just applied)
                 self.app._save_lighting_no_reload(self.light_sources, self.default_light)
         elif button_name == 'cancel':
@@ -124,7 +151,13 @@ class LightingEditorDialog:
         """Update the level button text."""
         level_name = next((name for lvl, name in self.light_level_choices
                           if lvl == self.pending_light_level), "Unknown")
-        self.buttons['cycle_level'].text = f"Light Level: {level_name}"
+        self.buttons['cycle_level'].text = f"New Light: {level_name}"
+
+    def _update_base_button(self):
+        """Update the base-level button text."""
+        level_name = next((name for lvl, name in self.light_level_choices
+                          if lvl == self.default_light), "Unknown")
+        self.buttons['cycle_base'].text = f"Base Light: {level_name}"
 
     def _add_light_at(self, col, row):
         """Add a light source at the given grid coordinates (col, row)."""
@@ -150,16 +183,16 @@ class LightingEditorDialog:
         # Draw instruction text
         if self.placing_light:
             text = self.font_md.render("Click on map to place light source", True, (255, 255, 0))
-            screen.blit(text, (200, 100))
+            screen.blit(text, (240, 100))
         else:
             text = self.font_md.render("Lighting Editor", True, (255, 255, 255))
-            screen.blit(text, (200, 50))
+            screen.blit(text, (240, 50))
 
             # Show toggle status
             toggle_color = (100, 255, 100) if self.show_overlay else (255, 100, 100)
             toggle_text = "ON" if self.show_overlay else "OFF"
             text = self.font_sm.render(f"Lighting Overlay: {toggle_text} (Press T to toggle)", True, toggle_color)
-            screen.blit(text, (200, 85))
+            screen.blit(text, (240, 85))
 
             # Draw list of light sources
             y = 130
@@ -171,7 +204,7 @@ class LightingEditorDialog:
                     f"{light['name']}: {level_name} (r:{light.get('radius', 5)})",
                     True, color
                 )
-                text_rect = screen.blit(text, (220, y))
+                text_rect = screen.blit(text, (260, y))
                 if text_rect.collidepoint(pygame.mouse.get_pos()):
                     self.selected_source_idx = i
                 y += 25

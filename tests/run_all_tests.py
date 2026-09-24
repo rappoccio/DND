@@ -64,6 +64,13 @@ test_scripts = [
     # one click.
     "test_menus.py",
 
+    # The lighting editor's base-light button (MULTIPLAYER_PLAN_OWED.md item 10) — the
+    # first coverage the editor has ever had. Kept with the oracles because what it
+    # guards is not a button but the path from that button to the battle map: the DM
+    # who found this had a map he could not light, and a base level that reaches only
+    # the file looks identical to one that works until the encounter is reloaded.
+    "test_lighting_editor.py",
+
     # The GameView projection (MULTIPLAYER_PLAN.md M3, seam S1) — the per-viewer read
     # filter, and the only thing a remote client is ever sent. Kept with the oracles
     # because its acceptance criterion is a BYTE-level assertion: a regression here does

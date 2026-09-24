@@ -25,10 +25,11 @@ of those need a decision before any code is written.
 
 ## Pick up here — 2026-09-24, after the first manual pass
 
-**State**: `./test.sh` green at **160 suites / 0 failures**. Items **1–7 have landed**, one
-commit each, `8cec103` … `0b0f561`. Item 8 is **IN PROGRESS** — its manual pass has run once
-and produced five findings (four real defects, one authored-scene misread); commits
-`1005a5d`, `b4a92a0`, `5bb8681`, `c1e4e61`. Items **9 and 10 are untouched**.
+**State**: `./test.sh` green at **161 suites / 0 failures**. Items **1–7 and 10 have
+landed**, one commit each, `8cec103` … `0b0f561` and item 10 on top. Item 8 is **IN
+PROGRESS** — its manual pass has run once and produced five findings (four real defects,
+one authored-scene misread); commits `1005a5d`, `b4a92a0`, `5bb8681`, `c1e4e61`. Item **9
+is untouched** and belongs to another document.
 
 **The next step is finishing item 8's manual pass**, not writing code. The pass exists to
 answer four questions the suite cannot, and *none of them has been answered yet* — every
@@ -54,13 +55,10 @@ and is `test_replay_roundtrip.py`'s fixture; the app overwrites it on save, so
 `encounters/simplemap_strahd_feastofstandral_terrain.json` and `maps/TestDNDMap_terrain.json`
 stay staged-and-dirty — every commit uses `git commit -m … --only -- <explicit paths>`.
 
-**If code is wanted instead**, there are exactly two things ready to start, and they are
-independent of each other and of the pass:
-· **Item 7's remainder** — the right-click map menu (14 prompt sites still inline in
-  `App._handle_events`) and the panel rendering helpers M2 left behind. Next slice, same
-  shape as slices 1–4.
-· **Item 10** — the lighting editor's missing base-light button. Small, UI-only, and the
-  reason finding 5 cost a session.
+**If code is wanted instead**, there is exactly one thing ready to start, independent of
+the pass: **item 7's remainder** — the right-click map menu (14 prompt sites still inline
+in `App._handle_events`) and the panel rendering helpers M2 left behind. Next slice, same
+shape as slices 1–4.
 
 ---
 
@@ -481,31 +479,50 @@ is a different document's work.
 
 ---
 
-## 10. The lighting editor cannot set the base light level
+## 10. The lighting editor cannot set the base light level — **LANDED**
 
 Found by item 8's manual pass (Finding 5), and it is why that finding cost a session: a DM
-who opens a map authored as `"default_light": "Darkness"` **has no way to turn the lights up
-from inside the GUI**. `LightingEditor` (`gui/lighting_dialogs.py`) offers Add Light, Remove,
-Light Level (which cycles the level of the *next placed source*, not the base), Done and
-Cancel. `default_light` is only ever read — `open()` takes it from the caller and `Done`
-hands the same value straight back to `_save_lighting_no_reload`, so whatever the file said
-is what the file keeps saying. The only remedies are sprinkling 5-cell torches, editing the
+who opened a map authored as `"default_light": "Darkness"` **had no way to turn the lights up
+from inside the GUI**. `LightingEditorDialog` (`gui/lighting_dialogs.py`) offered Add Light,
+Remove, Light Level (which cycles the level of the *next placed source*, not the base), Done
+and Cancel. `default_light` was only ever read — `open()` took it from the caller and `Done`
+handed the same value straight back to `_save_lighting_no_reload`, so whatever the file said
+is what the file kept saying. The only remedies were sprinkling 5-cell torches, editing the
 JSON by hand, or deleting the file so `_load_lighting` falls through to `Clear`.
 
-The fix is one more button next to the existing `cycle_level`, cycling `self.default_light`
-through the same `light_level_choices` and relabelling itself, plus the redraw that
-`_apply_light_effects` already triggers on Done. It is UI-only and behaviour-changing in the
-DM's favour; it touches no multiplayer surface.
+**The button is one line of the fix and the smaller half.** The plan above said the redraw
+was free because `_apply_light_effects` already runs on Done. It does not: it takes *sources
+only* and never touches the base level, and it opens with `if not light_sources: return`.
+A button that cycles `self.default_light` alone would therefore have written the new base to
+disk and changed **nothing on screen** — on a map with no torches, which is exactly the map
+that motivated it, Done would have gone straight out the early return. The same early return
+hid a second defect: removing the **last** light cleared no effects either, so a light the DM
+had just deleted went on burning until the next load.
 
-Note while there: the two lighting readers disagree on what an absent key means.
-`_open_lighting_editor` (`main.py:2515`) and `_load_lighting` (`main.py:13316`) both default
-`data.get("default_light", ...)` to `"BrightLight"`, but `LightingEditor.__init__` starts at
-`Dark` (`lighting_dialogs.py:22`). Nothing reaches that initial value today because `open()`
-is always passed one; it is a trap for whoever adds the button.
+So `_apply_light_effects(light_sources, default_light=None)` now applies the base first,
+through `bm.apply_base_lighting(lvl, [])` — the same call `_load_lighting` makes — and the
+clear/place/`_mark_fog_dirty` path runs whether or not there are sources. Its one caller
+is the dialog's Done.
 
-**No test covers any of this** — the editor has no suite, and the only headless rig that
-could reach it is `test_gui_headless_smoke.py`. Landing the button is the moment to decide
-whether that stays true.
+In the dialog: a `cycle_base` button under the existing one, walking the same
+`light_level_choices` and relabelling itself; `open()` refreshes **both** labels, since the
+base arrives from the file and would otherwise read as whatever the previous encounter was
+cycled to. The two buttons are now **"New Light: …"** and **"Base Light: …"**, because
+reading one as the other is how the finding happened. The button column widened to 210px to
+hold the longer label, so the text column moved 200 → 240 and the source list 220 → 260.
+The `__init__` trap the note below flagged is closed: the dialog starts at `Clear`, where
+both file readers put an absent `"default_light"`.
+
+`tests/test_lighting_editor.py` — **the editor's first coverage ever**, five checks, and it
+answers the question the note left open: no, the editor does not stay untested. Four of the
+five fail against the pre-fix code and the fifth crashes on the missing button. The two that
+carry the item are *Done reaches the battle map with no sources on it* and *Done reaches the
+file so a reload keeps it*; the others pin the cycle-and-relabel, the removed light going
+out, and the `__init__` default agreeing with `_open_lighting_editor` / `_load_lighting`.
+It drives a real headless `App` the way `test_menus.py` does, with `_lighting_path`
+redirected into a temp dir so no fixture in `maps/` is ever written (item 8, finding 2).
+
+Suite: **161/161**.
 
 ---
 
@@ -527,4 +544,6 @@ distinctive digits (they are 4281–4286).
 
 **Suggested order**: 1 (the suite should be green before anything else moves), then 2, then 3,
 then 8's manual pass — it will inform F12 and both decisions. Then 5 and 6 once someone has
-played the rounds. 7 last, alone, in slices. 10 is independent of all of them and can go whenever.
+played the rounds. 7 last, alone, in slices. 10 was independent of all of them and has landed.
+
+*(1–7 and 10 are done; what is left of this list is 8's manual pass and 7's remainder.)*

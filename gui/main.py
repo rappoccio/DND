@@ -13627,12 +13627,24 @@ class App:
         panned_rect.y += self.pan_y
         self.screen.blit(fog_surf, panned_rect)
 
-    def _apply_light_effects(self, light_sources):
-        """Apply editor-placed light effects to the battle map."""
-        if not light_sources:
-            return
+    def _apply_light_effects(self, light_sources, default_light=None):
+        """Apply the lighting editor's work to the battle map: the whole-map base level
+        first, then the DM-placed sources on top of it.
 
-        # Clear existing DM-placed light effects
+        `default_light` carries the editor's base-light button. It has to come through
+        here because Done is the only thing that applies the editor's work WITHOUT a
+        reload, and a base level the file knows about but the map does not is a light
+        switch that does nothing. Applied exactly as `_load_lighting` applies it.
+        Optional so the one caller that has no base to offer can still pass sources
+        alone."""
+        if default_light is not None:
+            self.bm.apply_base_lighting(default_light, [])
+
+        # Clear existing DM-placed light effects. This used to sit behind an early return
+        # on an empty `light_sources`, which meant two things silently did nothing:
+        # removing the LAST light left it burning until the next load, and a base-light
+        # change on a map with no torches at all — the case that motivated the button —
+        # never reached the map or the fog.
         for eff in self.bm.active_light_effects:
             if eff.source_agent_idx == -1:  # DM-placed
                 self.bm.remove_light_effect(eff.id)
