@@ -263,8 +263,8 @@ These are amendments to later sections, recorded here so they are not lost:
    unknown principal loads as DM-controlled".
 3. **The M0 session schema drops `seats`** and renames `tokens` → `credentials` (A1, A8).
 4. **The M4 route table's `WS /live (Bearer)`** becomes `WS /live (first-frame auth)` (A3).
-5. **A new standalone item: make `_save_agents` / `_save_combat_state` writes atomic.** Both
-   currently do `open(path, "w")` + `json.dump` (`main.py:12843`, `main.py:12897`), which
+5. **A new standalone item: make `_save_agents` / `_save_combat_state` writes atomic.**
+   *(Done 2026-09-22 as S1.)* Both did `open(path, "w")` + `json.dump`, which
    truncates before rewriting. This is a pre-existing latent bug that NN7 makes load-bearing
    — per this document's own standing rule that no phase bundles a bug fix, it is **its own
    item and a prerequisite for NN7**, not part of M6.
@@ -1233,10 +1233,60 @@ lands before M4, alongside the atomic-write fix (Consequential edit 5).
 
 Neither belongs to a phase; both are prerequisites.
 
-| # | Item | Why it is standalone | Blocks |
-| - | ---- | -------------------- | ------ |
-| S1 | Atomic `_save_agents` / `_save_combat_state` writes (`main.py:12551`, `12869`) | Pre-existing latent bug that NN7 makes load-bearing | NN7, M6 |
-| S2 | `run.sh` binds 6080 to `127.0.0.1` | One-line deployment fix, not a feature | M4 |
+| # | Item | Why it is standalone | Blocks | |
+| - | ---- | -------------------- | ------ | - |
+| S1 | Atomic `_save_agents` / `_save_combat_state` writes (`main.py:13029`, `13085`) | Pre-existing latent bug that NN7 makes load-bearing | NN7, M6 | ☑ |
+| S2 | `run.sh` binds 6080 to `127.0.0.1` | One-line deployment fix, not a feature | M4 | ☑ |
+
+#### S1 + S2 — landed 2026-09-22
+
+Two commits, not one: the standing rule forbids bundling, and they share nothing but a
+date. Suite **152 pass / 1 fail** (`test_monk.py`, pre-existing and unrelated) — one suite
+up, which is the new one.
+
+**S2** was specified as `run.sh` and is **two** lines, because `interactive.sh:1` publishes
+`-p 6080:6080` as well. The item's reason is A10 — convert the two-trust-domain split from
+an intention into a fact — and a second script handing the unauthenticated DM console to
+the LAN leaves the fact unconverted. Both now bind `127.0.0.1`. `debug.sh` publishes no
+port and needed nothing.
+
+**S1** landed as `gui/atomic_io.py` — `atomic_write_json(path, doc)`: temp sibling,
+`flush` + `fsync`, `os.replace`, and the temp removed on **any** exception rather than only
+`OSError`, so a doc that fails to serialize leaves no litter beside the real file.
+
+It is a new module rather than a private helper in `main.py` because the pattern already
+existed once: `SessionRoster.save` (M0) wrote it out longhand, per the M0 requirement that
+the session file be atomic from day one. Writing it a second time in `main.py` would have
+made an invariant that two files have to agree about — the same argument as D-M3-2, one
+milestone earlier in its life. `roster.save` is repointed at the helper in the same change
+and lost its now-unused `import os`. The module is stdlib-only, which is what keeps
+`net/roster.py` importable without the GUI.
+
+Line numbers in the table above were stale by ~190 lines (the M1–M3 work moved them); they
+are corrected to the sites as they stand today.
+
+**`tests/test_atomic_saves.py`, 5 checks**, registered beside the oracles. Every check
+forces a write to fail rather than asserting a happy path — an atomicity fix whose test
+only ever sees a successful save is a test of `json.dump`. `os.replace` is monkeypatched to
+raise `ENOSPC`, which is the worst moment a crash can pick: temp written, fsynced, and the
+swap never visible.
+
+Per M3's rule, each check was run against a deliberately broken version first:
+
+| Mutant | Caught by |
+| ------ | --------- |
+| `_save_agents` reverted to `open(path, "w")` | `_save_agents truncated the previous save` |
+| `_save_combat_state` reverted to `open(path, "w")` | `_save_combat_state truncated the sidecar` |
+| temp-file cleanup removed from the helper | `temp file survived a failed write: ['doc.json.tmp.1']` |
+| helper writes in place, no temp at all | `a failed replace must not be swallowed by the helper` |
+
+**Owed, and named honestly**: nothing asserts the `fsync`. The tests prove the swap is
+atomic against a *process* crash, which is the failure mode NN7 actually has; surviving a
+*power* loss additionally needs the fsync, and no test in this tree can observe it. The
+directory is deliberately **not** fsynced — that would be needed for the rename itself to
+be durable across power loss, and it costs a sync per autosave, which NN7 does a hundred
+times a session. If the ring ever needs power-loss durability, that is the line to add and
+the trade-off to re-take.
 
 ---
 
@@ -1830,7 +1880,7 @@ click of it is the thing to watch.
   when it builds each `GameView`** — it is cheap, and the alternative is a stale index.
 - The standalone items are still owed and unchanged: **S1** (atomic `_save_agents` /
   `_save_combat_state`, blocks NN7/M6) and **S2** (`run.sh` binds 6080 to loopback,
-  blocks M4).
+  blocks M4). *(Both landed 2026-09-22 — see [S1 + S2](#s1--s2--landed-2026-09-22).)*
 
 ---
 
@@ -3185,10 +3235,12 @@ with simulated network latency and matches the golden byte-for-byte.
   where `_clear_pending_target_picks` has already run (`main.py:4460`) and the action
   economy is reset, so the state the sidecar lacks does not exist at the moment of the save.
   ~~M6b (an `app_turn_state` block)~~ **is deleted** — Step 0.1, 2026-09-21.
-- **Prerequisite, its own item**: `_save_agents` (`main.py:12843`) and `_save_combat_state`
-  (`main.py:12897`) truncate-then-rewrite. NN7 turns that from a rare narrow window into a
-  100+-times-per-session one. Atomic writes land **before** NN7, as a standalone bug fix —
-  this document's standing rule forbids bundling it into a phase.
+- **Prerequisite, its own item**: `_save_agents` and `_save_combat_state` used to
+  truncate-then-rewrite. NN7 turns that from a rare narrow window into a
+  100+-times-per-session one. Atomic writes landed **before** NN7, as a standalone bug fix —
+  this document's standing rule forbids bundling it into a phase. *(S1, done 2026-09-22 —
+  `gui/atomic_io.py`. NN7 may assume both writes are atomic against a process crash; see
+  [S1 + S2](#s1--s2--landed-2026-09-22) for what it may **not** assume about power loss.)*
 - Rebind host callbacks (logger, render hook) **before** `restore()`, per R5's note.
 
 ---
