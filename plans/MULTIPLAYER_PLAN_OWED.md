@@ -241,6 +241,32 @@ offer. The handler side is `gui/main.py:19179-19198` and does implement it.
 same commit, which is the right amount of friction for a rules change. Same class of decision
 as F14: someone has to say whether the 2024 Open Hand L11 feature should work here.
 
+**DECIDED 2026-09-24 by the user: make the arm live.** It took three moves, not one, because
+the arm was unreachable in three places at once:
+
+1. **The menu.** The offer is hoisted ABOVE `_bonus`'s `if app.bonus_used: return`, which is
+   the only side of that return where `bonus_used` is True. The unspent-band arm stays below
+   and now reads plain `focus > 0`, so the two arms are mutually exclusive by construction and
+   the option can never be offered twice. The five-term predicate they used to share by
+   hand-copy is `actions._fleet_step_ready(stats, cond)`, which deliberately says nothing
+   about `bonus_used` — the caller supplies the state, the helper supplies the creature.
+2. **The panel.** `step_of_wind` sits in `_BON_RUN_BAND`, and the band stack is drawn only
+   `if not bonus_used`, so an offered arm would still not have been painted. The spent side
+   gets an `elif` that draws exactly this one group; it is empty for everyone else and an
+   empty stack costs no vertical space.
+3. **The handler.** It was inside `not self.bonus_used` too — F14's shape on a second button
+   — and is dispatched outside the gate now. Its own `fleet_step` test already distinguished
+   the free arm from the focus-paying one, and the focus arm still refuses to run with the
+   Bonus Action spent.
+
+`test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable` is inverted to
+`..._is_reachable`, and a second check clicks it: movement goes up, `fleet_step_used` is
+spent, the Focus Point is **not**, and `bonus_used` stays True. The panel golden is
+**byte-identical** — no checkpoint holds an Open Hand 11 with the Bonus Action spent, which
+is why nobody had ever seen this button. One thing deliberately unchanged: the option's
+`economy` stays `"bonus"`, because `ECONOMY_VARIES` means "depends which thing is picked"
+and this depends on the turn's state, not the choice. Suite **159/159**.
+
 ---
 
 ## 7. `gui/menus/` — the big one, owed by two phases

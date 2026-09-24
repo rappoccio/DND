@@ -17353,6 +17353,15 @@ class App:
 
             y = self._draw_action_stack(_band, lx, y, W, gap)
 
+        elif not _is_incapacitated:
+            # F11: the band is shut, and exactly one option belongs on the other side of
+            # it — Open Hand L11's Fleet Step, a free Step of the Wind that exists only
+            # because the Bonus Action is already spent. The menu offers `step_of_wind`
+            # in this state for nobody else, so this group is empty for everyone else
+            # and an empty stack takes no vertical space.
+            y = self._draw_action_stack(self._menu_group("bonus", only=("step_of_wind",)),
+                                        lx, y, W, gap)
+
         # Sorcerer Metamagic arm-toggles (Phase 2). WHICH options are offered — learned,
         # affordable, and Quickened only while the Bonus Action is unspent — and the tick
         # that marks the armed ones are `ActionMenu._metamagic`'s.
@@ -19224,44 +19233,6 @@ class App:
                                 self.bm.placed_agents[idx].dodge()
                                 self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Patient Defense (dodging)")
                             self.bonus_used = True
-                    if self._action_clicked("step_of_wind", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            stats = self.combat.get_agent_stats(self.bm, idx)
-                            conds = self.combat.get_agent_conditions(self.bm, idx)
-                            # Warrior of the Open Hand L11 Fleet Step: once per turn, Step of the Wind
-                            # is free (no Focus Point, no Bonus Action) when it rides alongside another
-                            # Bonus Action (i.e., the Bonus Action has already been spent this turn).
-                            fp = stats.get_resource("Focus Points")
-                            fleet_step = (stats.character_class == rpg.CharacterClass.Monk and
-                                          stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and
-                                          stats.char_level >= 11 and not conds.fleet_step_used and
-                                          self.bonus_used)
-                            can_pay_focus = bool(fp and fp.current > 0)
-                            if fleet_step:
-                                conds.fleet_step_used = True
-                                self.combat.set_agent_conditions(self.bm, idx, conds)
-                                agent = self.bm.placed_agents[idx]
-                                agent.disengage()
-                                self.bm.apply_dash(idx)
-                                self.move_remaining_walk   = agent.walk_remaining
-                                self.move_remaining_fly    = agent.fly_remaining
-                                self.move_remaining_swim   = agent.swim_remaining
-                                self.move_remaining_burrow = agent.burrow_remaining
-                                self._combat_log_add(f"{agent.name}: Fleet Step — free Step of the Wind (disengaging and dashing)")
-                                self._update_reach()
-                            elif can_pay_focus:
-                                self.combat.spend_resource(self.bm, idx, "Focus Points")
-                                agent = self.bm.placed_agents[idx]
-                                agent.disengage()
-                                self.bm.apply_dash(idx)
-                                self.move_remaining_walk   = agent.walk_remaining
-                                self.move_remaining_fly    = agent.fly_remaining
-                                self.move_remaining_swim   = agent.swim_remaining
-                                self.move_remaining_burrow = agent.burrow_remaining
-                                self._combat_log_add(f"{agent.name}: Step of the Wind (disengaging and dashing)")
-                                self._update_reach()
-                                self.bonus_used = True
                     if self._action_clicked("wholeness_of_body", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -19847,6 +19818,50 @@ class App:
                         self._show_arcane_ward_menu()
                     if self._action_clicked("wild_shape", event):
                         self._show_wild_shape_menu()
+                # F11, closed: Open Hand L11 Fleet Step is the one option in the band that
+                # needs the Bonus Action to be GONE — it is a free Step of the Wind precisely
+                # because it rides alongside another Bonus Action. Dispatched outside the gate
+                # for that reason; the menu offers `step_of_wind` on the spent side only when
+                # `_fleet_step_ready` says so, and the focus-paying arm below still refuses to
+                # run with the Bonus Action spent (`fleet_step` is False, `bonus_used` True).
+                if self._action_clicked("step_of_wind", event):
+                    idx = self._current_agent_idx()
+                    if 0 <= idx < len(self.bm.placed_agents):
+                        stats = self.combat.get_agent_stats(self.bm, idx)
+                        conds = self.combat.get_agent_conditions(self.bm, idx)
+                        # Warrior of the Open Hand L11 Fleet Step: once per turn, Step of the Wind
+                        # is free (no Focus Point, no Bonus Action) when it rides alongside another
+                        # Bonus Action (i.e., the Bonus Action has already been spent this turn).
+                        fp = stats.get_resource("Focus Points")
+                        fleet_step = (stats.character_class == rpg.CharacterClass.Monk and
+                                      stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and
+                                      stats.char_level >= 11 and not conds.fleet_step_used and
+                                      self.bonus_used)
+                        can_pay_focus = bool(fp and fp.current > 0)
+                        if fleet_step:
+                            conds.fleet_step_used = True
+                            self.combat.set_agent_conditions(self.bm, idx, conds)
+                            agent = self.bm.placed_agents[idx]
+                            agent.disengage()
+                            self.bm.apply_dash(idx)
+                            self.move_remaining_walk   = agent.walk_remaining
+                            self.move_remaining_fly    = agent.fly_remaining
+                            self.move_remaining_swim   = agent.swim_remaining
+                            self.move_remaining_burrow = agent.burrow_remaining
+                            self._combat_log_add(f"{agent.name}: Fleet Step — free Step of the Wind (disengaging and dashing)")
+                            self._update_reach()
+                        elif can_pay_focus:
+                            self.combat.spend_resource(self.bm, idx, "Focus Points")
+                            agent = self.bm.placed_agents[idx]
+                            agent.disengage()
+                            self.bm.apply_dash(idx)
+                            self.move_remaining_walk   = agent.walk_remaining
+                            self.move_remaining_fly    = agent.fly_remaining
+                            self.move_remaining_swim   = agent.swim_remaining
+                            self.move_remaining_burrow = agent.burrow_remaining
+                            self._combat_log_add(f"{agent.name}: Step of the Wind (disengaging and dashing)")
+                            self._update_reach()
+                            self.bonus_used = True
                 # Sorcerer Metamagic arm-toggles — handled OUTSIDE the `not self.bonus_used` block
                 # above (they are spell qualifiers, not Bonus Actions), so spending the Bonus Action
                 # doesn't dead-key them. Radio-select (arming one clears the others; clicking the

@@ -192,6 +192,21 @@ def _res(stats, name: str) -> int:
     return r.current if r else 0
 
 
+def _fleet_step_ready(stats, cond) -> bool:
+    """Open Hand L11 Fleet Step: is the FREE Step of the Wind available this turn?
+
+    It says nothing about the Bonus Action, on purpose — the feature's own condition is
+    that the Step rides alongside another Bonus Action, so the caller supplies
+    `app.bonus_used` and this supplies the creature. Written as a function because the
+    menu asks it on one side of the band's early return and the handler asks it again
+    after the click; two hand-copies of a five-term predicate is how F11 happened.
+    """
+    return (stats.character_class == rpg.CharacterClass.Monk
+            and stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand
+            and stats.char_level >= 11
+            and not cond.fleet_step_used)
+
+
 def _has_adjacent(app, agent_idx: int) -> bool:
     """True when any other token stands within one cell (5 ft) of `agent_idx`.
 
@@ -576,6 +591,17 @@ class ActionMenu:
         if stats.haste_action_available:
             out.append(Action("haste_action", "⚡ Haste Action", GROUP_BONUS))
 
+        # ── F11, closed: Open Hand L11 Fleet Step ──
+        # The one option in §7 whose gate is the OPPOSITE of the band's. Step of the
+        # Wind is free — no Focus Point, no Bonus Action — once per turn when it rides
+        # alongside another Bonus Action, which means exactly when `bonus_used` is
+        # already True. Written below the band's early return (where it used to be) the
+        # arm could never fire; offered here, before the return, it fires only in the
+        # state that defines it. The unspent-band arm stays in the Monk block below, so
+        # the two never both run and the option is never offered twice.
+        if app.bonus_used and _fleet_step_ready(stats, cond):
+            out.append(Action("step_of_wind", "Step of the Wind", GROUP_BONUS))
+
         # ── the band block ──
         # Everything past this point is inside the panel's one big
         # `if not _is_incapacitated and not self.bonus_used:`, whatever an individual
@@ -620,14 +646,10 @@ class ActionMenu:
             focus = _res(stats, "Focus Points")
             if focus > 0:
                 out.append(Action("patient_defense", "Patient Defense", GROUP_BONUS))
-            # The panel's Fleet Step arm (Open Hand L11: a free Step of the Wind with
-            # the Bonus Action already spent) is unreachable — it is written inside the
-            # band gate, which has already required `not bonus_used`. Kept in that shape
-            # so the conversion changes nothing; see F11.
-            fleet_step_ready = (stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand
-                                and lvl >= 11 and not cond.fleet_step_used
-                                and app.bonus_used)
-            if focus > 0 or fleet_step_ready:
+            # The unspent-band arm: paid for with a Focus Point and the Bonus Action.
+            # Its Fleet Step twin is offered above, before the band's early return,
+            # because that one needs the Bonus Action to be gone (F11).
+            if focus > 0:
                 out.append(Action("step_of_wind", "Step of the Wind", GROUP_BONUS))
             if (stats.monk_subclass == rpg.MonkSubclass.WarriorOfMercy and lvl >= 3
                     and focus > 0):

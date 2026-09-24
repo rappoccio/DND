@@ -925,24 +925,87 @@ def test_the_bonus_runs_are_built_in_draw_order():
     print("✅ test_the_bonus_runs_are_built_in_draw_order passed")
 
 
-def test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable():
-    """F11, pinned so nobody "fixes" the conversion into changing behaviour.
+def test_the_fleet_step_arm_of_step_of_the_wind_is_reachable():
+    """F11, closed — this check used to pin the opposite, and inverting it is the point.
 
-    The panel's Step of the Wind guard has a second arm — Open Hand L11 Fleet Step, a
-    free Step of the Wind explicitly "when the bonus action is already spent" — written
-    INSIDE the band block that has already required `not bonus_used`. It can therefore
-    never fire. `ActionMenu._bonus` reproduces it in that shape, so the arm stays dead
-    and the panel is unchanged. Making it live is a behaviour change and its own item.
+    Step of the Wind has two arms. The ordinary one costs a Focus Point and the Bonus
+    Action. The Open Hand L11 one, Fleet Step, is free precisely BECAUSE it rides
+    alongside another Bonus Action — so its condition is `bonus_used`, and it used to be
+    written inside the band block that had already required `not bonus_used`. The 2024
+    feature the panel describes could never be offered.
+
+    The arm now lives above the band's early return, where the state it needs is the
+    state it gets. The two arms are mutually exclusive by construction — one runs only
+    with the band open, the other only with it shut — so the option is never offered
+    twice, which is what the last stanza checks.
     """
     app = _app()
     cyra = _reclass(app, "Cyra", rpg.CharacterClass.Monk, 11,
                     monk_subclass=rpg.MonkSubclass.WarriorOfTheOpenHand)
     _set_conditions(app, cyra, fleet_step_used=False)
     assert "step_of_wind" in _bonus(app, cyra), "the normal arm should be offered"
+
     app.bonus_used = True
-    assert "step_of_wind" not in _bonus(app, cyra), \
-        "the Fleet Step arm became reachable — that is a behaviour change, not a tidy-up"
-    print("✅ test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable passed")
+    assert "step_of_wind" in _bonus(app, cyra), \
+        "Fleet Step is unreachable again — the arm is back inside the band"
+    assert _bonus(app, cyra).count("step_of_wind") == 1, "the option is offered twice"
+    assert "patient_defense" not in _bonus(app, cyra), \
+        "the rest of the band came back with it — the early return has been lost"
+
+    # Once per turn, and only for this subclass at this level.
+    _set_conditions(app, cyra, fleet_step_used=True)
+    assert "step_of_wind" not in _bonus(app, cyra), "Fleet Step is once per turn"
+    _set_conditions(app, cyra, fleet_step_used=False)
+
+    # `_reclass` puts the creature back on turn, which hands the Bonus Action back, so
+    # each of the two negatives spends it again before it asks.
+    ten = _reclass(app, "Cyra", rpg.CharacterClass.Monk, 10,
+                   monk_subclass=rpg.MonkSubclass.WarriorOfTheOpenHand)
+    _set_conditions(app, ten, fleet_step_used=False)
+    app.bonus_used = True
+    assert "step_of_wind" not in _bonus(app, ten), "Fleet Step is an L11 feature"
+
+    mercy = _reclass(app, "Cyra", rpg.CharacterClass.Monk, 11,
+                     monk_subclass=rpg.MonkSubclass.WarriorOfMercy)
+    _set_conditions(app, mercy, fleet_step_used=False)
+    app.bonus_used = True
+    assert "step_of_wind" not in _bonus(app, mercy), "Fleet Step is Open Hand's"
+    print("✅ test_the_fleet_step_arm_of_step_of_the_wind_is_reachable passed")
+
+
+def test_the_fleet_step_click_is_free_and_once_per_turn():
+    """The handler half of F11: the dispatch was inside `not self.bonus_used` too, so
+    even an offered arm would have been a dead button (that is F14's shape, one item up).
+
+    Fleet Step spends neither the Focus Point nor the Bonus Action, and the Step itself
+    is a Disengage plus a Dash — so the observable is movement going UP with the purse
+    untouched.
+    """
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Monk, 11,
+                    monk_subclass=rpg.MonkSubclass.WarriorOfTheOpenHand)
+    _goto(app, "Cyra")
+    _set_conditions(app, cyra, fleet_step_used=False)
+    _set_res(app, cyra, "Focus Points", 3)
+    app.bonus_used = True
+
+    walk_before = app.bm.placed_agents[cyra].walk_remaining
+    _draw(app)
+    assert "step_of_wind" in app._action_menu, "the panel did not draw the Fleet Step arm"
+    _click_action(app, "step_of_wind")
+
+    assert app.bm.placed_agents[cyra].walk_remaining > walk_before, \
+        "the click did not reach the handler — the Dash never happened"
+    assert app.combat.get_agent_conditions(app.bm, cyra).fleet_step_used, \
+        "the once-per-turn flag was not spent"
+    assert app.combat.get_agent_stats(app.bm, cyra).get_resource("Focus Points").current == 3, \
+        "Fleet Step is free — it must not spend a Focus Point"
+    assert app.bonus_used, "and it does not un-spend the Bonus Action it rides alongside"
+
+    # Spent, so the arm is gone and a second click finds nothing on offer.
+    _draw(app)
+    assert "step_of_wind" not in app._action_menu
+    print("✅ test_the_fleet_step_click_is_free_and_once_per_turn passed")
 
 
 def test_a_click_on_an_unoffered_bonus_action_does_nothing():
@@ -1475,7 +1538,8 @@ if __name__ == "__main__":
         test_the_metamagic_tick_is_the_armed_state()
         test_haste_grants_an_action_the_bonus_action_cannot_take()
         test_the_bonus_runs_are_built_in_draw_order()
-        test_the_fleet_step_arm_of_step_of_the_wind_is_unreachable()
+        test_the_fleet_step_arm_of_step_of_the_wind_is_reachable()
+        test_the_fleet_step_click_is_free_and_once_per_turn()
         test_a_click_on_an_unoffered_bonus_action_does_nothing()
         test_click_reaches_the_handler_for_the_bonus_band()
         test_the_channel_divinity_cluster_shares_one_resource()
