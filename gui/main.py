@@ -2105,11 +2105,24 @@ class App:
         # Table metadata, NOT scene data (MULTIPLAYER_PLAN.md M0): who is seated at this
         # table and the join code. Gitignored, and never part of the encounter proper —
         # the encounter records only each token's controller id.
-        self._session_path  = os.path.join(d, base + "_session.json")
-        # Re-point the roster at the new base. Guarded on both attributes because the
-        # first call happens during __init__, where the BattleMap does not exist yet:
-        # the roster loads, and its ownership cache fills on the first _load_agents.
-        if getattr(self, "roster", None) is not None:
+        _new_session = os.path.join(d, base + "_session.json")
+        # Re-point the roster at the new base — but ONLY when the base actually moved.
+        #
+        # `SessionRoster.__init__` mints a fresh signing key (A5), so REPLACING the roster
+        # invalidates every outstanding credential at once. That is exactly right when the
+        # table changes: the seats are a different table's. It is a mass logout when the
+        # table does NOT change — re-loading the encounter that is already open, which a DM
+        # does constantly, used to close every connected socket with
+        # WS_CLOSE_UNAUTHENTICATED and send every phone back to the join card. Found in the
+        # first manual pass, where it reads as "the phone crashed when I loaded the agents".
+        #
+        # Guarded on both attributes because the first call happens during __init__, where
+        # the BattleMap does not exist yet: the roster loads, and its ownership cache fills
+        # on the first _load_agents. That first call is also never "the same table", since
+        # there is no roster yet to keep.
+        _same_table = (_new_session == getattr(self, "_session_path", None))
+        self._session_path  = _new_session
+        if getattr(self, "roster", None) is not None and not _same_table:
             self.roster = SessionRoster.load(self._session_path)
             # A new roster means a new prompt_lookup hook to fill (M1).
             if getattr(self, "prompts", None) is not None:

@@ -32,6 +32,8 @@ Covered here:
   · a summon inherits its summoner's controller   (test_summon_inherits_controller)
   · the DM's actual right-click → Controller ▸ → a player assigns the token
                                                   (test_controller_submenu_click_path)
+  · re-loading the OPEN encounter keeps every seat and credential; a different
+    encounter still re-keys            (test_reloading_the_same_encounter_keeps_every_seat)
 """
 
 import os
@@ -487,6 +489,46 @@ def test_controller_submenu_click_path():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_reloading_the_same_encounter_keeps_every_seat():
+    """The crash the first manual pass reported as "the phone crashed when I loaded the
+    agents" — and it was neither the phone nor a crash.
+
+    `SessionRoster.__init__` mints a fresh signing key (A5), so replacing the roster
+    invalidates every outstanding credential at once. `_set_encounter_base` replaced it on
+    every call, including the constant one: a DM re-loading the encounter that is already
+    open. Every connected socket then closed with WS_CLOSE_UNAUTHENTICATED and every phone
+    went back to the join card, mid-session, for no reason the DM could see.
+
+    So: same base, same roster and a credential that still verifies. A DIFFERENT base is
+    still a different table and still invalidates, which is the half that must not be lost
+    while fixing the other.
+    """
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _app_in(tmp)
+        kira = _seat(app.roster, "Kira")
+        app.bm.set_agent_controller(_idx(app, "Aria"), kira.id)
+        app._sync_roster_tokens()
+        cred = app.roster.mint_credential(kira.id)
+        assert app.roster.verify_credential(cred), "the fixture's credential is not valid"
+
+        before = app.roster
+        app._set_encounter_base(os.path.join(tmp, "roster_test_agents.json"))   # the SAME base
+        assert app.roster is before, "re-loading the open encounter replaced the roster"
+        assert app.roster.verify_credential(cred), \
+            "re-loading the open encounter invalidated a live credential — every phone is kicked"
+        assert app.roster.controller_of(_idx(app, "Aria")) == kira.id, "the seat was lost"
+
+        # …and the other half: a real table change still re-keys.
+        app._set_encounter_base(os.path.join(tmp, "another_encounter_agents.json"))
+        assert app.roster is not before, "a different table kept the previous roster"
+        assert not app.roster.verify_credential(cred), \
+            "a credential from the previous table still verifies at the new one"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("✅ test_reloading_the_same_encounter_keeps_every_seat passed")
+
+
 def main():
     tests = [
         test_session_file_round_trip,
@@ -501,6 +543,7 @@ def main():
         test_ownership_survives_compaction,
         test_summon_inherits_controller,
         test_controller_submenu_click_path,
+        test_reloading_the_same_encounter_keeps_every_seat,
     ]
     failed = 0
     for t in tests:

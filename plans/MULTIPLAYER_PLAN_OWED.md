@@ -388,6 +388,21 @@ purpose: D-M4e-3 made M4e read-only, and M5 is the gate a game action would have
 through. A seated player cannot move their PC because nothing in the protocol lets them
 yet — the seat is real, the view is theirs, the input is M5's.
 
+**Finding 4 — loading an encounter logged every player out.** Reported as "it crashed when
+I loaded the agents", and it was neither the phone nor a crash: `_set_encounter_base`
+replaced the `SessionRoster` on *every* call, and `SessionRoster.__init__` mints a fresh
+signing key (A5), so every outstanding credential stopped verifying at once. Every socket
+then closed with `WS_CLOSE_UNAUTHENTICATED`, and `app.js` did exactly what it should —
+forgot the credential and showed the join card. Measured rather than reasoned: the
+credential minted before the DM's load returned **401 `unauthenticated`** afterwards,
+while a fresh join with the *same* join code succeeded, because the code is persisted in
+the session file and only the key is new.
+
+Replacing the roster is right when the table changes and a mass logout when it does not, so
+it now happens only when `_session_path` actually moves. `test_session_roster.py` pins both
+halves: re-loading the open encounter keeps the roster object, the seat and a live
+credential; pointing at a different encounter still re-keys and still refuses the old one.
+
 **Still owed**: the four questions the pass exists to answer — fog alignment against the art
 (now that the art draws at all), tokens on their cells, initiative and log filling, and a
 reload keeping the seat.
