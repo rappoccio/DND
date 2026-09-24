@@ -3318,6 +3318,41 @@ believed, because a byte-level assertion that cannot fail is worse than none:
 `ANSWER_PROMPT` gate again on the `prompt` envelope (D-M3-6), and the `_pump_net()` fix in
 the six blocking modals.
 
+#### The owed look at `_agent_fogged` — done 2026-09-24
+
+D-M3-2's extraction was licensed by the 71 panel checkpoints going byte-identical across
+it, and **the panel is the one region of the frame the fog gate cannot reach**. The three
+consequences that gate actually has — a sprite that is not painted, a tooltip that does not
+appear, a slide that does not play — had only ever been seen headlessly.
+`tests/manual_fog_xvfb.py` is the looking half as a rig, the way `manual_smoke_xvfb.py` is
+M2's: real pixels through pygame → X11 → Xvfb, back via `ImageGrab`, cropped to the **map**
+rather than the panel. Not in `run_all_tests.py` — it needs a display.
+
+The scene is `test_gameview.py`'s, unchanged and deliberately so: the scene the byte-level
+checks read, looked at instead of serialized. Each consequence is checked against its own
+control, because a rig that only ever shows absence proves nothing:
+
+| | Fogged (`Skarn`, 9 9) | Control (`Gnasher`, 5 3) |
+| --- | --- | --- |
+| `_draw_agents` | cell is **one flat colour**, `(33, 33, 37)` | 112 distinct colours |
+| `_draw_agent_hover_name` | hover draws the cursor square and no more | tooltip reads `Gnasher` |
+| `_advance_npc_playback` | Move + Announce drain in **one** frame, `on_done` fired | still sliding after that frame |
+
+The pointer is driven with `pygame.mouse.set_pos` — an SDL warp, which moves SDL's own
+mouse state, so `pygame.mouse.get_pos()` (what both hover draws read) agrees. The smoke rig
+could only post clicks; this is why the tooltip was reachable at all.
+
+**The finding, and it is not a bug.** The secret door at `(10, 9)` and the ladder at
+`(10, 10)` are painted **on top of** the fog on the DM's own screen — plainly visible in
+`01_fog_skarn_unpainted.png`, two lit icons in the dark. D-M3-5 omits both from a player's
+view. So the projection is **stricter** than the DM's render, which is the safe direction
+and needs no change. It is recorded because the filter table's opening sentence — *"a
+client can never see something the DM's own render hides"* — is a floor and reads like a
+rule: the DM's screen drawing a thing is not licence to send it. `_draw_fog_overlay`
+likewise leaves the margins outside the outermost grid lines unpainted, where `mapimg`
+renders them opaque — the same direction, and independent confirmation of the margin
+finding M4 made from the other side.
+
 ---
 
 ### M4 — Transport + spectator client
