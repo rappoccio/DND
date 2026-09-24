@@ -32,7 +32,9 @@ def show_agents_menu(app):
         ("Load PCs…",   app._open_load_pcs_browser),
         ("Create Mob…", lambda: app.mob_dialog.show(
                             lambda mob: app._on_mob_selected(mob))),
-        ("Create PC…",  app._show_pc_class_menu),
+        # A bare method reference, not a call: it has to become a bound lambda here,
+        # because the function it names is now this module's and takes `app`.
+        ("Create PC…",  lambda: show_pc_class_menu(app)),
         ("Clear",       app._clear_agents),
     ]
     app._ask_dm("action", "Agents", items,
