@@ -18,11 +18,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
@@ -295,11 +295,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action ✓
 text | BonusAction | [Bonus used]
 text | Movement    | Movement
@@ -712,11 +712,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_standup | Stand Up | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,42,30 | yes
+btn  | Action      | btn_cbt_standup | Stand Up | 1296,300,72,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
@@ -850,11 +850,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
@@ -988,11 +988,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action ✓
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack (2) | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
@@ -1126,11 +1126,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action ✓
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus (1) | 1052,358,156,30 | yes
 text | Movement    | Movement
@@ -1264,11 +1264,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○
@@ -1405,11 +1405,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○
@@ -1546,11 +1546,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○
@@ -1688,11 +1688,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○
@@ -1830,11 +1830,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
@@ -1968,11 +1968,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
@@ -2106,11 +2106,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○
@@ -2247,11 +2247,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
@@ -2524,11 +2524,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○
@@ -2667,11 +2667,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -2814,11 +2814,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○
@@ -2955,11 +2955,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○
 text | Action      | Spells: 1:○○○
@@ -3095,11 +3095,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○
 text | Action      | Spells: 1:○○○
@@ -3237,11 +3237,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,224,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,278,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,278,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,312,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,312,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,312,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,312,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,312,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,312,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,312,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,312,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,312,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,312,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,346,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,404,156,30 | yes
@@ -3376,11 +3376,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,224,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,278,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,278,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,312,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,312,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,312,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,312,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,312,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,312,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,312,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,312,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,312,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,312,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,346,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,404,156,30 | yes
@@ -3514,11 +3514,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
@@ -3652,11 +3652,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
@@ -3790,11 +3790,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 3:●●
 text | Action      | Spells: 3:●●
@@ -3930,11 +3930,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 2:●●
 text | Action      | Spells: 2:●●
@@ -4070,11 +4070,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 3:●●
 text | Action      | Spells: 3:●●
@@ -4210,11 +4210,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -4355,11 +4355,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -4504,11 +4504,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -4646,11 +4646,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -4788,11 +4788,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -4937,11 +4937,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -5086,11 +5086,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
@@ -5224,11 +5224,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
@@ -5362,11 +5362,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
@@ -5500,11 +5500,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○
 text | Action      | Spells: 1:○○○
@@ -5640,11 +5640,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -5786,11 +5786,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -5932,11 +5932,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -6078,11 +6078,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○
@@ -6219,11 +6219,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○
@@ -6360,11 +6360,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○
 text | Action      | Spells: 1:○○○
@@ -6500,11 +6500,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -6643,11 +6643,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
@@ -6782,11 +6782,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,224,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,278,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,278,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,312,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,312,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,312,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,312,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,312,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,312,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,312,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,312,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,312,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,312,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,346,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,404,156,30 | yes
@@ -6920,11 +6920,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -7062,11 +7062,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -7204,11 +7204,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○
@@ -7345,11 +7345,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -7492,11 +7492,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -7639,11 +7639,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
@@ -7778,11 +7778,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,224,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,278,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,278,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,312,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,312,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,312,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,312,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,312,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,312,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,312,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,312,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,312,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,312,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,346,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,404,156,30 | yes
@@ -7917,11 +7917,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,224,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,278,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,278,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,312,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,312,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,312,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,312,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,312,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,312,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,312,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,312,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,312,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,312,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,346,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,404,156,30 | yes
@@ -8056,11 +8056,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,224,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,278,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,278,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,312,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,312,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,312,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,312,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,312,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,312,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,312,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,312,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,312,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,312,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,346,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,404,156,30 | yes
@@ -8194,11 +8194,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 3:●●
 text | Action      | Spells: 3:●●
@@ -8334,11 +8334,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 2:●●
 text | Action      | Spells: 2:●●
@@ -8474,11 +8474,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
@@ -8612,11 +8612,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
@@ -8750,11 +8750,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
@@ -8888,11 +8888,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
@@ -9026,11 +9026,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,392,156,30 | yes
@@ -9164,11 +9164,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | BonusAction | Bonus Action ✓
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus (2) | 1052,392,156,30 | yes
@@ -9302,11 +9302,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -9445,11 +9445,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -9588,11 +9588,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  
@@ -9732,11 +9732,11 @@ btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
 text | Action      | Action
 btn  | Action      | btn_cbt_atk_action | ⚔ Attack | 1052,266,156,30 | yes
 btn  | Action      | btn_cbt_unarmed | 👊 Unarmed | 1212,266,156,30 | yes
-btn  | Action      | btn_cbt_dash | Dash | 1052,300,60,30 | yes
-btn  | Action      | btn_cbt_dodge | Dodge | 1116,300,60,30 | yes
-btn  | Action      | btn_cbt_disengage | Disengage | 1180,300,60,30 | yes
-btn  | Action      | btn_cbt_hide | Hide | 1244,300,60,30 | yes
-btn  | Action      | btn_cbt_prone | Go Prone | 1308,300,60,30 | yes
+btn  | Action      | btn_cbt_dash | Dash | 1052,300,45,30 | yes
+btn  | Action      | btn_cbt_dodge | Dodge | 1101,300,56,30 | yes
+btn  | Action      | btn_cbt_disengage | Disengage | 1161,300,85,30 | yes
+btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
+btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | yes
 text | Action      | Spells: 1:○○○○  
 text | Action      | Spells: 1:○○○○  2:○○○  

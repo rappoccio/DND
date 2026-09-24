@@ -284,16 +284,14 @@ def _sweep(app):
 # structural golden cannot see this: it records `1052,300,60,30` and that rect is
 # exactly what the layout intends. Only the glyphs are wrong.
 #
-# The five below are F12, found by the manual pass and NOT an M2 regression — their
-# rects read the same in the golden before M2a and after M2c. They are pinned by name
-# so that the set can neither grow (a new overflow fails) nor silently shrink (fixing
-# one fails too, and tells you to delete the entry).
+# It held three names — `btn_cbt_disengage`, `btn_cbt_standup`, `btn_cbt_prone`, all of
+# them in §4's five-up posture row, where a 60px column had to hold a 76px "Disengage".
+# F12 closed that by letting `_draw_action_row` size a row to its labels when an equal
+# split would clip (`App._row_widths`), so the set is now EMPTY and stays that way: a new
+# overflow fails the sweep below, and a name that starts fitting again fails the stale
+# check, which is the only reason to keep the empty set rather than delete it.
 
-_KNOWN_TOO_WIDE = {
-    "btn_cbt_disengage",        # "Disengage" in a 60px column of the five-up row
-    "btn_cbt_standup",
-    "btn_cbt_prone",
-}
+_KNOWN_TOO_WIDE: set[str] = set()
 
 
 def test_every_drawn_label_fits_its_button():
@@ -406,8 +404,14 @@ def test_a_converted_row_is_side_by_side_not_stacked():
     the same class of silent error as M2c's five-up: every availability test still
     passes, the buttons all exist, and the panel is three rows taller than it should
     be with a column of full-width buttons where a three-up belongs. So: within one
-    `_*_ROW_*` tuple, the members drawn in a frame must share a y and a width and
-    differ in x.
+    `_*_ROW_*` tuple, the members drawn in a frame must share a y, and must tile that
+    y — each one starting where the one before it ended, with no overlap.
+
+    Equal widths used to stand in for "tiled", and that stopped being true with F12:
+    a row that would clip its labels sizes its columns to them (`App._row_widths`), so
+    the posture row is 45/56/85/41/73 rather than five 60s. Overlap is what the check
+    was really after — two buttons drawn on top of each other, or one stacked under
+    another — and it is now tested directly rather than through a proxy.
     """
     import main
     rows = [v for k, v in vars(main).items()
@@ -426,9 +430,11 @@ def test_a_converted_row_is_side_by_side_not_stacked():
                 continue
             checked += 1
             ys = {m.rect.y for m in members}
-            ws = {m.rect.w for m in members}
             xs = {m.rect.x for m in members}
-            if len(ys) != 1 or len(ws) != 1:
+            ordered = sorted(members, key=lambda m: m.rect.x)
+            overlap = any(b.rect.x < a.rect.x + a.rect.w
+                          for a, b in zip(ordered, ordered[1:]))
+            if len(ys) != 1 or overlap:
                 bad.append(f"[{label}] row stacked, not laid out side by side: "
                            f"{[(m.name, tuple(m.rect)) for m in members]}")
             elif len(xs) != len(members):

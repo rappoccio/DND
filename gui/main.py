@@ -16848,18 +16848,54 @@ class App:
             return y
         n = len(actions)
         tw = (w - (n - 1) * gap) // n
+        row_font = font if font is not None else self.font_md
+        widths = self._row_widths([a.label for a in actions], tw, w, gap, row_font)
+        x = lx
         for j, act in enumerate(actions):
             btn = self._cbt_btn(act.id)
             btn.text = act.label
-            btn.rect.x = lx + j * (tw + gap)
+            btn.rect.x = x
             btn.rect.y = y
-            btn.rect.w = tw
+            btn.rect.w = widths[j]
+            x += widths[j] + gap
             if font is not None:
                 btn.font = font
             btn.draw(self.screen)
             if font is not None:
                 btn.font = self.font_md
         return y + self._BTN_H + (gap if trail is None else trail)
+
+    # A label needs this much more than its own glyphs before it stops looking clipped:
+    # two pixels of air on each side of the text `Button.draw` centres in the rect.
+    _ROW_LABEL_PAD = 4
+
+    def _row_widths(self, labels, tw, w, gap, font):
+        """Column widths for one `_draw_action_row`: equal, unless equal would clip.
+
+        F12: `Button.draw` centres its text and never clips, so a label wider than its
+        column bleeds across the gap into its neighbour — which the structural golden
+        cannot see, because every rect is exactly what the layout intended. The five-up
+        posture row is where it bit: at `font_sm`, Disengage needs 76px, Go Prone 65 and
+        Stand Up 64 in a 60px column.
+
+        So the row sizes itself to its labels when it has to and can: each column takes
+        the width its own text needs, and the slack left over is handed out evenly so the
+        row still spans `w` exactly and its right edge still lines up with every other
+        row. A row whose labels do NOT fit even at their natural widths keeps the equal
+        split — a squashed-but-even row beats an arbitrary truncation, and the smoke
+        test's overflow sweep is what reports it.
+
+        Rows that already fit are untouched, which is why this moved only the posture
+        row's rects in the golden.
+        """
+        need = [font.size(t)[0] + self._ROW_LABEL_PAD for t in labels]
+        span = w - (len(labels) - 1) * gap
+        if max(need) <= tw or sum(need) > span:
+            return [tw] * len(labels)
+        widths = [x + (span - sum(need)) // len(need) for x in need]
+        for j in range(span - sum(widths)):     # the division's remainder, leftmost first
+            widths[j] += 1
+        return widths
 
     def _draw_action_stack(self, actions, lx, y, w, gap):
         """Draw each action as its own full-width row; return the new `y`.

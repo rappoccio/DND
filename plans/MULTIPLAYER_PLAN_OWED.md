@@ -158,6 +158,25 @@ The geometry has never moved (`1052,300,60,30` in the golden both before M2a and
 this is not an M2 regression, it is a bug a structural golden cannot see, because every rect
 is right.
 
+**LANDED 2026-09-24**, the second fix, chosen by the user: the row sizes itself to its
+labels. `App._row_widths` gives each column the width its own text needs *when an equal
+split would clip and the natural widths still fit*, then hands the leftover slack out
+evenly so the row still spans the panel exactly and its right edge still lines up. A row
+that fits is untouched, which is why the golden moved in exactly one place.
+
+The re-bless, described: 660 changed lines, all of them §4's posture row, in 66 checkpoints.
+`1052,300,60,30 / 1116 / 1180 / 1244 / 1308` (five 60s) becomes
+`1052,300,45,30 / 1101,56 / 1161,85 / 1250,41 / 1295,73` — Disengage gets 85 for its 76px of
+text, Dash gives up 15 it never used. No other button in the sweep moved by a pixel;
+`btn_cbt_standup` differs from `btn_cbt_prone` by one pixel of rounding on the rows where it
+replaces it.
+
+Two tests moved with it. `_KNOWN_TOO_WIDE` is now **empty** — kept rather than deleted, so a
+new overflow still fails and a re-regression still fails the stale check. And
+`test_a_converted_row_is_side_by_side_not_stacked` had been using *equal widths* as its proxy
+for "side by side"; it now checks what it was really after, that the members tile one y with
+no overlap. Suite **159/159**.
+
 ---
 
 ## 5. F14 — a drawn button that cannot be clicked (needs a decision)
