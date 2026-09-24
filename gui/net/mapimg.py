@@ -20,7 +20,7 @@ The four rules this module exists to keep, all frozen:
     wire, and multiplying by it here is how the mask ends up a few pixels off the cells it
     is hiding.
   · **Two cache entries, not one per viewer.** Fog is party-scoped (Step 0.1), so one
-    masked render serves every player; the DM gets the file's own bytes, unre-encoded.
+    masked render serves every player; the DM gets the page's own pixels, unmasked.
   · **Staleness is safe in exactly one direction.** The explored mask only grows within a
     page, so a render that lags it shows *more* fog than the party has earned, never less.
     That sentence is now load-bearing rather than hypothetical: D-M4-1 was amended
@@ -33,6 +33,16 @@ opaque sheet and punches out the explored cells, rather than painting rectangles
 unexplored ones. The two differ on the margins — image area outside the outermost grid
 lines, and any cell the line lists are too short to describe — and the punch-out is the
 one whose failure mode is extra fog instead of a leaked strip of floor plan.
+
+**Every viewer is served the grid, not the page** (owed item 11, 2026-09-24). The image is
+cropped to the outermost grid lines, ``v_lines[0]..v_lines[-1]`` by
+``h_lines[0]..h_lines[-1]``, because the client stretches whatever it is sent onto its
+nominal ``cols * cell_px`` lattice. Sent the whole page, a margin is stretched along with
+the art: ``TestDNDMap.png`` is 1298x1003 with its 20x16 grid at x 58-1057, y 89-887, and the
+phone put the right-hand column 3.7 cells from its art. Cropped, the stretch maps the
+grid's outer lines onto the lattice's, and what remains is the spacing jitter between lines
+— a few px, not cells. The margin was masked for a player anyway; now nobody is sent it.
+A page whose grid already fills it is still served as the file's own bytes.
 
 Like ``roster.py`` and unlike ``view.py``, nothing here imports pygame or the extension:
 it takes a plain snapshot of cells and line positions, so the net thread can hold it and
@@ -63,6 +73,14 @@ MASK_RGB = (24, 24, 28)
 _COMPRESS_LEVEL = 1
 
 _KEY_CHARS = 16
+
+# What ``render`` does to a page, as a name folded into every key. Both keys hash their
+# *inputs* — the file, the lines, the mask — so a change to what the render makes of those
+# inputs would otherwise keep the key, and a client holding the old picture revalidates it
+# (`If-None-Match` -> 304) and keeps it indefinitely. Found by owed item 11's own phone
+# check: the crop shipped, and the phone went on showing the stretched page. Change this
+# whenever the bytes for the same inputs change.
+_RENDER_REV = "grid-crop"
 
 # How long a published mask may lag the live one (D-M4-1, amended 2026-09-23). The player's
 # `?v=` is the mask hash, so without this every newly-explored cell costs that player a
@@ -107,13 +125,31 @@ class PageImage:
         return bool(self.fog_on) and not is_dm
 
     def key(self, is_dm: bool) -> str:
-        """The ``?v=`` cache key: the mask hash for a player, the content hash for the DM."""
+        """The ``?v=`` cache key: the mask hash for a player, the content-and-crop hash for
+        the DM."""
         masked = self.masked_for(is_dm)
         memo = self._keys.get(masked)
         if memo is None:
-            memo = mask_key(self) if masked else content_key(self.path)
+            memo = mask_key(self) if masked else raw_key(self)
             self._keys[masked] = memo
         return memo
+
+
+def _lines_digest(h, page: PageImage) -> None:
+    h.update(f"{_RENDER_REV}|".encode())
+    h.update(",".join(str(x) for x in page.v_lines).encode())
+    h.update(b"|")
+    h.update(",".join(str(y) for y in page.h_lines).encode())
+    h.update(b"|")
+
+
+def raw_key(page: PageImage) -> str:
+    """Hash the unmasked image: the file *and* the crop, since both decide the bytes."""
+    h = hashlib.sha256()
+    h.update(content_key(page.path).encode())
+    h.update(b"|")
+    _lines_digest(h, page)
+    return h.hexdigest()[:_KEY_CHARS]
 
 
 def mask_key(page: PageImage) -> str:
@@ -127,10 +163,7 @@ def mask_key(page: PageImage) -> str:
     h = hashlib.sha256()
     h.update(content_key(page.path).encode())
     h.update(f"|{page.cols}x{page.rows}|".encode())
-    h.update(",".join(str(x) for x in page.v_lines).encode())
-    h.update(b"|")
-    h.update(",".join(str(y) for y in page.h_lines).encode())
-    h.update(b"|")
+    _lines_digest(h, page)
     for col, row in sorted(page.explored):
         h.update(f"{col}.{row};".encode())
     return h.hexdigest()[:_KEY_CHARS]
@@ -174,17 +207,46 @@ def _flat(mode: str, size: tuple[int, int]) -> Image.Image:
     return Image.new(mode, size, MASK_RGB)
 
 
+def grid_box(page: PageImage, size: tuple[int, int]) -> tuple[int, int, int, int] | None:
+    """The outermost grid lines as a crop box, or ``None`` when there is nothing to crop.
+
+    Right and bottom are exclusive, the same convention as the cell rectangles in
+    ``render``: cell *c* is ``v[c] .. v[c+1] - 1``, so the last line's own px is not the
+    grid's. ``None`` covers both a page whose grid fills it and line lists too short to
+    describe a box — the second serves the whole page, which is what shipped before.
+    """
+    v, h = page.v_lines, page.h_lines
+    if len(v) < 2 or len(h) < 2:
+        return None
+    box = (max(0, v[0]), max(0, h[0]), min(size[0], v[-1]), min(size[1], h[-1]))
+    if box[0] >= box[2] or box[1] >= box[3] or box == (0, 0, *size):
+        return None
+    return box
+
+
+def _encode(im: Image.Image) -> bytes:
+    buf = io.BytesIO()
+    im.save(buf, format="PNG", compress_level=_COMPRESS_LEVEL)
+    return buf.getvalue()
+
+
 def render(page: PageImage, is_dm: bool) -> bytes:
     """The bytes this viewer gets.
 
-    A DM gets the file verbatim — no decode, no re-encode, no chance of a lossy round
-    trip on the one viewer entitled to the whole page. Everyone else gets the composite.
+    A DM gets the page unmasked and cropped to its grid — the file's own bytes when there
+    is no margin to crop, and otherwise a lossless PNG of the same pixels in their own
+    mode. Everyone else gets the composite, cropped the same way.
     """
-    if not page.masked_for(is_dm):
-        with open(page.path, "rb") as fh:
-            return fh.read()
-
     raw = Image.open(page.path)
+    if not page.masked_for(is_dm):
+        box = grid_box(page, raw.size)
+        if box is None:
+            raw.close()
+            with open(page.path, "rb") as fh:
+                return fh.read()
+        raw.load()
+        return _encode(raw.crop(box))
+
     raw.load()
     if raw.mode not in ("RGB", "RGBA", "L"):
         # Paletted, LA, 1-bit: composite requires one mode for all three images, and RGBA
@@ -206,9 +268,8 @@ def render(page: PageImage, is_dm: bool) -> bytes:
         draw.rectangle([v[col], h[row], v[col + 1] - 1, h[row + 1] - 1], fill=255)
 
     out = Image.composite(raw, _flat(raw.mode, size), holes)
-    buf = io.BytesIO()
-    out.save(buf, format="PNG", compress_level=_COMPRESS_LEVEL)
-    return buf.getvalue()
+    box = grid_box(page, size)
+    return _encode(out.crop(box) if box is not None else out)
 
 
 # ── The cache ───────────────────────────────────────────────────────────────

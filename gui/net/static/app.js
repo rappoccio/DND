@@ -28,10 +28,12 @@
  *
  *   · **The board is nominal.** `map` carries `cell_px`, `cols` and `rows`, so the lattice
  *     here is `col * cell_px`, while the DM console and the server-side mask both use the
- *     page's real grid-line positions. Evenly-spaced grids agree exactly; an offset or
- *     jittery one puts a token up to one line-spacing off its art. Envelope 2 carries no
- *     line positions and adding them is an M3-frozen protocol change, so this is written
- *     down rather than bundled.
+ *     page's real grid-line positions. What keeps the two together is the server: the
+ *     image it sends is cropped to the outermost grid lines (owed item 11), so stretching
+ *     it onto this lattice lands the grid's edges on the lattice's edges, and what is left
+ *     is the page's spacing jitter — a few px. Before the crop the page's margins were
+ *     stretched too, and on `TestDNDMap.png` the right-hand column sat 3.7 cells off its
+ *     art. Drawing on the real lines needs them in Envelope 2, an M3-frozen change (M4b).
  */
 
 const PROTOCOL_VERSION = 1;
@@ -262,7 +264,8 @@ function drawBoard() {
   }
   if (page.img && page.img.complete && page.img.naturalWidth) {
     // Stretched to the nominal lattice rather than drawn at natural size: see the header's
-    // fourth rule. This keeps the art and the token grid in the same coordinate space.
+    // fourth rule. The server crops the image to the grid, so this stretch maps its outer
+    // lines onto the lattice's and keeps the art and the tokens in one coordinate space.
     ctx.drawImage(page.img, 0, 0, w, h);
   }
 

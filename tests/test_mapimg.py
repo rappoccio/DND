@@ -22,13 +22,16 @@ Covered here:
   · ...and FOG_COL's alpha 245 would have leaked the plan        (test_fog_col_alpha_would_have_leaked)
   · an explored cell is the source art, pixel for pixel          (test_explored_cells_are_verbatim)
   · cell edges land on the raw line px, unscaled                 (test_geometry_is_raw_image_px)
-  · margins outside the grid are masked, not left open           (test_outside_the_grid_is_masked)
+  · every viewer is served the grid, with no margin              (test_the_served_image_is_the_grid)
+  · ...so the client's stretch lands each outer line on its own  (test_the_stretch_lands_on_the_lattice)
   · a cell the line lists cannot describe stays masked           (test_undescribable_cell_stays_masked)
   · an all-opaque alpha channel is dropped from the wire         (test_opaque_alpha_is_dropped)
   · ...but art that really is translucent keeps it              (test_real_transparency_survives)
-  · the DM gets the file's own bytes                             (test_dm_gets_the_file_verbatim)
-  · fog down serves everyone the raw file                        (test_fog_down_serves_the_raw_file)
+  · the DM gets the page's own pixels, cropped to the grid       (test_dm_gets_the_page_unmasked)
+  · ...and a page whose grid fills it is the file's own bytes    (test_a_full_bleed_grid_is_served_verbatim)
+  · fog down serves everyone the DM's image                      (test_fog_down_serves_the_unmasked_page)
   · the key is party-scoped and moves with the mask              (test_key_is_party_scoped_and_moves_with_the_mask)
+  · ...and with the render itself, or a 304 keeps the old one    (test_a_new_render_is_a_new_key)
   · two cache entries, not one per viewer                        (test_cache_holds_two_entries_not_one_per_viewer)
   · the cache follows the newest published mask                  (test_cache_follows_the_newest_published_mask)
   · the image key lags on purpose, and a boundary re-keys        (test_the_image_key_lags_on_purpose)
@@ -100,8 +103,16 @@ def _wider(page, cell=(2, 0)):
 
 
 def _cell_box(page, col, row):
+    """A cell in the *source* page's px."""
     return (page.v_lines[col], page.h_lines[row],
             page.v_lines[col + 1], page.h_lines[row + 1])
+
+
+def _served_box(page, col, row):
+    """The same cell in the *served* image's px, which starts at the first grid lines."""
+    x0, y0, x1, y1 = _cell_box(page, col, row)
+    ox, oy = page.v_lines[0], page.h_lines[0]
+    return (x0 - ox, y0 - oy, x1 - ox, y1 - oy)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -118,7 +129,7 @@ def test_unexplored_is_one_flat_colour():
         out = _open(mapimg.render(page, is_dm=False))
         assert out.mode in ("RGB", "RGBA"), out.mode
         for col, row in ((2, 0), (0, 1), (3, 2)):
-            cell = out.crop(_cell_box(page, col, row))
+            cell = out.crop(_served_box(page, col, row))
             colours = cell.getcolors(maxcolors=1 << 16)
             assert len(colours) == 1, f"cell {(col, row)} carries {len(colours)} colours"
             assert colours[0][1][:3] == mapimg.MASK_RGB, colours[0]
@@ -139,6 +150,7 @@ def test_fog_col_alpha_would_have_leaked():
     """
     def check(art, page, _tmp):
         box = _cell_box(page, 2, 0)          # never explored, structure underneath
+        served = _served_box(page, 2, 0)
 
         leaky = Image.blend(art.convert("RGB"),
                             Image.new("RGB", art.size, mapimg.MASK_RGB),
@@ -152,7 +164,7 @@ def test_fog_col_alpha_would_have_leaked():
             "a contrast stretch should bring the plan most of the way back"
 
         honest = ImageOps.autocontrast(
-            _open(mapimg.render(page, is_dm=False)).convert("L").crop(box)).tobytes()
+            _open(mapimg.render(page, is_dm=False)).convert("L").crop(served)).tobytes()
         assert len(set(honest)) == 1, "the masked render gave art back"
     _run(check)
     print("✅ test_fog_col_alpha_would_have_leaked")
@@ -165,7 +177,8 @@ def test_explored_cells_are_verbatim():
         out = _open(mapimg.render(page, is_dm=False)).convert("RGB")
         for col, row in sorted(EXPLORED):
             box = _cell_box(page, col, row)
-            assert out.crop(box).tobytes() == art.convert("RGB").crop(box).tobytes(), \
+            assert out.crop(_served_box(page, col, row)).tobytes() \
+                == art.convert("RGB").crop(box).tobytes(), \
                 f"explored cell {(col, row)} was altered"
     _run(check)
     print("✅ test_explored_cells_are_verbatim")
@@ -180,7 +193,7 @@ def test_geometry_is_raw_image_px():
     """
     def check(_art, page, _tmp):
         out = _open(mapimg.render(page, is_dm=False)).convert("RGB")
-        x0, y0, x1, y1 = _cell_box(page, 1, 0)      # explored
+        x0, y0, x1, y1 = _served_box(page, 1, 0)    # explored
         assert out.getpixel((x0, y0)) != mapimg.MASK_RGB, "first px of a seen cell is fog"
         assert out.getpixel((x1 - 1, y1 - 1)) != mapimg.MASK_RGB, "last px of a seen cell is fog"
         assert out.getpixel((x1, y0)) == mapimg.MASK_RGB, "the fog starts a px late"
@@ -189,21 +202,56 @@ def test_geometry_is_raw_image_px():
     print("✅ test_geometry_is_raw_image_px")
 
 
-def test_outside_the_grid_is_masked():
-    """The margins are fog too.
+def test_the_served_image_is_the_grid():
+    """Nobody is sent the margins (owed item 11).
 
-    The render starts opaque and punches out what was explored, so image area no grid line
-    describes stays hidden. Painting rectangles over unexplored cells instead would leave
-    these strips of the page in the clear, and on a page whose grid does not reach the
-    edges that strip is floor plan.
+    The client stretches the image onto its ``cols * cell_px`` lattice, so a margin in the
+    image is a margin in the stretch and every cell lands off its art. The served image is
+    exactly the rectangle between the outermost lines, and its corners are the grid's
+    corners in the source — for the masked render and the DM's alike.
     """
-    def check(_art, page, _tmp):
-        out = _open(mapimg.render(page, is_dm=False)).convert("RGB")
-        for probe in ((0, 0), (W - 1, 0), (0, H - 1), (W - 1, H - 1),
-                      (V_LINES[0] - 1, H_LINES[1]), (V_LINES[-1], H_LINES[1])):
-            assert out.getpixel(probe) == mapimg.MASK_RGB, f"margin px {probe} was served"
+    def check(art, page, _tmp):
+        want = (V_LINES[-1] - V_LINES[0], H_LINES[-1] - H_LINES[0])
+        dm = _open(mapimg.render(page, is_dm=True)).convert("RGB")
+        player = _open(mapimg.render(page, is_dm=False)).convert("RGB")
+        assert dm.size == want, f"the DM was sent {dm.size}, the grid is {want}"
+        assert player.size == want, f"a player was sent {player.size}, the grid is {want}"
+        grid = art.convert("RGB").crop((V_LINES[0], H_LINES[0], V_LINES[-1], H_LINES[-1]))
+        assert dm.tobytes() == grid.tobytes(), "the DM's crop is not the grid's pixels"
     _run(check)
-    print("✅ test_outside_the_grid_is_masked")
+    print("✅ test_the_served_image_is_the_grid")
+
+
+def test_the_stretch_lands_on_the_lattice():
+    """What the client does with the image, done here with the numbers from the page
+    that found this: ``TestDNDMap.png``, 1298x1003, a 20x16 grid at nominal 50 px.
+
+    ``app.js`` draws the image into ``cols * cell_px`` by ``rows * cell_px`` and places
+    cell *n* at ``n * cell_px``. Stretching the whole page put the right-hand column 3.7
+    cells from its art; stretching the served image may put no line further off than the
+    grid's own spacing jitter. The line lists are the ones ``analyze_grid`` reports.
+    """
+    v = (58, 108, 159, 209, 259, 308, 358, 408, 458, 508, 558, 608, 658, 708, 758, 808,
+         858, 910, 958, 1008, 1057)
+    h = (89, 138, 188, 237, 288, 338, 388, 438, 487, 537, 588, 637, 688, 738, 788, 837, 887)
+    size, cell = (1298, 1003), 50
+    page = PageImage(path="", cols=len(v) - 1, rows=len(h) - 1, v_lines=v, h_lines=h,
+                     explored=frozenset(), fog_on=True)
+    left, top, right, bottom = mapimg.grid_box(page, size)
+
+    def worst(lines, lo, hi, n):
+        """Furthest any line lands from ``i * cell`` when ``lo..hi`` is stretched to
+        ``n * cell``."""
+        k = n * cell / (hi - lo)
+        return max(abs((x - lo) * k - i * cell) for i, x in enumerate(lines))
+
+    for lines, lo, hi, span, n in ((v, left, right, size[0], page.cols),
+                                   (h, top, bottom, size[1], page.rows)):
+        whole = worst(lines, 0, span, n)
+        assert whole > cell, f"the counter-example no longer shows the bug ({whole:.0f} px)"
+        cropped = worst(lines, lo, hi, n)
+        assert cropped < 3, f"a line lands {cropped:.1f} px from its lattice position"
+    print("✅ test_the_stretch_lands_on_the_lattice")
 
 
 def test_undescribable_cell_stays_masked():
@@ -215,7 +263,7 @@ def test_undescribable_cell_stays_masked():
     """
     def check(_art, page, _tmp):
         out = _open(mapimg.render(page, is_dm=False)).convert("RGB")
-        assert out.getpixel((V_LINES[0] + 1, H_LINES[0] + 1)) != mapimg.MASK_RGB
+        assert out.getpixel((1, 1)) != mapimg.MASK_RGB
         colours = out.getcolors(maxcolors=1 << 16)
         assert any(c[1] == mapimg.MASK_RGB for c in colours), "nothing was masked at all"
     _run(check, explored=frozenset({(0, 0), (9, 9), (-1, 0)}))
@@ -232,8 +280,8 @@ def test_opaque_alpha_is_dropped():
     def check(art, page, _tmp):
         out = _open(mapimg.render(page, is_dm=False))
         assert out.mode == "RGB", out.mode
-        box = _cell_box(page, 0, 0)
-        assert out.crop(box).tobytes() == art.convert("RGB").crop(box).tobytes()
+        assert out.crop(_served_box(page, 0, 0)).tobytes() \
+            == art.convert("RGB").crop(_cell_box(page, 0, 0)).tobytes()
     _run(check, mode="RGBA")
     print("✅ test_opaque_alpha_is_dropped")
 
@@ -246,11 +294,11 @@ def test_real_transparency_survives():
     compositing this over anything must not see through the fog.
     """
     def check(_art, page, _tmp):
-        seen = _cell_box(page, 0, 0)
+        seen = _served_box(page, 0, 0)
         out = _open(mapimg.render(page, is_dm=False))
         assert out.mode == "RGBA", out.mode
         assert out.getpixel((seen[0] + 1, seen[1] + 1))[3] == 60, "the art's alpha was lost"
-        hidden = _cell_box(page, 2, 0)
+        hidden = _served_box(page, 2, 0)
         assert out.getpixel((hidden[0] + 1, hidden[1] + 1)) == (*mapimg.MASK_RGB, 255)
     _run(check, mode="RGBA", translucent=(V_LINES[0] + 1, H_LINES[0] + 1))
     print("✅ test_real_transparency_survives")
@@ -260,25 +308,39 @@ def test_real_transparency_survives():
 #  Who gets what
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_dm_gets_the_file_verbatim():
-    """The DM's entitlement is the whole page, so the DM's bytes are the file's — no
-    decode, no re-encode, no chance of a lossy round trip on the one viewer who should
-    be looking at exactly what the author drew."""
-    def check(_art, page, _tmp):
-        assert mapimg.render(page, is_dm=True) == open(page.path, "rb").read()
+def test_dm_gets_the_page_unmasked():
+    """The DM's entitlement is the whole grid: every px of it, in the page's own mode, and
+    no fog. Cropping is the only thing done to it, and PNG is lossless, so this compares
+    pixels with the source rather than bytes with the file."""
+    def check(art, page, _tmp):
+        out = _open(mapimg.render(page, is_dm=True))
+        assert out.mode == art.mode, f"the DM's image changed mode: {art.mode} -> {out.mode}"
+        box = (V_LINES[0], H_LINES[0], V_LINES[-1], H_LINES[-1])
+        assert out.tobytes() == art.crop(box).tobytes(), "the DM's image is not the page's"
     _run(check)
-    print("✅ test_dm_gets_the_file_verbatim")
+    _run(check, mode="RGBA")
+    print("✅ test_dm_gets_the_page_unmasked")
 
 
-def test_fog_down_serves_the_raw_file():
+def test_a_full_bleed_grid_is_served_verbatim():
+    """When the outer lines are the image's edges there is nothing to crop, and the DM
+    gets the file's own bytes — no decode, no re-encode — exactly as before item 11."""
+    def check(_art, page, _tmp):
+        assert mapimg.grid_box(page, (W, H)) is None
+        assert mapimg.render(page, is_dm=True) == open(page.path, "rb").read()
+    _run(check, v=(0, 50, 120, W), h=(0, 70, H))
+    print("✅ test_a_full_bleed_grid_is_served_verbatim")
+
+
+def test_fog_down_serves_the_unmasked_page():
     """With fog down the DM's own screen is drawing the whole map, so nothing here may
     hide more than it does — the same rule ``build_view`` calls ``hide_map``."""
     def check(_art, page, _tmp):
         assert not page.masked_for(is_dm=False)
-        assert mapimg.render(page, is_dm=False) == open(page.path, "rb").read()
+        assert mapimg.render(page, is_dm=False) == mapimg.render(page, is_dm=True)
         assert page.key(is_dm=False) == page.key(is_dm=True)
     _run(check, fog_on=False)
-    print("✅ test_fog_down_serves_the_raw_file")
+    print("✅ test_fog_down_serves_the_unmasked_page")
 
 
 def test_key_is_party_scoped_and_moves_with_the_mask():
@@ -300,6 +362,29 @@ def test_key_is_party_scoped_and_moves_with_the_mask():
             "the DM's key moved for a mask the DM does not have"
     _run(check)
     print("✅ test_key_is_party_scoped_and_moves_with_the_mask")
+
+
+def test_a_new_render_is_a_new_key():
+    """Both keys hash the render's inputs, so a change to the render itself must still move
+    them — or a client holding the old picture asks `If-None-Match`, gets a 304 for the same
+    key, and keeps it. That is how the crop first reached a phone and was not seen: same
+    mask, same key, the stretched page kept. ``_RENDER_REV`` is the lever, and this checks
+    it reaches both keys."""
+    def check(_art, page, _tmp):
+        before = (page.key(is_dm=False), page.key(is_dm=True))
+        saved = mapimg._RENDER_REV
+        try:
+            mapimg._RENDER_REV = saved + "+next"
+            fresh = PageImage(path=page.path, cols=page.cols, rows=page.rows,
+                              v_lines=page.v_lines, h_lines=page.h_lines,
+                              explored=page.explored, fog_on=page.fog_on)
+            after = (fresh.key(is_dm=False), fresh.key(is_dm=True))
+        finally:
+            mapimg._RENDER_REV = saved
+        assert after[0] != before[0], "a new render kept the player's key"
+        assert after[1] != before[1], "a new render kept the DM's key"
+    _run(check)
+    print("✅ test_a_new_render_is_a_new_key")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -337,7 +422,7 @@ def test_cache_follows_the_newest_published_mask():
         assert new_key != old_key and new_png != old_png, "the cache served the old mask"
         assert cache.renders == 2
 
-        box = _cell_box(page, 2, 0)
+        box = _served_box(page, 2, 0)
         assert len(_open(old_png).crop(box).getcolors(1 << 16)) == 1, \
             "the older render was not the foggier one"
         assert len(_open(new_png).crop(box).getcolors(1 << 16)) > 1, \
@@ -398,10 +483,11 @@ def test_the_lag_is_only_ever_extra_fog():
                           explored=page.explored, fog_on=False)
         cache = MapImageCache()
         cache.publish(clear, now=0.0)
-        assert cache.png(is_dm=False)[1] == open(page.path, "rb").read()
+        unmasked = mapimg.render(clear, is_dm=True)
+        assert cache.png(is_dm=False)[1] == unmasked
         assert cache.publish(page, now=IMAGE_LAG_S / 2) is page, \
             "fog came back up and the unmasked page stayed published"
-        assert cache.png(is_dm=False)[1] != open(page.path, "rb").read()
+        assert cache.png(is_dm=False)[1] != unmasked
     _run(check)
     print("✅ test_the_lag_is_only_ever_extra_fog")
 
@@ -418,13 +504,16 @@ if __name__ == "__main__":
     test_fog_col_alpha_would_have_leaked()
     test_explored_cells_are_verbatim()
     test_geometry_is_raw_image_px()
-    test_outside_the_grid_is_masked()
+    test_the_served_image_is_the_grid()
+    test_the_stretch_lands_on_the_lattice()
     test_undescribable_cell_stays_masked()
     test_opaque_alpha_is_dropped()
     test_real_transparency_survives()
-    test_dm_gets_the_file_verbatim()
-    test_fog_down_serves_the_raw_file()
+    test_dm_gets_the_page_unmasked()
+    test_a_full_bleed_grid_is_served_verbatim()
+    test_fog_down_serves_the_unmasked_page()
     test_key_is_party_scoped_and_moves_with_the_mask()
+    test_a_new_render_is_a_new_key()
     test_cache_holds_two_entries_not_one_per_viewer()
     test_cache_follows_the_newest_published_mask()
     test_the_image_key_lags_on_purpose()

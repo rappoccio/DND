@@ -237,7 +237,9 @@ def test_absent_and_matching_origin():
 
 def test_player_is_masked_dm_is_raw():
     """The route's whole reason to exist: the player's bytes are the composite, and the
-    DM's are the file — not a re-encode of it, which is why this compares to disk."""
+    DM's are the unmasked page cropped to its grid (owed item 11). ``TestGrid12x12.png``
+    is 1200 px square with its detected grid ending at 1100, so this is also the case
+    where the DM's image is *not* the file — and must still not be the player's."""
     with _server() as s:
         page = s.publish()
         with open(page.path, "rb") as fh:
@@ -246,9 +248,10 @@ def test_player_is_masked_dm_is_raw():
         _st, _h, player_body = s.get(credential=s.player)
         _st, _h, dm_body = s.get(credential=s.dm)
 
-        assert dm_body == on_disk, "the DM was served something other than the page file"
-        assert player_body != on_disk, \
-            "the player was served the page file — the route is not masking"
+        assert dm_body == mapimg.render(page, is_dm=True), \
+            "the DM was served something other than the unmasked page"
+        assert player_body not in (on_disk, dm_body), \
+            "the player was served the unmasked page — the route is not masking"
         assert player_body == mapimg.render(page, is_dm=False), \
             "the player's bytes are not the masked render of the published page"
         print("✅ test_player_is_masked_dm_is_raw")

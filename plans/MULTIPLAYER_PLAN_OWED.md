@@ -17,7 +17,7 @@ Environment is the container and nothing else: `./test.sh` is the oracle, a host
 ~151 suites on PYTHONPATH and means nothing. `tests/test_mapimg.py` (PIL-only) and the two
 Xvfb rigs are the only exceptions and license nothing else.
 
-**These ten items share only that no phase owns them.** (Nine when this was written; item 10 was found by item 8's manual pass and appended on 2026-09-24.) The standing rule applies with full
+**These eleven items share only that no phase owns them.** (Nine when this was written; items 10 and 11 were found by item 8's manual pass and appended on 2026-09-24.) The standing rule applies with full
 force: **one item, one commit, never bundled** — four of them are behaviour changes and two
 of those need a decision before any code is written.
 
@@ -526,11 +526,68 @@ Suite: **161/161**.
 
 ---
 
+## 11. The phone stretches the page's margins onto the board — **LANDED**
+
+Found by item 8's manual pass, questions 1 and 2, on 2026-09-24: on a phone, the fog and
+the tokens were both off the art, growing to the right, and three tokens sat past the art's
+right-hand edge. M4e predicted a mismatch of "up to one line-spacing" from the nominal
+lattice. It was several cells, and not for that reason.
+
+**Measured, not guessed.** `TestDNDMap.png` is **1298x1003**. `analyze_grid` puts its 20x16
+grid at `v_lines` **58 … 1057** and `h_lines` **89 … 887** (read from the running app's
+container). The client sizes its canvas to the nominal `cols * cell_px` = 1000x800 and
+`drawBoard` (`app.js`) does `drawImage(img, 0, 0, w, h)` — the **whole page**, margins and
+all, squeezed by 0.770 across and 0.798 down, while tokens, the client's fog rectangles and
+its lattice sit at `n * 50`. So the art's first column landed 0.9 cell right of the
+lattice's, its last column **3.7 cells** left of it, and its bottom row 1.9 cells up. The
+fog was wrong twice over: the server punched its holes at the real lines, which were then
+stretched, and the client drew its own rectangles on the nominal ones.
+
+`TestGrid12x12.png`, the fixture every server test uses, has the same shape of defect at
+smaller size: 1200 px square with a detected 11x11 grid ending at 1100, so the phone
+squeezed a twelfth column of art into eleven.
+
+**The fix is server-side and changes no envelope.** `mapimg.render` crops both renders to
+the outermost grid lines (`grid_box`: `v[0]..v[-1]` by `h[0]..h[-1]`, right/bottom
+exclusive like the cell rectangles). Stretching *that* onto the lattice maps the grid's
+edges onto the lattice's, and what is left is the page's spacing jitter — under 3 px on
+`TestDNDMap.png`. The real fix, drawing on the real lines, still needs them in Envelope 2
+and is still **M4b**'s.
+
+**It amends a frozen rule, D-M4-1's "raw for the DM viewer"**, and the amendment is written
+into `MULTIPLAYER_PLAN.md` under that decision. The DM now gets the page's own pixels,
+unmasked and cropped, in the page's own mode — a lossless PNG re-encode — and the file's own
+bytes only when the grid already fills the image (`grid_box` returns `None`). Because the
+crop now decides the DM's bytes, the DM key is `raw_key`: the content hash folded with the
+line lists. The margins were already masked for a player; now nobody is sent them.
+
+Tests: `test_mapimg.py`'s scene was already inset on every side, so its pixel probes moved
+to served coordinates (`_served_box`). Replaced: *margins are masked* by **the served image
+is the grid** (both renders' size is the grid's, the DM's pixels are the source's); *the DM
+gets the file verbatim* by **the DM gets the page unmasked** (mode kept, RGB and RGBA) and
+**a full-bleed grid is served verbatim**; *fog down serves the raw file* by **fog down
+serves the unmasked page**. New: **the stretch lands on the lattice**, with the line lists
+from this map — the uncropped stretch must be more than a cell off (the counter-example)
+and the cropped one under 3 px. `test_mapserver.py`'s DM assertion now compares with the
+unmasked render instead of the file, and additionally that the player's body is neither.
+
+**The first phone check caught a second defect, in the fix itself.** After the relaunch the
+phone still showed the stretched page, and a reload did not help. Measured off the
+screenshot, the art's cells were 42.4 px against a 55 px lattice — 0.77, the *uncropped*
+ratio exactly. Both keys hash the render's inputs (file, lines, mask), none of which the
+crop changed, so the phone's `If-None-Match` matched the new ETag and took a 304 for its
+old picture. Every browser that had ever cached a page would have kept it. `_RENDER_REV`
+(`"grid-crop"`) is now folded into both keys, to be changed whenever the bytes for the same
+inputs change, and **a new render is a new key** checks it reaches both.
+
+---
+
 ## What is deliberately not in here
 
 M4e's four owed items are **phase-attached** and belong to the phases that reopen the things
 they touch, not to this list: the missing turn cursor and the nominal lattice are Envelope 2
-changes and therefore **M4b**'s; `send_json` serializing on the net loop is unmeasured and
+changes and therefore **M4b**'s (item 11 took the part of the lattice problem that needed no
+envelope change — the stretched margins — and left the spacing jitter to M4b); `send_json` serializing on the net loop is unmeasured and
 **M7**'s alongside the PNG executor; `_fog_active()` being False during a terrain edit is
 **M7**'s or its own item and is the one with a real security shape. All four are written up in
 `MULTIPLAYER_PLAN.md` at *"Owed, and named rather than bundled"* under

@@ -1386,6 +1386,17 @@ So the route masks before it serves, and the rules are:
     above, and the code asserts it rather than trusting the three cases to be exhaustive.
   Worst case is still one page per viewer per 3 s (~0.85 MB/s on `wachterhaus`). If the
   table finds that too much, the answer remains tiles, in M4b — never a rawer image.
+- **Amended 2026-09-24 — every viewer is served the grid, not the page** (owed item 11;
+  reason: measured on the first manual pass). The client stretches the image onto its
+  nominal `cols * cell_px` lattice, so a margin around the grid is stretched with the art.
+  `TestDNDMap.png` is 1298x1003 with its grid at x 58-1057, y 89-887, and a phone put the
+  right-hand column 3.7 cells and the bottom row 1.9 cells from their art. The route now
+  crops both renders to the outermost lines (`mapimg.grid_box`), which leaves only the
+  spacing jitter between lines (under 3 px on that page). This changes the "raw for the
+  DM viewer" rule above: the DM gets the page's own pixels, unmasked, cropped, in the
+  page's own mode — a lossless re-encode — and the file's own bytes only when the grid
+  already fills it. The DM key is the content hash folded with the line lists, since both
+  now decide the bytes. The margin was already masked for a player; now nobody is sent it.
 - **Cost, named:** the mask changes on every newly-explored cell, so this is one full-page
   PNG re-encode per exploration delta. Regenerate lazily, on request, off the frame thread —
   and **measure it on the largest page in the tree before M4 calls the route done.** If the
@@ -4357,9 +4368,12 @@ enough that the next phase has no excuse either.
   M4b's or a standalone item. The client shows the round and the order, and marks nothing.
 - **The client's lattice is nominal.** `map` carries `cell_px`, `cols` and `rows`, so the
   client draws cell *n* at `n * cell_px`, while the DM console (`_cell_to_screen`) and the
-  server-side mask both use the page's **real** grid-line positions. Evenly-spaced grids
-  agree exactly; an offset or jittery one puts a token up to one line-spacing from its art.
-  Same envelope question as above, same answer.
+  server-side mask both use the page's **real** grid-line positions. *Corrected
+  2026-09-24:* this said an offset grid puts a token "up to one line-spacing" from its art.
+  It was worse — the client stretched the **whole page**, margins included, onto the
+  lattice, and the first manual pass measured 3.7 cells on `TestDNDMap.png`. Owed item 11
+  crops the served image to the grid (D-M4-1, amended), which leaves only the spacing
+  jitter; drawing on the real lines is still the same envelope question, same answer.
 - **The push serializes on the net loop.** `send_json` is `json.dumps` of a whole view —
   tens of KB on a small page, and unbounded in principle by the terrain cell list — inside
   the loop that also answers `GET /map.png`. It is the same division `GET /state` already

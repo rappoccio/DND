@@ -510,7 +510,7 @@ class PlayerServer:
     # ── GET /map.png (D-M4-1) ───────────────────────────────────────────────
 
     async def _map_png(self, request):
-        """The page image, masked for a player and verbatim for the DM.
+        """The page image cropped to its grid, masked for a player and unmasked for the DM.
 
         Which of the two is a **policy** question, so it is asked of `authorize()` and not
         of `Role`: `VIEW_DM_CHANNEL` is the entitlement whose description is literally
