@@ -301,8 +301,29 @@ the live `App` (`actions.py`'s `ActionMenu.build(app, idx)` set that precedent),
 | 1 | `menus/riders.py` — the post-hit attack riders | 25 | 845 |
 | 2 | `menus/reactions.py` — the defender/third-party reactions | 6 | 246 |
 | 3 | `menus/dm.py` — the authoring menus, all `_ask_dm` | 9 | 178 |
+| 4 | `menus/features.py` — the per-feature menus | 16 | 495 |
 
-`main.py`: **20,191 → 18,923**.
+`main.py`: **20,191 → 18,419**, which is the reversal M1 Step 3 expected and did not get.
+
+**What slice 3 shipped broken, and what closed the hole.** The rewrite repointed *calls*
+(`self._x(…)`) and not bare *references*, so `show_agents_menu`'s `("Create PC…",
+app._show_pc_class_menu)` raised `AttributeError` the moment the menu was built. All three
+oracles were green through it, because not one of them builds a top-bar DM menu or a
+per-feature menu; the DM found it in one click. `tests/test_menus.py` now covers the class
+both ways — statically, every `app._name` a menus module mentions must exist on a real `App`;
+and at runtime, every builder that needs nothing but the app is called and its rows checked
+for callables. Both halves fail on the shipped bug. A third check pins the rule the package
+exists to respect: `_ask_actor`/`_ask_dm` stay in `main.py` and no menus module calls the bus
+directly.
+
+Also carried out with the features slice: `PACT_CHAIN_FAMILIARS` and `COMMAND_WORD_OPTIONS`
+moved next to the menus that draw them (`main.py`'s own Command site imports the table from
+there, which is the direction that already exists), and Wild Shape's `beast_forms.json` path
+was `os.path.dirname(__file__)` — main.py's directory when the code lived there, and one
+level too deep once it did not.
+
+**Still owed on item 7**: the right-click map menu, still built inline in `_handle_events`
+(the 14 sites there), and the panel's rendering helpers M2 left behind.
 
 ---
 

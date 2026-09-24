@@ -57,6 +57,13 @@ test_scripts = [
     # is now the only coverage of main.py's reaction path.
     "test_prompts.py",
 
+    # The relocated prompt builders (MULTIPLAYER_PLAN_OWED.md item 7) — `gui/menus/`.
+    # Kept with the oracles because it is the only thing in the suite that BUILDS a
+    # top-bar DM menu or a per-feature menu: the relocation shipped a bare method
+    # reference that all three of its oracles were green through, and a DM found it in
+    # one click.
+    "test_menus.py",
+
     # The GameView projection (MULTIPLAYER_PLAN.md M3, seam S1) — the per-viewer read
     # filter, and the only thing a remote client is ever sent. Kept with the oracles
     # because its acceptance criterion is a BYTE-level assertion: a regression here does

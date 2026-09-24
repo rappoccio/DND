@@ -56,7 +56,7 @@ from helpers import (
 )
 from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog
 from dialogs_conditions import ConditionsDialog
-from menus import dm, reactions, riders
+from menus import dm, features, reactions, riders
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph, draw_ladder_glyph, door_link_key
@@ -171,10 +171,6 @@ SUMMON_SPELL_TO_MONSTER = {
     "Mage Hand": "Mage Hand",
 }
 
-# Pact of the Chain (Warlock invocation 18) familiar forms → DND2024_MonsterStats.json keys.
-# The 2024 PHB list; all six are already in the bestiary. Unlike RAW Find Familiar, the chain
-# familiar can attack, so it spawns with its real statblock weapons (same path as _resolve_summon).
-PACT_CHAIN_FAMILIARS = ["Imp", "Pseudodragon", "Quasit", "Sprite", "Skeleton", "Venomous Snake"]
 
 
 def _load_summon_spirits():
@@ -257,11 +253,6 @@ METAMAGIC_NAME_BY_VALUE = {int(v): n for v, n, sp, note in METAMAGIC_OPTIONS}
 # Lightning=4, Thunder=9 — Force/Poison/etc. are not valid Elemental choices.)
 ELEMENTAL_MONK_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Thunder", 9)]
 
-# Command spell word choices (label, SpellAction.command_word int), reused via the ElementPickerDialog.
-# 0=Drop, 1=Flee, 2=Grovel, 3=Halt, 4=Approach. The engine maps each to an existing mechanic on a
-# failed save (applyCommandEffect): Drop=drop weapons+Disarmed, Flee/Approach=1-turn movement
-# restriction toward/away from the bard, Grovel=Prone, Halt=Incapacitated for one turn.
-COMMAND_WORD_OPTIONS = [("Drop", 0), ("Flee", 1), ("Grovel", 2), ("Halt", 3), ("Approach", 4)]
 
 # Magic Circle / Hallow movement ward (D4): the creature types a caster may ward, plus a "Reverse"
 # toggle. Each type value is a rpg.CreatureType bit (int); the caster multi-selects any subset and
@@ -4621,22 +4612,11 @@ class App:
             if st.hp_cur <= 0 or st.legendary_actions_current <= 0:
                 self._legendary_queue.pop(0); continue
             self._legendary_actor = idx
-            self._show_legendary_action_menu(idx, st)
+            features.show_legendary_action_menu(self, idx, st)
             return
         self._legendary_actor = -1
         self._proceed_to_new_turn()
 
-    def _show_legendary_action_menu(self, idx: int, st):
-        """Context menu for creature idx: one entry per available action name + Pass."""
-        name = self.bm.placed_agents[idx].name
-        remaining = st.legendary_actions_current
-        self._combat_log_add(
-            f"{name}: {remaining} legendary action(s) available — choose one or pass.")
-        self._flush_combat_log()
-        options = [(a, (lambda a=a: self._choose_legendary_action(a)))
-                   for a in self._legendary_action_names_for(idx, st)]
-        options.append((f"Pass ({remaining} left)", self._pass_legendary))
-        self._ask_actor(idx, "action", f"{name}: legendary action ({remaining} left)", options)
 
     def _pass_legendary(self):
         """The current legendary creature declines further actions; move to the next in the queue."""
@@ -5150,48 +5130,6 @@ class App:
         except Exception:
             return False
 
-    def _begin_dispel_pick(self, hit, cell, pos):
-        """Dispel Magic click: enumerate the dispellable ongoing spells at the aimed creature and/or
-        cell and open a picker so the DM ends exactly one — a buff on an ally, a debuff on an enemy,
-        or one of several overlapping AoEs. Casting is deferred until an entry is chosen; an empty
-        target just logs and leaves the spell pending so the caster can re-aim."""
-        caster = self._current_agent_idx()
-        if caster < 0:
-            return
-
-        cands, seen = [], set()
-
-        def _add(c_list):
-            for c in c_list:
-                key = (tuple(c.condition_ids), tuple(c.spell_effect_ids), tuple(c.terrain_ids))
-                if key in seen:
-                    continue
-                seen.add(key)
-                cands.append(c)
-
-        if hit is not None and hit >= 0:
-            # A creature: its own spell-applied effects, plus any area magic it stands in.
-            _add(self.combat.dispel_candidates_on_agent(self.bm, caster, hit))
-            oc = self.bm.placed_agents[hit].origin
-            _add(self.combat.dispel_candidates_at_cell(self.bm, caster, oc.col, oc.row))
-        elif cell is not None:
-            _add(self.combat.dispel_candidates_at_cell(self.bm, caster, cell.col, cell.row))
-
-        if not cands:
-            self._combat_log_add("No magic to dispel there.")
-            return
-
-        agents = self.bm.placed_agents
-        options = []
-        for c in cands:
-            owner = (agents[c.owner_idx].name
-                     if 0 <= c.owner_idx < len(agents) else "?")
-            side  = "ally" if c.owner_is_ally else "enemy"
-            label = f"{c.label} — L{c.level}, {owner} ({side})"
-            options.append((label, lambda cc=c, h=hit, cl=cell: self._cast_dispel_selection(cc, h, cl)))
-        self._ask_actor(caster, "target",
-                        f"{self._agent_name(caster)}: what should Dispel Magic end?",
-                        options, anchor=pos)
 
     def _cast_dispel_selection(self, candidate, hit, cell):
         """Commit the picked Dispel Magic target: stash its structure ids and route through the
@@ -5635,22 +5573,6 @@ class App:
             return None
         return spells[self.pending_spell_idx]
 
-    def _confirm_friendly_harm(self, target_idx: int, on_confirm) -> None:
-        """Faction rule 4: if the acting agent and target_idx are on the same team,
-        ask the player to confirm before a harmful action (e.g. accidentally clicking
-        a teammate). Non-allies (or no current actor) run on_confirm() immediately."""
-        actor = self._current_agent_idx()
-        if actor < 0 or not self._are_allies(actor, target_idx):
-            on_confirm()
-            return
-        tgt_name = self.bm.placed_agents[target_idx].name
-        options = [
-            (f"Harm ally {tgt_name}!", on_confirm),
-            ("Cancel", lambda: None),
-        ]
-        self._ask_actor(actor, "confirm",
-                        f"{self._agent_name(actor)} is about to harm an ally — {tgt_name}",
-                        options, anchor=self._agent_screen_pos(target_idx))
 
     def _attack_is_a_throw(self, atk_idx: int, target_idx: int, weapon_idx: int) -> bool:
         """Is this attack a THROW — i.e. does the weapon leave the attacker's hand?
@@ -6641,28 +6563,6 @@ class App:
             return weapons, True
         return weapons, False
 
-    def _show_portent_dice_menu(self):
-        """Show available portent dice for selection."""
-        idx = self._current_agent_idx()
-        if idx < 0:
-            return
-        stats = self.combat.get_agent_stats(self.bm, idx)
-        if (stats.character_class != rpg.CharacterClass.Wizard or
-            stats.wizard_subclass != rpg.WizardSubclass.Diviner):
-            self._combat_log_add("Not a Diviner Wizard!")
-            return
-        if len(stats.portent_dice) == 0:
-            self._combat_log_add("No portent dice available!")
-            return
-
-        # Create menu items for each portent die
-        items = []
-        for die_idx, die_value in enumerate(stats.portent_dice):
-            label = f"⚔️  Portent d20 → {die_value}"
-            items.append((label, lambda idx=die_idx: self._use_portent_die_at_index(idx)))
-
-        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: spend a Portent die", items,
-                        anchor=pygame.mouse.get_pos())
 
     # FLAG: Move to C++
     def _use_portent_die_at_index(self, die_index: int):
@@ -6680,34 +6580,6 @@ class App:
         else:
             self._combat_log_add("Cannot use Portent Die (already used this round)")
 
-    def _show_arcane_ward_menu(self):
-        """Show available spell slots for Arcane Ward charging."""
-        idx = self._current_agent_idx()
-        if idx < 0:
-            return
-        stats = self.combat.get_agent_stats(self.bm, idx)
-        if (stats.character_class != rpg.CharacterClass.Wizard or
-            stats.wizard_subclass != rpg.WizardSubclass.Abjurer or
-            stats.char_level < 3 or stats.temp_hp <= 0):
-            self._combat_log_add("Cannot charge Arcane Ward!")
-            return
-
-        # Create menu items for available spell slots
-        items = []
-        max_ward = 2 * stats.char_level + (stats.intel - 10) // 2
-        for slot_level in range(1, 10):
-            remaining = stats.spell_slots_remaining[slot_level - 1]
-            if remaining > 0:
-                ward_gain = 2 * slot_level
-                label = f"Level {slot_level} Slot (+{ward_gain} HP)"
-                items.append((label, lambda lvl=slot_level: self._expend_arcane_ward_slot(lvl)))
-
-        if not items:
-            self._combat_log_add("No spell slots available!")
-            return
-
-        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: charge the Arcane Ward", items,
-                        anchor=pygame.mouse.get_pos())
 
     # FLAG: Move to C++
     def _expend_arcane_ward_slot(self, slot_level: int):
@@ -6725,71 +6597,6 @@ class App:
         else:
             self._combat_log_add("Failed to expend spell slot for Arcane Ward!")
 
-    def _show_wild_shape_menu(self):
-        """Show Wild Shape form options or end Wild Shape if already active."""
-        idx = self._current_agent_idx()
-        if idx < 0:
-            return
-        stats = self.combat.get_agent_stats(self.bm, idx)
-        if stats.character_class != rpg.CharacterClass.Druid or stats.char_level < 2:
-            self._combat_log_add("Cannot use Wild Shape!")
-            return
-
-        if stats.wild_shape_active:
-            self.combat.deactivate_wild_shape(self.bm, idx)
-            self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Exits Wild Shape")
-            self.bonus_used = True
-            return
-
-        ws_resource = stats.get_resource("Wild Shape")
-        if ws_resource is None or ws_resource.current <= 0:
-            self._combat_log_add("No Wild Shape uses remaining!")
-            return
-
-        import json
-        import os
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        beast_path = os.path.join(script_dir, "beast_forms.json")
-
-        try:
-            with open(beast_path, 'r') as f:
-                beasts = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            self._combat_log_add("Error loading beast forms!")
-            return
-
-        # Determine CR cap and fly restriction based on level and circle
-        level = stats.char_level
-        allow_fly = level >= 8
-
-        if stats.druid_circle == rpg.DruidCircle.CircleOfMoon:
-            cr_cap = level / 3
-        else:
-            if level < 4:
-                cr_cap = 0.25
-            elif level < 8:
-                cr_cap = 0.5
-            else:
-                cr_cap = 1.0
-
-        # Filter available beasts
-        available = []
-        for beast in beasts:
-            if beast['cr'] <= cr_cap and (allow_fly or not beast['fly_speed']):
-                available.append(beast)
-
-        if not available:
-            self._combat_log_add("No valid wild shapes available!")
-            return
-
-        # Create menu items
-        items = []
-        for beast in available:
-            label = f"🐺 {beast['name']} (CR {beast['cr']})"
-            items.append((label, lambda b=beast['name']: self._activate_wild_shape(idx, b)))
-
-        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: choose a Wild Shape form", items,
-                        anchor=pygame.mouse.get_pos())
 
     def _activate_wild_shape(self, idx: int, beast_name: str):
         """Activate Wild Shape with the given beast form."""
@@ -6852,24 +6659,6 @@ class App:
         except Exception as e:
             self._combat_log_add(f"Error activating Wild Shape: {e}")
 
-    def _show_unarmed_menu(self, mouse_pos):
-        """Show the unarmed strike options menu at mouse position."""
-        items = [
-            ("💥 Damage (1 + STR)", lambda: self._start_unarmed_punch()),
-            ("🤝 Grapple",          lambda: self._start_unarmed_grapple()),
-            ("🤜 Shove (push 5 ft)", lambda: self._start_unarmed_push()),
-        ]
-        # Diagnostic: confirm the handler fired even if the popup somehow fails to render.
-        self._combat_log_add("Unarmed Strike: choose Damage / Grapple / Shove from the popup.")
-        # Anchor the menu over the map (left of the panel) so it can't render under the
-        # right-side combat panel where the Unarmed button lives.
-        px, py = mouse_pos
-        panel_left = self._panel_x()
-        if px >= panel_left:
-            px = max(8, panel_left - self.context_menu.MIN_W - 8)
-        idx = self._current_agent_idx()
-        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: Unarmed Strike", items,
-                        anchor=(px, py))
 
     def _start_unarmed_punch(self):
         """Damage option of an Unarmed Strike (1 + STR Bludgeoning). Resolved as a normal attack
@@ -7743,50 +7532,6 @@ class App:
         else:
             self._attack_sequence_slot = ""
 
-    def _show_use_item_menu(self, pos):
-        """Pop the current actor's inventory: pick which carried item to use, then click a target.
-        Items the actor can no longer pay for this turn (the Bonus Action is gone, or there is no
-        attack left for a thrown flask to replace) are left out of the menu."""
-        idx = self._current_agent_idx()
-        if not (0 <= idx < len(self.bm.placed_agents)):
-            return
-        items = self.combat.get_agent_items(self.bm, idx)
-        if not items:
-            self._combat_log_add(f"{self.bm.placed_agents[idx].name} is carrying no items.")
-            return
-
-        def _affordable(it) -> bool:
-            if it.action_type == rpg.ItemAction.AttackReplacement:
-                return self._can_replace_attack(idx)
-            if it.action_type == rpg.ItemAction.BonusAction:
-                return not self.bonus_used
-            if it.action_type == rpg.ItemAction.Action:
-                return not self.action_used
-            return True
-
-        def _arm(slot):
-            self.pending_use_item = slot
-            it = items[slot]
-            if it.type == rpg.ItemType.Thrown:
-                prompt = f"Click a creature within {it.range} ft to throw {it.name}"
-            else:
-                where = "yourself" if it.range <= 0 else f"yourself or a creature within {it.range} ft"
-                prompt = f"Click {where} to use {it.name}"
-            self._combat_log_add(prompt + ".")
-
-        opts = []
-        for slot, it in enumerate(items):
-            if not _affordable(it):
-                continue
-            cost = " — replaces an attack" if it.action_type == rpg.ItemAction.AttackReplacement else ""
-            opts.append((f"{it.name} (x{it.quantity}, {self._item_menu_dice(it)}){cost}",
-                         (lambda s=slot: _arm(s))))
-        if not opts:
-            self._combat_log_add(
-                f"{self.bm.placed_agents[idx].name} has nothing left to spend on an item this turn.")
-            return
-        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: use a carried item", opts,
-                        anchor=pos)
 
     def _resolve_use_item(self, target_idx: int):
         """Use the armed inventory slot on the clicked target (which may be the user itself).
@@ -8041,63 +7786,6 @@ class App:
         self._combat_log_add("Mantle of Inspiration cancelled.")
         self._flush_combat_log()
 
-    def _start_mantle_majesty(self, bard_idx: int):
-        """College of Glamour Mantle of Majesty (bonus action). The FIRST use spends the once/long-rest
-        resource, opens the 1-minute Concentration window, and casts Command for free; while the window
-        is already active, the button just re-casts Command for free (bonus action, no resource).
-
-        Flow: pick the Command word (ElementPickerDialog), then — only on confirm, so an Esc wastes
-        nothing — activate the window if needed and set up a free single-target Command cast."""
-        if self.bonus_used:
-            self._combat_log_add("Bonus action already used this turn.")
-            self._flush_combat_log()
-            return
-        stats = self.combat.get_agent_stats(self.bm, bard_idx)
-        if not (stats.bard_subclass == rpg.BardCollege.Glamour and stats.char_level >= 6):
-            return
-        window_active = stats.mantle_majesty_turns > 0
-        maj = stats.get_resource("Mantle of Majesty")
-        if not window_active and not (maj and maj.current > 0):
-            self._combat_log_add(
-                f"{self.bm.placed_agents[bard_idx].name}: no Mantle of Majesty use left.")
-            self._flush_combat_log()
-            return
-        spells = self.combat.get_agent_spells(self.bm, bard_idx)
-        command_idx = next((i for i, sp in enumerate(spells) if sp.name == "Command"), -1)
-        if command_idx < 0:
-            self._combat_log_add("Mantle of Majesty: Command spell not prepared.")
-            self._flush_combat_log()
-            return
-
-        def _on_word(chosen, bard_idx=bard_idx, command_idx=command_idx, window_active=window_active):
-            word = chosen[0] if chosen else 3   # default Halt
-            if not window_active:
-                if not self.combat.activate_mantle_of_majesty(self.bm, bard_idx):
-                    self._flush_combat_log()
-                    return
-                self._flush_combat_log()
-            # Free single-target Command cast (bonus action, no slot). The bonus action is charged in
-            # _consume_cast_slot; the slot is skipped in C++ via SpellAction.free_cast.
-            self.pending_spell_slot         = "bonus"
-            self.pending_spell_idx          = command_idx
-            self.pending_spell_slot_level   = 0
-            self.pending_spell_is_aoe       = False
-            self.pending_spell_targets      = []
-            self.pending_spell_num_targets  = 0
-            self.pending_spell_damage_type  = -1
-            self.pending_spell_free_cast    = True
-            self.pending_spell_command_word = word
-            self.pending_spell_curse_choice = -1
-            self.pending_chromatic_active   = False
-            self.pending_chromatic_chain    = []
-            word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")
-            self._combat_log_add(
-                f"Mantle of Majesty: casting Command ({word_name}) — click a target within 60 ft.")
-            self._flush_combat_log()
-
-        self._ask_actor(bard_idx, "action", "Command: choose a word",
-                        [(lbl, (lambda v=val: _on_word([v]))) for lbl, val in COMMAND_WORD_OPTIONS],
-                        render="picker", on_cancel=lambda: _on_word([]))
 
     def _start_unbreakable_majesty(self, bard_idx: int):
         """College of Glamour Unbreakable Majesty (bonus action, L14+). Spend the once/long-rest resource
@@ -8661,11 +8349,11 @@ class App:
             def _on_word(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_):
                 word = chosen[0] if chosen else 3   # default Halt (matches applyCommandEffect)
                 self.pending_spell_command_word = word
-                word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")
+                word_name = next((lbl for lbl, val in features.COMMAND_WORD_OPTIONS if val == word), "?")
                 self._combat_log_add(f"Command word: {word_name}.")
                 self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
             self._ask_actor(idx, "action", "Command: choose a word",
-                            [(lbl, (lambda v=val: _on_word([v]))) for lbl, val in COMMAND_WORD_OPTIONS],
+                            [(lbl, (lambda v=val: _on_word([v]))) for lbl, val in features.COMMAND_WORD_OPTIONS],
                             render="picker", on_cancel=lambda: _on_word([]))
             return
 
@@ -9863,7 +9551,7 @@ class App:
         # Wild Magic Surge: a summon spell cast with a spell slot triggers a surge (not a free
         # Wish-duplicated summon — no slot was spent).
         if slot_level >= 1 and not cstats.is_npc and not free_summon:
-            self._maybe_wild_magic_surge(caster_idx)
+            features.maybe_wild_magic_surge(self, caster_idx)
 
     # ── Trickery Domain: Invoke Duplicity ───────────────────────────────────
     def _my_duplicates(self, idx: int) -> list:
@@ -10007,27 +9695,6 @@ class App:
                 return i
         return -1
 
-    def _show_companion_menu(self):
-        """Beast Master L3+: summon a Beast of the Land/Sea/Sky, or dismiss the
-        active companion. Mirrors the Wild Shape menu (context_menu)."""
-        idx = self._current_agent_idx()
-        if idx < 0:
-            return
-        stats = self.combat.get_agent_stats(self.bm, idx)
-        if (stats.character_class != rpg.CharacterClass.Ranger or
-                stats.ranger_subclass != rpg.RangerSubclass.BeastMaster or
-                stats.char_level < 3):
-            self._combat_log_add("Only a Beast Master Ranger (L3+) has a Primal Companion.")
-            return
-        existing = self._find_companion_idx(idx)
-        if existing >= 0:
-            self._dismiss_companion(idx, existing)
-            return
-        items = [(f"🐾 Beast of the {form}",
-                  lambda f=form: self._summon_companion(idx, f))
-                 for form in ("Land", "Sea", "Sky")]
-        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: summon a Primal Companion",
-                        items, anchor=pygame.mouse.get_pos())
 
     def _dismiss_companion(self, ranger_idx: int, companion_idx: int):
         """Tombstone the companion (removed_from_play) like a dismissed summon: it
@@ -10137,26 +9804,6 @@ class App:
                 return i
         return -1
 
-    def _show_familiar_menu(self):
-        """Pact of the Chain (L1+): summon one of the six familiar forms, or dismiss the
-        active familiar (the button label toggles). Mirrors the Primal Companion / Wild
-        Shape menus (context_menu)."""
-        idx = self._current_agent_idx()
-        if idx < 0:
-            return
-        stats = self.combat.get_agent_stats(self.bm, idx)
-        if (stats.character_class != rpg.CharacterClass.Warlock or
-                not stats.has_invocation(18)):
-            self._combat_log_add("Only a Warlock with Pact of the Chain can summon a familiar.")
-            return
-        existing = self._find_familiar_idx(idx)
-        if existing >= 0:
-            self._dismiss_familiar(idx, existing)
-            return
-        items = [(f"😈 {form}", lambda f=form: self._summon_familiar(idx, f))
-                 for form in PACT_CHAIN_FAMILIARS]
-        self._ask_actor(idx, "action", f"{self._agent_name(idx)}: summon a Pact familiar",
-                        items, anchor=pygame.mouse.get_pos())
 
     def _dismiss_familiar(self, warlock_idx: int, familiar_idx: int):
         """Tombstone the familiar (removed_from_play) like a dismissed summon: it stays in
@@ -10419,40 +10066,10 @@ class App:
             return
         if getattr(sp, "animates_dead", False):
             # Animate Dead: raise an undead servant from the corpse rather than revive it.
-            self._resolve_animate_dead(corpse)
+            features.resolve_animate_dead(self, corpse)
         else:
             self._resolve_spell_cast(corpse)
 
-    def _resolve_animate_dead(self, corpse_idx):
-        """Animate Dead (Divine Intervention D3): raise an undead servant from the picked
-        corpse. The corpse (conditions.dead) is consumed — tombstoned — and a Skeleton or
-        Zombie is spawned in its place on the caster's team via spawn_agent (the summon path,
-        not the destructive applyAgentConfigs). The choice of undead is prompted here; the
-        actual spawn/slot/action-economy happen in _finish_animate_dead.
-
-        No summoner_idx link is set: Animate Dead is not a Concentration spell (24-hour
-        duration), and the summoner link would let a later dropConcentration wrongly tombstone
-        the undead. Faction inheritance alone makes it a player-controlled ally."""
-        caster_idx = self._current_agent_idx()
-        if caster_idx < 0 or not self.pending_spell_slot:
-            return
-        if not (0 <= corpse_idx < len(self.bm.placed_agents)):
-            return
-        corpse = self.bm.placed_agents[corpse_idx]
-        cell        = rpg.Cell(corpse.origin.col, corpse.origin.row)
-        slot        = self.pending_spell_slot
-        slot_level  = self.pending_spell_slot_level
-        free_cast   = self.pending_spell_free_cast
-        items = [
-            ("💀 Skeleton", lambda: self._finish_animate_dead(
-                caster_idx, corpse_idx, cell, "Skeleton", slot, slot_level, free_cast)),
-            ("🧟 Zombie", lambda: self._finish_animate_dead(
-                caster_idx, corpse_idx, cell, "Zombie", slot, slot_level, free_cast)),
-        ]
-        self._ask_actor(caster_idx, "action",
-                        f"{self._agent_name(caster_idx)}: Animate Dead — raise which undead?",
-                        items, anchor=pygame.mouse.get_pos())
-        self._combat_log_add("Animate Dead — choose the undead to raise from the corpse.")
 
     def _finish_animate_dead(self, caster_idx, corpse_idx, cell, undead,
                              slot, slot_level, free_cast):
@@ -10705,47 +10322,14 @@ class App:
         # College of Glamour Beguiling Magic: offer the once/long-rest rider after a slot-fueled
         # Enchantment/Illusion cast (a free Mantle-of-Majesty Command uses no slot, so it's excluded).
         if not ctx.get("free_cast"):
-            self._maybe_offer_beguiling_magic(caster_idx, ctx["spell_idx"])
+            features.maybe_offer_beguiling_magic(self, caster_idx, ctx["spell_idx"])
             # Archfey Bewitching Magic (L14): a free Misty Step after a slot-fueled Enchantment/Illusion.
-            self._maybe_offer_bewitching_magic(caster_idx, ctx["spell_idx"])
+            features.maybe_offer_bewitching_magic(self, caster_idx, ctx["spell_idx"])
         # Wild Magic Surge: a Wild Magic Sorcerer who just cast a spell WITH A SPELL SLOT (level ≥ 1,
         # not a free cast) checks for a surge (natural 20, or forced if Tides of Chaos is expended).
         if not ctx.get("free_cast") and ctx.get("slot_level", 0) >= 1:
-            self._maybe_wild_magic_surge(caster_idx)
+            features.maybe_wild_magic_surge(self, caster_idx)
 
-    def _maybe_wild_magic_surge(self, caster_idx: int):
-        """Run the Wild Magic Surge trigger after a slot-fueled cast. The engine gates on
-        class/subclass/level itself (no-op for non-Wild-Magic casters) and rolls the d20 trigger.
-        For a plain L3-13 surge the single rolled band is applied immediately; with Controlled Chaos
-        (L14: two rolled bands) or Tamed Surge (L18: any band) we present a choice menu first."""
-        if not (0 <= caster_idx < len(self.bm.placed_agents)):
-            return
-        offer = self.combat.offer_wild_magic_surge(self.bm, caster_idx)
-        self._flush_combat_log()
-        if not offer.surged:
-            return
-        if offer.can_choose_any:
-            bands = list(range(1, 11))                    # Tamed Surge (L18): pick any band
-        else:
-            # 1 band normally, or 2 with Controlled Chaos (L14); dedupe identical rolls.
-            bands = list(dict.fromkeys(offer.options))
-        if not bands:
-            return
-        if len(bands) == 1:
-            self._resolve_wild_magic_surge(caster_idx, bands[0], offer.tides_expended)
-            return
-        # A choice is available — let the player pick which surge to apply.
-        name = self.bm.placed_agents[caster_idx].name
-        kind = "Tamed Surge" if offer.can_choose_any else "Controlled Chaos"
-        self._combat_log_add(f"⚡ {name}: {kind} — choose a Wild Magic Surge.")
-        self._flush_combat_log()
-        options = []
-        for b in bands:
-            desc = self.combat.wild_magic_surge_description(b)
-            options.append((f"{b}: {desc[:46]}",
-                            lambda bb=b, te=offer.tides_expended:
-                                self._resolve_wild_magic_surge(caster_idx, bb, te)))
-        self._ask_actor(caster_idx, "action", f"{name}: {kind} — choose a surge", options)
 
     def _resolve_wild_magic_surge(self, caster_idx: int, effect: int, tides_expended: bool):
         """Apply a chosen Wild Magic Surge band (from offer_wild_magic_surge) and relay the log."""
@@ -10760,62 +10344,7 @@ class App:
             self._sync_spell_effect_cache()       # band 1 (Plant Growth) places a terrain effect
         self._update_attack_overlay()
 
-    def _maybe_offer_beguiling_magic(self, caster_idx: int, spell_idx: int):
-        """If a L3+ College of Glamour bard just cast an Enchantment or Illusion spell using a spell
-        slot (not a cantrip / free cast) and still has a Beguiling Magic use, begin the target-pick
-        flow: click a creature within 60 ft, then choose Charmed or Frightened."""
-        if not (0 <= caster_idx < len(self.bm.placed_agents)):
-            return
-        stats = self.combat.get_agent_stats(self.bm, caster_idx)
-        if (stats.character_class != rpg.CharacterClass.Bard or
-                stats.bard_subclass != rpg.BardCollege.Glamour or stats.char_level < 3):
-            return
-        beg = stats.get_resource("Beguiling Magic")
-        if not (beg and beg.current > 0):
-            return
-        spells = self.combat.get_agent_spells(self.bm, caster_idx)
-        if not (0 <= spell_idx < len(spells)):
-            return
-        sp = spells[spell_idx]
-        if sp.school not in (rpg.SpellSchool.Enchantment, rpg.SpellSchool.Illusion):
-            return
-        if sp.level < 1:   # cantrips don't use a slot
-            return
-        # Present the offer as a MODAL popup at the caster rather than a bare combat-log line. This
-        # lands right after any OnDeclareCast reaction popup (e.g. Counterspell); a quiet log message
-        # there is easy to miss and the DM ends up pressing End Turn, silently wasting the once/rest
-        # use. The popup consumes clicks (blocking End Turn) until the DM picks Use or Decline.
-        self._ask_actor(
-            caster_idx, "confirm",
-            f"{self._agent_name(caster_idx)}: Beguiling Magic after {sp.name}?",
-            [(f"Use Beguiling Magic ({sp.name})",
-              lambda i=caster_idx: self._arm_beguiling_target_pick(i)),
-             ("Decline Beguiling Magic", self._decline_beguiling_offer)])
 
-    def _maybe_offer_bewitching_magic(self, caster_idx: int, spell_idx: int):
-        """Archfey Bewitching Magic (L14): if the caster is an Archfey L14+ warlock that just cast an
-        Enchantment or Illusion spell with a slot, offer a free Misty Step (30 ft, no slot/use/action)
-        as part of the same action. Presented as a modal popup at the caster (like Beguiling Magic)."""
-        if not (0 <= caster_idx < len(self.bm.placed_agents)):
-            return
-        stats = self.combat.get_agent_stats(self.bm, caster_idx)
-        if (stats.character_class != rpg.CharacterClass.Warlock or
-                stats.warlock_subclass != rpg.WarlockSubclass.Archfey or stats.char_level < 14):
-            return
-        spells = self.combat.get_agent_spells(self.bm, caster_idx)
-        if not (0 <= spell_idx < len(spells)):
-            return
-        sp = spells[spell_idx]
-        if sp.school not in (rpg.SpellSchool.Enchantment, rpg.SpellSchool.Illusion):
-            return
-        if sp.level < 1:   # cantrips don't use a slot
-            return
-        self._ask_actor(
-            caster_idx, "confirm",
-            f"{self._agent_name(caster_idx)}: Bewitching Magic after {sp.name}?",
-            [(f"Bewitching Magic: free Misty Step ({sp.name})",
-              lambda i=caster_idx: self._arm_bewitching_misty(i)),
-             ("Decline Bewitching Magic", self._decline_bewitching_offer)])
 
     def _arm_bewitching_misty(self, caster_idx: int):
         """DM accepted Bewitching Magic — arm the free Misty Step destination pick (with the currently
@@ -10847,39 +10376,6 @@ class App:
         self._combat_log_add("Beguiling Magic not used.")
         self._flush_combat_log()
 
-    def _beguiling_pick_target(self, hit: int):
-        """A creature was clicked for Beguiling Magic: validate range, then open the Charmed/Frightened
-        picker and resolve the WIS save through the engine on confirm."""
-        bard_idx = self.pending_beguiling_bard
-        agents = self.bm.placed_agents
-        if not (0 <= hit < len(agents)) or not (0 <= bard_idx < len(agents)):
-            return
-        if hit == bard_idx:
-            self._combat_log_add("Beguiling Magic affects another creature, not yourself.")
-            self._flush_combat_log()
-            return
-        if self._footprint_dist_ft(bard_idx, hit) > 60:
-            self._combat_log_add("Beguiling Magic: that creature is more than 60 ft away.")
-            self._flush_combat_log()
-            return
-
-        def _on_choice(chosen, bard_idx=bard_idx, hit=hit):
-            self.pending_beguiling      = False
-            self.pending_beguiling_bard = -1
-            if not chosen:   # Esc/no pick → decline without spending the use
-                self._combat_log_add("Beguiling Magic declined.")
-                self._flush_combat_log()
-                self._update_attack_overlay()
-                return
-            use_frightened = (chosen[0] == 1)
-            self.combat.bard_beguiling_magic(self.bm, bard_idx, hit, use_frightened)
-            self._flush_combat_log()
-            self._update_attack_overlay()
-
-        self._ask_actor(bard_idx, "action", "Beguiling Magic",
-                        [("Charmed", lambda: _on_choice([0])),
-                         ("Frightened", lambda: _on_choice([1]))],
-                        render="picker", on_cancel=lambda: _on_choice([]))
 
     def _cancel_beguiling(self):
         """Esc out of Beguiling Magic without using it (the spell was already cast normally)."""
@@ -11090,7 +10586,7 @@ class App:
         self._consume_cast_slot(slot, caster_idx)
         # Wild Magic Surge: a teleport spell (e.g. Misty Step) cast with a spell slot triggers a surge.
         if self.pending_spell_slot_level >= 1:
-            self._maybe_wild_magic_surge(caster_idx)
+            features.maybe_wild_magic_surge(self, caster_idx)
 
     # FLAG: Move to C++
     def _aoe_cells(self, center_cell, spell) -> list:
@@ -17395,7 +16891,7 @@ class App:
                             self._mantle_add_target(hit)
                         elif self.pending_beguiling and hit >= 0:
                             # Beguiling Magic: the clicked creature must make a WIS save (then pick Charmed/Frightened).
-                            self._beguiling_pick_target(hit)
+                            features.beguiling_pick_target(self, hit)
                         elif self.pending_clairvoyant and hit >= 0:
                             # Clairvoyant Combatant: the clicked enemy makes a WIS save against the GOO warlock.
                             self._resolve_clairvoyant_combatant(hit)
@@ -17408,7 +16904,7 @@ class App:
                         elif self._legendary_target_pick and hit >= 0:
                             self._resolve_legendary_attack(hit)
                         elif self.pending_attack_slot and hit >= 0:
-                            self._confirm_friendly_harm(hit, lambda h=hit: self._resolve_combat_attack(h))
+                            features.confirm_friendly_harm(self, hit, lambda h=hit: self._resolve_combat_attack(h))
                         elif self.pending_summon_slot:
                             self._resolve_summon(cell)
                         elif self.pending_chromatic_active and self.pending_spell_slot:
@@ -17431,7 +16927,7 @@ class App:
                                 # Dispel Magic: open a picker for the ongoing spells at the clicked
                                 # creature and/or cell (buff vs debuff, or one of several AoEs) — the
                                 # chosen effect is cast via _cast_dispel_selection.
-                                self._begin_dispel_pick(hit, cell, event.pos)
+                                features.begin_dispel_pick(self, hit, cell, event.pos)
                             elif self.pending_spell_is_aoe:
                                 if self._pending_spell_is_wall():
                                     if self.spell_anchor_cell is None:
@@ -17464,10 +16960,10 @@ class App:
                                     elif self._is_chromatic_pending():
                                         # Chromatic Orb: the primary target opens leap-chain selection
                                         # instead of casting immediately (confirm friendly harm first).
-                                        self._confirm_friendly_harm(hit, lambda h=hit: self._enter_chromatic_chain(h))
+                                        features.confirm_friendly_harm(self, hit, lambda h=hit: self._enter_chromatic_chain(h))
                                     elif self._pending_spell_is_harm():
                                         # Faction rule 4: confirm before a harmful spell on a teammate.
-                                        self._confirm_friendly_harm(hit, lambda h=hit: self._resolve_spell_cast(h))
+                                        features.confirm_friendly_harm(self, hit, lambda h=hit: self._resolve_spell_cast(h))
                                     else:
                                         self._resolve_spell_cast(hit)
                                 else:
@@ -17823,7 +17319,7 @@ class App:
                 # Unarmed Strike (Punch/Grapple/Push) is part of the Attack action, so it also
                 # resumes mid-sequence (Extra Attack: grapple, then strike, or vice versa).
                 if self._action_clicked("unarmed", event):
-                    self._show_unarmed_menu(pygame.mouse.get_pos())
+                    features.show_unarmed_menu(self, pygame.mouse.get_pos())
                 # D-M2-4: these five are DRAWN mid-sequence (the band stays open for
                 # the swings still owed) and refused here, exactly as End Turn is
                 # refused while paused. The gate is a handler rule, not availability —
@@ -17892,13 +17388,13 @@ class App:
                         self._update_reach()
                         self._update_attack_overlay()
                 if self._action_clicked("use_portent", event):
-                    self._show_portent_dice_menu()
+                    features.show_portent_dice_menu(self)
                 if self._action_clicked("grapple_drop", event):
                     self._execute_grapple_drop()
                 # Use Item is NOT gated on the bonus action: a potion is a Bonus Action, but a
                 # thrown flask or Net replaces one attack of the Attack action instead.
                 if self._action_clicked("use_item", event):
-                    self._show_use_item_menu(event.pos)
+                    features.show_use_item_menu(self, event.pos)
                 if self._action_clicked("extinguish", event):
                     self._resolve_extinguish()
                 if self._action_clicked("escape_net", event):
@@ -18233,7 +17729,7 @@ class App:
                     if self._action_clicked("mantle_majesty", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
-                            self._start_mantle_majesty(idx)
+                            features.start_mantle_majesty(self, idx)
                     if self._action_clicked("unbreakable_majesty", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -18543,13 +18039,13 @@ class App:
                             self.pending_wild_magic_teleport = True
                             self._combat_log_add("Wild Magic Teleport: click a destination cell.")
                     if self._action_clicked("companion", event):
-                        self._show_companion_menu()
+                        features.show_companion_menu(self)
                     if self._action_clicked("familiar", event):
-                        self._show_familiar_menu()
+                        features.show_familiar_menu(self)
                     if self._action_clicked("charge_arcane_ward", event):
-                        self._show_arcane_ward_menu()
+                        features.show_arcane_ward_menu(self)
                     if self._action_clicked("wild_shape", event):
-                        self._show_wild_shape_menu()
+                        features.show_wild_shape_menu(self)
                 # F11, closed: Open Hand L11 Fleet Step is the one option in the band that
                 # needs the Bonus Action to be GONE — it is a free Step of the Wind precisely
                 # because it rides alongside another Bonus Action. Dispatched outside the gate
