@@ -2870,10 +2870,12 @@ green at every one. `test_prompts.py` is **19/19**.
   time is after M2, when `ActionMenu` has already pulled the panel's legality out.
 - **The nine unconverted sites** need the Step 0.5 decision above before anything can
   move.
-- **`_agent_screen_pos` (`main.py:10741`) still ignores pan and zoom**, so on a panned or
-  zoomed map every one of these popups opens away from its token. Recorded in M1 Steps
-  1–2, untouched here, and now 79 sites wide rather than one — it belongs at the top of
-  the cleanup list.
+- ~~**`_agent_screen_pos` (`main.py:10741`) still ignores pan and zoom**, so on a panned or
+  zoomed map every one of these popups opens away from its token.~~ **Fixed 2026-09-24**
+  as item 2 of [`MULTIPLAYER_PLAN_OWED.md`](MULTIPLAYER_PLAN_OWED.md), and it was worse
+  than this line said: `map_scale` starts at the fit-to-window scale, so the anchor was a
+  whole cell out on the *untouched* view of any map wider than the viewport, not only on
+  a moved one.
 
 #### Not covered by a test
 
@@ -3562,14 +3564,21 @@ byte-identical across every conversion commit.
 
 #### Carried out of M2
 
-- **F9** (Intimidating Presence gated at 10, the resource granted at 14), **F11**
-  (Step of the Wind's Fleet Step arm is unreachable), **F12** (§4's five-up posture row
-  is too narrow for three of its labels, pinned in `_KNOWN_TOO_WIDE`) and **F14** are the
-  open ones. All four are behaviour questions, and each is its own item.
+- ~~**F9**, **F11**, **F12** and **F14** are the open ones.~~ **All four landed
+  2026-09-24**, one commit each, as items 3–6 of
+  [`MULTIPLAYER_PLAN_OWED.md`](MULTIPLAYER_PLAN_OWED.md), with the two behaviour
+  questions (F14's dead button, F11's unreachable arm) decided by the user rather than
+  by the implementer. F9 and F11 left the panel golden byte-identical; F12 re-blessed it
+  deliberately, in one place, with the diff described in its commit.
 - ~~**The manual smoke pass's LOOKING half is owed for M2d and M2e both.**~~ **Done
   2026-09-22**, and the rig is checked in — see below.
-- **`gui/menus/` relocation** — the panel's rendering helpers were to move out of
-  `main.py` after M2. Still owed.
+- **`gui/menus/` relocation** — **four slices landed 2026-09-24** (item 7 of
+  [`MULTIPLAYER_PLAN_OWED.md`](MULTIPLAYER_PLAN_OWED.md)): the 25 post-hit riders, the
+  6 defender reactions, the 9 DM authoring menus and the 16 per-feature menus, 56
+  builders and 1,764 lines, taking `main.py` from 20,191 to 18,419 — the reversal M1
+  Step 3 expected and did not get. `_ask_actor`/`_ask_dm` stayed put, and
+  `tests/test_menus.py` now pins that. **Still owed**: the right-click map menu, still
+  built inline in `_handle_events`, and the panel's rendering helpers.
 
 ---
 
