@@ -288,6 +288,20 @@ no pygame events), and `test_action_menu.py`'s 52 checks. Do it in feature-area 
 the golden green after each, and **never together with any of items 3–6** — a relocation whose
 diff also changes a rule is a relocation nobody can review.
 
+**IN PROGRESS from 2026-09-24**, one commit per slice, each with all three oracles green and
+items 3–6 already landed and out of the way.
+
+The shape every slice takes: a builder becomes a module-level function whose first argument is
+the live `App` (`actions.py`'s `ActionMenu.build(app, idx)` set that precedent), `self` becomes
+`app`, and every call site — including the handful in `tests/` — is repointed. `_ask_actor` and
+`_ask_dm` do **not** move; the builders keep calling them through `app`.
+
+| slice | module | methods | lines out of `main.py` |
+|---|---|---|---|
+| 1 | `menus/riders.py` — the post-hit attack riders | 25 | 845 |
+
+`main.py`: **20,191 → 19,347**.
+
 ---
 
 ## 8. The client is never rendered
