@@ -41,6 +41,7 @@ runs on the stand-in frame tick.
   · the exemption does not skip the Origin check                      (test_a_cross_origin_socket_is_refused)
   · the client keeps its credential in sessionStorage (D-M4e-2)       (test_the_client_keeps_the_credential_in_session_storage)
   · the client has no input surface in M4e (D-M4e-3)                  (test_the_client_has_no_input_surface)
+  · it fetches the page art with its credential, since an <img> cannot (test_the_client_fetches_the_map_with_its_credential)
   · ...and it parses, which nothing else in the suite would notice    (test_the_client_parses)
 """
 
@@ -663,6 +664,35 @@ def test_the_client_has_no_input_surface():
     print("✅ test_the_client_has_no_input_surface")
 
 
+def test_the_client_fetches_the_map_with_its_credential():
+    """The bug the first manual pass found, and the reason it could hide.
+
+    `GET /map.png` is authenticated like every other route — a bearer, never a cookie (A3)
+    — and a browser cannot put a header on an image request, exactly as it cannot on the
+    socket handshake. The client assigned the URL straight to an `Image`, so the request
+    went out unauthenticated, came back 401, fired no `onload`, and left the canvas with
+    nothing over its MASK fill: a uniformly dark board on every phone, fog or no fog, for
+    the life of M4e.
+
+    Nothing could catch it. `test_mapserver.py` drives the route with `Authorization` set,
+    which is what a *test* does and not what an `<img>` does; and nothing in the suite
+    renders this file. So the check is static and names the shape directly: the image goes
+    through `fetch` with the credential, and no bare assignment of the server's URL to an
+    image source is left anywhere in the file.
+
+    The 401 itself is correct and is asserted where it belongs
+    (`test_mapserver.test_unauthenticated_is_401`). This is about the caller.
+    """
+    js = open(os.path.join(_STATIC, "app.js"), encoding="utf-8").read()
+    assert re.search(r"fetch\(\s*url\s*,\s*\{\s*headers:\s*\{\s*Authorization",  js), \
+        "the page art is not fetched with the credential"
+    assert not re.search(r"img\.src\s*=\s*(url|map\.image)\b", js), \
+        "the client assigns the server's URL to an image source — that request carries no header"
+    assert "createObjectURL" in js and "revokeObjectURL" in js, \
+        "the fetched blob is not turned into an image, or not released again"
+    print("✅ test_the_client_fetches_the_map_with_its_credential")
+
+
 def test_the_client_parses():
     """`node --check` on `app.js`, because nothing else in the suite executes it.
 
@@ -699,5 +729,6 @@ if __name__ == "__main__":
     test_a_cross_origin_socket_is_refused()
     test_the_client_keeps_the_credential_in_session_storage()
     test_the_client_has_no_input_surface()
+    test_the_client_fetches_the_map_with_its_credential()
     test_the_client_parses()
     print("\n✅ All live-socket tests passed!")

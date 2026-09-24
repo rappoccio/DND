@@ -362,8 +362,35 @@ and is `test_replay_roundtrip.py`'s fixture (`need >=2 agents in fixture, got 0`
 had saved an empty board over it). Restore it with `git checkout --` after any manual pass on
 that map, or the next `./test.sh` reports a regression that is really a session save.
 
-**Still owed**: the four questions the pass exists to answer — fog alignment against the art,
-tokens on their cells, initiative and log filling, and a reload keeping the seat.
+**Finding 3 — the map art never loaded on any client, and that is why the board is dark.**
+The DM reported "the entire map is obscure on the phone" while every token was visible.
+Probing the live server from the host settled it: `/state` names
+`"image": "/map.png?v=45fe9815c28ce822"`, that URL serves **153 KB of PNG with a
+credential**, and **401 `unauthenticated` without one** — which is correct and is asserted
+(`test_mapserver.test_unauthenticated_is_401`). The client did `img.src = url`, and a
+browser can no more put a bearer header on an image request than on a WebSocket handshake,
+which this very file says in its own comments about the socket. So every `<img>` fetch was
+a 401, `onload` never fired, and `drawBoard` left its `MASK` fill covering the board — for
+every client, fog or no fog, for the whole life of M4e. `app.js` now **fetches** the art
+with the credential and decodes it from a blob, releasing the previous one; a key that
+will not load is remembered, retried at a human interval rather than per frame, and said
+out loud instead of failing silently. `test_live.py` pins the shape statically, which is
+the only way available: nothing in the suite renders this file.
+
+**Not a bug — the fog gate was simply down.** All tokens crossing to the phone is what
+`fog.active: False` means; `_fog_active()` reads `show_fog`, the DM's own toggle, and M3's
+rule is that a client never sees *more* than the console, not that it always sees less.
+Turn fog on and the unexplored non-party tokens go.
+
+**Not a bug — there is no player input yet.** `app.js` sends exactly one frame ever, the
+auth frame, and `test_live.test_the_client_has_no_input_surface` pins the count at 1 on
+purpose: D-M4e-3 made M4e read-only, and M5 is the gate a game action would have to arrive
+through. A seated player cannot move their PC because nothing in the protocol lets them
+yet — the seat is real, the view is theirs, the input is M5's.
+
+**Still owed**: the four questions the pass exists to answer — fog alignment against the art
+(now that the art draws at all), tokens on their cells, initiative and log filling, and a
+reload keeping the seat.
 
 ---
 

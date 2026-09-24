@@ -48,7 +48,9 @@ const ctx = canvas.getContext("2d");
 let socket = null;
 let view = null;
 let attempt = 0;
-let page = { url: "", img: null };         // the map image, re-fetched only when it re-keys
+let page = { url: "", img: null, objectUrl: "" };   // the map image, re-fetched on a re-key
+let pageFail = { url: "", at: 0 };        // the last key that would not load, and when
+const PAGE_RETRY_MS = 5000;               // …so a failing key is retried, but not per frame
 
 // ── Session storage, which is allowed to fail ───────────────────────────────
 // Private browsing and a locked-down phone both throw on access rather than returning
@@ -251,15 +253,12 @@ function drawBoard() {
   // again only when `map.image` changes — which for a player is when the party earns a
   // cell and the mask hash moves.
   const url = map.image || "";
-  if (url && url !== page.url) {
+  if (url && url !== page.url
+      && !(url === pageFail.url && Date.now() - pageFail.at < PAGE_RETRY_MS)) {
     page.url = url;
-    const img = new Image();
-    img.onload = () => { if (view) drawBoard(); };
-    img.src = url;
-    page.img = img;
+    loadPage(url);
   } else if (!url) {
-    page.url = "";
-    page.img = null;
+    releasePage();
   }
   if (page.img && page.img.complete && page.img.naturalWidth) {
     // Stretched to the nominal lattice rather than drawn at natural size: see the header's
@@ -270,6 +269,60 @@ function drawBoard() {
   drawFog(cell, map.cols, map.rows);
   drawGrid(cell, map.cols, map.rows);
   for (const agent of view.agents) drawToken(agent, cell);
+}
+
+/* The page art is FETCHED, not assigned to an `<img src>`.
+ *
+ * `GET /map.png` is authenticated like every other route — a bearer, never a cookie (A3)
+ * — and a browser cannot put a header on an image request any more than it can on a
+ * WebSocket handshake. Assigning the URL straight to an `Image` therefore requested it
+ * unauthenticated, took a 401, fired no `onload`, and left `drawBoard` with nothing to
+ * draw over its MASK fill: every client saw a uniformly dark board, fog or no fog. The
+ * suite could not see it — `test_mapserver.py` drives the route with the header set, and
+ * nothing renders this file — and the first manual pass found it in one glance.
+ *
+ * `page.url` is set by the caller before the fetch starts, so a re-key arriving mid-flight
+ * does not start a second load; the guards below drop a response that is no longer current
+ * and revoke its blob rather than leaking it.
+ */
+async function loadPage(url) {
+  const credential = recall(CRED_KEY);
+  if (!credential) return;
+  try {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${credential}` } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    if (page.url !== url) return;                        // a newer mask won the race
+    const objectUrl = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      if (page.url !== url) { URL.revokeObjectURL(objectUrl); return; }
+      if (page.objectUrl) URL.revokeObjectURL(page.objectUrl);   // the mask before this one
+      page.img = img;
+      page.objectUrl = objectUrl;
+      if (view) drawBoard();
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); pageUnavailable(url); };
+    img.src = objectUrl;
+  } catch (e) {
+    pageUnavailable(url);
+  }
+}
+
+/* A picture that will not load is not a reason to stop drawing — the live fog mask, the
+ * grid and the tokens are all still correct without it, and a player can still take their
+ * turn. It must not be SILENT, though: silence is how the 401 survived M4e. So the key is
+ * remembered as failed, retried at a human interval rather than on every frame, and said
+ * out loud once per attempt. */
+function pageUnavailable(url) {
+  pageFail = { url, at: Date.now() };
+  if (page.url === url) page.url = "";
+  console.warn("map image unavailable:", url);
+}
+
+function releasePage() {
+  if (page.objectUrl) URL.revokeObjectURL(page.objectUrl);
+  page = { url: "", img: null, objectUrl: "" };
 }
 
 /* The complement of `explored_runs`, filled in the server's own fog colour.
