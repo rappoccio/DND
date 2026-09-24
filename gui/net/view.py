@@ -211,8 +211,14 @@ def _agent(app, roster, viewer, idx: int, pt, is_dm: bool) -> dict:
                           "burrow": int(stats.speed_burrow)},
             "slots":     {"max":       [int(n) for n in stats.spell_slots_max],
                           "remaining": [int(n) for n in stats.spell_slots_remaining]},
+            # `stats.resources` is the C++ `std::map<std::string, Resource>`, so it
+            # arrives as a DICT keyed by name — iterating it bare yields the keys, and
+            # `"Rage".name` is an AttributeError that takes the whole push tick with it.
+            # Found by the first manual pass with a seated player (the suite's fixtures
+            # never called `initialize_class_resources`, so every sheet it built was of a
+            # creature with no resources at all).
             "resources": [{"name": r.name, "current": int(r.current), "max": int(r.max)}
-                          for r in stats.resources],
+                          for r in stats.resources.values()],
         }
     return rec
 

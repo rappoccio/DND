@@ -23,6 +23,7 @@ Covered here:
   · the DM sees the same scene unfiltered                    (test_dm_view_is_unfiltered)
   · a visible enemy's HP is a band, never a number           (test_enemy_hp_is_a_band)
   · party vitals are table information; sheets are not       (test_vitals_and_sheet_tiers)
+  · a sheet lists the creature's class resources             (test_a_sheet_lists_the_creatures_class_resources)
   · D-M3-3: a concealed automated enemy is omitted too       (test_concealed_automated_enemy_omitted)
   · D-M3-5: unexplored terrain, doors and ladders are omitted (test_unexplored_map_structure_omitted)
   · DM-channel FIELDS never reach a player, seen or not      (test_dm_only_fields_never_reach_a_player)
@@ -261,6 +262,38 @@ def test_vitals_and_sheet_tiers():
     print("✅ test_vitals_and_sheet_tiers")
 
 
+def test_a_sheet_lists_the_creatures_class_resources():
+    """The crash the first manual pass with a seated player found, in one line.
+
+    `stats.resources` is the C++ `std::map<std::string, Resource>`, so Python sees a
+    DICT keyed by name. `for r in stats.resources` therefore walks the KEYS, and
+    `"Second Wind".name` raises — inside `_push_views`, which takes the frame tick and
+    the whole app with it. Nothing here caught it because no fixture had ever called
+    `initialize_class_resources`: every sheet the suite built belonged to a creature
+    with no resources, where iterating an empty dict is the same either way.
+
+    So this gives the owned creature real resources first, and then asserts the
+    projection names them.
+    """
+    def check(app, kira, _spectator):
+        idx = _idx(app, "Aria")
+        s = app.combat.get_agent_stats(app.bm, idx)
+        s.initialize_class_resources(rpg.CharacterClass.Fighter, 5)
+        app.combat.set_agent_stats(app.bm, idx, s)
+        assert app.combat.get_agent_stats(app.bm, idx).resources, \
+            "the fixture has no resources — this check would pass vacuously"
+
+        sheet = _by_name(build_view(app, kira), "Aria")["sheet"]
+        by_name = {r["name"]: r for r in sheet["resources"]}
+        assert by_name, "a creature with resources projected none"
+        for name, r in by_name.items():
+            assert isinstance(name, str) and name
+            assert isinstance(r["current"], int) and isinstance(r["max"], int)
+            assert r["current"] <= r["max"]
+    _run(check)
+    print("✅ test_a_sheet_lists_the_creatures_class_resources")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  D-M3-3 — the second gate the plan's filter table omitted
 # ─────────────────────────────────────────────────────────────────────────────
@@ -485,6 +518,7 @@ if __name__ == "__main__":
     test_dm_view_is_unfiltered()
     test_enemy_hp_is_a_band()
     test_vitals_and_sheet_tiers()
+    test_a_sheet_lists_the_creatures_class_resources()
     test_concealed_automated_enemy_omitted()
     test_unexplored_map_structure_omitted()
     test_dm_only_fields_never_reach_a_player()

@@ -321,6 +321,29 @@ art, tokens sit on their cells, the initiative list and log fill, and a reload k
 Two of M4e's owed items predict what you will find — the lattice is nominal while the console
 uses real grid-line positions, and the active token is not marked at all.
 
+**STARTED 2026-09-24**, the user driving the console and the phone, and it paid for itself
+before any of the four questions could be asked.
+
+**Finding 1 — the first seated player crashes the app.** `view.py:214` projected a sheet's
+resources with `for r in stats.resources`, and `stats.resources` is the C++
+`std::map<std::string, Resource>`, so Python sees a **dict keyed by name**: the loop walks
+the KEYS and `"Second Wind".name` raises `AttributeError` inside `_push_views`, which is on
+the frame tick, which is the app. The trigger is one right-click — *Controller ▸* on a token
+whose class has any resource at all. The suite could not see it: no fixture had ever called
+`initialize_class_resources`, so every sheet it ever built belonged to a creature with an
+empty dict, where iterating keys and values are the same thing. Fixed with `.values()`, and
+`test_gameview.py::test_a_sheet_lists_the_creatures_class_resources` gives the owned creature
+real resources first and fails on the old line.
+
+**Finding 2 — the manual pass and the test fixtures share a file.** Running on
+`maps/TestDNDMap.png` makes the app save `maps/TestDNDMap_agents.json`, which is *tracked*
+and is `test_replay_roundtrip.py`'s fixture (`need >=2 agents in fixture, got 0` when the app
+had saved an empty board over it). Restore it with `git checkout --` after any manual pass on
+that map, or the next `./test.sh` reports a regression that is really a session save.
+
+**Still owed**: the four questions the pass exists to answer — fog alignment against the art,
+tokens on their cells, initiative and log filling, and a reload keeping the seat.
+
 ---
 
 ## 9. Not this plan: `COMBAT_REFACTOR_PLAN.md` R4
