@@ -1265,9 +1265,11 @@ and lost its now-unused `import os`. The module is stdlib-only, which is what ke
 Line numbers in the table above were stale by ~190 lines (the M1–M3 work moved them); they
 are corrected to the sites as they stand today.
 
-**`tests/test_atomic_saves.py`, 5 checks**, registered beside the oracles. Every check
-forces a write to fail rather than asserting a happy path — an atomicity fix whose test
-only ever sees a successful save is a test of `json.dump`. `os.replace` is monkeypatched to
+**`tests/test_atomic_saves.py`, 5 checks**, registered beside the oracles. **Four of the
+five force a write to fail** rather than asserting a happy path — an atomicity fix whose
+test only ever sees a successful save is a test of `json.dump`. The fifth
+(`test_round_trip_and_no_litter`) is the happy path, and earns its place only because it
+also asserts the temp file is gone afterwards. `os.replace` is monkeypatched to
 raise `ENOSPC`, which is the worst moment a crash can pick: temp written, fsynced, and the
 swap never visible.
 
@@ -1287,6 +1289,116 @@ directory is deliberately **not** fsynced — that would be needed for the renam
 be durable across power loss, and it costs a sync per autosave, which NN7 does a hundred
 times a session. If the ring ever needs power-loss durability, that is the line to add and
 the trade-off to re-take.
+
+---
+
+## Step 0.9 — M4's frozen decisions (frozen 2026-09-23)
+
+User signed off 2026-09-23 on **D-M4-1** and **D-M4-2**; the remaining four are write-downs
+of things this document already decided elsewhere, recorded here so M4 does not rediscover
+them. **Frozen** on the same terms as Step 0.1: changes need a dated amendment with a
+one-line reason.
+
+### D-M4-1 — `GET /map.png` is masked server-side
+
+`_draw_fog_overlay` (`main.py:15303`) paints unexplored cells dark. The DM's own screen
+hides the map art there — which is precisely why D-M3-5 filters terrain, doors and lighting
+against the explored mask. Serving the page PNG verbatim hands a player the floor plan of
+the wing they have not entered, as a picture, and the M3 filter table's *"omitted entirely —
+not sent-and-hidden"* row forbids exactly that. Compositing fog **client-side** is rejected
+for the same sentence: a player who reads their own traffic would have the level.
+
+So the route masks before it serves, and the rules are:
+
+- **The mask is opaque: alpha 255.** It is *not* `FOG_COL`. `FOG_COL = (24, 24, 28, 245)`
+  (`main.py:15326`) composites 10/255 ≈ 4% of the underlying art through the fog —
+  invisible at a glance on the DM's screen, recoverable by contrast-stretch on a
+  high-contrast floor plan. Reusing the constant is the obvious implementation and it is
+  the wrong one.
+- **Cell geometry comes from raw image px**, `bm.v_line_positions` / `h_line_positions`
+  unscaled — `map_scale` is a screen-space concern and has no meaning on the wire.
+- **Two cache entries, not one per viewer.** Fog is party-scoped and that is frozen
+  (Step 0.1), so one mask serves every player: raw for the DM viewer, masked for everyone
+  else.
+- **The cache key is the mask hash**, not the image content hash. `_map()`
+  (`gui/net/view.py:271`) does not emit `image` at all today, so M4 writes the field fresh
+  and breaks no contract: `?v=<mask-hash>` for a player, `?v=<content-hash>` for the DM.
+- **Staleness is safe in exactly one direction.** A masked PNG that lags the mask shows
+  *more* fog than the party has earned, never less. Any later debounce or throttle must
+  preserve that direction; this sentence is the invariant it has to be checked against.
+- **Cost, named:** the mask changes on every newly-explored cell, so this is one full-page
+  PNG re-encode per exploration delta. Regenerate lazily, on request, off the frame thread —
+  and **measure it on the largest page in the tree before M4 calls the route done.** If the
+  encode is not affordable there, the answer is a cheaper mask representation, never a
+  rawer image.
+
+### D-M4-2 — M4 ships snapshot-only; Envelope 3 and the animation are M4b
+
+Step 0.5's Envelope 3 makes `seq` **per-viewer**, assigned as each viewer's stream is
+filtered, because dropping an event leaves a hole and a shared global cursor with holes
+leaks the rate of hidden activity. That makes S3 a filtered per-viewer projection with the
+same discipline as `build_view` and a byte-level test of its own — not a field on a
+message. M4's client spec also animates `NpcVisualEvent` `Move` paths, which needs that
+stream. Together they make M4 the largest phase in the plan.
+
+**M4** is therefore snapshot-only: every push is a full `view`, tokens jump rather than
+walk, and the client has no event cursor. F5 makes this nearly free — `/live` sends the
+current snapshot on prepare, so late-joiner resync already fell out of the spike.
+**M4b** adds Envelope 3, the per-viewer filtered stream, and the `Move` animation, with its
+own mutant pass.
+
+**Snapshot-only is not a strict subset — it has its own bandwidth profile, so the cadence
+is frozen with it.** A full view carries `fog.explored` as a cell list (up to 1200 pairs on
+a 40×30 page, more on larger ones), and a push per token move is the traffic Envelope 3
+exists to avoid. M4 therefore **coalesces**: at most one push per viewer per 250 ms, always
+one at a turn boundary, always one when a prompt is addressed to that viewer, and never two
+in flight. Without this rule M4b arrives to fix a problem M4 invented.
+
+### D-M4-3 — `_pump_net()` pumps the command queue and nothing that redraws
+
+F3's advice, promoted to the named shape. Pumping inside a modal means **a DM authoring
+modal is no longer a quiescent point** — state can advance while *Generate Dungeon* is
+open. `_submit_reaction` drags `_flush_combat_log` / `_update_attack_overlay` /
+`_sync_spell_effect_cache` behind it, and in the spike those ran headlessly while the modal
+owned the screen. F3's owed real-display look belongs to **M4**, not M3.
+
+### D-M4-4 — the seat claim on re-join: credential first, display name second
+
+Step 0.1 froze auto-seat on a valid code, and a returning player "picks their existing
+principal or creates a new one". The matching rule:
+
+1. A live, unrevoked credential re-attaches to **its own principal**, by `kid`. Names are
+   not consulted.
+2. Only when the credential is gone does the join fall back to matching `display_name`
+   **case-insensitively** against existing player principals.
+3. No match creates a new principal.
+
+The order matters: two players who both type "Kira" race under name-matching alone, and the
+second silently takes a seat the token could have resolved without the DM touching
+anything. Name-matching is acceptable as the fallback because R2 already accepts that
+anyone holding the code can claim to be Kira, and the DM sees and can reassign every seat
+(NN4). `display_name` remains "never a key" (`net/roster.py:73`) for storage and ownership —
+this is a join-time hint, not an identity.
+
+### D-M4-5 — `AppRunner` + `TCPSite` + `run_forever`
+
+F6 tested it: `web.run_app` off the main thread dies on `set_wakeup_fd`. Carried here so it
+is a constraint M4 starts from and not an afternoon it spends.
+
+### D-M4-6 — the `Origin` check is same-origin against `Host`, never a constant list
+
+A9 requires the check, and a phone at the table sends `Origin: http://<lan-ip>:6081` where
+the IP varies with the network. So:
+
+- **`Origin` present** ⇒ its scheme-less `host:port` must equal the request's own `Host`.
+- **`Origin` absent** ⇒ allow. Native clients and `curl` send none, and a strict deny breaks
+  the tooling. This is safe *because* A3 forbids cookies: credentials are bearer tokens a
+  cross-origin page cannot read or cause to be sent, so `Origin` here is defense in depth,
+  not the primary CSRF defense.
+
+A configured allowlist is rejected because it cannot be written down correctly in advance,
+and "just skip `Origin` on the LAN" is rejected because it is the version that makes the
+DM's own browser a CSRF vector into the player server.
 
 ---
 
@@ -1713,8 +1825,9 @@ each loop. **It is a named M4 task, not a discovery to make live.**
 | **M0** ☑ | Token ownership model | very low | 1–2 days | who controls what |
 | **M1** ◐ | `PromptBus`; reroute reactions + all **87** prompt sites | medium | 1–2 weeks | a scriptable, headless-testable DM console |
 | **M2** ◐ | Legal-action model out of `_draw_combat_panel` | **high** | multi-week | a turn's options as data |
-| **M3** | `GameView` projection + fog filtering | low | ~1 week | per-player state, still local |
-| **M4** | Transport + spectator web client | medium | 1–2 weeks | **players watch on their own screens** |
+| **M3** ☑ | `GameView` projection + fog filtering | low | ~1 week | per-player state, still local |
+| **M4** | Transport + **snapshot-only** spectator web client (D-M4-2) | medium | ~1 week | **players watch on their own screens** |
+| **M4b** | Envelope 3 (per-viewer filtered stream) + `Move` animation | medium | ~1 week | the board moves instead of jumping |
 | **M5** | Intent submission | medium | 1–2 weeks | **actual multiplayer** |
 | **M6** | Reconnect / resync / restart | low | ~1 week | survives a dropped laptop |
 | **M7** | Hardening, DM controls, per-agent fog | low | ongoing | table-ready |
@@ -3145,6 +3258,11 @@ the six blocking modals.
 
 ### M4 — Transport + spectator client
 
+> **Scoped by Step 0.9 (frozen 2026-09-23).** M4 is **snapshot-only** per D-M4-2: every
+> push is a full `view`, coalesced at one per viewer per 250 ms. Envelope 3, the per-viewer
+> filtered event stream and the `Move` animation are **M4b**. Read D-M4-1 through D-M4-6
+> before writing any of this section's code.
+
 **Server**: one `threading.Thread` running an asyncio loop in-process.
 `aiohttp` if a dependency is acceptable; otherwise stdlib `http.server` + a minimal WS
 implementation. No networking exists in the tree today, so this is a clean add.
@@ -3156,20 +3274,28 @@ Routes:
 | `GET /` | the client (static HTML/JS, served from `gui/net/static/`) |
 | `POST /join` | join code → **bearer token** (A3) → principal. Never a cookie. |
 | `GET /state` | full `GameView` for the authenticated principal |
-| `GET /map.png` | the current page's map image (cached by content hash) |
-| `WS /live` | push: `{seq, events[]}` deltas; `{prompt}` when one is addressed to you. **Authenticates by first frame, not by header** (A3) — the browser `WebSocket` API cannot set one. |
+| `GET /map.png` | the current page's map image, **masked server-side for a player viewer** (D-M4-1): opaque fog over unexplored cells, cached by mask hash; the DM viewer gets it raw, cached by content hash |
+| `WS /live` | push: **a full `view` per update in M4** (D-M4-2; `{seq, events[]}` deltas are M4b); `{prompt}` when one is addressed to you. **Authenticates by first frame, not by header** (A3) — the browser `WebSocket` API cannot set one. |
 
-Every route goes through one middleware point (A9) that does: `Origin` check, bearer
+Every route goes through one middleware point (A9) that does: `Origin` check
+(same-origin against the request's own `Host`, per D-M4-6 — never a configured list), bearer
 validation, revocation check, then `authorize()`. Even in M4 — where the only answer is
 "yes, you may read your view" — the checks run, so M8 changes the issuer and nothing else.
 
 **Named task: the blocking-modal fix.** Add `self._pump_net()` to the six nested
 `while True:` loops listed in the Identity section, or a join lands during
-*Generate Dungeon* and hangs until the DM closes the dialog.
+*Generate Dungeon* and hangs until the DM closes the dialog. Per D-M4-3 it pumps the
+command queue and **nothing that redraws**, and F3's owed look on a real display is M4's.
 
 **Client**: canvas. Map image + grid + tokens + fog rectangles + initiative list + combat
-log. Animates `NpcVisualEvent` `Move` paths the same way `_npc_anim_start` does on the DM
-screen. Read-only — no input surface at all in this phase.
+log, redrawn from each snapshot — **tokens jump rather than walk in M4**. Animating
+`NpcVisualEvent` `Move` paths the way `_npc_anim_start` does on the DM screen is **M4b**,
+because it needs Envelope 3 (D-M4-2). Read-only — no input surface at all in this phase.
+
+**M4b — the event stream and the animation.** Envelope 3 as Step 0.5 specifies it: a
+per-viewer *filtered projection* with its own byte-level test, not a `seq` field bolted to
+the push. Then the client animates `Move`. Its mutant table is owed on the same terms M3's
+was.
 
 **Deployment**: the Docker image already runs Xvfb + x11vnc + noVNC on 6080. Add one
 *separate* published port for the player server — never a second view onto 6080.
