@@ -17,7 +17,7 @@ Environment is the container and nothing else: `./test.sh` is the oracle, a host
 ~151 suites on PYTHONPATH and means nothing. `tests/test_mapimg.py` (PIL-only) and the two
 Xvfb rigs are the only exceptions and license nothing else.
 
-**These nine items share only that no phase owns them.** The standing rule applies with full
+**These ten items share only that no phase owns them.** (Nine when this was written; item 10 was found by item 8's manual pass and appended on 2026-09-24.) The standing rule applies with full
 force: **one item, one commit, never bundled** — four of them are behaviour changes and two
 of those need a decision before any code is written.
 
@@ -403,6 +403,28 @@ it now happens only when `_session_path` actually moves. `test_session_roster.py
 halves: re-loading the open encounter keeps the roster object, the seat and a live
 credential; pointing at a different encounter still re-keys and still refuses the old one.
 
+**Finding 5 — not a bug: the party was fighting in the dark because the map is unlit.**
+Reported as "when I switch fog on, the agents disappear... when I start combat the fog from
+my Team is not lifted". Measured against the live session: all **320** cells of
+`lighting.cells` read `"Dark"` and `fog.explored_runs` was **empty** — the explored mask had
+never held a single cell. `maps/TestDNDMap_lighting.json` was
+`{"default_light": "Darkness", "light_sources": []}`, not one torch on the board, and no
+agent in `maps/TestDNDMap_agents.json` carries a `darkvision_range`.
+`BattleMap::revealFogForFaction` ORs in only the cells `canSee` accepts, and in `Dark`
+`canSee` is `darkvision_ft > 0 && dist_ft <= darkvision_ft` (`battle_map.cpp:1866`) — so a
+PC with no darkvision reveals nothing, *including the cell they stand on*. An empty mask
+fogs every non-party token off both screens and masks the whole page for every player.
+Starting combat cannot change it: combat start is not a vision event, it only marks the mask
+stale, and re-running a reveal that reveals nothing reveals nothing.
+
+The engine was right; the scene was pitch black. The DM chose to light the map, so
+`maps/TestDNDMap_lighting.json` now reads `"BrightLight"` — a one-line change, safe because
+nothing in `tests/` or `gui/` reads that file (an absent lighting file resets the base to
+`Clear` anyway, `main.py:13366`). The two other ways out, for the record: right-click an empty
+cell with fog on → **Reveal all fog**, which paints the mask but leaves the party
+mechanically blind (darkness disadvantage still applies); or place torches through
+Lighting… ▸ Edit… ▸ Add Light, at a fixed 5-cell radius each.
+
 **Still owed**: the four questions the pass exists to answer — fog alignment against the art
 (now that the art draws at all), tokens on their cells, initiative and log filling, and a
 reload keeping the seat.
@@ -415,6 +437,34 @@ R4 (sub-engines behind a facade) is still **IN PROGRESS** — 3 of 7 cuts and 1 
 mis-groupings as of 2026-09-15. Untouched by every M-phase. Its oracle is
 `test_determinism.py`, which must stay byte-identical. Listed only so it is not forgotten; it
 is a different document's work.
+
+---
+
+## 10. The lighting editor cannot set the base light level
+
+Found by item 8's manual pass (Finding 5), and it is why that finding cost a session: a DM
+who opens a map authored as `"default_light": "Darkness"` **has no way to turn the lights up
+from inside the GUI**. `LightingEditor` (`gui/lighting_dialogs.py`) offers Add Light, Remove,
+Light Level (which cycles the level of the *next placed source*, not the base), Done and
+Cancel. `default_light` is only ever read — `open()` takes it from the caller and `Done`
+hands the same value straight back to `_save_lighting_no_reload`, so whatever the file said
+is what the file keeps saying. The only remedies are sprinkling 5-cell torches, editing the
+JSON by hand, or deleting the file so `_load_lighting` falls through to `Clear`.
+
+The fix is one more button next to the existing `cycle_level`, cycling `self.default_light`
+through the same `light_level_choices` and relabelling itself, plus the redraw that
+`_apply_light_effects` already triggers on Done. It is UI-only and behaviour-changing in the
+DM's favour; it touches no multiplayer surface.
+
+Note while there: the two lighting readers disagree on what an absent key means.
+`_open_lighting_editor` (`main.py:2515`) and `_load_lighting` (`main.py:13316`) both default
+`data.get("default_light", ...)` to `"BrightLight"`, but `LightingEditor.__init__` starts at
+`Dark` (`lighting_dialogs.py:22`). Nothing reaches that initial value today because `open()`
+is always passed one; it is a trap for whoever adds the button.
+
+**No test covers any of this** — the editor has no suite, and the only headless rig that
+could reach it is `test_gui_headless_smoke.py`. Landing the button is the moment to decide
+whether that stays true.
 
 ---
 
@@ -436,4 +486,4 @@ distinctive digits (they are 4281–4286).
 
 **Suggested order**: 1 (the suite should be green before anything else moves), then 2, then 3,
 then 8's manual pass — it will inform F12 and both decisions. Then 5 and 6 once someone has
-played the rounds. 7 last, alone, in slices.
+played the rounds. 7 last, alone, in slices. 10 is independent of all of them and can go whenever.
