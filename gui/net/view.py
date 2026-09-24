@@ -46,6 +46,13 @@ from net import mapimg
 from net.roster import (Action, PC_FACTION, PROTOCOL_VERSION, Principal,
                         PromptTarget, TokenTarget)
 
+# D-M4-2's frozen cadence: at most one push per viewer per 250 ms, always one at a turn
+# boundary. It lives here rather than with the transport because it is a property of what
+# a `view` COSTS — a full snapshot carries the party's mask — and it therefore binds even
+# a transport that has not been written yet. `mapimg.IMAGE_LAG_S` is the other half: the
+# view goes out at this rate, and the picture it names re-keys at that one.
+PUSH_INTERVAL_MS = 250
+
 # ── What counts as a "condition" on the wire ────────────────────────────────
 # `Agent::Conditions` carries ~180 fields, most of them per-turn bookkeeping for one
 # class feature ("horde_breaker_used", "piercer_reroll_used_this_turn"). A client renders

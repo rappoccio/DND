@@ -3373,7 +3373,7 @@ Routes:
 | `GET /` | the client (static HTML/JS, served from `gui/net/static/`) |
 | `POST /join` | join code → **bearer token** (A3) → principal. Never a cookie. |
 | `GET /state` | full `GameView` for the authenticated principal |
-| `GET /map.png` | the current page's map image, **masked server-side for a player viewer** (D-M4-1): opaque fog over unexplored cells, cached by mask hash; the DM viewer gets it raw, cached by content hash. *(The masking core landed 2026-09-23; the handler is owed with the server.)* |
+| `GET /map.png` | the current page's map image, **masked server-side for a player viewer** (D-M4-1): opaque fog over unexplored cells, cached by mask hash; the DM viewer gets it raw, cached by content hash. *(Masking core 2026-09-23; route, middleware and server thread 2026-09-24.)* |
 | `WS /live` | push: **a full `view` per update in M4** (D-M4-2; `{seq, events[]}` deltas are M4b); `{prompt}` when one is addressed to you. **Authenticates by first frame, not by header** (A3) — the browser `WebSocket` API cannot set one. |
 
 Every route goes through one middleware point (A9) that does: `Origin` check
@@ -3506,6 +3506,129 @@ narrower search. The checks still read the whole blob.
 once-per-push-cycle `publish()` call from the pygame thread, and the 6081 port and `aiohttp`
 line D1/D2 specify. All three land with the server. If the 3 s lag still moves too many bytes
 at a real table, the answer remains tiles, in M4b — never a rawer image.
+
+#### The transport skeleton — landed 2026-09-24
+
+All four of the items above, and nothing else: `gui/net/server.py` is the thread, the one
+middleware point A9 requires, and `GET /map.png`. `POST /join`, `GET /state`, `WS /live`
+and the client add routes to it and no new machinery — which is the test of whether it is a
+skeleton or a first draft. `tests/test_mapserver.py`, **8 checks**, registered beside the
+other oracles, driving a real `aiohttp` server on a real port with **stdlib `urllib`** — the
+Step 0.7 spike's discipline: the exercised path should be the browser's, not the library
+talking to itself.
+
+**The middleware is the frozen request order, and it stops at step 5.** `Origin` (A6/D-M4-6,
+scheme-less against the request's own `Host`, absent ⇒ allow), then bearer extraction, then
+`verify_credential` — which is steps 3, 4 and 5 in one call and returns `None` for all of
+them, so a caller never learns which failed. Step 6 is not there: `authorize()` is the one
+step a route parameterizes, and putting it in the middleware is how it stops being one.
+There is **no pre-auth exemption list**, because `POST /join` does not exist yet and an
+exemption list with no members is a hole waiting for a typo.
+
+**Which render a viewer gets is asked of `authorize()`, not of `Role`.** `VIEW_DM_CHANNEL`
+is the entitlement whose description is literally "whole map", so the route reads
+`is_dm = authorize(principal, VIEW_DM_CHANNEL)` and A8's *no `if viewer == "dm"` branches*
+holds in the one place it would have been most tempting to break.
+
+**`?v=` is not read, and that is what fixes the ETag.** The cache always serves the newest
+published mask — which can only reveal cells the party has already earned, where honouring
+an older `?v=` would mean retaining every mask a client might still hold in order to show it
+*more* fog. So the query string is a cache-buster and **the ETag is the key actually
+served**. A handler that echoed the request's `?v=` would label bytes the client did not
+receive, and every conditional request after it would be answered about the wrong picture.
+`Cache-Control: private, no-cache` — `no-cache` means *revalidate*, not *do not store*, and
+`immutable` would be wrong however much the `?v=` invites it, because that URL's body
+genuinely changes. This is the other half of the 3 s lag's saving: between re-keys a player
+spends one conditional request instead of 0.8-2.5 MB.
+
+**Three findings from actually running it.**
+
+1. **A constructed `App` must not bind a port.** `start_player_server()` began life in
+   `App.__init__`, and the suite's first run reported `address already in use` four times
+   over — every headless test builds an `App` and never runs one. The start moved to
+   `run()`, which is also where the frozen user procedure wants it (*the join code and URL
+   printed at startup*), and `run()`'s exit now stops it. `__init__` builds an App; `run()`
+   starts one.
+2. **`wachterhaus` has two geometries, and the gate measured the other one.** The M4 render
+   figures above come from `analyze_grid()` — 98x91, ~10 px/cell, 8918 cells. The App does
+   not use that for this page: `encounters/wachterhaus_terrain.json` carries
+   `manual_grid: {cell_px: 34}`, so the loaded page is **30x43 = 1290 cells**. Both are real
+   — a page with no terrain sidecar gets the analyzed grid, and that file is untracked, so a
+   clean checkout *is* the 8918-cell case. Re-measured on the authored geometry:
+
+   | | cells | `page_image` | render | on the wire | `explored_runs` |
+   | - | - | - | - | - | - |
+   | analyzed (no sidecar) | 8918 | — | 95 ms | 2.51 MB | 91 runs |
+   | authored (`manual_grid`) | 1290 | 0.37 ms | 92.5 ms | 2.41 MB | 43 runs, 549 B |
+
+   **The encode is the whole cost and it barely knows how many cells there are** — 92.5 ms
+   against 95 ms for 7x fewer. So the gate's worst case stands, D-M4-2's run reshape is
+   comfortable at either geometry, and the push cycle itself is free: 0.37 ms at four
+   pushes a second is 1.5 ms of frame time per second.
+3. **The printed URL was `http://172.17.0.2:6081/`, and that is a broken user procedure.**
+   The first real launch printed the Docker bridge address, because inside the container
+   that genuinely *is* what the routing table answers — and it is reachable from no phone at
+   the table. 6081 is **published** to the host, so the address to read out belongs to the
+   host and only the host can measure it. `run.sh` now does
+   (`ipconfig getifaddr en0`, falling back to `en1` and then to `hostname -I`) and passes it
+   as `PLAYER_ADVERTISE_HOST`, which `_lan_ip()` prefers over the routing-table answer; with
+   the variable unset — a bare `python gui/main.py` — the old path is still correct, and it
+   is the one that was right all along for that case. This is the kind of thing the frozen
+   procedure exists to catch: it does not add a step, it makes step 2 print a URL that
+   works.
+
+**The push cycle** (`net/link.py`) is D-M4-2's cadence with only the image in it so far:
+coalesced at `view.PUSH_INTERVAL_MS` (250 ms), forced at a turn boundary, and run after
+`_refresh_fog` so the mask it publishes is the one that frame draws. The boundary is detected
+by comparing `(combat_active, round_num, turn_idx)` rather than by a hook in the turn
+machinery, because that tuple is already the whole answer and a hook is a thing that can be
+forgotten at the one call site that matters. The `view` snapshot joins it on this same
+cadence when the socket lands.
+
+**Where the code went, and NN3.** `gui/net/server.py` is the net thread's half and holds no
+`App`. `gui/net/link.py` is the frame tick's half and holds nothing else — the two functions
+that read a live `App` on the pygame thread, for the same reason `view.py` does. Both
+started as methods on `App`; at +80 lines `main.py` was going the wrong way, and NN3's *its
+net line count should trend down, never up* is not a stylistic preference. What is left in
+`main.py` is +24: four state attributes and three call sites (`run()`, the frame loop, the
+way out), plus one line in `_set_encounter_base`. That is rewiring, which NN3 permits.
+
+**NN1, and what this server is allowed to hold.** Neither an `App` nor anything reachable
+from the map: a `SessionRoster` (plain Python, holds no `BattleMap` by construction — which
+is what `TokenInfo` was for) and the `MapImageCache` (the handoff itself). Named honestly:
+the roster is *mutated* on the pygame thread while the net thread reads it. Nothing can tear
+— these are dict reads under the GIL, not C++ invariants mid-mutation, which is the
+distinction NN1's tightening draws — but a request can see a **stale ownership answer** for
+the frame between a `Controller ▸` reassignment and the next `sync_tokens`. Liveness, not
+safety, and the same window the DM's own screen has. `set_roster()` exists because
+`_set_encounter_base` **replaces** `App.roster` rather than mutating it; a server holding the
+old one would authenticate against the previous table forever. *(For M6: the replacement
+roster mints a new in-memory signing key, so loading a different encounter is a re-join for
+everybody — R3's case, arriving a milestone early.)*
+
+**Deployment, as D1/D2 specify**: `aiohttp` on the `Dockerfile`'s pip line, and
+`-p 6081:6081` on `run.sh` — published on every interface on purpose, since a phone at the
+table has to reach it, while 6080 stays on `127.0.0.1` (S2/A10). D1's soft dependency was
+re-checked on an image *without* `aiohttp` and behaves as F7 recorded: one line,
+`[net] player server unavailable: No module named 'aiohttp'`, `self._net = None`, and
+`python gui/main.py map.png` otherwise untouched.
+
+| Mutant | Caught by |
+| ------ | --------- |
+| the `Origin` check removed | `a cross-origin fetch with a good token returned 200` |
+| `Origin` compared *with* its scheme | `a same-host https Origin was refused with 403` |
+| an absent `Origin` denied | `an anonymous fetch of the page returned 403` |
+| any bearer accepted without verifying | `a tampered signature returned 200` |
+| `is_dm` hardcoded true | `the player was served the page file — the route is not masking` |
+| the ETag echoing the requested `?v=` | `the route echoed the requested ?v= instead of the key it served` |
+| `If-None-Match` ignored | `a matching If-None-Match returned 200` |
+| `If-None-Match` always matching | `a non-matching If-None-Match was not served` |
+| an unpublished page as an empty 200 | `an unpublished page returned 200` |
+
+**Still owed on this route**: `POST /join` (with D-M4-4's credential-first matching rule and
+its own mutant pass), `GET /state`, `WS /live`, the client, and D-M4-3's `_pump_net()` in the
+six blocking modals — F3's real-display look rides with it. A9's audit log is a `denials`
+counter and nothing more; rate limiting has a place to live and no implementation.
 
 **Deployment**: the Docker image already runs Xvfb + x11vnc + noVNC on 6080. Add one
 *separate* published port for the player server — never a second view onto 6080.

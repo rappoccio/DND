@@ -52,7 +52,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-dri \
     libglx-mesa0 \
     libsdl2-2.0-0 \
-    && pip install --no-cache-dir Pillow pygame \
+    && pip install --no-cache-dir Pillow pygame aiohttp \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /tmp/xdg_runtime && chmod 700 /tmp/xdg_runtime
 

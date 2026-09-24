@@ -68,6 +68,8 @@ from atomic_io import atomic_write_json
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
+from net.mapimg import MapImageCache
+from net import link as net_link
 # S3 (M2): what the combat panel may offer, as data. `actions.Action` is the game
 # option; `net.roster.Action` above is the authorization verb — unrelated, so only
 # ActionMenu is imported here and neither `Action` is in this module's namespace.
@@ -961,6 +963,16 @@ class App:
         self.pan_y = 0            # vertical pan offset in pixels
 
         self.clock = pygame.time.Clock()
+
+        # ── The player server (MULTIPLAYER_PLAN.md M4) ─────────────────────
+        # The cache is the handoff itself and exists with or without a transport: the
+        # frame tick publishes into it, and `net.view._published_page` reads what was
+        # published so a view never names a `?v=` the route cannot serve (D-M4-1).
+        self.map_images   = MapImageCache()
+        self._net         = None    # PlayerServer, or None when aiohttp is absent (D1)
+        self._net_push_ms = 0       # pygame ticks at the last push cycle (D-M4-2's 250 ms)
+        self._net_turn    = None    # last (combat_active, round, turn) — the boundary test
+        # NOT started here. `__init__` builds an App; `run()` starts one (see `net.link`).
 
         # NOTE: dungeon manifests are opened explicitly (Dungeon Configuration →
         # Open Dungeon…). Startup stays a blank single-map scene even when a
@@ -2100,6 +2112,11 @@ class App:
             # A new roster means a new prompt_lookup hook to fill (M1).
             if getattr(self, "prompts", None) is not None:
                 self.prompts.bind_roster(self.roster)
+            # …and a new table for the player server to authenticate against (M4). The
+            # roster is REPLACED here, not mutated, so a server holding the old one would
+            # keep answering for the previous encounter.
+            if getattr(self, "_net", None) is not None:
+                self._net.set_roster(self.roster)
             if getattr(self, "bm", None) is not None:
                 self._sync_roster_tokens()
 
@@ -19963,12 +19980,17 @@ class App:
     #  Main loop
     # ─────────────────────────────────────────────────────────────────────
     def run(self):
+        # Startup, in the sense the frozen user procedure means it: the join code and the
+        # URL are printed before the first frame, by the one entry point that is a running
+        # app rather than a constructed one.
+        net_link.start_player_server(self)
         running = True
         while running:
             running = self._handle_events()
             self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
             self._advance_npc_playback()        # NPC turn playback: animate the recorded turn
             self._refresh_fog()                 # fog of war: monotonic reveal when marked stale
+            net_link.push_cycle(self)           # M4: publish the party's page image to the net thread
             self.screen.fill(COL_BG)
             self._draw_map()
             self._draw_fog_overlay()            # fog of war: grey never-seen cells (above map, below agents)
@@ -20009,6 +20031,8 @@ class App:
         self.bm.clear_terrain_effects()
         self._clear_temporary_terrain()
         self._save_terrain()
+        if self._net is not None:
+            self._net.stop()                # release 6081 before the process goes
         pygame.quit()
 
 

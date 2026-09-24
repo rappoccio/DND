@@ -69,6 +69,13 @@ test_scripts = [
     # check can see. These read pixels.
     "test_mapimg.py",
 
+    # The route that serves it (MULTIPLAYER_PLAN.md M4, D-M4-1 / D-M4-6) — a real aiohttp
+    # server on a real port, driven with stdlib urllib. Kept with the oracles because the
+    # render being correct is worth nothing if the middleware hands it to the wrong
+    # caller: this is where authentication, the Origin check and the two cache entries are
+    # the difference between a masked page and the whole floor plan.
+    "test_mapserver.py",
+
     # Atomic encounter saves (MULTIPLAYER_PLAN.md standalone item S1) — the two writes a
     # crash could tear. Kept with the oracles because NN7's autosave ring is built on the
     # assumption these are atomic, and the only way to see the fix is to force the write
