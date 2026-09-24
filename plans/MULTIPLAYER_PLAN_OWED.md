@@ -23,42 +23,29 @@ of those need a decision before any code is written.
 
 ---
 
-## Pick up here — 2026-09-24, after the first manual pass
+## Pick up here — 2026-09-24, after item 8's manual pass
 
-**State**: `./test.sh` green at **161 suites / 0 failures**. Items **1–7 and 10 have
-landed**, one commit each, `8cec103` … `0b0f561` and item 10 on top. Item 8 is **IN
-PROGRESS** — its manual pass has run once and produced five findings (four real defects,
-one authored-scene misread); commits `1005a5d`, `b4a92a0`, `5bb8681`, `c1e4e61`. Item **9
-is untouched** and belongs to another document.
+**State**: `./test.sh` green at **161 suites / 0 failures**. Items **1–8, 10 and 11 have
+landed**. Item 8's manual pass is **done**: its four questions are answered (see its entry),
+and the two it failed became item 11 — the phone stretched the page's margins onto the
+board, and then kept the stretched picture through a reload because the image key did not
+change with the render. Item **9 is untouched** and belongs to another document.
 
-**The next step is finishing item 8's manual pass**, not writing code. The pass exists to
-answer four questions the suite cannot, and *none of them has been answered yet* — every
-session so far was spent on defects that blocked getting far enough to ask:
-
-1. Do the fog rectangles line up with the art? M4e predicts they do **not** — the client's
-   lattice is nominal `col * cell_px` while the console and the server's mask use the real
-   detected grid-line positions. A mismatch here is **M4b**'s, not this file's.
-2. Do tokens sit on their cells?
-3. Do the initiative list and the log fill as the DM plays rounds?
-4. Does a reload of the phone keep the seat? (`5bb8681` should have made this true; it has
-   not been confirmed by a human.)
-
-**How to run it**: the DM launches `./run.sh maps/TestDNDMap.png` (it publishes ports — ask),
-reads the join code off the console, and opens the URL on a phone; the next session reads the
-console log and probes the live server from the host rather than guessing. The map is now lit
-(`c1e4e61`), so fog reveal finally does something — **reload the encounter** after launching
-if the app was already up, since lighting is read at load.
+**The one thing ready to start** is **item 7's remainder** — the right-click map menu (14
+prompt sites still inline in `App._handle_events`) and the panel rendering helpers M2 left
+behind. Next slice, same shape as slices 1–4.
 
 **Two housekeeping rules that have bitten twice.** `maps/TestDNDMap_agents.json` is *tracked*
 and is `test_replay_roundtrip.py`'s fixture; the app overwrites it on save, so
-`git checkout -- maps/TestDNDMap_agents.json` after any manual pass on that map.
+`git checkout -- maps/TestDNDMap_agents.json` after any manual pass on that map. The app
+also writes the explored mask into `maps/TestDNDMap_terrain.json` on close, on top of its
+staged change: `git checkout -- maps/TestDNDMap_terrain.json` restores the staged version.
 `encounters/simplemap_strahd_feastofstandral_terrain.json` and `maps/TestDNDMap_terrain.json`
 stay staged-and-dirty — every commit uses `git commit -m … --only -- <explicit paths>`.
 
-**If code is wanted instead**, there is exactly one thing ready to start, independent of
-the pass: **item 7's remainder** — the right-click map menu (14 prompt sites still inline
-in `App._handle_events`) and the panel rendering helpers M2 left behind. Next slice, same
-shape as slices 1–4.
+**One rule this pass added.** The map image's keys hash the render's *inputs*; a change to
+what `mapimg.render` produces from the same inputs must change `_RENDER_REV`, or every
+browser that cached a page keeps it through a 304.
 
 ---
 
@@ -464,9 +451,19 @@ cell with fog on → **Reveal all fog**, which paints the mask but leaves the pa
 mechanically blind (darkness disadvantage still applies); or place torches through
 Lighting… ▸ Edit… ▸ Add Light, at a fixed 5-cell radius each.
 
-**Still owed**: the four questions the pass exists to answer — fog alignment against the art
-(now that the art draws at all), tokens on their cells, initiative and log filling, and a
-reload keeping the seat.
+**The manual pass is DONE — 2026-09-24**, all four questions answered by the user on a phone,
+with the console log and the live server read from the host:
+
+1. **Fog against the art — no, then yes.** Several cells off, growing to the right; not the
+   jitter M4e predicted but the whole page's margins stretched onto the lattice. That became
+   **item 11**, and after it the user reports fog correct on the phone and the console.
+2. **Tokens on their cells — no, then yes.** Same cause, same fix; three tokens that had sat
+   past the art's right-hand edge now sit on it.
+3. **Initiative list and log fill** as the DM plays rounds — yes, first time.
+4. **A reload keeps the seat** — yes, which is the first human confirmation of `5bb8681`.
+
+What is left of the item is its title: nothing in the suite draws `app.js`, and this pass
+does not change that. A second pass is the answer until a browser is in the harness.
 
 ---
 
@@ -603,4 +600,4 @@ distinctive digits (they are 4281–4286).
 then 8's manual pass — it will inform F12 and both decisions. Then 5 and 6 once someone has
 played the rounds. 7 last, alone, in slices. 10 was independent of all of them and has landed.
 
-*(1–7 and 10 are done; what is left of this list is 8's manual pass and 7's remainder.)*
+*(1–8, 10 and 11 are done; what is left of this list is 7's remainder.)*
