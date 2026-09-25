@@ -40,6 +40,7 @@ from PIL import ImageGrab
 import rpg_battle_map as rpg
 
 from constants import COL_BG, PANEL_W
+from menus import panel
 from actions import METAMAGIC_OPTIONS, METAMAGIC_ID_BY_VALUE
 from test_combat_panel import (App, MAP_PATH, SEED, _build_scene, _goto, _idx,
                                _reclass, _set_conditions, _set_res, _spell,
@@ -80,7 +81,7 @@ def shot(app, name):
 
 def click(app, action_id):
     """A real click on the widget the panel last drew for `action_id`."""
-    r = app._cbt_btn(action_id).rect
+    r = panel.cbt_btn(app, action_id).rect
     pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN,
                                          pos=r.center, button=1))
     alive = app._handle_events()

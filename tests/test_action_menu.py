@@ -30,6 +30,8 @@ from actions import (ActionMenu, Action, BUILT_GROUPS, GROUP_SESSION, GROUP_TURN
 import pygame
 import rpg_battle_map as rpg
 
+from menus import panel
+
 from gui_driver import post_click
 from test_combat_panel import (App, MAP_PATH, SEED, _build_scene, _idx, _goto,
                                _item, _reclass, _set_conditions, _set_res,
@@ -201,7 +203,7 @@ def test_build_does_not_mutate_the_app():
 #
 # The five-way branch is the first real branch structure in this module, so each arm
 # gets a check that names it. Build ORDER matters here in a way it did not for §1/§3:
-# `_draw_action_row` assigns columns by position, so the five-up posture row is
+# `panel.draw_action_row` assigns columns by position, so the five-up posture row is
 # correct only if the menu emits those five in column order.
 
 
@@ -249,7 +251,7 @@ def test_frightened_offers_dash_and_nothing_else():
 
 
 def test_the_open_band_is_built_in_column_order():
-    """Arm 4, and the invariant `_draw_action_row` depends on. Aria has weapons and no
+    """Arm 4, and the invariant `panel.draw_action_row` depends on. Aria has weapons and no
     spells; Brannor has both, and Cast Spell is appended after the posture row."""
     app = _app()
     aria = _goto(app, "Aria")
@@ -353,7 +355,7 @@ def _draw(app):
 
 
 def _click_action(app, action_id):
-    post_click(app, app._cbt_btn(action_id).rect.center)
+    post_click(app, panel.cbt_btn(app, action_id).rect.center)
 
 
 def test_click_reaches_the_handler_for_each_converted_action():
@@ -441,7 +443,7 @@ def test_a_click_on_an_unoffered_action_does_nothing():
     _draw(app)
     assert "drop_concentration" not in app._action_menu, "Brannor should not be concentrating"
 
-    victim = app._cbt_btn("drop_concentration")
+    victim = panel.cbt_btn(app, "drop_concentration")
     victim.rect = _free_point(app)                     # a live-looking, unclaimed spot
     _set_conditions(app, brannor, concentrating=True)  # something to lose
     turn_before = (app.turn_idx, app.round_num)
@@ -515,7 +517,7 @@ def test_stand_up_from_a_stale_rect_does_nothing():
     _draw(app)
     assert "standup" not in app._action_menu, "Aria is not prone and must not be offered it"
 
-    victim = app._cbt_btn("standup")
+    victim = panel.cbt_btn(app, "standup")
     victim.rect = _free_point(app)              # a live-looking, unclaimed spot
     turn_before = (app.turn_idx, app.round_num)
     post_click(app, victim.rect.center)
@@ -872,7 +874,7 @@ def test_haste_grants_an_action_the_bonus_action_cannot_take():
 def test_the_bonus_runs_are_built_in_draw_order():
     """§7's analog of `test_the_open_band_is_built_in_column_order`.
 
-    `_draw_action_stack` draws a run in the order the MENU emits it, and the
+    `panel.draw_action_stack` draws a run in the order the MENU emits it, and the
     `_BON_RUN_*` tuples in main.py are the panel's draw order written down. If the two
     ever disagree the panel still renders — it just renders Rage above Patient Defense,
     which no availability test would catch. So the invariant is: for every run, the
@@ -1025,7 +1027,7 @@ def test_a_click_on_an_unoffered_bonus_action_does_nothing():
     _draw(app)
     assert "rage" not in app._action_menu, "Aria must not be offered Rage"
 
-    victim = app._cbt_btn("rage")
+    victim = panel.cbt_btn(app, "rage")
     victim.rect = _free_point(app)                  # a live-looking, unclaimed spot
     turn_before = (app.turn_idx, app.round_num)
     post_click(app, victim.rect.center)
@@ -1435,7 +1437,7 @@ def test_the_two_telekinetic_options_are_two_widgets():
     assert "telekinetic_feat" in got and "telekinetic_psi" in got, got
 
     by_id = _by_id(app, cyra)
-    assert app._cbt_btn("telekinetic_feat") is not app._cbt_btn("telekinetic_psi"), \
+    assert panel.cbt_btn(app, "telekinetic_feat") is not panel.cbt_btn(app, "telekinetic_psi"), \
         "one widget for two options is F10; it cannot be laid out or clicked correctly"
     assert by_id["telekinetic_feat"].label == "🌀 Telekinetic Shove", by_id
     assert by_id["telekinetic_psi"].label == "Telekinetic Movement", by_id
@@ -1445,13 +1447,13 @@ def test_the_two_telekinetic_options_are_two_widgets():
     app.pending_shove_type = ""
     app.pending_telekinetic = False
     app._draw_combat_panel()
-    post_click(app, app._cbt_btn("telekinetic_psi").rect.center)
+    post_click(app, panel.cbt_btn(app, "telekinetic_psi").rect.center)
     assert app.pending_telekinetic, "the Psi Warrior's own option did not arm"
     assert app.pending_shove_type != "telekinetic", "the feat's handler cross-fired"
 
     app.pending_telekinetic = False
     app._draw_combat_panel()
-    post_click(app, app._cbt_btn("telekinetic_feat").rect.center)
+    post_click(app, panel.cbt_btn(app, "telekinetic_feat").rect.center)
     assert app.pending_shove_type == "telekinetic", "the feat's option did not arm"
     assert not app.pending_telekinetic, "the Psi Warrior's handler cross-fired"
     app.pending_shove_type = ""

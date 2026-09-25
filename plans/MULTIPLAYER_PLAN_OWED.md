@@ -22,7 +22,7 @@ of those need a decision before any code is written.
 
 ---
 
-## Pick up here — 2026-09-25, after item 7's slice 6
+## Pick up here — 2026-09-25, after item 7's slice 7
 
 **State**: `./test.sh` green at **161 suites / 0 failures**. Items **1–8, 10 and 11 have
 landed**. Item 8's manual pass is **done**: its four questions are answered (see its entry),
@@ -30,11 +30,13 @@ and the two it failed became item 11 — the phone stretched the page's margins 
 board, and then kept the stretched picture through a reload because the image key did not
 change with the render. Item **9 is untouched** and belongs to another document.
 
-**The one thing ready to start** is **item 7's last piece**: the panel rendering helpers M2
-left behind. Slice 6 moved the six action-button prompts still inline in
-`App._handle_events` into `menus/features.py`, so no prompt builder is left in
-`_handle_events`. The helpers are not yet scoped. Measure them and cut them into slices
-before writing code.
+**The one thing ready to start** is **item 7's last piece**. The panel helpers were scoped
+and frozen on 2026-09-25 (item 7, *The panel helpers*), and slice 7 has landed: the
+ActionMenu rendering helpers are now in `menus/panel.py`. **Next is the On Deck checkpoint**,
+in its own commit, which adds lines to the golden and changes none of the existing 71.
+**Then slice 8** moves `_draw_on_deck_section` to `panel.draw_on_deck_section`, with a
+direct click test in `test_menus`. Item 7 closes with slice 8. `_draw_combat_panel`'s body
+stays out of scope, by the user's decision.
 
 **Two housekeeping rules that have bitten twice.** `maps/TestDNDMap_agents.json` is *tracked*
 and is `test_replay_roundtrip.py`'s fixture; the app overwrites it on save, so
@@ -331,8 +333,9 @@ the live `App` (`actions.py`'s `ActionMenu.build(app, idx)` set that precedent),
 | 4 | `menus/features.py` — the per-feature menus | 16 | 495 |
 | 5 | `menus/board.py` — the right-click map menus, all `_ask_dm` | 3 | 292 |
 | 6 | `menus/features.py` — the panel's action-button prompts | 6 | 94 |
+| 7 | `menus/panel.py` — rendering the ActionMenu | 5 | 97 |
 
-`main.py`: **20,191 → 18,058**, which is the reversal M1 Step 3 expected and did not get.
+`main.py`: **20,191 → 17,961**, which is the reversal M1 Step 3 expected and did not get.
 
 **Slice 5, the right-click map menu.** `_handle_events` keeps what is about the event —
 button 3, on the map, combat or not, which cell — and calls `board.show_agent_menu`,
@@ -384,10 +387,111 @@ there, which is the direction that already exists), and Wild Shape's `beast_form
 was `os.path.dirname(__file__)` — main.py's directory when the code lived there, and one
 level too deep once it did not.
 
-**Still owed on item 7**: the panel's rendering helpers M2 left behind. Nothing has scoped
-them yet, so the first job is to measure them and cut them into slices. No prompt builder is
+**Still owed on item 7**: the panel's rendering helpers M2 left behind. No prompt builder is
 left in `_handle_events`: slice 5 moved its 8 map-menu `_ask_dm` sites and slice 6 moved
 the 6 action-button `_ask_actor` sites.
+
+### The panel helpers, scoped 2026-09-25 — FROZEN (agreed 2026-09-25)
+
+**What was measured.** An `ast` scan of `App._draw_combat_panel` (`main.py:15153–15806`,
+654 lines) for every `self.<method>` it names. It calls nine. Four are about app state, not
+drawing, and stay: `bonus_used`, `_panel_x`, `_current_agent_idx`, `_pending_spell_is_wall`.
+The other five, plus two things they use, are the helpers:
+
+| helper | lines | callers in `main.py` | callers in `tests/` |
+|---|---|---|---|
+| `_draw_on_deck_section` | 20 | 1 (the panel) | none |
+| `_cbt_btn` | 8 | 2 in the panel, 1 in `_draw_action_row`, 1 in `_action_clicked` | 8 calls: `test_action_menu.py` 356, 444, 518, 1028, 1438 (×2), 1448, 1454; plus `manual_smoke_xvfb.py:83` |
+| `_menu_group` | 6 | 20, all in the panel | none |
+| `_draw_action_row` | 30 | 14 in the panel, 1 in `_draw_action_stack` | prose only |
+| `_row_widths` (+ `_ROW_LABEL_PAD`) | 27 + 3 | 1, in `_draw_action_row` | prose only |
+| `_draw_action_stack` | 12 | 6, all in the panel | prose only |
+
+"Prose only" means docstrings and comments: `test_gui_headless_smoke.py` 78, 289–290, 363,
+411 and `test_action_menu.py` 204, 252, 875. No test monkeypatches any of them. That
+matters, because a patch on `app._draw_action_row` would stop intercepting once the panel
+calls a module function.
+
+**What stays, and why.**
+- `_action_clicked` is click dispatch, not drawing. It has about 110 callers in
+  `_handle_events` and 4 in `test_action_menu`. It is the click-side gate, the way
+  `_ask_actor` is the prompt-side one. Its body changes to call `panel.cbt_btn(self, …)`.
+- `_BTN_H` is shared with `_panel_layout` and `_reposition_panel`. It stays on `App`, and
+  the moved code reads `app._BTN_H`.
+- `_BON_ROW_*` / `_BON_RUN_*` stay. Their only user is the panel body, which stays.
+- `_on_deck_groups` is a roster query, so it is app state.
+- **`_draw_combat_panel` itself is out of scope.** It is the panel, not a helper, and its
+  sections share `y`, `lx`, `W`, `gap` and the `txt` closure. Cutting it up is a different
+  refactor, and this item never owed it. Neither did M2.
+- The pre-combat panel's helpers (`_draw_panel`, `_draw_panel_floor_nav`, `_draw_xp_total`,
+  `_draw_cursor_cell_info`) are not M2's and are not owed here.
+
+**Destination: `gui/menus/panel.py`.** It renders what `actions.ActionMenu` builds. It goes in
+`menus/` so it joins `test_menus.MODULES`, and the static check (every `app._name` a menus
+module mentions must exist on a real `App`) then covers it at no extra cost. The solo sweep
+skips all of it, since no helper takes only `app`. The seam check passes trivially.
+
+| slice | module | helpers | lines out of `main.py` (approx.) |
+|---|---|---|---|
+| 7 | `menus/panel.py` — rendering the ActionMenu | `cbt_btn`, `menu_group`, `draw_action_row`, `row_widths`, `draw_action_stack`, and `_ROW_LABEL_PAD` as a module constant | ~90 |
+| 8 | `menus/panel.py` — the On Deck section | `draw_on_deck_section` | ~20 |
+
+The S3 comment block above the helpers becomes `panel.py`'s docstring.
+
+**Slice 7: the oracle already reaches every line.** Every one of the 71 checkpoints draws
+through `menu_group` → `draw_action_row` → `cbt_btn`. The session row passes
+`font=font_sm`, so the font-swap branch runs in every checkpoint too. `row_widths`'
+uneven branch runs in 60 of them, because the posture row is 45/56/85/41/73 from
+checkpoint 01 on. `draw_action_stack` runs in 07 (Escape), 20 (Arcane Ward), 23 and five
+more (Monk), and 47 (Use Item). So the golden must stay byte-identical, with no new
+checkpoint. The tests need two changes: `app._cbt_btn(x)` becomes `panel.cbt_btn(app, x)`
+at the 8 test call sites and in `manual_smoke_xvfb.py`, and `panel` is added to
+`test_menus.MODULES`.
+`panel.py` imports nothing in this slice, so "delete a moved import" has nothing to
+delete. The mutants are:
+(a) leave one `app._row_widths(` unrewritten. The static check goes red, and the golden
+crashes with `AttributeError`.
+(b) delete `_ROW_LABEL_PAD` from `panel.py`. `NameError` in every checkpoint, since `need`
+is computed before the branch.
+(c) leave one `self._menu_group(` in `main.py`. The golden crashes.
+
+**Slice 8: no checkpoint reaches the On Deck section.** The golden has no On Deck text in
+any of its 71 checkpoints. It records text without positions, and it never records
+`on_deck_item_rects`. After the move, `panel.py` needs `import pygame` and
+`from constants import COL_PANEL_BORDER, COL_TEXT, PANEL_W`, and every one of those is
+touched only when a reserve exists. Deleting any of them would pass the suite as it stands
+today. So:
+- **First, in its own commit, before the move:** a new checkpoint at the end of the golden.
+  It has two reserves of one name and one of another, so both the `×2` label and the bare
+  label render. The `End Turn` rect under the section pins the `y` the helper returns.
+  The diff must add lines only. The existing 71 checkpoints must not change.
+- **With the move:** a direct test in `test_menus`. It draws the panel, clicks the centre
+  of `on_deck_item_rects[0]` with a real event, and asserts that the group left On Deck and
+  entered the initiative order. This covers the rects, which the golden cannot see.
+- Mutants: delete `import pygame` from `panel.py`, then delete `COL_TEXT` from its import.
+  Each must fail the new checkpoint. Both are crashes (`NameError`), not ❌ lines, and
+  `./test.sh` counts them either way.
+
+`main.py` should end near **17,950** (18,058 − ~110), and item 7 closes with slice 8.
+
+**Agreed 2026-09-25 (user):** (1) `_draw_combat_panel`'s body stays out of scope for now;
+(2) the destination is `menus/panel.py`; (3) the On Deck checkpoint lands first, in its own
+commit, ahead of slice 8.
+
+**Slice 7 LANDED 2026-09-25.** `cbt_btn`, `menu_group`, `draw_action_row`, `row_widths`,
+`draw_action_stack` and `_ROW_LABEL_PAD` are in `menus/panel.py`, and the S3 comment block
+became its docstring. The code was lifted verbatim with `self.`→`app.`, and the internal
+calls became module calls. The mechanical rewrite missed one thing: `cbt_btn`'s
+`getattr(self, "btn_cbt_" + …)`, a bare `self` with no dot after it. It was caught before
+any run, by scanning the new module for any remaining `\bself\b`. Every lift should end
+with that scan. 43 call sites were repointed in `main.py` (20 + 14 + 6 + 3, as measured),
+including `_action_clicked`. There were 8 in `test_action_menu.py` and 1 in
+`manual_smoke_xvfb.py`, and the prose in `test_gui_headless_smoke.py` was updated.
+`panel` joined `test_menus.MODULES`. The golden stayed byte-identical at 71 checkpoints,
+`test_menus`, `test_action_menu`, `test_prompts` and `test_gui_headless_smoke` stayed
+green, and `./test.sh` passed 161/0. All three mutants went red: (a) the static check
+reported `app._row_widths` and the golden raised `AttributeError`; (b) the golden raised
+`NameError: _ROW_LABEL_PAD`; (c) the golden raised `AttributeError: _menu_group`.
 
 ---
 

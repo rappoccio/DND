@@ -37,12 +37,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rpg_battle_map as rpg
 
 from main import App
-from menus import board, dm, features, reactions, riders
+from menus import board, dm, features, panel, reactions, riders
 
 MAP_PATH = os.path.join(_ROOT, "maps", "TestGrid12x12.png")
 SEED = 20260924
 MODULES = {"riders": riders, "reactions": reactions, "dm": dm, "features": features,
-           "board": board}
+           "board": board, "panel": panel}
 
 
 def _app():

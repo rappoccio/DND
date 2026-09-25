@@ -75,7 +75,7 @@ def _place_duplicate(app, caster_idx, col=1, row=1):
 class Drawn:
     """One widget as it was actually drawn: rect and font sampled AT DRAW TIME.
 
-    The font matters and cannot be read afterwards: `_draw_action_row` swaps
+    The font matters and cannot be read afterwards: `panel.draw_action_row` swaps
     `btn.font` for the narrow rows and puts `font_md` back before it returns, so
     measuring a label against `btn.font` after the frame measures the wrong glyphs.
     """
@@ -286,8 +286,8 @@ def _sweep(app):
 #
 # It held three names — `btn_cbt_disengage`, `btn_cbt_standup`, `btn_cbt_prone`, all of
 # them in §4's five-up posture row, where a 60px column had to hold a 76px "Disengage".
-# F12 closed that by letting `_draw_action_row` size a row to its labels when an equal
-# split would clip (`App._row_widths`), so the set is now EMPTY and stays that way: a new
+# F12 closed that by letting `panel.draw_action_row` size a row to its labels when an equal
+# split would clip (`panel.row_widths`), so the set is now EMPTY and stays that way: a new
 # overflow fails the sweep below, and a name that starts fitting again fails the stale
 # check, which is the only reason to keep the empty set rather than delete it.
 
@@ -360,7 +360,7 @@ def test_every_drawn_button_lands_inside_the_panel():
 def test_a_converted_run_is_stacked_not_columnised():
     """The mistake M2c actually made, as an invariant.
 
-    §7 is a column of one-button rows. Reusing `_draw_action_row` for a whole run laid
+    §7 is a column of one-button rows. Reusing `panel.draw_action_row` for a whole run laid
     a Monk's five features out as a five-up instead, and every availability test still
     passed — the buttons existed, were enabled, and dispatched correctly. Only the
     shape was wrong. So: within one `_BON_RUN_*`, the members drawn in a frame must
@@ -408,7 +408,7 @@ def test_a_converted_row_is_side_by_side_not_stacked():
     y — each one starting where the one before it ended, with no overlap.
 
     Equal widths used to stand in for "tiled", and that stopped being true with F12:
-    a row that would clip its labels sizes its columns to them (`App._row_widths`), so
+    a row that would clip its labels sizes its columns to them (`panel.row_widths`), so
     the posture row is 45/56/85/41/73 rather than five 60s. Overlap is what the check
     was really after — two buttons drawn on top of each other, or one stacked under
     another — and it is now tested directly rather than through a proxy.

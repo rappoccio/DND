@@ -56,7 +56,7 @@ from helpers import (
 )
 from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog
 from dialogs_conditions import ConditionsDialog
-from menus import board, dm, features, reactions, riders
+from menus import board, dm, features, panel, reactions, riders
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph, draw_ladder_glyph, door_link_key
@@ -15042,27 +15042,6 @@ class App:
             y += 16
         return y
 
-    # ── S3 (M2): rendering the ActionMenu ──────────────────────────────────────
-    # `_draw_combat_panel` builds `self._action_menu` once per frame and these three
-    # turn it into pixels. Layout lives here and legality lives in `actions.py`; the
-    # split is the whole point of the phase, so resist putting a rule back in here.
-
-    def _cbt_btn(self, action_id: str):
-        """The widget backing an action id. Ids match the `btn_cbt_` suffix by design.
-
-        One id, one widget, with no exceptions since F10 was fixed — the alias table
-        that pointed `telekinetic_feat` and `telekinetic_psi` at the same button is
-        gone, and with it the pass that painted that button twice.
-        """
-        return getattr(self, "btn_cbt_" + action_id)
-
-    def _menu_group(self, group: str, only=None, skip=()):
-        """This frame's actions in `group`, in build order. `only`/`skip` split one
-        group across several rows without teaching `actions.py` about rows."""
-        return [a for a in self._action_menu.values()
-                if a.group == group and a.id not in skip
-                and (only is None or a.id in only)]
-
     def _action_clicked(self, action_id: str, event) -> bool:
         """True when `event` is a click on an action the panel is actually offering.
 
@@ -15072,83 +15051,7 @@ class App:
         which is why the guard stays until M2e.
         """
         act = self._action_menu.get(action_id)
-        return act is not None and act.enabled and self._cbt_btn(action_id).clicked(event)
-
-    def _draw_action_row(self, actions, lx, y, w, gap, trail=None, font=None):
-        """Lay `actions` out as one equal-width row and draw them; return the new `y`.
-
-        An empty row consumes no vertical space at all — that is how "the option is
-        not on offer" reaches the layout now, in place of a positioning branch.
-
-        `font` draws the row in something other than the panel default and restores
-        `font_md` afterwards, which is what the narrow rows (§1's two, §4's five-up)
-        have always done by hand.
-        """
-        if not actions:
-            return y
-        n = len(actions)
-        tw = (w - (n - 1) * gap) // n
-        row_font = font if font is not None else self.font_md
-        widths = self._row_widths([a.label for a in actions], tw, w, gap, row_font)
-        x = lx
-        for j, act in enumerate(actions):
-            btn = self._cbt_btn(act.id)
-            btn.text = act.label
-            btn.rect.x = x
-            btn.rect.y = y
-            btn.rect.w = widths[j]
-            x += widths[j] + gap
-            if font is not None:
-                btn.font = font
-            btn.draw(self.screen)
-            if font is not None:
-                btn.font = self.font_md
-        return y + self._BTN_H + (gap if trail is None else trail)
-
-    # A label needs this much more than its own glyphs before it stops looking clipped:
-    # two pixels of air on each side of the text `Button.draw` centres in the rect.
-    _ROW_LABEL_PAD = 4
-
-    def _row_widths(self, labels, tw, w, gap, font):
-        """Column widths for one `_draw_action_row`: equal, unless equal would clip.
-
-        F12: `Button.draw` centres its text and never clips, so a label wider than its
-        column bleeds across the gap into its neighbour — which the structural golden
-        cannot see, because every rect is exactly what the layout intended. The five-up
-        posture row is where it bit: at `font_sm`, Disengage needs 76px, Go Prone 65 and
-        Stand Up 64 in a 60px column.
-
-        So the row sizes itself to its labels when it has to and can: each column takes
-        the width its own text needs, and the slack left over is handed out evenly so the
-        row still spans `w` exactly and its right edge still lines up with every other
-        row. A row whose labels do NOT fit even at their natural widths keeps the equal
-        split — a squashed-but-even row beats an arbitrary truncation, and the smoke
-        test's overflow sweep is what reports it.
-
-        Rows that already fit are untouched, which is why this moved only the posture
-        row's rects in the golden.
-        """
-        need = [font.size(t)[0] + self._ROW_LABEL_PAD for t in labels]
-        span = w - (len(labels) - 1) * gap
-        if max(need) <= tw or sum(need) > span:
-            return [tw] * len(labels)
-        widths = [x + (span - sum(need)) // len(need) for x in need]
-        for j in range(span - sum(widths)):     # the division's remainder, leftmost first
-            widths[j] += 1
-        return widths
-
-    def _draw_action_stack(self, actions, lx, y, w, gap):
-        """Draw each action as its own full-width row; return the new `y`.
-
-        §7 is a COLUMN of one-button rows, not a grid, so a run of converted buttons is
-        n rows — not the n-up `_draw_action_row` builds. The two shapes are one call
-        apart and the mistake is silent: it turns a Monk's whole band into a three-up
-        that still passes every availability test. An empty run consumes no space, same
-        as an empty row.
-        """
-        for act in actions:
-            y = self._draw_action_row([act], lx, y, w, gap)
-        return y
+        return act is not None and act.enabled and panel.cbt_btn(self, action_id).clicked(event)
 
     def _draw_combat_panel(self):
         """Draw the right panel while combat is active.
@@ -15204,7 +15107,7 @@ class App:
         y += 28
 
         # ── Pause + End Combat row ─────────────────────────────────────────
-        y = self._draw_action_row(self._menu_group("session"), lx, y, W, gap,
+        y = panel.draw_action_row(self, panel.menu_group(self, "session"), lx, y, W, gap,
                                   trail=8, font=self.font_sm)
 
         # ── Initiative list ────────────────────────────────────────────────
@@ -15379,7 +15282,7 @@ class App:
         y += section_gap
 
         # ── End Turn (prominent, before action choices) ────────────────────
-        y = self._draw_action_row(self._menu_group("turn"), lx, y, W, gap,
+        y = panel.draw_action_row(self, panel.menu_group(self, "turn"), lx, y, W, gap,
                                   trail=section_gap)
 
         # ── Action section ─────────────────────────────────────────────────
@@ -15406,17 +15309,17 @@ class App:
             txt("[Action used]", lx, y, (100, 100, 120))
             y += B
             # Nick, if the menu offers it — the only button this arm can show.
-            y = self._draw_action_row(self._menu_group("action"), lx, y, W, gap)
+            y = panel.draw_action_row(self, panel.menu_group(self, "action"), lx, y, W, gap)
         elif cur_cond and cur_cond.frightened:
             txt("Frightened — must Dash", lx, y, (180, 100, 200))  # Purple
             y += B
-            y = self._draw_action_row(self._menu_group("action"), lx, y, W, gap)
+            y = panel.draw_action_row(self, panel.menu_group(self, "action"), lx, y, W, gap)
         else:
-            y = self._draw_action_row(self._menu_group("action", only=_ACT_ROW_ATTACK),
+            y = panel.draw_action_row(self, panel.menu_group(self, "action", only=_ACT_ROW_ATTACK),
                                       lx, y, W, gap)
-            y = self._draw_action_row(self._menu_group("action", only=_ACT_ROW_MOVE),
+            y = panel.draw_action_row(self, panel.menu_group(self, "action", only=_ACT_ROW_MOVE),
                                       lx, y, W, gap, font=self.font_sm)
-            y = self._draw_action_row(self._menu_group("action", only=_ACT_ROW_SPELL),
+            y = panel.draw_action_row(self, panel.menu_group(self, "action", only=_ACT_ROW_SPELL),
                                       lx, y, W, gap)
 
         # ── Spell Slots / N/day display ────────────────────────────────────
@@ -15493,7 +15396,7 @@ class App:
                                  self.combat.get_agent_stats(self.bm, cur_idx).portent_dice)
             txt(f"  [{dice_str}]", lx, y, (220, 200, 120), self.font_sm)
             y += 14
-            y = self._draw_action_row(self._menu_group("portent"), lx, y, W, gap)
+            y = panel.draw_action_row(self, panel.menu_group(self, "portent"), lx, y, W, gap)
             y += section_gap
 
         # ── Bonus Action section ───────────────────────────────────────────
@@ -15514,7 +15417,7 @@ class App:
             # menu says which of the two exist and what they read (bucket 7b); the
             # columns are this method's, and so is the rule that a band standing open
             # reserves its row even for a creature offered neither of them — which is
-            # why this is not a `_draw_action_row` call. The left column stays empty
+            # why this is not a `panel.draw_action_row` call. The left column stays empty
             # when only the right is offered; the width is the two-up's exactly when
             # the spell half is there to fill it.
             _bw = (W - gap) // 2 if "spell_bonus" in self._action_menu else HW
@@ -15522,7 +15425,7 @@ class App:
                 _hdr = self._action_menu.get(_bid)
                 if _hdr is None:
                     continue
-                _hbtn = self._cbt_btn(_bid)
+                _hbtn = panel.cbt_btn(self, _bid)
                 _hbtn.text  = _hdr.label
                 _hbtn.rect.x = lx + _i * (_bw + gap)
                 _hbtn.rect.y = y
@@ -15533,36 +15436,36 @@ class App:
         # Jump + Shove row — merged below into the adjacency block
 
         # Arcane Ward charging button (Abjurer L3+ with active ward)
-        y = self._draw_action_stack(self._menu_group("bonus", only=("charge_arcane_ward",)),
+        y = panel.draw_action_stack(self, panel.menu_group(self, "bonus", only=("charge_arcane_ward",)),
                                     lx, y, W, gap)
 
         # Wild Shape button (Druid L2+). The label is the menu's; the form NAME above
         # it is display, so it stays here.
-        _wild = self._menu_group("bonus", only=("wild_shape",))
+        _wild = panel.menu_group(self, "bonus", only=("wild_shape",))
         if _wild:
             _wstats = self.bm.placed_agents[cur_idx].stats
             if _wstats.wild_shape_active:
                 txt(f"🐺 {_wstats.wild_shape_form_name}", lx, y, COL_LABEL)
                 y += 12
-            y = self._draw_action_stack(_wild, lx, y, W, gap)
+            y = panel.draw_action_stack(self, _wild, lx, y, W, gap)
 
         # The Jump / Shove / Trip row, and the Escape under it. A three-up when
         # something is standing next to this creature and Jump alone at full width when
         # nothing is — which is the menu's answer now, not a branch here. The narrow
         # row is drawn in `font_sm`, as §4's five-up is.
-        _jump = self._menu_group("bonus", only=_BON_ROW_SHOVE)
+        _jump = panel.menu_group(self, "bonus", only=_BON_ROW_SHOVE)
         if _jump:
             y += gap
-            y = self._draw_action_row(_jump, lx, y, W, gap,
+            y = panel.draw_action_row(self, _jump, lx, y, W, gap,
                                       font=self.font_sm if len(_jump) > 1 else None)
         # Escape, then the Telekinetic feat's shove, then the Cunning Action three-up.
         # The Psi Warrior's Telekinetic Movement is a different option with its own
         # widget, drawn further down inside the band; see F10.
-        y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_ESCAPE),
+        y = panel.draw_action_stack(self, panel.menu_group(self, "bonus", only=_BON_RUN_ESCAPE),
                                     lx, y, W, gap)
-        _cunning = self._menu_group("bonus", only=_BON_ROW_CUNNING)
+        _cunning = panel.menu_group(self, "bonus", only=_BON_ROW_CUNNING)
         if _cunning:
-            y = self._draw_action_row(_cunning, lx, y, W, gap)
+            y = panel.draw_action_row(self, _cunning, lx, y, W, gap)
 
 
         # The five the Bonus Action does not own, in draw order — Drop Grapple (free),
@@ -15571,14 +15474,14 @@ class App:
         # Action), and Haste's extra Action. They are drawn above the band gate below
         # precisely because spending the Bonus Action must not dead-key any of them,
         # and `actions._BONUS_ECONOMY` is where that is now said in words.
-        y = self._draw_action_stack(self._menu_group("bonus", only=_BON_RUN_UNBANDED),
+        y = panel.draw_action_stack(self, panel.menu_group(self, "bonus", only=_BON_RUN_UNBANDED),
                                     lx, y, W, gap)
 
         if not _is_incapacitated and not self.bonus_used:
             # One run: after M2e nothing fused is left to cut the column, so the whole
             # band is a single stack drawn in the menu's build order. `_BON_RUN_BAND`
             # is that order written down, feature group by feature group.
-            _band = self._menu_group("bonus", only=_BON_RUN_BAND)
+            _band = panel.menu_group(self, "bonus", only=_BON_RUN_BAND)
 
             # §7's one WRITE during the draw pass, hoisted above the run so the run can
             # be one call. The Steps of the Fey rider cycle is five options at Warlock 6
@@ -15591,7 +15494,7 @@ class App:
                 self.steps_of_fey_effect = fey_rider_index(
                     self, self.combat.get_agent_stats(self.bm, cur_idx))
 
-            y = self._draw_action_stack(_band, lx, y, W, gap)
+            y = panel.draw_action_stack(self, _band, lx, y, W, gap)
 
         elif not _is_incapacitated:
             # F11: the band is shut, and exactly one option belongs on the other side of
@@ -15599,7 +15502,7 @@ class App:
             # because the Bonus Action is already spent. The menu offers `step_of_wind`
             # in this state for nobody else, so this group is empty for everyone else
             # and an empty stack takes no vertical space.
-            y = self._draw_action_stack(self._menu_group("bonus", only=("step_of_wind",)),
+            y = panel.draw_action_stack(self, panel.menu_group(self, "bonus", only=("step_of_wind",)),
                                         lx, y, W, gap)
 
         # Sorcerer Metamagic arm-toggles (Phase 2). WHICH options are offered — learned,
@@ -15621,11 +15524,11 @@ class App:
                         "Sorcery Incarnate: 2 options per spell", True, (210, 190, 255))
                     self.screen.blit(cap, (lx, y))
                     y += cap.get_height() + 2
-                for _mm_act in self._menu_group("bonus", only=_BON_RUN_METAMAGIC):
-                    _mm_btn = self._cbt_btn(_mm_act.id)
+                for _mm_act in panel.menu_group(self, "bonus", only=_BON_RUN_METAMAGIC):
+                    _mm_btn = panel.cbt_btn(self, _mm_act.id)
                     _mm_armed = _mm_act.label.startswith("✓")
                     _mm_btn.color = (120, 95, 190) if _mm_armed else (80, 62, 135)
-                    y = self._draw_action_row([_mm_act], lx, y, W, gap)
+                    y = panel.draw_action_row(self, [_mm_act], lx, y, W, gap)
                     if _mm_armed:
                         pygame.draw.rect(self.screen, (210, 190, 255), _mm_btn.rect, 2,
                                          border_radius=4)
@@ -15730,18 +15633,18 @@ class App:
 
         # Place Terrain shares this row with the Show/Hide toggle beside it, which is
         # not a `btn_cbt_*` and is not the menu's — so the row is half laid out here and
-        # half by `_draw_action_row`, at the right column's own origin and width. Its
+        # half by `panel.draw_action_row`, at the right column's own origin and width. Its
         # own `y` advance is discarded: the toggle owns the row's height, and it is
         # there whether or not Place Terrain is.
-        self._draw_action_row(self._menu_group("utility", only=("place_terrain",)),
+        panel.draw_action_row(self, panel.menu_group(self, "utility", only=("place_terrain",)),
                               lx + HW + 4, y, HW, gap)
         y += B + gap
 
         # Drop Concentration, then every droppable weapon slot on a single row.
         # Which of these exist is ActionMenu's call now (§9); this only lays them out.
-        y = self._draw_action_row(self._menu_group("utility", only=("drop_concentration",)),
+        y = panel.draw_action_row(self, panel.menu_group(self, "utility", only=("drop_concentration",)),
                                   lx, y, W, gap)
-        y = self._draw_action_row(self._menu_group("utility", skip=("place_terrain",
+        y = panel.draw_action_row(self, panel.menu_group(self, "utility", skip=("place_terrain",
                                                                     "drop_concentration")),
                                   lx, y, W, gap)
 
