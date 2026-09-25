@@ -11,7 +11,7 @@ an iCloud-synced directory where `build/` artifacts corrupted the cache; the rep
 
 **Allowed without asking, when you are running as Opus:**
 - Building the extension: `./build.sh`, or the `cmake` sequence inside the `rpg_map` image.
-- Running tests: `./test.sh`, `python3 tests/run_all_tests.py`, or a single suite.
+- Running tests, always in the container: `./test.sh`, or a single suite through `docker run`.
 - Read-only inspection: `git status` / `git log` / `git diff`, `ls`, `grep`, `cat`.
 - Headless GUI checks through `tests/gui_driver.py` (synthesized pygame events, saved PNGs).
 
@@ -123,11 +123,10 @@ in `tests/run_all_tests.py`. Test fixtures (e.g. `*.golden.txt`) live in `tests/
 alongside their test; shared data JSONs stay in `gui/`. `test_helpers.py` provides
 the common setup helpers.
 
-**The suite runs in the container and nowhere else** — `./test.sh`, or a single suite
-through `docker run` as shown above. Two files are deliberate exceptions and neither is a
-licence to run the rest on the host: `tests/test_mapimg.py` is PIL-only and imports no
-extension, and `tests/manual_fog_xvfb.py` needs the container *plus* an Xvfb display and
-is not in the runner at all.
+**The suite runs in the container and nowhere else**: `./test.sh`, or a single suite
+through `docker run` as shown above. There are no host exceptions. `tests/test_mapimg.py`
+imports no extension, but it still runs in the container. `tests/manual_fog_xvfb.py` needs
+the container *plus* an Xvfb display, and is not in the runner at all.
 
 ## Key Design Decisions
 

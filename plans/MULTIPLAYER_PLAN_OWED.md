@@ -8,14 +8,13 @@ falls between them.*
 The failing suite is item 1 below — and its usual one-line description in every handoff
 since M3 is wrong, which is the first thing this file fixes.
 
-Still dirty, deliberately: `encounters/simplemap_strahd_feastofstandral_terrain.json` and
-`maps/TestDNDMap_terrain.json`, both staged and both dirty before M4c. Every commit since
-has used an explicit pathspec (`git commit --only -- <paths>`) to keep them out. Leave them
-exactly as they are.
+Tracked tree clean as of 2026-09-25: the user unstaged
+`encounters/simplemap_strahd_feastofstandral_terrain.json` and `maps/TestDNDMap_terrain.json`,
+which had been staged and dirty since before M4c. Commits still use an explicit pathspec
+(`git commit --only -- <paths>`), because the untracked scratch makes `git add -A` unsafe.
 
-Environment is the container and nothing else: `./test.sh` is the oracle, a host run fails
-~151 suites on PYTHONPATH and means nothing. `tests/test_mapimg.py` (PIL-only) and the two
-Xvfb rigs are the only exceptions and license nothing else.
+Environment is the container and nothing else: `./test.sh` is the oracle. Nothing runs on
+the host, not even `tests/test_mapimg.py`. The two Xvfb rigs also run in the container.
 
 **These eleven items share only that no phase owns them.** (Nine when this was written; items 10 and 11 were found by item 8's manual pass and appended on 2026-09-24.) The standing rule applies with full
 force: **one item, one commit, never bundled** — four of them are behaviour changes and two
@@ -40,10 +39,10 @@ before writing code.
 **Two housekeeping rules that have bitten twice.** `maps/TestDNDMap_agents.json` is *tracked*
 and is `test_replay_roundtrip.py`'s fixture; the app overwrites it on save, so
 `git checkout -- maps/TestDNDMap_agents.json` after any manual pass on that map. The app
-also writes the explored mask into `maps/TestDNDMap_terrain.json` on close, on top of its
-staged change: `git checkout -- maps/TestDNDMap_terrain.json` restores the staged version.
-`encounters/simplemap_strahd_feastofstandral_terrain.json` and `maps/TestDNDMap_terrain.json`
-stay staged-and-dirty — every commit uses `git commit -m … --only -- <explicit paths>`.
+also writes the explored mask into `maps/TestDNDMap_terrain.json` on close:
+`git checkout -- maps/TestDNDMap_terrain.json` restores the committed version. Commits name
+their paths (`git commit --only -- <explicit paths>`), because the tree carries a lot of
+untracked scratch.
 
 **One rule this pass added.** The map image's keys hash the render's *inputs*; a change to
 what `mapimg.render` produces from the same inputs must change `_RENDER_REV`, or every
