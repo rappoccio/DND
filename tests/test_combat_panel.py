@@ -246,7 +246,7 @@ def _idx(app, name):
     raise KeyError(name)
 
 
-def _build_scene(app):
+def _build_scene(app, reserves=()):
     """Four combatants chosen so the checkpoints below can reach every Step 0.3 bucket.
 
     Aria   — Fighter 5, dual-wielding: the normal Action branch, Second Wind (7a),
@@ -264,7 +264,12 @@ def _build_scene(app):
     _place(app, "Skarn",   4, 3)
     _place(app, "Brannor", 7, 7)
     _place(app, "Cyra",    9, 9)
+    for name, col, row in reserves:            # placed last, so the four keep their idx
+        _place(app, name, col, row)
     app.combat.apply_agent_configs(app.bm)
+    for i in range(4, len(app.bm.placed_agents)):
+        app.bm.set_agent_faction(i, FOE_TEAM)
+        app.bm.set_agent_on_deck(i, True)      # flagged before combat, as the DM does it
     for who, fac in (("Aria", PC_TEAM), ("Skarn", FOE_TEAM),
                      ("Brannor", PC_TEAM), ("Cyra", PC_TEAM)):
         app.bm.set_agent_faction(_idx(app, who), fac)
@@ -1051,6 +1056,22 @@ def build_output():
     _goto(app, "Aria")
     app.initiative_order = []
     out += cap.capture("99 nobody on turn — out-of-range agent (F7)")
+
+    # 100 — the On Deck section, which no checkpoint above draws: the scene has no
+    # reserves, and giving it some would put the section into all 71 blocks. So this is
+    # a second App, built last so the first is finished with the display: the same four
+    # plus two Goblins and an Ogre, flagged On Deck before combat starts and placed far
+    # from everyone. It pins the heading, the grouped `×2` label and the bare one, and
+    # the `y` the section hands back, which shows in the End Turn rect under it.
+    # Everything else should read as checkpoint 01. What it cannot see are
+    # `on_deck_item_rects`; `test_menus` clicks one of those.
+    app2 = App(MAP_PATH, seed=SEED)
+    _build_scene(app2, reserves=(("Goblin", 0, 11), ("Goblin", 1, 11), ("Ogre", 11, 0)))
+    app2._start_combat()
+    app2.combat.stop_recording()
+    _goto(app2, "Aria")
+    out += PanelCapture(app2).capture("100 On Deck reserves — Aria "
+                                      "(two Goblins and an Ogre held back)")
 
     return "\n".join(out).rstrip() + "\n"
 

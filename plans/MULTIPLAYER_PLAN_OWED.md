@@ -30,13 +30,16 @@ and the two it failed became item 11 — the phone stretched the page's margins 
 board, and then kept the stretched picture through a reload because the image key did not
 change with the render. Item **9 is untouched** and belongs to another document.
 
-**The one thing ready to start** is **item 7's last piece**. The panel helpers were scoped
-and frozen on 2026-09-25 (item 7, *The panel helpers*), and slice 7 has landed: the
-ActionMenu rendering helpers are now in `menus/panel.py`. **Next is the On Deck checkpoint**,
-in its own commit, which adds lines to the golden and changes none of the existing 71.
-**Then slice 8** moves `_draw_on_deck_section` to `panel.draw_on_deck_section`, with a
-direct click test in `test_menus`. Item 7 closes with slice 8. `_draw_combat_panel`'s body
-stays out of scope, by the user's decision.
+**The one thing ready to start** is **item 7's slice 8**, the last. The panel helpers were
+scoped and frozen on 2026-09-25 (item 7, *The panel helpers*). Slice 7 has landed (the
+ActionMenu rendering helpers are in `menus/panel.py`), and so has the On Deck golden
+checkpoint (**100**, on a second `App`). Slice 8 moves `_draw_on_deck_section` to
+`panel.draw_on_deck_section`, which brings in `import pygame` and
+`from constants import COL_PANEL_BORDER, COL_TEXT, PANEL_W`. It also adds a `test_menus`
+test that clicks a real `on_deck_item_rects` row and asserts the group deployed. The
+golden must stay byte-identical at 72 checkpoints. Mutants: delete `import pygame`, then
+`COL_TEXT`; each must fail checkpoint 100. `_draw_combat_panel`'s body stays out of
+scope, by the user's decision.
 
 **Two housekeeping rules that have bitten twice.** `maps/TestDNDMap_agents.json` is *tracked*
 and is `test_replay_roundtrip.py`'s fixture; the app overwrites it on save, so
@@ -492,6 +495,17 @@ including `_action_clicked`. There were 8 in `test_action_menu.py` and 1 in
 green, and `./test.sh` passed 161/0. All three mutants went red: (a) the static check
 reported `app._row_widths` and the golden raised `AttributeError`; (b) the golden raised
 `NameError: _ROW_LABEL_PAD`; (c) the golden raised `AttributeError: _menu_group`.
+
+**The On Deck checkpoint LANDED 2026-09-25**, ahead of slice 8. It is numbered **100**, not
+70. It needs reserves, and adding them to the shared scene would put the section into
+every block. So it builds a second `App` after checkpoint 99, when the first is finished
+with the display. `_build_scene(app, reserves=…)` places two Goblins and an Ogre after the
+four, far from everyone, and flags them On Deck before `_start_combat`, which is how the DM
+does it. The block reads as checkpoint 01 plus the section: the heading, `⮕ Goblin ×2`,
+`⮕ Ogre`, with the initiative list still the four, and End Turn at y=268 instead of 212
+(8 + 3×16). The golden diff is **+141 / −0** in one hunk at the end of the file, and the 71
+existing checkpoints are byte-identical. Mutant: dropping the section's `y += 8` puts
+End Turn at 260 and turns the suite red. `./test.sh` passed 161/0.
 
 ---
 
