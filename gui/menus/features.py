@@ -1,10 +1,12 @@
 """The per-feature menus — one creature, one feature, one question.
 
-Sixteen builders that are neither post-hit riders nor authoring menus: the Portent die,
+Twenty-two builders that are neither post-hit riders nor authoring menus: the Portent die,
 the Arcane Ward, Wild Shape, the unarmed strike's three modes, Use Item, the companion
 and familiar commands, a legendary action, Mantle of Majesty, the Dispel target pick,
-the friendly-fire confirmation, Animate Dead, the Wild Magic surge, and the Bard's
-beguiling/bewitching offers.
+the friendly-fire confirmation, Animate Dead, the Wild Magic surge, the Bard's
+beguiling/bewitching offers, and the six the combat panel's action buttons open: the
+Elements monk's Attunement and Burst, Bend Luck, Boon of Fate, Bastion of Law and the
+Transmuted Spell damage type.
 
 What they share is the judgement `_ask_actor` makes by default and every one of them
 accepts: the creature acting is the creature answering, so `owner` is its controller.
@@ -29,6 +31,21 @@ PACT_CHAIN_FAMILIARS = ["Imp", "Pseudodragon", "Quasit", "Sprite", "Skeleton", "
 # `main.py`'s own Command site reads it from here — the table came out with the menu that
 # draws it, and `main` already imports this module, so the dependency only runs one way.
 COMMAND_WORD_OPTIONS = [("Drop", 0), ("Flee", 1), ("Grovel", 2), ("Halt", 3), ("Approach", 4)]
+
+# Transmuted Spell (Sorcerer Metamagic): the six elemental damage types a spell's damage may be
+# rewritten to (label, MagicDamage_t int). Matches the engine's isElemental set (Acid/Cold/Fire/
+# Lightning/Poison/Thunder). Reused via the ElementPickerDialog at arm-time.
+METAMAGIC_TRANSMUTE_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6), ("Thunder", 9)]
+
+# Monk Warrior of the Elements — the five legal elements for Elemental Attunement / Elemental Burst,
+# as (label, MagicDamage_t int). Reused via the ElementPickerDialog. (Acid=0, Cold=1, Fire=2,
+# Lightning=4, Thunder=9 — Force/Poison/etc. are not valid Elemental choices.)
+ELEMENTAL_MONK_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Thunder", 9)]
+
+# MagicDamage_t index → human-readable name (Acid=0 … Thunder=9). `main.py`'s Draconic Resistance
+# log line reads it from here too, the same way it reads COMMAND_WORD_OPTIONS.
+_DAMAGE_TYPE_NAMES = {0: "Acid", 1: "Cold", 2: "Fire", 3: "Force", 4: "Lightning",
+                      5: "Necrotic", 6: "Poison", 7: "Psychic", 8: "Radiant", 9: "Thunder"}
 
 
 def show_portent_dice_menu(app):
@@ -558,3 +575,117 @@ def beguiling_pick_target(app, hit: int):
                     [("Charmed", lambda: _on_choice([0])),
                      ("Frightened", lambda: _on_choice([1]))],
                     render="picker", on_cancel=lambda: _on_choice([]))
+
+
+def show_elemental_attunement_menu(app, idx):
+    """Monk Warrior of the Elements (L3): pick the element for Elemental Attunement."""
+    def _on_attune_elem(chosen, idx=idx):
+        element = chosen[0] if chosen else -1
+        if element < 0:
+            return
+        if app.combat.activate_elemental_attunement(app.bm, idx, element):
+            app.action_used = True
+            app._flush_combat_log()
+            app._update_attack_overlay()
+        else:
+            app._combat_log_add(
+                "Elemental Attunement: requires the Elements subclass (L3) and 1 Focus Point.")
+    app._ask_actor(
+        idx, "action", "Elemental Attunement: element",
+        [(lbl, (lambda v=val: _on_attune_elem([v])))
+         for lbl, val in ELEMENTAL_MONK_OPTIONS],
+        render="picker", on_cancel=lambda: _on_attune_elem([]))
+
+
+def show_elemental_burst_menu(app, idx):
+    """Monk Warrior of the Elements: pick Elemental Burst's element, then arm the center-cell click."""
+    def _on_burst_elem(chosen, idx=idx):
+        element = chosen[0] if chosen else -1
+        if element < 0:
+            return
+        app.pending_elemental_burst = element
+        type_name = next((lbl for lbl, val in ELEMENTAL_MONK_OPTIONS
+                          if val == element), "?")
+        app._combat_log_add(
+            f"Elemental Burst ({type_name}): click a center cell (or click yourself to cancel).")
+    app._ask_actor(
+        idx, "action", "Elemental Burst: element",
+        [(lbl, (lambda v=val: _on_burst_elem([v])))
+         for lbl, val in ELEMENTAL_MONK_OPTIONS],
+        render="picker", on_cancel=lambda: _on_burst_elem([]))
+
+
+def show_bend_luck_menu(app, idx, pos):
+    """Wild Magic Sorcerer: Bend Luck — boost or penalize the next D20 roll by 1d4 (1 SP)."""
+    def _apply_bend_luck(boost, idx=idx):
+        v = app.combat.sorcerer_bend_luck(app.bm, idx, boost)
+        if v > 0:
+            sign = "+" if boost else "-"
+            app._combat_log_add(
+                f"{app.bm.placed_agents[idx].name}: Bend Luck — {sign}{v} to next D20 roll (1 SP)")
+            app._flush_combat_log()
+        else:
+            app._combat_log_add("Bend Luck: not eligible (wrong subclass/level/SP)")
+    app._ask_actor(
+        idx, "action", f"{app._agent_name(idx)}: Bend Luck",
+        [("Boost (+1d4)", lambda: _apply_bend_luck(True)),
+         ("Penalty (-1d4)", lambda: _apply_bend_luck(False))],
+        anchor=pos)
+
+
+def show_boon_of_fate_menu(app, idx, pos):
+    """Boon of Fate (Epic Boon): boost or penalize the next D20 Test by 2d4."""
+    def _apply_boon_of_fate(boost, idx=idx):
+        v = app.combat.apply_boon_of_fate(app.bm, idx, boost)
+        if v > 0:
+            sign = "+" if boost else "-"
+            app._combat_log_add(
+                f"{app.bm.placed_agents[idx].name}: Boon of Fate — {sign}{v} "
+                f"to the next D20 Test (attack roll or saving throw)")
+            app._flush_combat_log()
+        else:
+            app._combat_log_add("Boon of Fate: not available (no feat / already used this rest)")
+            app._flush_combat_log()
+    app._ask_actor(
+        idx, "action", f"{app._agent_name(idx)}: Boon of Fate",
+        [("Boost (+2d4)", lambda: _apply_boon_of_fate(True)),
+         ("Penalty (-2d4)", lambda: _apply_boon_of_fate(False))],
+        anchor=pos)
+
+
+def show_bastion_of_law_menu(app, idx, pos):
+    """Clockwork Sorcerer: Bastion of Law — spend 1 to 5 Sorcery Points, then click the
+    creature to ward. With no SP it opens nothing."""
+    stats = app.combat.get_agent_stats(app.bm, idx)
+    sp_res = stats.get_resource("Sorcery Points")
+    avail = min(5, sp_res.current if sp_res else 0)
+    if avail < 1:
+        return
+    def _arm_bastion(n):
+        app.pending_bastion_sp = n
+        app.pending_bastion_of_law = True
+        app._combat_log_add(
+            f"Bastion of Law: click the creature to ward ({n} SP, {n}d8) — self or within 30 ft")
+        app._flush_combat_log()
+    app._ask_actor(
+        idx, "action",
+        f"{app._agent_name(idx)}: Bastion of Law — how many SP?",
+        [(f"{n} SP ({n}d8)", (lambda n=n: _arm_bastion(n)))
+         for n in range(1, avail + 1)],
+        anchor=pos)
+
+
+def show_metamagic_transmute_menu(app):
+    """Transmuted Spell needs its replacement damage type chosen at arm time; the arming
+    itself stays in `_handle_events`, and a cancel leaves the type unset (-1)."""
+    def _on_mm_transmute(chosen):
+        app.pending_metamagic_transmute_type = chosen[0] if chosen else -1
+        tname = _DAMAGE_TYPE_NAMES.get(app.pending_metamagic_transmute_type, "?")
+        app._combat_log_add(f"Transmuted Spell → {tname} damage.")
+        app._flush_combat_log()
+    app._ask_actor(
+        app._current_agent_idx(), "action",
+        "Transmuted Spell — new damage type",
+        [(lbl, (lambda v=val: _on_mm_transmute([v])))
+         for lbl, val in METAMAGIC_TRANSMUTE_OPTIONS],
+        render="picker", on_cancel=lambda: _on_mm_transmute([]))

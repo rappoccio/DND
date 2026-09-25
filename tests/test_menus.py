@@ -173,6 +173,72 @@ def test_board_menus_build_with_every_submenu():
     print(f"✅ test_board_menus_build_with_every_submenu passed ({len(subs)} submenus)")
 
 
+def _as(app, cls, level, **fields):
+    """Re-class the probe in place: class, level, subclass fields, then a full resource table."""
+    s = app.combat.get_agent_stats(app.bm, 0)
+    s.set_class_level(cls, level)
+    for k, v in fields.items():
+        setattr(s, k, v)
+    s.initialize_class_resources(cls, level)
+    app.combat.set_agent_stats(app.bm, 0, s)
+
+
+def test_panel_feature_menus_build_choose_and_cancel():
+    """The six prompts the combat panel's action buttons open (slice 6). They take the
+    actor index and, for the popups, the click position, so the solo sweep cannot reach
+    five of them. Each is built on a probe that really has the feature, and then answered
+    both ways: its first row is chosen (the closures behind the rows are where the moved
+    tables are read — `_DAMAGE_TYPE_NAMES` only ever inside one), and for the three
+    pickers a second copy is cancelled, which runs `on_cancel`.
+
+    Bastion of Law is also asked with no Sorcery Points left, and must open nothing."""
+    pos = (100, 100)
+    elements = dict(monk_subclass=rpg.MonkSubclass.WarriorOfFourElements)
+    cases = [
+        ("show_elemental_attunement_menu", rpg.CharacterClass.Monk, 3, elements, False, True),
+        ("show_elemental_burst_menu",      rpg.CharacterClass.Monk, 3, elements, False, True),
+        ("show_bend_luck_menu",    rpg.CharacterClass.Sorcerer, 6,
+         dict(sorcerer_subclass=rpg.SorcererSubclass.WildMagic), True, False),
+        ("show_boon_of_fate_menu", rpg.CharacterClass.Sorcerer, 20, {}, True, False),
+        ("show_bastion_of_law_menu", rpg.CharacterClass.Sorcerer, 6,
+         dict(sorcerer_subclass=rpg.SorcererSubclass.Clockwork), True, False),
+        ("show_metamagic_transmute_menu", rpg.CharacterClass.Sorcerer, 3, {}, None, True),
+    ]
+    for name, cls, level, fields, takes_pos, picker in cases:
+        fn = getattr(features, name)
+        args = () if takes_pos is None else ((0, pos) if takes_pos else (0,))
+        for answer in (("choose", "cancel") if picker else ("choose",)):
+            app = _app()
+            _as(app, cls, level, **fields)
+            if name == "show_boon_of_fate_menu":
+                s = app.combat.get_agent_stats(app.bm, 0)
+                s.add_feat("Boon of Fate")
+                app.combat.set_agent_stats(app.bm, 0, s)
+            if takes_pos is None:
+                app._current_agent_idx = lambda: 0
+            fn(app, *args)
+            p = app.prompts.live
+            _assert_rows(f"features.{name}", p)
+            if answer == "choose":
+                assert app.prompts.choose_label(p.options[0].label).ok, \
+                    f"features.{name}: could not choose {p.options[0].label!r}"
+            else:
+                assert p.on_cancel is not None, f"features.{name} is a picker with no on_cancel"
+                assert app.prompts.cancel(), f"features.{name}: cancel did nothing"
+                assert app.prompts.live is None
+
+    app = _app()
+    _as(app, rpg.CharacterClass.Sorcerer, 6, sorcerer_subclass=rpg.SorcererSubclass.Clockwork)
+    s = app.combat.get_agent_stats(app.bm, 0)
+    r = s.get_resource("Sorcery Points")
+    r.current = 0
+    s.resources["Sorcery Points"] = r
+    app.combat.set_agent_stats(app.bm, 0, s)
+    features.show_bastion_of_law_menu(app, 0, pos)
+    assert app.prompts.live is None, "Bastion of Law opened a menu with no Sorcery Points"
+    print(f"✅ test_panel_feature_menus_build_choose_and_cancel passed ({len(cases)} builders)")
+
+
 def test_the_seam_did_not_move():
     """`_ask_actor` and `_ask_dm` stay on `App`: they hold the owner defaulting and the
     anchor, which is where authorization lives. Every relocated builder reaches them
@@ -194,6 +260,7 @@ def main():
     tests = [test_every_app_attribute_a_menu_names_exists,
              test_every_solo_builder_builds_its_prompt,
              test_board_menus_build_with_every_submenu,
+             test_panel_feature_menus_build_choose_and_cancel,
              test_the_seam_did_not_move]
     failed = 0
     for t in tests:

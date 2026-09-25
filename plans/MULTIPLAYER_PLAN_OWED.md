@@ -23,7 +23,7 @@ of those need a decision before any code is written.
 
 ---
 
-## Pick up here — 2026-09-24, after item 8's manual pass
+## Pick up here — 2026-09-25, after item 7's slice 6
 
 **State**: `./test.sh` green at **161 suites / 0 failures**. Items **1–8, 10 and 11 have
 landed**. Item 8's manual pass is **done**: its four questions are answered (see its entry),
@@ -31,10 +31,11 @@ and the two it failed became item 11 — the phone stretched the page's margins 
 board, and then kept the stretched picture through a reload because the image key did not
 change with the render. Item **9 is untouched** and belongs to another document.
 
-**The one thing ready to start** is **item 7's remainder**. Slice 5 moved the right-click
-map menu to `menus/board.py`. Slice 6 moves the six `_ask_actor` action-button sites still
-inline in `App._handle_events` into `menus/features.py`, and after that come the panel
-rendering helpers M2 left behind. Same shape as slices 1–5.
+**The one thing ready to start** is **item 7's last piece**: the panel rendering helpers M2
+left behind. Slice 6 moved the six action-button prompts still inline in
+`App._handle_events` into `menus/features.py`, so no prompt builder is left in
+`_handle_events`. The helpers are not yet scoped. Measure them and cut them into slices
+before writing code.
 
 **Two housekeeping rules that have bitten twice.** `maps/TestDNDMap_agents.json` is *tracked*
 and is `test_replay_roundtrip.py`'s fixture; the app overwrites it on save, so
@@ -330,8 +331,9 @@ the live `App` (`actions.py`'s `ActionMenu.build(app, idx)` set that precedent),
 | 3 | `menus/dm.py` — the authoring menus, all `_ask_dm` | 9 | 178 |
 | 4 | `menus/features.py` — the per-feature menus | 16 | 495 |
 | 5 | `menus/board.py` — the right-click map menus, all `_ask_dm` | 3 | 292 |
+| 6 | `menus/features.py` — the panel's action-button prompts | 6 | 94 |
 
-`main.py`: **20,191 → 18,152**, which is the reversal M1 Step 3 expected and did not get.
+`main.py`: **20,191 → 18,058**, which is the reversal M1 Step 3 expected and did not get.
 
 **Slice 5, the right-click map menu.** `_handle_events` keeps what is about the event —
 button 3, on the map, combat or not, which cell — and calls `board.show_agent_menu`,
@@ -345,6 +347,26 @@ probe so Fiendish Resilience is on the menu. Deleting `board.py`'s `net.roster` 
 passes the static check and fails this test, because only the Controller submenu's
 closure reads `DM_PRINCIPAL_ID`. `test_prompts` G9 already drove the menu with a real
 right-click, and it stayed green.
+
+**Slice 6, the panel's action-button prompts.** Elemental Attunement, Elemental Burst,
+Bend Luck, Boon of Fate, Bastion of Law and the Transmuted Spell damage type. As in
+slice 5, `_handle_events` keeps the `_action_clicked(…)` dispatch and the `0 <= idx`
+guard, and the closure and its `_ask_actor` call move to `features.show_…_menu(app, idx)`.
+The three popups also take `pos`. The code was lifted verbatim, with only `self.`→`app.`
+and `event.pos`→`pos` rewritten. Bastion of Law's SP lookup moved with it, and its
+`avail >= 1` guard became an early return, so it still opens nothing with no SP. Transmuted
+moved only its prompt. The arm/disarm radio logic, the `_flush_combat_log()` and the `break`
+stay in the Metamagic loop. `ELEMENTAL_MONK_OPTIONS`, `METAMAGIC_TRANSMUTE_OPTIONS` and
+`_DAMAGE_TYPE_NAMES` moved to `features.py`. Draconic Resistance's log line in `main.py`
+reads `features._DAMAGE_TYPE_NAMES`, the way the Command site reads `COMMAND_WORD_OPTIONS`.
+`test_menus.test_panel_feature_menus_build_choose_and_cancel` gives the probe each
+feature's class, subclass and level, and builds each prompt. It chooses the first row, and
+for the three pickers it also cancels a second copy so `on_cancel` runs. It then asks
+Bastion of Law with 0 SP and expects nothing to open. Choosing a row is not optional.
+`_DAMAGE_TYPE_NAMES` is read only inside the Transmuted closure, so deleting it from
+`features.py` passes the static check and the build, and fails only on the choose.
+Deleting either of the other two tables fails the new test too (the Transmuted one in the
+solo sweep first, since that builder takes only `app`).
 
 **What slice 3 shipped broken, and what closed the hole.** The rewrite repointed *calls*
 (`self._x(…)`) and not bare *references*, so `show_agents_menu`'s `("Create PC…",
@@ -363,12 +385,10 @@ there, which is the direction that already exists), and Wild Shape's `beast_form
 was `os.path.dirname(__file__)` — main.py's directory when the code lived there, and one
 level too deep once it did not.
 
-**Still owed on item 7**: six `_ask_actor` sites still inline in `_handle_events`. They are
-panel action-button handlers, not the map menu: Elemental Attunement, Metamagic
-Transmuted and four more in the same stretch. They go to `menus/features.py` as slice 6.
-After that come the panel's rendering helpers M2 left behind. (Earlier notes counted
-"14 sites" in the right-click menu. That was all of `_handle_events`: 8 map-menu
-`_ask_dm` sites, which slice 5 moved, and these 6.)
+**Still owed on item 7**: the panel's rendering helpers M2 left behind. Nothing has scoped
+them yet, so the first job is to measure them and cut them into slices. No prompt builder is
+left in `_handle_events`: slice 5 moved its 8 map-menu `_ask_dm` sites and slice 6 moved
+the 6 action-button `_ask_actor` sites.
 
 ---
 

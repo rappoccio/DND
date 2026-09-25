@@ -241,17 +241,8 @@ ELEMENT_CHOICE_SPELLS = {
     "Sorcerous Burst": [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6), ("Psychic", 7), ("Thunder", 9)],
 }
 
-# Transmuted Spell (Sorcerer Metamagic): the six elemental damage types a spell's damage may be
-# rewritten to (label, MagicDamage_t int). Matches the engine's isElemental set (Acid/Cold/Fire/
-# Lightning/Poison/Thunder). Reused via the ElementPickerDialog at arm-time.
-METAMAGIC_TRANSMUTE_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6), ("Thunder", 9)]
 # MetamagicOption int value → display name, for combat-log messages.
 METAMAGIC_NAME_BY_VALUE = {int(v): n for v, n, sp, note in METAMAGIC_OPTIONS}
-
-# Monk Warrior of the Elements — the five legal elements for Elemental Attunement / Elemental Burst,
-# as (label, MagicDamage_t int). Reused via the ElementPickerDialog. (Acid=0, Cold=1, Fire=2,
-# Lightning=4, Thunder=9 — Force/Poison/etc. are not valid Elemental choices.)
-ELEMENTAL_MONK_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Thunder", 9)]
 
 
 # Magic Circle / Hallow movement ward (D4): the creature types a caster may ward, plus a "Reverse"
@@ -318,10 +309,6 @@ CURSE_CHOICE_SPELLS = {
     "Curse of Weakness":      CURSE_WEAKNESS_OPTIONS,
     "Curse of Affliction":    CURSE_AFFLICTION_OPTIONS,
 }
-
-# MagicDamage_t index → human-readable name (Acid=0 … Thunder=9).
-_DAMAGE_TYPE_NAMES = {0: "Acid", 1: "Cold", 2: "Fire", 3: "Force", 4: "Lightning",
-                      5: "Necrotic", 6: "Poison", 7: "Psychic", 8: "Radiant", 9: "Thunder"}
 
 # Draconic Sorcerer L6 Elemental Affinity: legal dragon ancestry types (excludes Force/Necrotic/Radiant).
 DRACONIC_AFFINITY_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6)]
@@ -17569,39 +17556,11 @@ class App:
                     if self._action_clicked("elemental_attunement", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
-                            def _on_attune_elem(chosen, idx=idx):
-                                element = chosen[0] if chosen else -1
-                                if element < 0:
-                                    return
-                                if self.combat.activate_elemental_attunement(self.bm, idx, element):
-                                    self.action_used = True
-                                    self._flush_combat_log()
-                                    self._update_attack_overlay()
-                                else:
-                                    self._combat_log_add(
-                                        "Elemental Attunement: requires the Elements subclass (L3) and 1 Focus Point.")
-                            self._ask_actor(
-                                idx, "action", "Elemental Attunement: element",
-                                [(lbl, (lambda v=val: _on_attune_elem([v])))
-                                 for lbl, val in ELEMENTAL_MONK_OPTIONS],
-                                render="picker", on_cancel=lambda: _on_attune_elem([]))
+                            features.show_elemental_attunement_menu(self, idx)
                     if self._action_clicked("elemental_burst", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
-                            def _on_burst_elem(chosen, idx=idx):
-                                element = chosen[0] if chosen else -1
-                                if element < 0:
-                                    return
-                                self.pending_elemental_burst = element
-                                type_name = next((lbl for lbl, val in ELEMENTAL_MONK_OPTIONS
-                                                  if val == element), "?")
-                                self._combat_log_add(
-                                    f"Elemental Burst ({type_name}): click a center cell (or click yourself to cancel).")
-                            self._ask_actor(
-                                idx, "action", "Elemental Burst: element",
-                                [(lbl, (lambda v=val: _on_burst_elem([v])))
-                                 for lbl, val in ELEMENTAL_MONK_OPTIONS],
-                                render="picker", on_cancel=lambda: _on_burst_elem([]))
+                            features.show_elemental_burst_menu(self, idx)
                     if self._action_clicked("quivering_palm", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -17624,7 +17583,7 @@ class App:
                         if 0 <= idx < len(self.bm.placed_agents):
                             if self.combat.activate_draconic_resistance(self.bm, idx):
                                 stats = self.combat.get_agent_stats(self.bm, idx)
-                                elem_name = _DAMAGE_TYPE_NAMES.get(stats.draconic_affinity_type, str(stats.draconic_affinity_type))
+                                elem_name = features._DAMAGE_TYPE_NAMES.get(stats.draconic_affinity_type, str(stats.draconic_affinity_type))
                                 self._combat_log_add(
                                     f"{self.bm.placed_agents[idx].name}: Draconic Resistance — "
                                     f"{elem_name} resistance for 1 hour (1 SP spent)")
@@ -17634,39 +17593,11 @@ class App:
                     if self._action_clicked("bend_luck", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
-                            def _apply_bend_luck(boost, idx=idx):
-                                v = self.combat.sorcerer_bend_luck(self.bm, idx, boost)
-                                if v > 0:
-                                    sign = "+" if boost else "-"
-                                    self._combat_log_add(
-                                        f"{self.bm.placed_agents[idx].name}: Bend Luck — {sign}{v} to next D20 roll (1 SP)")
-                                    self._flush_combat_log()
-                                else:
-                                    self._combat_log_add("Bend Luck: not eligible (wrong subclass/level/SP)")
-                            self._ask_actor(
-                                idx, "action", f"{self._agent_name(idx)}: Bend Luck",
-                                [("Boost (+1d4)", lambda: _apply_bend_luck(True)),
-                                 ("Penalty (-1d4)", lambda: _apply_bend_luck(False))],
-                                anchor=event.pos)
+                            features.show_bend_luck_menu(self, idx, event.pos)
                     if self._action_clicked("boon_of_fate", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
-                            def _apply_boon_of_fate(boost, idx=idx):
-                                v = self.combat.apply_boon_of_fate(self.bm, idx, boost)
-                                if v > 0:
-                                    sign = "+" if boost else "-"
-                                    self._combat_log_add(
-                                        f"{self.bm.placed_agents[idx].name}: Boon of Fate — {sign}{v} "
-                                        f"to the next D20 Test (attack roll or saving throw)")
-                                    self._flush_combat_log()
-                                else:
-                                    self._combat_log_add("Boon of Fate: not available (no feat / already used this rest)")
-                                    self._flush_combat_log()
-                            self._ask_actor(
-                                idx, "action", f"{self._agent_name(idx)}: Boon of Fate",
-                                [("Boost (+2d4)", lambda: _apply_boon_of_fate(True)),
-                                 ("Penalty (-2d4)", lambda: _apply_boon_of_fate(False))],
-                                anchor=event.pos)
+                            features.show_boon_of_fate_menu(self, idx, event.pos)
                     if self._action_clicked("tides_of_chaos", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -17706,22 +17637,7 @@ class App:
                     if self._action_clicked("bastion_of_law", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
-                            stats = self.combat.get_agent_stats(self.bm, idx)
-                            sp_res = stats.get_resource("Sorcery Points")
-                            avail = min(5, sp_res.current if sp_res else 0)
-                            if avail >= 1:
-                                def _arm_bastion(n):
-                                    self.pending_bastion_sp = n
-                                    self.pending_bastion_of_law = True
-                                    self._combat_log_add(
-                                        f"Bastion of Law: click the creature to ward ({n} SP, {n}d8) — self or within 30 ft")
-                                    self._flush_combat_log()
-                                self._ask_actor(
-                                    idx, "action",
-                                    f"{self._agent_name(idx)}: Bastion of Law — how many SP?",
-                                    [(f"{n} SP ({n}d8)", (lambda n=n: _arm_bastion(n)))
-                                     for n in range(1, avail + 1)],
-                                    anchor=event.pos)
+                            features.show_bastion_of_law_menu(self, idx, event.pos)
                     if self._action_clicked("clockwork_cavalcade", event):
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
@@ -17867,17 +17783,7 @@ class App:
                             self._combat_log_add(f"Metamagic {name} ARMED ({cost} SP on next cast).")
                         # Transmuted needs a replacement damage type chosen at arm time.
                         if opt == rpg.MetamagicOption.Transmuted:
-                            def _on_mm_transmute(chosen):
-                                self.pending_metamagic_transmute_type = chosen[0] if chosen else -1
-                                tname = _DAMAGE_TYPE_NAMES.get(self.pending_metamagic_transmute_type, "?")
-                                self._combat_log_add(f"Transmuted Spell → {tname} damage.")
-                                self._flush_combat_log()
-                            self._ask_actor(
-                                self._current_agent_idx(), "action",
-                                "Transmuted Spell — new damage type",
-                                [(lbl, (lambda v=val: _on_mm_transmute([v])))
-                                 for lbl, val in METAMAGIC_TRANSMUTE_OPTIONS],
-                                render="picker", on_cancel=lambda: _on_mm_transmute([]))
+                            features.show_metamagic_transmute_menu(self)
                     self._flush_combat_log()
                     break
                 # Haste's extra action is an ACTION, not a bonus action — handle it OUTSIDE the
