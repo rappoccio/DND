@@ -21,6 +21,10 @@ The builders that need a resolved attack (the riders, the defender reactions) ar
 callable from here; they are `test_prompts.py`'s, which drives two of them end to end.
 The board's right-click menus need a token and a click position rather than a resolved
 attack, so they get a test of their own below, which opens every submenu as well.
+
+`panel.py` is drawing, not prompts, and the combat panel's golden is its oracle. The one
+thing the golden cannot see is where the On Deck rows are clickable, so that gets a real
+click below.
 """
 
 import ast
@@ -37,6 +41,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rpg_battle_map as rpg
 
 from main import App
+from constants import COL_TEXT, PANEL_W
+from gui_driver import post_click
+from test_combat_panel import (_build_scene, _goto, _idx, _preserve_cwd_logs,
+                               _restore_cwd_logs)
 from menus import board, dm, features, panel, reactions, riders
 
 MAP_PATH = os.path.join(_ROOT, "maps", "TestGrid12x12.png")
@@ -239,6 +247,54 @@ def test_panel_feature_menus_build_choose_and_cancel():
     print(f"✅ test_panel_feature_menus_build_choose_and_cancel passed ({len(cases)} builders)")
 
 
+def test_on_deck_row_deploys_its_group_on_click():
+    """`panel.draw_on_deck_section` leaves one clickable rect per group of reserves, and
+    `_handle_events` deploys the group whose row is clicked. The golden records what the
+    section says and how tall it is, and never where its rows are, so this test clicks one.
+    Two Goblins and an Ogre are held back; clicking the Goblin row must bring both Goblins
+    into the order, leave the Ogre On Deck, and not take the turn away from Aria.
+
+    Clicking the rect's own centre proves only that the rect and the click handler agree.
+    A rect drawn 2,000px below its row passed that, so each rect must also sit on its label:
+    inside the panel, stacked one row after another, and covering pixels in the label's
+    colour on the screen."""
+    app = App(MAP_PATH, seed=SEED)
+    _build_scene(app, reserves=(("Goblin", 0, 11), ("Goblin", 1, 11), ("Ogre", 11, 0)))
+    app._start_combat()
+    app.combat.stop_recording()
+    aria = _goto(app, "Aria")
+    goblins = [i for i, pt in enumerate(app.bm.placed_agents) if pt.name == "Goblin"]
+    ogre = _idx(app, "Ogre")
+    in_order = lambda i: any(e.agent_idx == i for e in app.initiative_order)
+    assert len(goblins) == 2 and not any(in_order(i) for i in goblins + [ogre]), \
+        "the reserves should start outside the initiative order"
+
+    app._draw_combat_panel()
+    rows = [name for _r, name in app.on_deck_item_rects]
+    assert rows == ["Goblin", "Ogre"], f"On Deck rows are {rows}"
+    px, screen = app._panel_x(), app.screen
+    rects = [r for r, _name in app.on_deck_item_rects]
+    for r, nxt in zip(rects, rects[1:]):
+        assert nxt.top == r.bottom, f"On Deck rows do not stack: {r} then {nxt}"
+    for r, name in app.on_deck_item_rects:
+        assert px <= r.left and r.right <= px + PANEL_W and screen.get_rect().contains(r), \
+            f"the {name} row's rect {r} is not inside the panel"
+        inked = sum(1 for x in range(r.left, r.right) for y in range(r.top, r.bottom)
+                    if tuple(screen.get_at((x, y)))[:3] == COL_TEXT)
+        assert inked, f"the {name} row's rect {r} covers none of its label's pixels"
+    post_click(app, app.on_deck_item_rects[0][0].center)
+
+    assert all(not app.bm.is_agent_on_deck(i) and in_order(i) for i in goblins), \
+        "clicking the Goblin row did not deploy both Goblins"
+    assert app.bm.is_agent_on_deck(ogre) and not in_order(ogre), \
+        "clicking the Goblin row deployed the Ogre too"
+    assert app._current_agent_idx() == aria, "deploying took the turn away from Aria"
+    app._draw_combat_panel()
+    rows = [name for _r, name in app.on_deck_item_rects]
+    assert rows == ["Ogre"], f"after the deploy, On Deck rows are {rows}"
+    print("✅ test_on_deck_row_deploys_its_group_on_click passed")
+
+
 def test_the_seam_did_not_move():
     """`_ask_actor` and `_ask_dm` stay on `App`: they hold the owner defaulting and the
     anchor, which is where authorization lives. Every relocated builder reaches them
@@ -261,6 +317,7 @@ def main():
              test_every_solo_builder_builds_its_prompt,
              test_board_menus_build_with_every_submenu,
              test_panel_feature_menus_build_choose_and_cancel,
+             test_on_deck_row_deploys_its_group_on_click,
              test_the_seam_did_not_move]
     failed = 0
     for t in tests:
@@ -277,4 +334,12 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # The On Deck test calls `_start_combat`, which truncates replay_log.txt and
+    # combat_log.txt in the cwd (gui/, per the runner). Those are the live session's
+    # logs, so they get the same courtesy test_combat_panel.py extends.
+    _saved = _preserve_cwd_logs()
+    try:
+        rc = main()
+    finally:
+        _restore_cwd_logs(_saved)
+    sys.exit(rc)

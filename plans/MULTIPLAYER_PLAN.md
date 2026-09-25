@@ -3588,8 +3588,13 @@ byte-identical across every conversion commit.
   6 defender reactions, the 9 DM authoring menus and the 16 per-feature menus, 56
   builders and 1,764 lines, taking `main.py` from 20,191 to 18,419 — the reversal M1
   Step 3 expected and did not get. `_ask_actor`/`_ask_dm` stayed put, and
-  `tests/test_menus.py` now pins that. **Still owed**: the right-click map menu, still
-  built inline in `_handle_events`, and the panel's rendering helpers.
+  `tests/test_menus.py` now pins that. ~~**Still owed**: the right-click map menu, still
+  built inline in `_handle_events`, and the panel's rendering helpers.~~ **Closed
+  2026-09-25**: four more slices moved the right-click map menu (`menus/board.py`), the
+  panel's action-button prompts (`menus/features.py`), and the panel's ActionMenu
+  rendering and On Deck section (`menus/panel.py`). `main.py` is at **17,940**. M2d left
+  `_draw_combat_panel` at 1,050 lines; it is now 654, and its body was left in place by
+  the user's decision.
 
 ---
 

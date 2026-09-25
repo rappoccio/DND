@@ -22,7 +22,7 @@ of those need a decision before any code is written.
 
 ---
 
-## Pick up here — 2026-09-25, after item 7's slice 7
+## Pick up here — 2026-09-25, after item 7's slice 8 (item 7 closed)
 
 **State**: `./test.sh` green at **161 suites / 0 failures**. Items **1–8, 10 and 11 have
 landed**. Item 8's manual pass is **done**: its four questions are answered (see its entry),
@@ -30,16 +30,15 @@ and the two it failed became item 11 — the phone stretched the page's margins 
 board, and then kept the stretched picture through a reload because the image key did not
 change with the render. Item **9 is untouched** and belongs to another document.
 
-**The one thing ready to start** is **item 7's slice 8**, the last. The panel helpers were
-scoped and frozen on 2026-09-25 (item 7, *The panel helpers*). Slice 7 has landed (the
-ActionMenu rendering helpers are in `menus/panel.py`), and so has the On Deck golden
-checkpoint (**100**, on a second `App`). Slice 8 moves `_draw_on_deck_section` to
-`panel.draw_on_deck_section`, which brings in `import pygame` and
-`from constants import COL_PANEL_BORDER, COL_TEXT, PANEL_W`. It also adds a `test_menus`
-test that clicks a real `on_deck_item_rects` row and asserts the group deployed. The
-golden must stay byte-identical at 72 checkpoints. Mutants: delete `import pygame`, then
-`COL_TEXT`; each must fail checkpoint 100. `_draw_combat_panel`'s body stays out of
-scope, by the user's decision.
+**Item 7 has landed**, in eight slices. The last three came on 2026-09-25: the ActionMenu
+rendering helpers (slice 7), a golden checkpoint for the On Deck section (checkpoint
+**100**, on a second `App`), and the On Deck section itself (slice 8). All of them are in
+`menus/panel.py`. `main.py` is at **17,940**, down from 20,191. `_draw_combat_panel`'s
+654-line body stayed out of scope by the user's decision. It is not owed here, and it
+would be a refactor of its own.
+
+**Nothing in this file is left to start.** Items 1–8, 10 and 11 have landed. Item **9**
+belongs to `COMBAT_REFACTOR_PLAN.md` (R4) and is untouched.
 
 **Two housekeeping rules that have bitten twice.** `maps/TestDNDMap_agents.json` is *tracked*
 and is `test_replay_roundtrip.py`'s fixture; the app overwrites it on save, so
@@ -301,7 +300,7 @@ and this depends on the turn's state, not the choice. Suite **159/159**.
 
 ---
 
-## 7. `gui/menus/` — the big one, owed by two phases
+## 7. `gui/menus/` — the big one, owed by two phases — **LANDED 2026-09-25**
 
 `main.py` is **20,123 lines**. M1 Step 3 expected it to go *down* and it went **up by 83**,
 because converting 79 prompt sites replaced a two-line tail with a one-to-three-line call and
@@ -320,7 +319,7 @@ no pygame events), and `test_action_menu.py`'s 52 checks. Do it in feature-area 
 the golden green after each, and **never together with any of items 3–6** — a relocation whose
 diff also changes a rule is a relocation nobody can review.
 
-**IN PROGRESS from 2026-09-24**, one commit per slice, each with all three oracles green and
+**LANDED 2026-09-25, in eight slices** (started 2026-09-24), one commit per slice, each with all three oracles green and
 items 3–6 already landed and out of the way.
 
 The shape every slice takes: a builder becomes a module-level function whose first argument is
@@ -337,8 +336,9 @@ the live `App` (`actions.py`'s `ActionMenu.build(app, idx)` set that precedent),
 | 5 | `menus/board.py` — the right-click map menus, all `_ask_dm` | 3 | 292 |
 | 6 | `menus/features.py` — the panel's action-button prompts | 6 | 94 |
 | 7 | `menus/panel.py` — rendering the ActionMenu | 5 | 97 |
+| 8 | `menus/panel.py` — the On Deck section | 1 | 21 |
 
-`main.py`: **20,191 → 17,961**, which is the reversal M1 Step 3 expected and did not get.
+`main.py`: **20,191 → 17,940**, which is the reversal M1 Step 3 expected and did not get.
 
 **Slice 5, the right-click map menu.** `_handle_events` keeps what is about the event —
 button 3, on the map, combat or not, which cell — and calls `board.show_agent_menu`,
@@ -390,7 +390,7 @@ there, which is the direction that already exists), and Wild Shape's `beast_form
 was `os.path.dirname(__file__)` — main.py's directory when the code lived there, and one
 level too deep once it did not.
 
-**Still owed on item 7**: the panel's rendering helpers M2 left behind. No prompt builder is
+~~**Still owed on item 7**~~ **(done: slices 7 and 8 below)**: the panel's rendering helpers M2 left behind. No prompt builder is
 left in `_handle_events`: slice 5 moved its 8 map-menu `_ask_dm` sites and slice 6 moved
 the 6 action-button `_ask_actor` sites.
 
@@ -475,7 +475,7 @@ today. So:
   Each must fail the new checkpoint. Both are crashes (`NameError`), not ❌ lines, and
   `./test.sh` counts them either way.
 
-`main.py` should end near **17,950** (18,058 − ~110), and item 7 closes with slice 8.
+`main.py` was expected to end near **17,950**. It ended at **17,940**.
 
 **Agreed 2026-09-25 (user):** (1) `_draw_combat_panel`'s body stays out of scope for now;
 (2) the destination is `menus/panel.py`; (3) the On Deck checkpoint lands first, in its own
@@ -506,6 +506,23 @@ does it. The block reads as checkpoint 01 plus the section: the heading, `⮕ Go
 (8 + 3×16). The golden diff is **+141 / −0** in one hunk at the end of the file, and the 71
 existing checkpoints are byte-identical. Mutant: dropping the section's `y += 8` puts
 End Turn at 260 and turns the suite red. `./test.sh` passed 161/0.
+
+**Slice 8 LANDED 2026-09-25, and item 7 closes with it.** `panel.draw_on_deck_section` was
+lifted verbatim with `self`→`app`. The `blit` call's continuation was realigned under its
+paren, which moved 6 columns rather than 4. `panel.py` now imports `pygame` and
+`COL_PANEL_BORDER, COL_TEXT, PANEL_W`. The golden stayed byte-identical at 72 checkpoints,
+and `./test.sh` passed 161/0. Deleting `import pygame`, or `COL_TEXT` from the import,
+raises `NameError` in checkpoint 100 and in the new test. Neither is caught anywhere else.
+
+**The click test's first draft passed a broken rect.**
+`test_menus.test_on_deck_row_deploys_its_group_on_click` clicked the centre of the rect
+the code reported. So a mutant that drew every rect 2,000px below its row stayed green: the
+click moved with the rect, and the handler agreed with it. Nothing tied the rect to the
+row. The test now also requires each rect to be inside the panel, the rects to stack one
+row after another, and each rect to cover pixels in the label's `COL_TEXT` on the real
+screen. The +2000 mutant and a subtler one (every rect one row low) both fail it now. The
+lesson generalises: **a click test that clicks where the code says is a tautology until
+something independent says where the thing is drawn.**
 
 ---
 
@@ -756,4 +773,4 @@ distinctive digits (they are 4281–4286).
 then 8's manual pass — it will inform F12 and both decisions. Then 5 and 6 once someone has
 played the rounds. 7 last, alone, in slices. 10 was independent of all of them and has landed.
 
-*(1–8, 10 and 11 are done; what is left of this list is 7's remainder.)*
+*(1–8, 10 and 11 are done. Item 7 closed on 2026-09-25, and nothing on this list is left. Item 9 belongs to another document.)*

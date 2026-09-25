@@ -7,7 +7,15 @@ the whole point of the phase, so resist putting a rule back in here.
 The click side stays on `App`: `App._action_clicked` is the gate every panel click
 goes through, the way `_ask_actor` is for prompts, and it reaches the widget through
 `cbt_btn` here. `App._BTN_H` stays on `App` too, because the pre-combat layout shares it.
+
+The On Deck section is drawn here as well. It is the one part of the panel that is not an
+action: each row deploys a group of reserves, and the click that does it is handled in
+`App._handle_events` against the rects this leaves in `app.on_deck_item_rects`.
 """
+
+import pygame
+
+from constants import COL_PANEL_BORDER, COL_TEXT, PANEL_W
 
 
 def cbt_btn(app, action_id: str):
@@ -105,4 +113,26 @@ def draw_action_stack(app, actions, lx, y, w, gap):
     """
     for act in actions:
         y = draw_action_row(app, [act], lx, y, w, gap)
+    return y
+
+
+def draw_on_deck_section(app, lx, W, px, y):
+    """Render the On Deck reserve list (grouped by name); each row deploys that group
+    on click. Returns the new y. Resets on_deck_item_rects every call so a row that is
+    no longer drawn can't capture clicks at a stale location."""
+    app.on_deck_item_rects = []
+    groups = app._on_deck_groups()
+    if not groups:
+        return y
+    pygame.draw.line(app.screen, COL_PANEL_BORDER,
+                     (px + 6, y), (px + PANEL_W - 6, y))
+    y += 8
+    app.screen.blit(app.font_sm.render("🎴 On Deck — click to deploy", True,
+                                       (210, 180, 90)), (lx, y))
+    y += 16
+    for name, count in groups:
+        label = f"  ⮕ {name}" + (f" ×{count}" if count > 1 else "")
+        app.screen.blit(app.font_sm.render(label, True, COL_TEXT), (lx, y))
+        app.on_deck_item_rects.append((pygame.Rect(lx, y, W, 16), name))
+        y += 16
     return y

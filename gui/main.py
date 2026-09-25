@@ -15021,27 +15021,6 @@ class App:
         caster = self.bm.placed_agents[caster_idx]
         return summon_cell_placeable(self.bm, caster.origin, caster.size, cell, size, sp.range)
 
-    def _draw_on_deck_section(self, lx, W, px, y):
-        """Render the On Deck reserve list (grouped by name); each row deploys that group
-        on click. Returns the new y. Resets on_deck_item_rects every call so a row that is
-        no longer drawn can't capture clicks at a stale location."""
-        self.on_deck_item_rects = []
-        groups = self._on_deck_groups()
-        if not groups:
-            return y
-        pygame.draw.line(self.screen, COL_PANEL_BORDER,
-                         (px + 6, y), (px + PANEL_W - 6, y))
-        y += 8
-        self.screen.blit(self.font_sm.render("🎴 On Deck — click to deploy", True,
-                                             (210, 180, 90)), (lx, y))
-        y += 16
-        for name, count in groups:
-            label = f"  ⮕ {name}" + (f" ×{count}" if count > 1 else "")
-            self.screen.blit(self.font_sm.render(label, True, COL_TEXT), (lx, y))
-            self.on_deck_item_rects.append((pygame.Rect(lx, y, W, 16), name))
-            y += 16
-        return y
-
     def _action_clicked(self, action_id: str, event) -> bool:
         """True when `event` is a click on an action the panel is actually offering.
 
@@ -15172,7 +15151,7 @@ class App:
             y += 16
 
         # ── On Deck reinforcements (deploy reserves into the live order) ────
-        y = self._draw_on_deck_section(lx, W, px, y)
+        y = panel.draw_on_deck_section(self, lx, W, px, y)
 
         y += section_gap
 
