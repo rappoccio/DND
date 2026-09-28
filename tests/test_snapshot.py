@@ -20,6 +20,8 @@ Covered here:
   · snapshot → restore → snapshot is stable             (test_round_trip_is_stable)
   · active conditions + effects survive, and post-snapshot mutations are undone
                                                         (test_conditions_round_trip)
+  · ticking spell effects and Evoker safe targets survive, and post-snapshot
+    ticks / edits are undone                            (test_spell_effects_round_trip)
   · a SUSPENDED reaction window survives and still resumes
                                                         (test_parked_reaction_round_trips)
   · malformed / future-version payloads are refused rather than half-applied
@@ -223,6 +225,68 @@ def test_conditions_round_trip():
     print("✅ test_conditions_round_trip passed")
 
 
+def _ticking_spell():
+    """A cantrip-level Harm spell with duration > 1, so execute_spell registers an
+    ActiveEffect for its target (the tickEffects path) with no slot bookkeeping."""
+    sp = rpg.Spell()
+    sp.name = "Lingering Sear"
+    sp.level = 0
+    sp.type = rpg.SpellType.Harm
+    sp.geometry = rpg.SpellGeometry.Single
+    sp.attack_type = rpg.SpellAttack.Save
+    sp.save_ability = rpg.SaveAbility.Dexterity
+    sp.range = 60
+    sp.duration = 5
+    dmg = rpg.MagicDamageRoll()
+    dmg.type = rpg.MagicDamage.Fire
+    dmg.num_dice = 1
+    dmg.die_size = 4
+    sp.magic_damage_rolls = [dmg]
+    return sp
+
+
+def test_spell_effects_round_trip():
+    """Ticking spell effects and Evoker safe targets survive a restore, and ticks /
+    edits made AFTER the snapshot are undone.
+
+    Written for COMBAT_REFACTOR_PLAN.md R4e, which moved both into SpellEffectStore:
+    before it, deleting the active_effects read from restore() passed the whole
+    suite, because test_round_trip_is_stable only compares snapshots of an engine
+    that never had an effect to lose."""
+    bm, engine, hero, foe = _build_scene()
+    engine.set_agent_spells(bm, hero, [_ticking_spell()])
+    s = engine.get_agent_stats(bm, hero)
+    s.can_cast_spell = True
+    engine.set_agent_stats(bm, hero, s)
+
+    action = rpg.SpellAction()
+    action.caster_idx = hero
+    action.spell_idx = 0
+    action.slot_level = 0
+    action.target_indices = [foe]
+    engine.execute_spell(bm, action)
+    engine.set_safe_targets(hero, [foe])
+
+    def effects():
+        return [(e.caster_idx, e.target_idx, e.spell.name, e.turns_remaining)
+                for e in engine.active_effects]
+
+    before = effects()
+    assert before == [(hero, foe, "Lingering Sear", 4)], f"setup failed — effects: {before}"
+    snap = engine.snapshot_json()
+
+    engine.tick_effects(bm)
+    assert effects()[0][3] == 3, "tick_effects did not decrement — the check below would be vacuous"
+    engine.clear_effects()
+    engine.set_safe_targets(hero, [])
+    assert effects() == [] and list(engine.get_safe_targets(hero)) == []
+
+    assert engine.restore_json(snap)
+    assert effects() == before, f"active effects did not round-trip:\n  {before}\n  {effects()}"
+    assert list(engine.get_safe_targets(hero)) == [foe], "safe targets did not round-trip"
+    print("✅ test_spell_effects_round_trip passed")
+
+
 def test_parked_reaction_round_trips():
     """A suspended reaction window survives a snapshot and still resumes.
 
@@ -300,6 +364,7 @@ def main():
         test_replay_after_restore,
         test_round_trip_is_stable,
         test_conditions_round_trip,
+        test_spell_effects_round_trip,
         test_parked_reaction_round_trips,
         test_bad_payloads_refused,
     ]

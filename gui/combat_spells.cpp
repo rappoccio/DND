@@ -912,8 +912,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // creatures the same way for this one cast. Single/Multiple are directly targeted,
     // so they are untouched.
     if (sp.geometry != Spell::Single && sp.geometry != Spell::Multiple) {
-        auto it = safeTargets_.find(action.caster_idx);
-        std::vector<int> safe = (it != safeTargets_.end()) ? it->second : std::vector<int>{};
+        std::vector<int> safe = effects_.getSafeTargets(action.caster_idx);
         safe.insert(safe.end(), careful_set.begin(), careful_set.end());
         // Careful Spell always spares the caster from their OWN area (a Careful caster never
         // catches themselves in the blast). This is separate from the CHA-mod-capped set of
@@ -2297,7 +2296,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             fx.target_idx      = tgt_idx;
             fx.spell           = sp;
             fx.turns_remaining = sp.duration - 1;
-            activeEffects_.push_back(fx);
+            effects_.addActiveEffect(fx);
         }
     }
 
@@ -3001,9 +3000,7 @@ bool CombatEngine::zoneSparesTarget(const BattleMap& bm, const ActiveSpellEffect
         return true;
 
     // Evoker safe targets are fully excluded from this caster's AoE/zone effects.
-    auto it = safeTargets_.find(effect.caster_idx);
-    if (it != safeTargets_.end() &&
-        std::find(it->second.begin(), it->second.end(), target_idx) != it->second.end())
+    if (effects_.isSafeTarget(effect.caster_idx, target_idx))
         return true;
 
     return false;
@@ -3011,13 +3008,11 @@ bool CombatEngine::zoneSparesTarget(const BattleMap& bm, const ActiveSpellEffect
 
 bool CombatEngine::applyZoneIfNewThisTurn(BattleMap& bm, const ActiveSpellEffect& effect, int target_idx) noexcept
 {
-    const int64_t key = (static_cast<int64_t>(effect.effect_id) << 32)
-                      ^ static_cast<int64_t>(static_cast<uint32_t>(target_idx));
-    auto it = zoneAppliedTurn_.find(key);
-    if (it != zoneAppliedTurn_.end() && it->second == ctx_.turnCounter_)
+    const int64_t key = SpellEffectStore::zoneKey(effect.effect_id, target_idx);
+    if (effects_.zoneAppliedOnTurn(key, ctx_.turnCounter_))
         return false;  // already applied to this target by this effect this turn
     applySpellEffect(bm, effect, target_idx);
-    zoneAppliedTurn_[key] = ctx_.turnCounter_;
+    effects_.markZoneApplied(key, ctx_.turnCounter_);
     return true;
 }
 
@@ -3072,7 +3067,7 @@ void CombatEngine::recomputeAnchoredEffects(BattleMap& bm, int agent_idx) noexce
 void CombatEngine::tickEffects(BattleMap& bm)
 {
     auto agents = bm.placedAgents();
-    for (auto& fx : activeEffects_) {
+    for (auto& fx : effects_.mutableActiveEffects()) {
         if (fx.turns_remaining <= 0) continue;
         --fx.turns_remaining;
 
@@ -3125,21 +3120,17 @@ void CombatEngine::tickEffects(BattleMap& bm)
             reviveOnHeal(bm, fx.target_idx);   // delayed/area heal can revive a downed target
     }
 
-    auto expired = [](const ActiveEffect& fx) { return fx.turns_remaining <= 0; };
-    activeEffects_.erase(
-        std::remove_if(activeEffects_.begin(), activeEffects_.end(), expired),
-        activeEffects_.end());
+    effects_.eraseExpiredEffects();
 }
 
 const std::vector<ActiveEffect>& CombatEngine::activeEffects() const noexcept
 {
-    return activeEffects_;
+    return effects_.activeEffects();
 }
 
 void CombatEngine::clearEffects() noexcept
 {
-    activeEffects_.clear();
-    zoneAppliedTurn_.clear();
+    effects_.clearEffectsAndZones();
     ctx_.turnCounter_ = 0;
 }
 

@@ -37,6 +37,7 @@
 #include "visibility_service.hpp"  // VisibilityService — vision/perception/hiding sub-engine (R4a)
 #include "movement_controller.hpp" // MovementController — per-turn movement budgets (R4b)
 #include "condition_tracker.hpp"   // ConditionTracker — active-condition store + stat snapshots (R4c)
+#include "spell_effect_store.hpp"  // SpellEffectStore — ticking effects, safe targets, zone ledger (R4e)
 
 #include <cstdint>
 #include <format>
@@ -849,11 +850,10 @@ public:
     // (no save, no damage, no conditions). Manually selected in the GUI for Evokers now;
     // intended to be auto-populated from the player's party later.
     void setSafeTargets(int caster_idx, std::vector<int> targets) noexcept {
-        safeTargets_[caster_idx] = std::move(targets);
+        effects_.setSafeTargets(caster_idx, std::move(targets));
     }
     [[nodiscard]] std::vector<int> getSafeTargets(int caster_idx) const {
-        auto it = safeTargets_.find(caster_idx);
-        return it == safeTargets_.end() ? std::vector<int>{} : it->second;
+        return effects_.getSafeTargets(caster_idx);
     }
 
     // ── Dice rollers ──────────────────────────────────────────────────────
@@ -2016,7 +2016,11 @@ private:
     // on the engine in combat_conditions.cpp.
     ConditionTracker conditions_;
 
-    std::vector<ActiveEffect> activeEffects_;
+    // The ticking spell effects, the Evoker safe targets and the persistent-zone once-per-turn
+    // ledger — what used to be activeEffects_/safeTargets_/zoneAppliedTurn_ here. See
+    // spell_effect_store.hpp (COMBAT_REFACTOR_PLAN.md R4e): the container lives there, the
+    // effect logic (tickEffects, applyZoneIfNewThisTurn, zoneSparesTarget) stays on the engine.
+    SpellEffectStore effects_;
 
     // Vision, perception and hiding, plus the (source_idx, target_idx) -> VisibilityLevel cache
     // that used to be visibilityMap_ here — see visibility_service.hpp (COMBAT_REFACTOR_PLAN.md
@@ -2428,12 +2432,8 @@ private:
     // Drive the in-flight turn start: offer each reactor (suspend for GUI, inline for auto), then finish.
     FlowStatus advanceTurnStart(BattleMap& bm);
 
-    std::unordered_map<int, std::vector<int>> safeTargets_;  // caster_idx -> indices excluded from its AoEs
-
-    // Persistent-zone "once per turn" tracking. ctx_.turnCounter_ (combat_context.hpp) increments on
-    // each beginTurn; zoneAppliedTurn_ maps (effect_id, agent_idx) -> the turnCounter_ value when
-    // last applied.
-    std::unordered_map<int64_t, int> zoneAppliedTurn_;
+    // Evoker safe targets and the persistent-zone "once per turn" ledger (keyed on ctx_.turnCounter_,
+    // which increments on each beginTurn) moved into effects_ — see spell_effect_store.hpp (R4e).
 
     // Death Burst re-entrancy guard: agent indices whose death burst has already detonated. Ensures a
     // creature explodes at most once even if applyUnconscious runs again, and lets a burst-kills-burster

@@ -5,8 +5,14 @@ DM console *and* the authoritative server; player web clients get a per-player
 view and submit coarse-grained intents.
 
 Status: **plan written 2026-09-21**, after `COMBAT_REFACTOR_PLAN.md` R5 closed the
-serialization blocker. Nothing implemented yet. Phases are M0–M8 below, gated behind
-**Step 0**.
+serialization blocker. Phases are M0–M8 below, gated behind **Step 0**.
+
+**As of 2026-09-25: M0–M4 have landed** (M4 as M4a–M4e, plus the between-phase debt in
+[`MULTIPLAYER_PLAN_OWED.md`](MULTIPLAYER_PLAN_OWED.md), items 1–8, 10, 11). Players can join on
+6081 and *watch* their own fogged board; they cannot act. **M5 is next** and has **not
+started**: read [M5 — where it starts](#m5--where-it-starts-surveyed-2026-09-25) before
+anything else — it records what the M5 text below does not cover, and proposes the Step 0.12
+that has to be agreed and frozen before M5's first line of code.
 
 ---
 
@@ -2325,12 +2331,12 @@ each loop. **It is a named M4 task, not a discovery to make live.**
 | Phase | Scope | Risk | Est. | Ships what |
 | ----- | ----- | ---- | ---- | ---------- |
 | **M0** ☑ | Token ownership model | very low | 1–2 days | who controls what |
-| **M1** ◐ | `PromptBus`; reroute reactions + all **87** prompt sites | medium | 1–2 weeks | a scriptable, headless-testable DM console |
-| **M2** ◐ | Legal-action model out of `_draw_combat_panel` | **high** | multi-week | a turn's options as data |
+| **M1** ☑ | `PromptBus`; reroute reactions + all **87** prompt sites *(done; six DM-authoring renderers stay DM-console-only by D-M1-12)* | medium | 1–2 weeks | a scriptable, headless-testable DM console |
+| **M2** ☑ | Legal-action model out of `_draw_combat_panel` *(M2a–M2e; 110/110 buttons)* | **high** | multi-week | a turn's options as data |
 | **M3** ☑ | `GameView` projection + fog filtering | low | ~1 week | per-player state, still local |
-| **M4** | Transport + **snapshot-only** spectator web client (D-M4-2) | medium | ~1 week | **players watch on their own screens** |
+| **M4** ☑ | Transport + **snapshot-only** spectator web client (D-M4-2) *(M4a–M4e, 2026-09-23/24)* | medium | ~1 week | **players watch on their own screens** |
 | **M4b** | Envelope 3 (per-viewer filtered stream) + `Move` animation | medium | ~1 week | the board moves instead of jumping |
-| **M5** | Intent submission | medium | 1–2 weeks | **actual multiplayer** |
+| **M5** | Intent submission *(next; see "M5 — where it starts")* | medium → **high**, see below | 1–2 weeks → more | **actual multiplayer** |
 | **M6** | Reconnect / resync / restart | low | ~1 week | survives a dropped laptop |
 | **M7** | Hardening, DM controls, per-agent fog | low | ongoing | table-ready |
 | **M8** | **Real authentication** (see Identity section) | medium | TBD | **play from outside the house** |
@@ -4416,6 +4422,11 @@ parsing). **Decided in Step 0.8, not here.**
 
 ### M5 — Intent submission
 
+> **Read [M5 — where it starts](#m5--where-it-starts-surveyed-2026-09-25) first.** The text
+> below was written on 2026-09-21, before M1–M4 existed, and it describes the *prompt* half of
+> M5 only. The survey found that the *turn* half — a player clicking Attack and picking a
+> target — has no remote path at all yet, and is the larger piece of work.
+
 Now the client gets an input surface.
 
 - When a prompt's `owner` is a remote player, push it over the WS. The client renders
@@ -4438,6 +4449,115 @@ match, option id present and `enabled`, and the engine's own re-validation
 sequence of calls. The `RecordingCombat` log and `tests/test_determinism.py` should be
 unaffected — but assert it: add a test that plays a scripted fight through the prompt bus
 with simulated network latency and matches the golden byte-for-byte.
+
+---
+
+### M5 — where it starts (surveyed 2026-09-25)
+
+Written at `main` @ `38ea487` plus the uncommitted R4e, suite **161 / 0**, after the user
+asked for "a working client up so we can start debugging live-time games". Nothing here is
+frozen; the findings are measurements, and **the proposals need the user's agreement before
+they become Step 0.12**.
+
+#### What M5 inherits, ready to use
+
+- **The prompt half is built end to end except the wire.** `PromptBus` (`gui/prompts.py`)
+  has ids, `owner` principals, liveness, `authorize()` on every answer, a nested-prompt
+  stack, `Prompt.to_wire()`, `Response.from_wire()` and a `SubmitResult.to_wire()` whose
+  error set is Envelope 4's. Every combat prompt goes through `_ask_actor` / `_ask_dm` (≈82
+  call sites across `main.py` and `menus/`), and `_ask_actor` already defaults `owner` to
+  the token's controller.
+- **The view already says a prompt exists.** `you.prompt_id` rides in every `view`, gated by
+  `ANSWER_PROMPT` (D-M3-6, `net/view.py:269`). The body does not (D-M4e-3).
+- **The transport reserves the slot.** `WS /live` authenticates on its first frame, and
+  `net/server.py:99` already sizes the socket for "from M5, one submit". The submit must be
+  decided on the frame tick through `net/commands.py` (Step 0.7 F1) — that queue and its
+  future-parking are built and tested for `GET /state`.
+- **The engine side of a reaction is already an intent protocol** — `pendingDecision` /
+  `submitDecision`, with the engine re-validating the choice.
+
+#### Findings — what the M5 text above does not cover
+
+**F-M5-1 — a turn does not start with a prompt.** It starts with a panel button. The 110
+`ActionMenu` actions (`gui/actions.py`) are data since M2, but they are *dispatched* by 112
+`self._action_clicked(action_id, event)` tests inside `_handle_events` — each one a pygame
+click on a widget rect, with the handler body inline after it. A remote player has no event
+and no rect. **M5 needs an id-only dispatch path for an `Action`** — `perform(action_id,
+principal)` or similar — that the DM click and the remote submit both call, the way M1 made
+`bus.choose` the one route for a menu choice. That is a `main.py` extraction of the M2 kind,
+with M2's risk, and the M5 text does not mention it.
+
+**F-M5-2 — target selection is not on the bus at all.** Every `Action` today has
+`expects="none"`, and **no prompt anywhere uses `expects` "cell" or "agent"** — every
+`_ask_*` site is a `choice`. What happens after Attack/Cast/Move is that the handler arms one
+of the **72 `pending_*` flags** and the *next map click* resolves it. For a remote player that
+map click has to become a `cell` / `agent` prompt the client answers from its canvas. The wire
+already allows it (`expects` is frozen at `choice|cell|agent|none`, and `PromptBus.submit`
+validates `cell`/`agent` responses, `prompts.py:452`) — but no site produces one, and the
+`pending_*` arms are exactly the state the Risks section warns callbacks close over.
+
+**F-M5-3 — Envelope 4 already has a home for the offer: `kind: "action"`.** It is in the
+frozen kind set and nothing produces it. The cheapest honest shape is to project
+`ActionMenu.build(app, actor)` onto the bus as a `kind:"action"`, `expects:"choice"` prompt
+owned by the token's controller at the top of each step of a player's turn. That reuses
+`authorize()`, liveness, first-valid-submission-wins (NN4), `submit_ack` and the frozen
+envelope — **no protocol change** — and `Action.enabled` / `disabled_reason` map one-to-one
+onto `Option`. *Proposal, not decided.*
+
+**F-M5-4 — the client cannot tell a player it is their turn.** Owed since M4e:
+`combat.turn_idx` indexes the *unfiltered* initiative order and the view's `initiative` list is
+filtered, so the client marks nothing. That was cosmetic for spectators; **for M5 it is a
+blocker**, because the `action` prompt would arrive with no visible reason. The fix is an
+Envelope 2 cursor field — an M3-frozen envelope change, so it needs a dated amendment.
+Proposed for Step 0.12.
+
+**F-M5-5 — the "one send" check is the tripwire, on purpose.** `tests/test_live.py:659`
+asserts `app.js` contains exactly one `.send(`. M5 must change it *deliberately*, to exactly
+two frame kinds (auth, submit), in the same commit that adds the gated submit — never by
+relaxing it to "at least one".
+
+**F-M5-6 — D-M3-6's gate is owed a second time, on the `prompt` envelope, with its own
+byte-level test** (D-M4e-3). A prompt a viewer may not answer is never sent, not sent greyed.
+
+**F-M5-7 — M5 exercises exactly what `COMBAT_REFACTOR_PLAN.md`'s `ReactionArbiter` will
+move.** Remote reactions go through `pending_decision_` / `submitDecision`; the R4
+amendment of 2026-09-25 folded the attack and cast interrupt flows into `ReactionArbiter` too.
+**Recommended order: M5 before `ReactionArbiter`**, so live play shakes reaction bugs out
+of the current code with the determinism golden unchanged, and the refactor then moves code
+that has been exercised by real submits. `NpcDriver` (R4's next cut) is independent of M5 and
+can land either side. *Needs the user's call.*
+
+**F-M5-8 — the stated purpose is debugging live games, and the plan has no tool for it until
+M7.** M7 lists "a session log". What makes a live bug reproducible is already half-built:
+`RecordingCombat` (`replay_log.txt`) records engine calls, and R5's `<base>_combat.json` sidecar
+snapshots engine state. Missing is the *intent* side — which principal submitted what, to
+which prompt id, when, with what `submit_ack`. **Proposed: pull a minimal append-only submit
+log forward into M5** (principal id, never a display name — A2/A4 still apply), so a reported
+bug comes with the intents that led to it. *Proposal.*
+
+**F-M5-9 — animation is not needed to debug.** The M5 text asks human turns to emit
+`NpcVisualEvent`s "or remote clients see tokens teleport". With M4's snapshot-only pushes,
+tokens jump for NPC turns too, and that is acceptable for a debugging table. **Proposed: leave
+it with M4b** and say so, rather than bundling Envelope 3 work into M5.
+
+#### Proposed Step 0.12 — M5's pre-code steps *(not yet agreed; not frozen)*
+
+| # | Step | Output | Done |
+| --- | ---- | ------ | :--: |
+| 0.12.1 | **Re-derive the turn surface.** For each of the 110 `ActionMenu` ids: does its handler arm a `pending_*` flag, which one, and what does the follow-up click resolve (cell / agent / none)? Which handlers read `event` beyond "it was a click"? | A table in this file; M5's work order falls out of it, the way Step 0.3's did for M2 | ☐ |
+| 0.12.2 | **Decide the offer's shape** (F-M5-3): `kind:"action"` prompt vs anything else. | A frozen D-M5 decision | ☐ |
+| 0.12.3 | **Decide the target step's shape** (F-M5-2): one `cell`/`agent` prompt per `pending_*` arm, its owner, and what Cancel does (re-offer the action prompt, per Envelope 4's `parent_id` rule). | A frozen D-M5 decision | ☐ |
+| 0.12.4 | **Amend Envelope 2 for the turn cursor** (F-M5-4). | A dated amendment to Step 0.5 | ☐ |
+| 0.12.5 | **Decide deadlines and Take over**: default, who may set it, what expiry answers for an `action` prompt (Skip is defined for reactions only). | A frozen D-M5 decision | ☐ |
+| 0.12.6 | **Decide the submit log** (F-M5-8) and the M4b split (F-M5-9). | Two decisions, one line each | ☐ |
+| 0.12.7 | **Name the oracle.** The M5 text's own: a scripted fight played through the bus with simulated network latency matches `test_determinism.py`'s golden byte-for-byte, plus the panel golden for the id-dispatch extraction (F-M5-1). | A test plan with its mutant table | ☐ |
+| 0.12.8 | **Decide the order against R4** (F-M5-7). | The user's call, dated | ☐ |
+| 0.12.9 | **Review with the user; freeze.** | Go-ahead, dated | ☐ |
+
+The practical cut that gets a table playing soonest is probably **reactions first** (the
+engine protocol exists and every reaction is already a `choice` prompt with an owner), then
+the action offer, then the target step — each one landing a playable slice. That ordering is
+itself a Step 0.12 decision.
 
 ---
 

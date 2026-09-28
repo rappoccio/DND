@@ -643,7 +643,9 @@ does not change that. A second pass is the answer until a browser is in the harn
 ## 9. Not this plan: `COMBAT_REFACTOR_PLAN.md` R4
 
 R4 (sub-engines behind a facade) is still **IN PROGRESS** — 3 of 7 cuts and 1 of 2
-mis-groupings as of 2026-09-15. Untouched by every M-phase. Its oracle is
+mis-groupings as of 2026-09-15. *(2026-09-25: R4e, `SpellEffectStore`, landed; the table is
+now six sub-engines with `AttackResolver` folded into `ReactionArbiter` — 4 of 6 cut,
+`NpcDriver` next. See that plan's Handoff (2026-09-25).)* Untouched by every M-phase. Its oracle is
 `test_determinism.py`, which must stay byte-identical. Listed only so it is not forgotten; it
 is a different document's work.
 

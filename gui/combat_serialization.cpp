@@ -267,6 +267,30 @@ void readMember(const nlohmann::json& j, const char* field, T& out)
 } // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  SpellEffectStore (R4e) — declared in spell_effect_store.hpp, defined here beside
+//  ActiveEffect's mapping and the helpers above. Top-level keys, unchanged from when
+//  these three members lived on CombatEngine; from_json reads them in the same order
+//  restore() always did (safe_targets, zone_applied_turn, active_effects), so a
+//  payload that throws part-way leaves the same partial state it always did.
+// ─────────────────────────────────────────────────────────────────────────────
+
+void SpellEffectStore::to_json(nlohmann::json& j) const
+{
+    j["active_effects"]    = activeEffects_;
+    j["safe_targets"]      = keyedMapToJson(safeTargets_, "caster", "targets");
+    j["zone_applied_turn"] = keyedMapToJson(zoneAppliedTurn_, "key", "turn");
+}
+
+void SpellEffectStore::from_json(const nlohmann::json& j)
+{
+    keyedMapFromJson(j, "safe_targets",      "caster", "targets", safeTargets_);
+    keyedMapFromJson(j, "zone_applied_turn", "key",    "turn",    zoneAppliedTurn_);
+
+    activeEffects_.clear();
+    readMember(j, "active_effects", activeEffects_);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  CombatEngine::snapshot / restore
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -284,9 +308,7 @@ nlohmann::json CombatEngine::snapshot() const
 
     // Engine-owned state that never got a sub-engine of its own.
     j["agent_turns"]       = keyedMapToJson(agentTurns_, "agent", "turns");
-    j["active_effects"]    = activeEffects_;
-    j["safe_targets"]      = keyedMapToJson(safeTargets_, "caster", "targets");
-    j["zone_applied_turn"] = keyedMapToJson(zoneAppliedTurn_, "key", "turn");
+    effects_.to_json(j);   // "active_effects", "safe_targets", "zone_applied_turn" (R4e)
     j["death_burst_fired"] = deathBurstFired_;
 
     // Park/resume state, so a restore can pick a suspended reaction window back up.
@@ -328,11 +350,7 @@ bool CombatEngine::restore(const nlohmann::json& j)
     if (auto it = j.find("visibility"); it != j.end()) vis_.from_json(*it);
 
     keyedMapFromJson(j, "agent_turns",       "agent",  "turns",   agentTurns_);
-    keyedMapFromJson(j, "safe_targets",      "caster", "targets", safeTargets_);
-    keyedMapFromJson(j, "zone_applied_turn", "key",    "turn",    zoneAppliedTurn_);
-
-    activeEffects_.clear();
-    readMember(j, "active_effects", activeEffects_);
+    effects_.from_json(j);   // same three top-level keys, same order as before R4e
     deathBurstFired_.clear();
     readMember(j, "death_burst_fired", deathBurstFired_);
 

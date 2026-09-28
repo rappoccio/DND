@@ -90,9 +90,9 @@ struct CombatContext {
     // True while a Sentinel Guardian counter-attack is resolving (suppresses guard-of-a-guard).
     bool resolving_sentinel_guard_{false};
 
-    // Persistent-zone "once per turn" tracking. Increments on each beginTurn; combat.hpp's
-    // zoneAppliedTurn_ maps (effect_id, agent_idx) -> the turnCounter_ value when last applied
-    // (that map stays on CombatEngine — it's spell-effect bookkeeping, not scratch state).
+    // Persistent-zone "once per turn" tracking. Increments on each beginTurn; SpellEffectStore's
+    // zone ledger (spell_effect_store.hpp, R4e) maps (effect_id, agent_idx) -> the turnCounter_
+    // value when last applied (spell-effect bookkeeping, not scratch state).
     int turnCounter_{0};
 
     // ── NPC turn playback (GUI animation seam; not serialized) ──────────────
