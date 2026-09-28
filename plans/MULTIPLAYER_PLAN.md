@@ -13,6 +13,8 @@ serialization blocker. Phases are M0–M8 below, gated behind **Step 0**.
 started**: read [M5 — where it starts](#m5--where-it-starts-surveyed-2026-09-25) before
 anything else — it records what the M5 text below does not cover, and proposes the Step 0.12
 that has to be agreed and frozen before M5's first line of code.
+**2026-09-28: Step 0.12 is frozen** (user: "all approved"). M5 is cleared to start at slice
+M5a; see [the walk](#step-012--the-walk-started-2026-09-28) for D-M5-1 through D-M5-9.
 
 ---
 
@@ -765,6 +767,10 @@ M3 specifies, with the wire-level details pinned here:
 }
 ```
 
+> **Amended 2026-09-28, user-agreed (D-M5-5):** `combat` gains `turn_agent`, the agent index
+> whose turn it is, or `null` when that agent is not in this viewer's `agents[]`. `turn_idx`
+> is unchanged and still indexes the unfiltered order.
+
 **`agents[]` is where the filtering lives.** Three shapes, chosen per agent per viewer. The
 gate is the one `_draw_agents` / `_draw_agent_hover_name` already applies
 (`main.py:15349-15352`, `16399-16402`): `_fog_active()` **and** `faction != PC_FACTION`
@@ -881,6 +887,12 @@ outcome is genuinely unknown to the client — the prompt may still be live. A c
 receives it re-reads `/state` (or waits for the next `live` frame) rather than assuming
 either result, and **never auto-resubmits**: NN4's first-valid-submission-wins makes a
 blind retry a second valid submission.
+
+> **Amended 2026-09-28, user-agreed (D-M5-3):** `submit` may carry `"cancel": true` in place
+> of an answer; it cancels the prompt (and, per the nested-prompt rule, re-sends the parent).
+> A prompt with `expects:"cell"` may also carry `options` (closed ids, v1 only `"done"`), and
+> its submit then carries exactly one of `option` / `cell`. Nothing a client writes is a free
+> string.
 
 **`disabled_reason` is a rules string, never an authorization one** — Step 0.4 is explicit
 that denial reasons belong to the audit log. A prompt the viewer is not entitled to answer is
@@ -2335,7 +2347,7 @@ each loop. **It is a named M4 task, not a discovery to make live.**
 | **M2** ☑ | Legal-action model out of `_draw_combat_panel` *(M2a–M2e; 110/110 buttons)* | **high** | multi-week | a turn's options as data |
 | **M3** ☑ | `GameView` projection + fog filtering | low | ~1 week | per-player state, still local |
 | **M4** ☑ | Transport + **snapshot-only** spectator web client (D-M4-2) *(M4a–M4e, 2026-09-23/24)* | medium | ~1 week | **players watch on their own screens** |
-| **M4b** | Envelope 3 (per-viewer filtered stream) + `Move` animation | medium | ~1 week | the board moves instead of jumping |
+| **M4b** | Envelope 3 (per-viewer filtered stream) + `Move` animation, a per-viewer "Animate moves" toggle (D-M5-6b) | medium | ~1 week | the board moves instead of jumping |
 | **M5** | Intent submission *(next; see "M5 — where it starts")* | medium → **high**, see below | 1–2 weeks → more | **actual multiplayer** |
 | **M6** | Reconnect / resync / restart | low | ~1 week | survives a dropped laptop |
 | **M7** | Hardening, DM controls, per-agent fog | low | ongoing | table-ready |
@@ -4540,24 +4552,352 @@ bug comes with the intents that led to it. *Proposal.*
 tokens jump for NPC turns too, and that is acceptable for a debugging table. **Proposed: leave
 it with M4b** and say so, rather than bundling Envelope 3 work into M5.
 
-#### Proposed Step 0.12 — M5's pre-code steps *(not yet agreed; not frozen)*
+#### Step 0.12 — M5's pre-code steps *(frozen 2026-09-28)*
 
 | # | Step | Output | Done |
 | --- | ---- | ------ | :--: |
-| 0.12.1 | **Re-derive the turn surface.** For each of the 110 `ActionMenu` ids: does its handler arm a `pending_*` flag, which one, and what does the follow-up click resolve (cell / agent / none)? Which handlers read `event` beyond "it was a click"? | A table in this file; M5's work order falls out of it, the way Step 0.3's did for M2 | ☐ |
-| 0.12.2 | **Decide the offer's shape** (F-M5-3): `kind:"action"` prompt vs anything else. | A frozen D-M5 decision | ☐ |
-| 0.12.3 | **Decide the target step's shape** (F-M5-2): one `cell`/`agent` prompt per `pending_*` arm, its owner, and what Cancel does (re-offer the action prompt, per Envelope 4's `parent_id` rule). | A frozen D-M5 decision | ☐ |
-| 0.12.4 | **Amend Envelope 2 for the turn cursor** (F-M5-4). | A dated amendment to Step 0.5 | ☐ |
-| 0.12.5 | **Decide deadlines and Take over**: default, who may set it, what expiry answers for an `action` prompt (Skip is defined for reactions only). | A frozen D-M5 decision | ☐ |
-| 0.12.6 | **Decide the submit log** (F-M5-8) and the M4b split (F-M5-9). | Two decisions, one line each | ☐ |
-| 0.12.7 | **Name the oracle.** The M5 text's own: a scripted fight played through the bus with simulated network latency matches `test_determinism.py`'s golden byte-for-byte, plus the panel golden for the id-dispatch extraction (F-M5-1). | A test plan with its mutant table | ☐ |
-| 0.12.8 | **Decide the order against R4** (F-M5-7). | The user's call, dated | ☐ |
-| 0.12.9 | **Review with the user; freeze.** | Go-ahead, dated | ☐ |
+| 0.12.1 | **Re-derive the turn surface.** For each of the 110 `ActionMenu` ids: does its handler arm a `pending_*` flag, which one, and what does the follow-up click resolve (cell / agent / none)? Which handlers read `event` beyond "it was a click"? | A table in this file; M5's work order falls out of it, the way Step 0.3's did for M2. *(Done 2026-09-28: see 0.12.1 below.)* | ☑ |
+| 0.12.2 | **Decide the offer's shape** (F-M5-3): `kind:"action"` prompt vs anything else. | A frozen D-M5 decision || ☑ |
+| 0.12.3 | **Decide the target step's shape** (F-M5-2): one `cell`/`agent` prompt per `pending_*` arm, its owner, and what Cancel does (re-offer the action prompt, per Envelope 4's `parent_id` rule). | A frozen D-M5 decision || ☑ |
+| 0.12.4 | **Amend Envelope 2 for the turn cursor** (F-M5-4). | A dated amendment to Step 0.5 || ☑ |
+| 0.12.5 | **Decide deadlines and Take over**: default, who may set it, what expiry answers for an `action` prompt (Skip is defined for reactions only). | A frozen D-M5 decision || ☑ |
+| 0.12.6 | **Decide the submit log** (F-M5-8) and the M4b split (F-M5-9). | Two decisions, one line each. *(Decided 2026-09-28: D-M5-6a, D-M5-6b.)* | ☑ |
+| 0.12.7 | **Name the oracle.** The M5 text's own: a scripted fight played through the bus with simulated network latency matches `test_determinism.py`'s golden byte-for-byte, plus the panel golden for the id-dispatch extraction (F-M5-1). | A test plan with its mutant table || ☑ |
+| 0.12.8 | **Decide the order against R4** (F-M5-7). | The user's call, dated. *(Decided 2026-09-28: D-M5-8, M5 first.)* | ☑ |
+| 0.12.9 | **Review with the user; freeze.** | Go-ahead, dated || ☑ |
 
 The practical cut that gets a table playing soonest is probably **reactions first** (the
 engine protocol exists and every reaction is already a `choice` prompt with an owner), then
 the action offer, then the target step — each one landing a playable slice. That ordering is
 itself a Step 0.12 decision.
+
+#### Step 0.12 — the walk (started 2026-09-28)
+
+Measured at `main` @ `f9c4385`, suite **161 / 0**. 0.12.1 is a measurement. 0.12.6 and 0.12.8
+are **decided by the user, 2026-09-28**. 0.12.2–0.12.5, 0.12.7 and the slice order were
+proposals; **the user approved all of them on 2026-09-28, and the whole of Step 0.12 is frozen.** The walk also found a turn surface that is not in the
+`ActionMenu` (F-M5-10) and a missing wire form (F-M5-11). Both are proposed below, and their
+decisions join 0.12.3.
+
+##### 0.12.1 — the turn surface, re-derived *(done 2026-09-28)*
+
+**Method.** This was an `ast` scan of source text, and nothing was run. It found every `if
+self._action_clicked("<id>", event):` inside `_handle_events` and followed the body's callees
+four levels deep through `App` methods and `menus/*` functions. At each level it collected
+assignments that **arm** a flag (a `pending_*` flag, `arcane_charge_pending`,
+`blink_steps_pending` or `jump_overlay_active`, set to anything but a falsy constant), bus
+prompts (`_ask_actor` / `_ask_dm` / `prompts.ask`), and reads of `event` or
+`pygame.mouse.get_pos`. The raw output was then hand-classified: a flag armed only by a
+downstream rider (for example, Cleave after a hit) is recorded as a note, not as the action's
+own target step. Because the scan over-approximates by following references as well as calls,
+every A and X row below was checked against the handler.
+
+**The count is 110, not 112.** There are 110 dispatch sites and 110 distinct ids, and they
+match `ActionMenu`'s 110 buildable ids one to one (the six built in loops were matched by
+hand). The earlier grep's 112 included the `def` and a docstring line.
+
+| Class | Meaning | Count |
+| --- | --- | ---: |
+| **I** | Resolves on the click: no prompt, no target | 57 |
+| **C→I** | One or more `choice` prompts (already on the bus), then resolves | 8 |
+| **A** | Arms an **agent** pick; the next map click on a creature resolves it | 16 |
+| **A\*** | Agent multi-pick, finished with Enter (`mantle`) | 1 |
+| **C→A** | Choice prompt(s), then an agent pick | 7 |
+| **X** | Arms a **cell** pick | 12 |
+| **C→X** | Choice prompt, then a cell pick (`elemental_burst`) | 1 |
+| **S** | The spell pipeline: the spell grid and slot/variant choices, then the spell's own geometry | 5 |
+| **DM** | A DM tool, never remoted (`pause_resume`, `end_combat`, `place_terrain`) | 3 |
+
+**What falls out:**
+
+- **65 of the 110 need no target step at all** (I + C→I), and End Turn is among them. Once
+  F-M5-1's id-only `perform` exists, those 65 are playable remotely with no new prompt shape.
+- **No handler reads `event` except as a position.** Four pass `event.pos` and thirteen call
+  `pygame.mouse.get_pos()`, and every one of those is only the anchor for a popup menu. The
+  F-M5-1 extraction is therefore mechanical: `perform(action_id, principal, anchor=None)`, and
+  the 110 `if` bodies move under it unchanged.
+- **The target step has two resolvers, not 72.** Every A/X arm is resolved by the single
+  `elif` chain at `main.py:16447` (the button-1 map click, which computes `cell` and `hit =
+  _agent_at(cell)`), and moves resolve on the drag release (`main.py:16717`). The chain
+  already takes a cell and derives the creature from it. That is what D-M5-3 proposes to
+  reuse.
+- **The spell pipeline is the one hard arm.** `pending_spell_slot` resolves, depending on the
+  spell, as: a single creature, N creatures (`spell_num_targets`), an AoE cell, a two-click
+  wall (`spell_anchor_cell`), a corpse cell, a door cell (Knock), a creature *or* a cell
+  (Dispel), or the Chromatic Orb leap chain (Enter to finish). It is 5 ids, but it is the
+  largest slice.
+- **Most target picks cannot be cancelled today.** Esc branches exist for about a dozen arms
+  (`main.py:16277–16360`: summon, the Duplicity trio, the Chromatic chain, Cleave, Mantle,
+  Beguiling, Clairvoyant, Vow, Inspiring Smite, and the spell pick). Every other A/X arm has
+  none, `pending_attack_slot` included. Those arms stay live until a valid click, or until
+  `_clear_pending_target_picks()` (`main.py:4444`) resets all of them at a turn boundary (the
+  L36 fix). A remote player with no Esc and a stuck arm cannot end the step, which is
+  F-M5-11.
+
+<details><summary>The 110 rows (line = the dispatch site in <code>main.py</code> @ <code>f9c4385</code>)</summary>
+
+| id | line | class | armed flag | note |
+| --- | ---: | :-: | --- | --- |
+| `atk_action` | 16914 | C→A | `attack_slot` | weapon choice only when >1 weapon; riders (cleave/sweep/…) may arm follow-up agent picks |
+| `nick` | 16917 | A | `attack_slot` |  |
+| `unarmed` | 16923 | C→A | `attack_slot / unarmed_type` | Punch · Grapple · Push |
+| `dash` | 16930 | I | — |  |
+| `dodge` | 16942 | I | — |  |
+| `disengage` | 16948 | I | — |  |
+| `hide` | 16954 | I | — |  |
+| `prone` | 16964 | I | — |  |
+| `spell_action` | 16972 | S | `spell_slot` | spell grid + slot/upcast/variant choices, then the spell's own geometry |
+| `long_jump` | 16976 | X | `jump_overlay_active` | resolved on MOUSEBUTTONUP, not DOWN |
+| `standup` | 16980 | I | — |  |
+| `use_portent` | 16992 | C→I | — |  |
+| `grapple_drop` | 16994 | I | — |  |
+| `use_item` | 16998 | C→A | `use_item` | potion on self resolves immediately; reads event.pos (menu anchor only) |
+| `extinguish` | 17000 | I | — |  |
+| `escape_net` | 17002 | A | `escape_net` |  |
+| `atk_bonus` | 17011 | C→A | `attack_slot` | as atk_action |
+| `spell_bonus` | 17018 | S | `spell_slot` |  |
+| `shove_push` | 17020 | A | `shove_slot` |  |
+| `shove_prone` | 17022 | A | `shove_slot` |  |
+| `grapple_esc` | 17024 | I | — |  |
+| `telekinetic_feat` | 17026 | A | `shove_slot` |  |
+| `hide_bonus` | 17028 | I | — |  |
+| `dash_bonus` | 17038 | I | — |  |
+| `disengage_bonus` | 17050 | I | — |  |
+| `patient_defense` | 17056 | I | — |  |
+| `wholeness_of_body` | 17066 | I | — |  |
+| `hand_of_healing` | 17076 | A | `hand_of_healing` |  |
+| `rage` | 17079 | I | — |  |
+| `intimidating_presence` | 17086 | I | — |  |
+| `zealous_presence` | 17094 | I | — |  |
+| `clairvoyant_combatant` | 17102 | A | `clairvoyant` |  |
+| `vow_of_enmity` | 17107 | A | `vow_of_enmity` |  |
+| `inspiring_smite` | 17112 | A | `inspiring_smite` |  |
+| `avenging_angel` | 17117 | I | — |  |
+| `elder_champion` | 17121 | I | — |  |
+| `living_legend` | 17125 | I | — |  |
+| `magical_cunning` | 17129 | I | — |  |
+| `healing_light` | 17136 | A | `heal_light` |  |
+| `turn_undead` | 17141 | I | — |  |
+| `divine_intervention` | 17153 | S | `spell_slot` |  |
+| `radiance` | 17155 | I | — | follow-ups may arm beguiling / bewitching_misty / vitality_target |
+| `preserve_life` | 17169 | I | — |  |
+| `invoke_duplicity` | 17197 | X | `invoke_duplicity` | places N duplicates, one cell click each |
+| `move_duplicity` | 17210 | X | `move_duplicity` |  |
+| `swap_duplicity` | 17223 | X | `swap_duplicity` |  |
+| `steady_aim` | 17234 | I | — |  |
+| `war_priest` | 17249 | A | `attack_slot` |  |
+| `bite_grappled` | 17254 | I | — | resolves against the grappled creature; riders may arm cleave/sweep |
+| `gwm_hew` | 17266 | A | `attack_slot` |  |
+| `blink_steps` | 17270 | X | `blink_steps_pending` |  |
+| `martial_arts` | 17277 | A | `attack_slot` |  |
+| `flurry_of_blows` | 17282 | C→A | `flurry_target` | rider choice, then per-strike target |
+| `second_wind` | 17294 | I | — |  |
+| `bm_maneuver` | 17298 | C→A | `rally / feint / attack_slot` |  |
+| `one_with_shadows` | 17302 | I | — |  |
+| `merge_shadows` | 17309 | I | — |  |
+| `action_surge` | 17316 | I | — | EK L15 follow-up arms arcane_charge_pending (cell) |
+| `lay_on_hands` | 17320 | A | `lay_on_hands` |  |
+| `grant_inspiration` | 17323 | A | `grant_inspiration` |  |
+| `mantle` | 17326 | A* | `mantle_active` | multi-pick, Enter finishes |
+| `mantle_majesty` | 17331 | S | `spell_slot` | Command, free cast |
+| `unbreakable_majesty` | 17335 | I | — |  |
+| `beguiling_restore` | 17339 | I | — |  |
+| `use_inspiration` | 17343 | I | — |  |
+| `sacred_weapon` | 17347 | I | — |  |
+| `corona` | 17351 | I | — |  |
+| `telekinetic_psi` | 17355 | A | `telekinetic` |  |
+| `dread_ambusher` | 17358 | I | — |  |
+| `tireless` | 17378 | I | — |  |
+| `natures_veil` | 17382 | I | — |  |
+| `psychic_veil` | 17386 | I | — |  |
+| `psychic_teleport` | 17390 | X | `psychic_teleport` |  |
+| `shadow_step` | 17396 | X | `shadow_step` |  |
+| `cloak_of_shadows` | 17402 | I | — |  |
+| `shadow_arts_darkness` | 17412 | X | `shadow_darkness` |  |
+| `fey_effect` | 17418 | I | — |  |
+| `steps_of_fey` | 17426 | X | `steps_of_fey` |  |
+| `misty_escape` | 17432 | X | `misty_escape` |  |
+| `elemental_attunement` | 17438 | C→I | — |  |
+| `elemental_burst` | 17442 | C→X | `elemental_burst` |  |
+| `quivering_palm` | 17446 | I | — |  |
+| `dragon_wings` | 17450 | I | — |  |
+| `draconic_resistance` | 17463 | I | — |  |
+| `bend_luck` | 17475 | C→I | — | reads event.pos (menu anchor only) |
+| `boon_of_fate` | 17479 | C→I | — | reads event.pos (menu anchor only) |
+| `tides_of_chaos` | 17483 | I | — |  |
+| `innate_sorcery` | 17494 | I | — |  |
+| `trance_of_order` | 17509 | I | — |  |
+| `bastion_of_law` | 17519 | C→A | `bastion_of_law` | reads event.pos (menu anchor only) |
+| `clockwork_cavalcade` | 17523 | I | — |  |
+| `revelation_in_flesh` | 17533 | I | — |  |
+| `warping_implosion` | 17548 | X | `warping_implosion` |  |
+| `wild_magic_extra_action` | 17556 | I | — |  |
+| `wild_magic_bonus_cast` | 17565 | S | `spell_slot` |  |
+| `wild_magic_teleport` | 17567 | X | `wild_magic_teleport` |  |
+| `companion` | 17572 | C→I | — |  |
+| `familiar` | 17574 | C→I | — |  |
+| `charge_arcane_ward` | 17576 | C→I | — |  |
+| `wild_shape` | 17578 | C→I | — |  |
+| `step_of_wind` | 17586 | I | — |  |
+| `haste_action` | 17673 | I | — |  |
+| `place_terrain` | 17689 | DM | — | opens TemporaryTerrainPlacementDialog |
+| `pause_resume` | 17698 | DM | — |  |
+| `end_turn` | 17700 | I | — | refused while beguiling is armed or paused |
+| `end_combat` | 17711 | DM | — |  |
+| `drop_concentration` | 17713 | I | — |  |
+| `drop_weapon_main` | 17715 | I | — |  |
+| `drop_weapon_off` | 17717 | I | — |  |
+| `drop_weapon_rng` | 17719 | I | — |  |
+
+</details>
+
+##### Two findings the walk added
+
+**F-M5-10 — a player's turn is also three things the `ActionMenu` does not hold.**
+1. **Moving** is a drag of your own token: `MOUSEBUTTONDOWN` on it, `drag_valid` kept up to date
+   on motion, then `begin_move(bm, idx, cell, move_type)` on release (`main.py:16717`), with
+   OA reactions parked through `pending_decision`. The walk/fly/swim/burrow choice is
+   `_move_type_btns`, which is not an action either.
+2. **Doors and ladders** open from a click on an empty door or ladder cell with nothing armed
+   (`dm.show_door_menu` / `show_ladder_menu`). Those menus are already `_ask_actor` prompts
+   owned by the actor; only their entry point is a raw click.
+3. **Item pickup** works the same way, through a click on an adjacent cell with items
+   (`dm.show_item_pickup_menu`).
+
+Without (1), a remote player cannot move, so M5 is not playable without it.
+
+**F-M5-11 — the wire cannot cancel.** `PromptBus.cancel()` exists and runs `on_cancel`, and
+Envelope 4 specifies that cancelling a child re-sends its parent. But the `submit` envelope
+carries only `option` / `cell` / `agent`: there is no client form of "Esc". A new frame type
+would break F-M5-5's "exactly two" on purpose rather than by design, so the proposal (D-M5-3)
+is a closed boolean on `submit`.
+
+##### 0.12.6 — the submit log and the animation *(decided by the user, 2026-09-28)*
+
+- **D-M5-6a — a minimal append-only submit log is pulled forward into M5** (F-M5-8). It
+  records one line per submit: the principal **id** (never a display name: A2/A4), the prompt
+  id, `kind`, the answer (`option` / `cell` / `agent` / `cancel`), the `submit_ack` result, the
+  frame `seq` and a monotonic timestamp. A cancel and a DM take-over are logged as well. The
+  log sits beside `replay_log.txt`, so a live bug report can come with the engine calls
+  (`RecordingCombat`), the state (`_combat.json`) and the intents that led to it. M7's
+  "session log" builds on this rather than replacing it.
+- **D-M5-6b — animation stays out of M5 and remains M4b** (F-M5-9). Tokens jump in M5, which
+  is acceptable for debugging. **For play, the user wants move animation, as an option people
+  can select.** M4b is amended accordingly: the `Move` animation is a **per-viewer setting**
+  ("Animate moves", on by default), kept in the client's own storage and never sent to the
+  server, because animating is purely a rendering of Envelope 3 events that every viewer
+  receives either way. The DM console gets the same toggle for its existing
+  `_npc_anim` playback. *The per-viewer reading, the default and the DM-console toggle are
+  this document's interpretation; approved by the user at 0.12.9, 2026-09-28.*
+
+##### 0.12.8 — order against R4 *(decided by the user, 2026-09-28)*
+
+- **D-M5-8 — M5 lands before `ReactionArbiter`** (F-M5-7), so real remote submits exercise
+  the reaction flows in their current form with the determinism golden unchanged, and R4's
+  last cut then moves code that has been played. `NpcDriver` stays independent and can land
+  on either side of M5.
+
+##### The frozen decisions *(approved 2026-09-28)*
+
+**D-M5-1 — id-only dispatch (F-M5-1).** Add `App.perform(action_id, principal, anchor=None)`.
+The 110 `if self._action_clicked(...)` bodies move under it verbatim, and each click site
+becomes `if self._action_clicked(id, event): self.perform(id, DM_PRINCIPAL_ID, event.pos)`.
+`perform` re-checks the offer (`_action_menu`, `enabled`) and `authorize()`; a remote submit
+cannot reach an id the menu did not build. The oracle is the panel golden plus the
+determinism golden, both byte-identical. This carries M2's level of risk, so it goes in its
+own slice with nothing else in it.
+
+**D-M5-2 — the offer (0.12.2, F-M5-3).** Take F-M5-3 as written. At the top of each step of a
+remotely controlled token's turn (turn start, and after every resolved action, move or
+cancel, whenever nothing else is live for that owner), post a `kind:"action"`,
+`expects:"choice"` prompt built from `ActionMenu.build(app, actor)`, owned by the token's
+controller. Disabled actions are sent with their `disabled_reason`. `GROUP_SESSION` and
+`place_terrain` are **never** in a player's offer. Two options are added that are not
+`ActionMenu` ids: **Move** (D-M5-4) and **Interact** (doors, ladders, pickup; F-M5-10). The
+offer is re-derived after each step rather than patched, which is why no action needs an
+"it changed" rule.
+
+**D-M5-3 — the target step and cancel (0.12.3, F-M5-2, F-M5-11).**
+- The `pending_*` flags stay as the state. When a flag is armed for a remotely controlled
+  actor, a target prompt is posted as its projection: `kind:"target"` when a creature is
+  wanted, `kind:"cell"` for a place, **both with `expects:"cell"`**, `parent_id` = the action
+  prompt, owner = the controller.
+- A submitted cell goes into the **same** resolver chain as the DM's map click, refactored
+  from the `elif` at `main.py:16447` into `resolve_pick(cell)`, which computes `hit` itself
+  exactly as it does now. The DM's click and a remote submit then cannot disagree, and a
+  hidden creature is resolved by the engine's perception rules, not by the client.
+  `expects:"agent"` stays in the frozen vocabulary, unused in v1.
+- Valid cells ship as the overlays that Envelope 2 already specifies under `you`
+  (`reachable` / `aoe` / `targets`), which `net/view.py` does not build yet.
+- **Multi-picks** (`mantle`, the Chromatic chain, `invoke_duplicity`, `spell_num_targets`)
+  post one target prompt per pick. The one amendment needed: a cell prompt may carry
+  `options` (closed ids, here only `"done"`), and a submit carries exactly one of
+  `option` / `cell`.
+- **Cancel:** `submit` gains `"cancel": true`, a closed boolean with no client string. It runs
+  `bus.cancel(id)`, whose `on_cancel` is the existing Esc branch where there is one. Where
+  there is none, it is the matching slice of `_clear_pending_target_picks()`, so a cancel
+  resets exactly what a turn boundary would. Per Envelope 4, the parent (the action offer) is
+  then re-sent. **Owed before M5d:** for each arm without an Esc, confirm that arming spends
+  nothing (no Action, slot or pool until resolution). If arming does spend something, a
+  cancel must refund it, and that becomes a rules decision rather than a mechanical one. Esc
+  on the DM console routes through the same cancel, which gives about 30 arms an Esc they do
+  not have today: a behavior change, recorded as such.
+- Both changes are one dated amendment to Envelope 4.
+
+**D-M5-4 — movement (F-M5-10.1).** Choosing **Move** posts a `kind:"cell"` prompt carrying
+`you.reachable`, with the move mode as options (`walk` / `fly` / `swim` / `burrow`, only
+those with speed > 0). The answer calls the same `begin_move` the drag release calls,
+factored into `commit_move(idx, cell, move_type)`, so OA reactions park and resume exactly as
+they do for the DM. One Move prompt covers one leg, and the offer is re-posted after it, so a
+player can move, attack and move again.
+
+**D-M5-5 — the turn cursor (0.12.4, F-M5-4).** Amend Envelope 2 to add `combat.turn_agent`:
+the agent index whose turn it is, or `null` when that agent is not in this viewer's filtered
+`agents[]` (a hidden enemy's turn must not leak its existence). `turn_idx` stays as it is,
+unremapped, for the DM and the engine. The byte-level test: a fogged viewer's `view` during a
+hidden NPC's turn carries `turn_agent: null`, and nothing else in the view changes.
+
+**D-M5-7 — deadlines and Take over (0.12.5).**
+- **Action and target prompts have no deadline** (`deadline_ms: null`). Expiry never
+  ends a player's turn, and the DM is the timeout.
+- **Reaction prompts** take a session-wide DM setting, default **60 s**, with expiry answering
+  **Skip** as Envelope 4 already says. Only the DM may set it, from the console.
+- **Take over:** the DM clicking a panel button or the map during a remote player's turn
+  answers the live prompt first. Under NN4 that is first-valid-submission-wins, so the
+  player's pending prompt is superseded and their late submit gets `not_live`. Nothing new is
+  needed on the wire. The take-over is a line in the submit log.
+
+**D-M5-9 — the oracle (0.12.7).**
+
+| Test | What it pins | Mutant that must die |
+| --- | --- | --- |
+| panel golden, before vs after D-M5-1 | the extraction moved code without changing it | `perform` skipping the `enabled` re-check |
+| scripted fight through the bus, with simulated latency, vs `test_determinism`'s golden | a remote-played fight is the same fight, byte for byte | `resolve_pick` computing `hit` differently from the map click |
+| `test_live.py:659`, amended to **exactly two** `.send(` | auth + submit, nothing else | a third send; relaxing it to "≥ 1" |
+| prompt gate, byte level (F-M5-6) | a prompt the viewer may not answer is never sent | sending it greyed |
+| `turn_agent` fog test (D-M5-5) | a hidden turn does not leak | emitting the raw index |
+| cancel re-offers the parent (D-M5-3) | Esc and remote cancel run the same branch | the remote cancel clearing a different field set |
+| submit log (D-M5-6a) | one line per submit, principal id only | writing the display name |
+| offer excludes DM tools (D-M5-2) | `pause_resume` / `end_combat` / `place_terrain` never reach a player | dropping the `GROUP_SESSION` filter |
+
+**Slice order (proposed).** Every slice ends playable, runs the whole suite, and passes its
+mutant table.
+- **M5a — reactions over the wire.** The submit path, the `cancel` field, the prompt gate, the
+  submit log, `turn_agent` and the two-send tripwire. Reactions are already owned `choice`
+  prompts, so a remote player can Shield or take an OA on the DM's turn.
+- **M5b — `perform` and the offer.** D-M5-1 on its own first, then D-M5-2, which makes the
+  65 I / C→I actions and End Turn playable.
+- **M5c — movement** (D-M5-4).
+- **M5d — agent and cell picks** for the 37 A / A\* / C→A / X / C→X rows (D-M5-3).
+- **M5e — the spell pipeline** (S).
+- **M5f — Interact**: doors, ladders, pickup.
+
+A table can play from M5c on, using weapons, moves and features; M5e adds spells.
+
+**0.12.9 — frozen 2026-09-28.** The user approved D-M5-1 through D-M5-5, D-M5-7, D-M5-9, the
+slice order and the D-M5-6b reading as written. Changing any of them now takes a dated
+amendment here, as with every earlier Step 0.
+
 
 ---
 
