@@ -11,3 +11,6 @@ combat_log.txt
 # Multiplayer session rosters (MULTIPLAYER_PLAN.md M0): table metadata — who is seated
 # and the join code — not scene data, and never shared with an encounter.
 *_session.json
+
+# The M5a intent log (net/submit.py), written beside replay_log.txt while a table is up.
+submit_log.jsonl

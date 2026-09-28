@@ -2,9 +2,9 @@
 <!--
   The player's client (MULTIPLAYER_PLAN.md M4e, D-M4e-1 through D-M4e-4).
 
-  Read-only, on purpose and for this phase only: there is no control in this document that
-  submits a game decision. The two forms of input it has are the join code and the display
-  name, which buy a seat rather than take a turn. M5 adds the submit path.
+  Since M5a the one game control is the prompt panel: a question the table asked this
+  player, answered by picking one of its options or cancelling it. Nothing here types a
+  string into the game (Step 0.5's no-free-text rule).
 
   Three files, served by three explicit routes (D-M4e-1) — `GET /`, `GET /app.js`,
   `GET /app.css`. Adding a fourth means adding a route AND a line in `PRE_AUTH_ROUTES`,
@@ -44,9 +44,12 @@
       <span id="status" class="status">connecting…</span>
     </header>
 
-    <p id="prompt-banner" class="banner" hidden>
-      You are being asked for a decision — answer it at the table.
-    </p>
+    <section id="prompt" class="prompt" hidden>
+      <h2 id="prompt-title"></h2>
+      <ul id="prompt-options" class="prompt-options"></ul>
+      <button type="button" id="prompt-cancel" class="secondary">Cancel</button>
+      <p id="prompt-note" class="error" hidden></p>
+    </section>
 
     <div class="board">
       <canvas id="board" width="16" height="16"></canvas>

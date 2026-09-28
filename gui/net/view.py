@@ -389,12 +389,24 @@ def _combat(app, shown: set[int]) -> dict:
     that quietly renumbered it would hand the client a number that means something else
     everywhere else in the protocol. A client shows the whose-turn marker by matching the
     agent index, not by counting rows.
+
+    ``turn_agent`` is that agent index (D-M5-5, Envelope 2 amended 2026-09-28), and it is
+    ``None`` whenever this view does not carry the agent: out of combat, or on the turn of a
+    creature the fog hides. A hidden creature's turn is otherwise the one signal that it
+    exists, so the field says "someone's turn" by being null, not by naming an index that
+    ``agents`` does not explain.
     """
+    turn_agent = None
+    if app.combat_active and 0 <= app.turn_idx < len(app.initiative_order):
+        idx = app.initiative_order[app.turn_idx].agent_idx
+        if idx in shown:
+            turn_agent = int(idx)
     return {
         "active": bool(app.combat_active),
         "paused": bool(app.combat_paused),
         "round":  int(app.round_num),
         "turn_idx": int(app.turn_idx),
+        "turn_agent": turn_agent,
         "initiative": [{"agent": e.agent_idx, "total": e.total}
                        for e in app.initiative_order if e.agent_idx in shown],
     }

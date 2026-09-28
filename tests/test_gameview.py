@@ -28,6 +28,7 @@ Covered here:
   · D-M3-5: unexplored terrain, doors and ladders are omitted (test_unexplored_map_structure_omitted)
   · DM-channel FIELDS never reach a player, seen or not      (test_dm_only_fields_never_reach_a_player)
   · fog down shows a player what the DM's screen shows       (test_fog_down_matches_the_dm_screen)
+  · D-M5-5: turn_agent is null on a hidden creature's turn     (test_turn_agent_never_names_a_hidden_creature)
   · D-M3-6: prompt_id is gated by ANSWER_PROMPT              (test_prompt_id_only_for_its_owner)
   · D-M4-2: the fog mask crosses as row runs, not pairs      (test_fog_crosses_as_row_runs)
   · ...and a run closes on a gap rather than walking past it (test_row_runs_split_on_a_gap)
@@ -207,6 +208,37 @@ def test_initiative_never_names_a_hidden_creature():
         assert _idx(app, "Skarn") in {e["agent"] for e in dm["combat"]["initiative"]}
     _run(check)
     print("✅ test_initiative_never_names_a_hidden_creature")
+
+
+def test_turn_agent_never_names_a_hidden_creature():
+    """D-M5-5 (Envelope 2 amended 2026-09-28): ``combat.turn_agent`` marks whose turn it is,
+    and is null on the turn of a creature this view does not carry.
+
+    ``turn_idx`` indexes the unfiltered order, so a client cannot mark the row itself; the
+    cursor is the fix, and the fix must not become the one field that says an ambusher is
+    acting. The DM's view names every turn."""
+    def check(app, kira, _spectator):
+        view = build_view(app, kira)
+        assert view["combat"]["turn_agent"] is None, "no combat, so nobody's turn"
+
+        app._start_combat()
+        app.combat.stop_recording()
+        order = [e.agent_idx for e in app.initiative_order]
+        dm = app.roster.get(DM_PRINCIPAL_ID)
+        for name in ("Aria", "Gnasher", "Skarn"):
+            app.turn_idx = order.index(_idx(app, name))
+            mine, dms = build_view(app, kira), build_view(app, dm)
+            assert dms["combat"]["turn_agent"] == _idx(app, name), \
+                f"the DM's cursor does not name {name}"
+            if name == "Skarn":
+                assert mine["combat"]["turn_agent"] is None, \
+                    "a hidden creature's turn was announced by its index"
+            else:
+                assert mine["combat"]["turn_agent"] == _idx(app, name), \
+                    f"the player's cursor does not name {name}, whom they can see"
+                assert mine["combat"]["turn_agent"] in {a["agent"] for a in mine["agents"]}
+    _run(check)
+    print("✅ test_turn_agent_never_names_a_hidden_creature")
 
 
 def test_dm_view_is_unfiltered():
@@ -515,6 +547,7 @@ def test_view_envelope_shape():
 if __name__ == "__main__":
     test_unexplored_enemy_absent_from_bytes()
     test_initiative_never_names_a_hidden_creature()
+    test_turn_agent_never_names_a_hidden_creature()
     test_dm_view_is_unfiltered()
     test_enemy_hp_is_a_band()
     test_vitals_and_sheet_tiers()

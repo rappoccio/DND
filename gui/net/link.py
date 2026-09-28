@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import pygame
 
-from net import commands, view as net_view
+from net import commands, submit as net_submit, view as net_view
 
 
 def start_player_server(app) -> None:
@@ -44,13 +44,17 @@ def start_player_server(app) -> None:
         print(f"[net] player server unavailable: {exc}")
         return
     server = PlayerServer(app.roster, app.map_images,
-                          app._net_commands, net_view.build_view)
+                          app._net_commands, net_view.build_view,
+                          submits=app._net_submits,
+                          handle_submit=net_submit.handle_submit,
+                          build_live=build_live)
     try:
         server.start()
     except Exception as exc:                       # a taken 6081 is the realistic one
         print(f"[net] player server did not start: {exc}")
         return
     app._net = server
+    app.submit_log.path = net_submit.SUBMIT_LOG_PATH     # D-M5-6a: a table exists, so log
     print(f"[net] players join at {server.url}")
     print(f"[net] join code: {app.roster.join_code}")
 
@@ -70,6 +74,40 @@ def pump_commands(app, budget: int = commands.DEFAULT_BUDGET) -> int:
     line.
     """
     return app._net_commands.pump(app, budget)
+
+
+def pump_submits(app, budget: int = commands.DEFAULT_BUDGET) -> int:
+    """Decide the queued `submit`s, from `run()` only (M5a, `net.submit`).
+
+    Not from `_pump_net()`, and not under its reentrancy guard. A submit is input: its
+    callback is whatever the DM's click would run, and a click may open a modal, which
+    D-M4d-4 forbids a command to do. So this sits in the frame loop beside
+    `_handle_events`, and a blocking modal holds submits back rather than running them
+    underneath itself.
+    """
+    return app._net_submits.pump(app, budget)
+
+
+def build_live(app, viewer) -> list[dict]:
+    """What one socket is sent per cycle: its `view`, then its prompt if it has one.
+
+    The prompt goes out **only when `you.prompt_id` names it**, and that id has already
+    passed the `ANSWER_PROMPT` gate in `net.view._you` (D-M3-6). So the prompt body goes
+    out behind the same check as its id, and a prompt the viewer may not answer is never
+    sent, not even greyed out (F-M5-6). It is re-sent on every cycle while live. A client
+    keys it by id, so a repeat costs a few hundred bytes and a dropped push cannot lose it.
+
+    Built fresh on every call, so what crosses the seam is owned by the net thread
+    (`CommandQueue` rule 3).
+    """
+    view = net_view.build_view(app, viewer)
+    frames = [view]
+    prompt_id = view["you"]["prompt_id"]
+    if prompt_id is not None:
+        prompt = app.prompts.get(prompt_id)
+        if prompt is not None and prompt.is_live:
+            frames.append(prompt.to_wire(seq=view["seq"]))
+    return frames
 
 
 def push_cycle(app) -> None:
@@ -130,7 +168,7 @@ def _push_views(app) -> None:
             app._net.drop_viewer(viewer.id)
             continue
         try:
-            views[viewer.id] = net_view.build_view(app, viewer.principal)
+            views[viewer.id] = build_live(app, viewer.principal)
         except PermissionError:
             # A seat that went away between the snapshot and this build. The check above
             # catches it properly on the next cycle; this frame simply has nothing to send.

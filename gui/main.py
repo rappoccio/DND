@@ -71,6 +71,7 @@ from atomic_io import atomic_write_json
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
 from net.mapimg import MapImageCache
 from net.commands import CommandQueue
+from net.submit import SubmitLog
 from net import link as net_link
 # S3 (M2): what the combat panel may offer, as data. `actions.Action` is the game
 # option; `net.roster.Action` above is the authorization verb — unrelated, so only
@@ -649,6 +650,10 @@ class App:
                                             lambda: self.screen.get_size()),
                 "picker": ElementPickerRenderer(self._element_dialog),
             })
+        # D-M5-6a: the intent log. It observes the bus so that the DM taking a player's
+        # prompt from them is a line too (D-M5-7); remote submits log themselves.
+        self.submit_log = SubmitLog()
+        self.prompts.add_observer(self.submit_log.observe)
 
         # ── Multi-map dungeon state (FLOORS_IMPLEMENTATION_PLAN.md, Phase 3) ─
         # self.dungeon is None outside "dungeon mode"; when set, the app is paging
@@ -957,6 +962,10 @@ class App:
         # server. `GET /state` is its first caller; D-M4-3's `_pump_net()` in the blocking
         # modals and M5's `submit` are the other two.
         self._net_commands = CommandQueue()
+        # M5a: `submit`s get a queue of their own, drained by `run()` beside the event
+        # handler and never by `_pump_net()` — a submit is input, and may do anything a
+        # click may, including open a modal (see `net.submit`).
+        self._net_submits = CommandQueue()
         # D-M4d-4's guard. A command is a read that returns freshly-built data and draws
         # nothing; opening a modal violates both, and this is what makes that a refusal
         # rather than a note in the plan.
@@ -17861,6 +17870,7 @@ class App:
         running = True
         while running:
             running = self._handle_events()
+            net_link.pump_submits(self)         # M5a: remote answers, decided where clicks are
             self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
             self._advance_npc_playback()        # NPC turn playback: animate the recorded turn
             self._refresh_fog()                 # fog of war: monotonic reveal when marked stale

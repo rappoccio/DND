@@ -269,12 +269,20 @@ class LiveViewer:
 
 @dataclasses.dataclass
 class _LiveConn:
-    """A connected socket, owned entirely by the net loop. Never crosses the seam."""
+    """A connected socket, owned entirely by the net loop. Never crosses the seam.
+
+    `send_lock` serializes the two kinds of outbound traffic since M5a: pushes, which are
+    dropped while one is in flight, and `submit_ack`s, which are never dropped and wait
+    their turn. Frames on one socket must not interleave, and `in_flight` alone only
+    governed pushes.
+    """
     id: str
     ws: object
     principal: object
     credential: str
     in_flight: bool = False
+    send_lock: asyncio.Lock = dataclasses.field(default_factory=asyncio.Lock)
+    tasks: set = dataclasses.field(default_factory=set)
 
 
 class _LiveConnections:
@@ -342,6 +350,7 @@ class PlayerServer:
     """
 
     def __init__(self, roster, map_images, commands, build_view, *,
+                 submits=None, handle_submit=None, build_live=None,
                  host: str = PLAYER_HOST, port: int = PLAYER_PORT) -> None:
         """`commands` and `build_view` are the seam, and both are handed in (D-M4c-1).
 
@@ -354,6 +363,14 @@ class PlayerServer:
         self._images = map_images
         self._commands = commands
         self._build_view = build_view
+        # M5a, handed in by `net.link` for the same reason `build_view` is. `submits` is a
+        # second `CommandQueue` that only the frame loop drains (see `net.submit`), and
+        # `build_live` returns the frames a socket is sent per cycle: its view, then the
+        # prompt it may answer, if there is one. A server built without them, as the
+        # older suites build it, pushes views only and refuses every submit as `protocol`.
+        self._submits = submits
+        self._handle_submit = handle_submit
+        self._build_live = build_live or (lambda app, viewer: [build_view(app, viewer)])
         self._joins = _JoinLimiter()
         self._live_conns = _LiveConnections()
         self._host = host
@@ -740,10 +757,10 @@ class PlayerServer:
         is verified below instead of above, and `authorize()` is then the same call through
         the same chokepoint (NN6).
 
-        In M4e the socket carries **`view` and nothing else** (D-M4e-3). `you.prompt_id` is
-        already in the view and already gated, so a client can say *Kira is being asked
-        something* without the prompt body crossing; the body and its second gate are M5's,
-        beside the submit path that answers it.
+        Since M5a it carries three frame kinds out: `view`, the `prompt` its holder may
+        answer (sent only when `you.prompt_id` names it, so the body crosses behind the same
+        `ANSWER_PROMPT` gate as the id, per F-M5-6), and `submit_ack`. It carries one kind
+        in, `submit`, after the auth frame.
         """
         ws = web.WebSocketResponse(heartbeat=LIVE_HEARTBEAT_S,
                                    max_msg_size=LIVE_MAX_MSG_BYTES)
@@ -769,15 +786,60 @@ class PlayerServer:
         conn = self._live_conns.add(ws, principal, credential)
         try:
             await self._live_resync(conn)
-            async for _msg in ws:
-                # M4e's client speaks exactly once, to authenticate (D-M4e-3). A later
-                # frame is a client ahead of its server: it is read and dropped, which keeps
-                # the socket alive and the pongs flowing. M5's `submit` is the branch that
-                # lands here, and it lands with its own authorization.
-                pass
+            async for msg in ws:
+                # After the auth frame the client speaks one kind of frame, `submit` (M5a).
+                # Anything else is read and dropped, which keeps the socket alive and the
+                # pongs flowing. A submit is handed to a task so this loop keeps reading
+                # while the frame tick decides it: a loop parked on a 5 s future is a loop
+                # not answering pings.
+                frame = _submit_frame(msg)
+                if frame is None:
+                    continue
+                task = asyncio.ensure_future(self._submit(conn, frame))
+                conn.tasks.add(task)
+                task.add_done_callback(conn.tasks.discard)
         finally:
             self._live_conns.remove(conn)
         return ws
+
+    async def _submit(self, conn, frame) -> None:
+        """One `submit`, decided on the frame tick, acknowledged to its sender (Envelope 4).
+
+        Authorization is **not** decided here, and not skipped either. The credential was
+        verified on the first frame, and `push_cycle` re-verifies it every cycle and closes
+        the socket when it stops verifying (A5). Whether this principal may answer this
+        prompt is `authorize()`'s question, asked by `PromptBus.submit` on the frame tick,
+        because the prompt's owner and liveness are game state (F1).
+
+        `timeout` is the one error raised on this side of the seam, and Step 0.5 gives it
+        exactly one meaning: the submit was queued and the frame loop did not answer in
+        time. It may still be decided later. The client re-reads and never resubmits.
+        """
+        prompt_id = frame.get("id") if isinstance(frame.get("id"), str) else ""
+        if self._submits is None or self._handle_submit is None:
+            ack = _ack(prompt_id, "protocol")
+        else:
+            principal = conn.principal
+            handle = self._handle_submit
+            try:
+                ack = await asyncio.wait_for(
+                    self._submits.submit(lambda app: handle(app, principal, frame)),
+                    STATE_TIMEOUT_S)
+            except asyncio.TimeoutError:
+                ack = _ack(prompt_id, "timeout")
+            except Exception:
+                # A handler that raised: its exception rode the future (rule 2). The
+                # client learns only that the frame was not accepted.
+                ack = _ack(prompt_id, "protocol")
+        await self._send_ack(conn, ack)
+
+    async def _send_ack(self, conn, ack) -> None:
+        """An ack waits for the socket rather than being dropped, unlike a push."""
+        try:
+            async with conn.send_lock:
+                await conn.ws.send_json(ack)
+        except Exception:
+            pass
 
     async def _live_authenticate(self, ws):
         """Read the one frame a socket may send before it has proved anything (A3).
@@ -823,14 +885,14 @@ class PlayerServer:
         stall into a simultaneous reconnect from every connected player.
         """
         try:
-            view = await asyncio.wait_for(
-                self._commands.submit(lambda app: self._build_view(app, conn.principal)),
+            frames = await asyncio.wait_for(
+                self._commands.submit(lambda app: self._build_live(app, conn.principal)),
                 STATE_TIMEOUT_S)
         except Exception:
             # Including `PermissionError` for a seat pulled in the handshake window: the
             # next push cycle re-verifies the credential and drops the socket properly.
             return
-        await self._send(conn, view)
+        await self._send(conn, frames)
 
     # ── The push, on the net loop ───────────────────────────────────────────
 
@@ -841,12 +903,12 @@ class PlayerServer:
         snapshot read and this callback. Dropping its view here is the whole of that
         cleanup, and it is why the snapshot may carry a stale entry safely.
         """
-        for conn_id, view in views.items():
+        for conn_id, frames in views.items():
             conn = self._live_conns.get(conn_id)
             if conn is not None:
-                asyncio.ensure_future(self._send(conn, view))
+                asyncio.ensure_future(self._send(conn, frames))
 
-    async def _send(self, conn, view) -> None:
+    async def _send(self, conn, frames) -> None:
         """One push to one socket, and the whole of "never two in flight" (D-M4e-4).
 
         The flag is read and set with no `await` between, on the one loop that touches it,
@@ -859,13 +921,19 @@ class PlayerServer:
         `send_json` serializes here rather than on the frame tick — the same division
         `GET /state` makes when the projection is built on the pygame thread and the JSON
         encoding is not.
+
+        Since M5a a cycle is a list of frames — the view, then the prompt this viewer may
+        answer — sent back to back under the socket's lock, so an ack cannot land between
+        a view and the prompt it names.
         """
         if conn.in_flight:
             return
         conn.in_flight = True
         self._live_conns.republish()
         try:
-            await conn.ws.send_json(view)
+            async with conn.send_lock:
+                for frame in frames:
+                    await conn.ws.send_json(frame)
         except Exception:
             # A client that went away mid-send. `_live`'s own `finally` unregisters it; this
             # only declines to take the loop down on its behalf.
@@ -937,6 +1005,26 @@ class PlayerServer:
             loop.call_soon_threadsafe(self._close_one, conn_id, code)
         except RuntimeError:
             pass
+
+
+def _submit_frame(msg) -> dict | None:
+    """A text frame that parses as a v1 `submit`, or None. Shape past that is `net.submit`'s."""
+    if msg.type is not web.WSMsgType.TEXT:
+        return None
+    try:
+        frame = json.loads(msg.data)
+    except Exception:
+        return None
+    if (not isinstance(frame, dict) or frame.get("v") != PROTOCOL_VERSION
+            or frame.get("t") != "submit"):
+        return None
+    return frame
+
+
+def _ack(prompt_id: str, error: str) -> dict:
+    """A failed `submit_ack` built on this side of the seam: `timeout`, or no handler."""
+    return {"v": PROTOCOL_VERSION, "t": "submit_ack", "id": prompt_id, "ok": False,
+            "error": error}
 
 
 def _auth_error(status: int, error: str):

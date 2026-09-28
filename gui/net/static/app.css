@@ -86,7 +86,9 @@ header {
 .status[data-live="yes"] { color: var(--ok); }
 .status[data-live="no"]  { color: var(--other); }
 
-.banner {
+/* The question the table is asking this player (M5a). Same warm band the read-only
+   banner used, so "your move" reads the same as it did before it became answerable. */
+.prompt {
   margin: 0 0 10px;
   padding: 9px 11px;
   background: #2b2312;
@@ -94,6 +96,15 @@ header {
   border-radius: 4px;
   font-size: 0.9rem;
 }
+.prompt h2 { margin-bottom: 6px; }
+.prompt-options { margin: 0; padding: 0; list-style: none; display: flex;
+                  flex-wrap: wrap; gap: 6px; }
+.prompt-options button { margin-top: 0; padding: 9px 12px; }
+.prompt button.secondary { margin-top: 8px; padding: 7px 12px; color: var(--ink);
+                           background: transparent; border: 1px solid var(--line); }
+.prompt .error { margin: 6px 0 0; }
+
+.initiative li.turn { background: rgba(240, 192, 64, 0.12); }
 
 .board {
   background: var(--mask);

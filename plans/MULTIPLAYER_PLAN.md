@@ -4894,6 +4894,58 @@ mutant table.
 
 A table can play from M5c on, using weapons, moves and features; M5e adds spells.
 
+##### M5a — what landed *(2026-09-28, uncommitted at the time of writing)*
+
+Suite **162 / 0** (`test_submit.py` is new), determinism and snapshot unchanged. All
+eleven mutants in the table below die.
+
+- **The submit path.** `WS /live` reads `submit` frames after the auth frame. Each one goes
+  to a task, so the read loop keeps answering pings. The task queues it on a **second
+  `CommandQueue`, `App._net_submits`**, which `run()` drains beside `_handle_events` via
+  `net_link.pump_submits` and `_pump_net()` never drains. A submit is input, and its callback
+  may open a modal; D-M4d-4 forbids that to a command. `net/submit.py` decides it on the
+  frame tick: it checks shape (`parse_submit`: exactly one of `option` / `cell` / `agent` /
+  `cancel:true`), then `PromptBus.submit` or the new `PromptBus.cancel_as`, both of which
+  go through `authorize()`. The `submit_ack` goes back under a per-socket send lock, so it
+  never interleaves with a push. `timeout` leaves the submit queued, and it is decided
+  when the loop returns.
+- **The prompt envelope's gate (F-M5-6).** `net_link.build_live` sends `[view, prompt]`,
+  and it sends the prompt only when `you.prompt_id` names it, which is the `ANSWER_PROMPT`
+  gate already. The prompt is re-sent every cycle while live, and the client keys it by
+  id.
+- **The submit log (D-M5-6a).** `SubmitLog` writes `submit_log.jsonl` (gitignored) and only
+  once a transport exists. It writes one line per remote submit (accepted, refused and
+  malformed alike) and one `takeover` line when the DM resolves a player's prompt on the
+  console. It records principal ids only.
+- **`turn_agent` (D-M5-5)** is in `combat`. It is null out of combat and on a hidden
+  creature's turn.
+- **The client.** It gets a prompt panel (options, disabled reasons, Cancel, and the ack
+  refusals in words), the second `.send(` (`submit`), and the initiative turn marker.
+  `test_live.py`'s tripwire is now **exactly two** sends, named `auth` and `submit`.
+
+| Mutant | Killed by |
+| --- | --- |
+| `build_live` sends the live prompt without the gate | `test_the_prompt_reaches_only_who_may_answer` |
+| `handle_submit` submits as the DM | `test_the_wrong_player_is_denied` |
+| `cancel_as` skips `authorize()` | `test_cancel_over_the_wire` |
+| `parse_submit` accepts two answers | `test_a_malformed_submit_runs_nothing` |
+| `_pump_net()` also drains submits | `test_a_modal_never_decides_a_submit` |
+| the log writes `display_name` | `test_the_log_keeps_ids_not_names` |
+| no bus observer (takeovers unlogged) | `test_a_takeover_is_logged` |
+| no `remote` flag (the DM's browser logged twice) | `test_the_dms_browser_is_logged_once` |
+| `turn_agent` emits the raw index | `test_turn_agent_never_names_a_hidden_creature` |
+| a third `.send(` in `app.js` | `test_the_client_sends_auth_and_submit_and_nothing_else` |
+| a timed-out submit is dropped from the queue | `test_a_stalled_frame_loop_is_a_timeout` |
+
+**Carried to M5b, not done in M5a:**
+- Cancelling a child prompt re-sends its parent. `PromptBus.cancel` still cancels the
+  whole stack, and the re-offer arrives with the action offer (D-M5-2).
+- D-M5-7's reaction deadline (60 s, then Skip, DM-settable). `Prompt.to_wire` still
+  projects `deadline` as an absolute monotonic value, and Envelope 4 wants a relative one,
+  so this has to be fixed before any deadline is set.
+- **A manual pass in a real browser.** The client is checked only by `node --check` and
+  static reads. No browser has rendered the prompt panel yet.
+
 **0.12.9 — frozen 2026-09-28.** The user approved D-M5-1 through D-M5-5, D-M5-7, D-M5-9, the
 slice order and the D-M5-6b reading as written. Changing any of them now takes a dated
 amendment here, as with every earlier Step 0.

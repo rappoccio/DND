@@ -127,6 +127,9 @@ class Prompt:
     on_cancel: Callable[[], None] | None = None
     state:     PromptState = PromptState.LIVE
     response:  Response | None = None
+    # Who resolved it, answered or cancelled. Not on the wire: the submit log reads it to
+    # tell a player's own answer from the DM taking over (D-M5-6a, D-M5-7).
+    resolved_by: str | None = None
 
     @property
     def is_live(self) -> bool:
@@ -459,6 +462,7 @@ class PromptBus:
         # Commit before dispatching (see the class docstring).
         prompt.state = PromptState.ANSWERED
         prompt.response = response
+        prompt.resolved_by = principal_id
         # Answering resolves the whole stack: on the DM console the submenu destroyed its
         # parent when it opened, so picking an item there ends the interaction rather
         # than returning to a menu that is no longer on screen. Ancestors are superseded,
@@ -502,7 +506,27 @@ class PromptBus:
             return SubmitResult(False, prompt.id, ERR_BAD_OPTION)
         return self.submit(prompt.id, Response(option=opt.id), principal_id)
 
-    def cancel(self, prompt_id: str | None = None) -> bool:
+    def cancel_as(self, prompt_id: str, principal_id: str) -> SubmitResult:
+        """A remote Esc: ``submit``'s first three checks, then ``cancel`` (D-M5-3).
+
+        The wire form is ``{"t": "submit", "id": …, "cancel": true}``, amended into Envelope
+        4 on 2026-09-28. It answers with a ``SubmitResult`` rather than a bool because it
+        travels back as a ``submit_ack``, whose error set is closed. Cancelling is an answer
+        like any other, so a principal that may not answer a prompt may not dismiss it
+        either, and a prompt someone already answered cannot be cancelled after the fact.
+        """
+        prompt = self._prompts.get(prompt_id)
+        if prompt is None:
+            return SubmitResult(False, prompt_id, ERR_PROTOCOL)
+        if not prompt.is_live:
+            return SubmitResult(False, prompt_id, ERR_NOT_LIVE)
+        if not self._authorized(principal_id, prompt):
+            return SubmitResult(False, prompt_id, ERR_DENIED)
+        self.cancel(prompt_id, principal_id)
+        return SubmitResult(True, prompt_id)
+
+    def cancel(self, prompt_id: str | None = None,
+               principal_id: str = DM_PRINCIPAL_ID) -> bool:
         """Dismiss without choosing, and run ``on_cancel``.
 
         Cancelling a child cancels its ancestors too, because that is what dismissing a
@@ -520,6 +544,7 @@ class PromptBus:
             doomed.append(prompt)
         for p in doomed:
             p.state = PromptState.CANCELLED
+            p.resolved_by = principal_id
             self._publish("cancelled", p)
         # Leaf first: the leaf's on_cancel is the one that resumes the engine, and it may
         # legitimately open the next prompt (a declined reaction submits its Skip, which

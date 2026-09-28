@@ -40,7 +40,7 @@ runs on the stand-in frame tick.
   · a revoked credential closes the socket on the next cycle (A5)     (test_a_revoked_credential_closes_the_socket)
   · the exemption does not skip the Origin check                      (test_a_cross_origin_socket_is_refused)
   · the client keeps its credential in sessionStorage (D-M4e-2)       (test_the_client_keeps_the_credential_in_session_storage)
-  · the client has no input surface in M4e (D-M4e-3)                  (test_the_client_has_no_input_surface)
+  · the client sends two frame kinds, auth and submit (F-M5-5)        (test_the_client_sends_auth_and_submit_and_nothing_else)
   · it fetches the page art with its credential, since an <img> cannot (test_the_client_fetches_the_map_with_its_credential)
   · ...and it parses, which nothing else in the suite would notice    (test_the_client_parses)
 """
@@ -528,7 +528,8 @@ def test_never_two_in_flight():
     owns the flag — and the snapshot's exclusion of an in-flight connection is the economy
     that keeps the frame tick from building a view that is about to be dropped.
 
-    A blocked send is what a phone on bad wifi looks like from here.
+    A blocked send is what a phone on bad wifi looks like from here. Since M5a a send is a
+    list of frames (the view, then the prompt), so each send here is a list of one.
 
     **The second send is bounded on purpose.** With the guard gone it does not return a
     wrong answer — it blocks on the same gate the first one is holding, and an unbounded
@@ -549,14 +550,14 @@ def test_never_two_in_flight():
         conn = srv._live_conns.add(ws, principal, credential)
         assert len(srv._live_conns.snapshot) == 1, "a new socket was not published"
 
-        first = asyncio.ensure_future(srv._send(conn, {"t": "view", "n": 1}))
+        first = asyncio.ensure_future(srv._send(conn, [{"t": "view", "n": 1}]))
         await asyncio.sleep(0)
         assert conn.in_flight, "a send in progress was not marked in flight"
         assert srv._live_conns.snapshot == (), \
             "an in-flight connection stayed in the snapshot — the frame tick will build for it"
 
         try:
-            await asyncio.wait_for(srv._send(conn, {"t": "view", "n": 2}), 0.5)
+            await asyncio.wait_for(srv._send(conn, [{"t": "view", "n": 2}]), 0.5)
         except asyncio.TimeoutError:
             raise AssertionError(
                 "a second send started while one was in flight — the guard is gone") from None
@@ -648,20 +649,25 @@ def test_the_client_keeps_the_credential_in_session_storage():
     print("✅ test_the_client_keeps_the_credential_in_session_storage")
 
 
-def test_the_client_has_no_input_surface():
-    """D-M4e-3: M4e's client is read-only, and the socket carries one frame outbound.
+def test_the_client_sends_auth_and_submit_and_nothing_else():
+    """F-M5-5: the socket carries exactly two frame kinds outbound, `auth` and `submit`.
 
-    The frame is the auth frame. A second `send` would be a game action arriving before the
-    gate that authorizes it, and the whole of M5 is that gate — so the count is the cheapest
-    true statement about this phase's scope, and it fails the moment someone wires a button.
+    M4e pinned this at one, the auth frame, as "the cheapest true statement about this
+    phase's scope". M5a moves it to two, deliberately and in the same change that adds the
+    gated submit. It is **exactly** two and each is named: loosening it to "at least one" is
+    the change this check exists to refuse, because a third send is a game action arriving
+    with no gate in front of it.
     """
     js = open(os.path.join(_STATIC, "app.js"), encoding="utf-8").read()
     sends = re.findall(r"\.send\s*\(", js)
-    assert len(sends) == 1, f"the client sends {len(sends)} kinds of frame, not 1"
+    assert len(sends) == 2, f"the client has {len(sends)} send sites, not 2 (auth, submit)"
+    kinds = re.findall(r'\.send\(JSON\.stringify\((?:Object\.assign\()?\{\s*v:\s*'
+                       r'PROTOCOL_VERSION,\s*t:\s*"(\w+)"', js)
+    assert sorted(kinds) == ["auth", "submit"], f"the two sends are {kinds}"
     posts = re.findall(r'method:\s*"(\w+)"', js)
-    assert posts == ["POST"], f"the client issues {posts} — M4e joins and reads, nothing else"
+    assert posts == ["POST"], f"the client issues {posts}; it joins over HTTP and nothing else"
     assert '"/join"' in js, "the one POST is not the join"
-    print("✅ test_the_client_has_no_input_surface")
+    print("✅ test_the_client_sends_auth_and_submit_and_nothing_else")
 
 
 def test_the_client_fetches_the_map_with_its_credential():
@@ -728,7 +734,7 @@ if __name__ == "__main__":
     test_a_revoked_credential_closes_the_socket()
     test_a_cross_origin_socket_is_refused()
     test_the_client_keeps_the_credential_in_session_storage()
-    test_the_client_has_no_input_surface()
+    test_the_client_sends_auth_and_submit_and_nothing_else()
     test_the_client_fetches_the_map_with_its_credential()
     test_the_client_parses()
     print("\n✅ All live-socket tests passed!")

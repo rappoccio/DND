@@ -113,6 +113,9 @@ test_scripts = [
     # because it is the first place the frame tick sends a view nobody asked for, where a
     # projection built on the wrong thread is a silent NN1 violation four times a second.
     "test_live.py",
+    # The submit path (M5a): the first frame a player sends that changes the game. Kept
+    # with the oracles because a gap here is a player answering a prompt that is not theirs.
+    "test_submit.py",
 
     # Atomic encounter saves (MULTIPLAYER_PLAN.md standalone item S1) — the two writes a
     # crash could tear. Kept with the oracles because NN7's autosave ring is built on the

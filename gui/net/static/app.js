@@ -1,12 +1,13 @@
 "use strict";
 /*
- * The player's client (MULTIPLAYER_PLAN.md M4e).
+ * The player's client (MULTIPLAYER_PLAN.md M4e, M5a).
  *
- * Three things happen here and nothing else: a join code becomes a credential
+ * Four things happen here and nothing else: a join code becomes a credential
  * (`POST /join`), the credential opens `WS /live` and authenticates it with its first
- * frame (A3), and every `view` that arrives is drawn. There is no game input in this file
- * — D-M4e-3 keeps M4e read-only, and the socket carries exactly one frame in the
- * client→server direction, the auth frame below.
+ * frame (A3), every `view` that arrives is drawn, and a `prompt` this player may answer is
+ * shown with its options and answered with one `submit` (M5a). The socket carries exactly
+ * two frame kinds client→server, `auth` and `submit`, each sent from one place, and the
+ * suite counts them (F-M5-5).
  *
  * Four rules this file exists to obey:
  *
@@ -49,6 +50,9 @@ const ctx = canvas.getContext("2d");
 
 let socket = null;
 let view = null;
+let prompt = null;                         // the last `prompt` frame; shown only while live
+let awaiting = "";                         // the prompt id a submit is out for, or ""
+let ackNote = "";                          // what the last failed ack said, in words
 let attempt = 0;
 let page = { url: "", img: null, objectUrl: "" };   // the map image, re-fetched on a re-key
 let pageFail = { url: "", at: 0 };        // the last key that would not load, and when
@@ -118,10 +122,18 @@ function connect() {
   socket.onmessage = (event) => {
     let frame;
     try { frame = JSON.parse(event.data); } catch (e) { return; }
-    if (!frame || frame.t !== "view" || frame.v !== PROTOCOL_VERSION) return;
-    attempt = 0;
-    setStatus("live", true);
-    render(frame);
+    if (!frame || frame.v !== PROTOCOL_VERSION) return;
+    if (frame.t === "view") {
+      attempt = 0;
+      setStatus("live", true);
+      render(frame);
+    } else if (frame.t === "prompt") {
+      if (!prompt || prompt.id !== frame.id) { awaiting = ""; ackNote = ""; }
+      prompt = frame;
+      drawPrompt();
+    } else if (frame.t === "submit_ack") {
+      onAck(frame);
+    }
   };
 
   socket.onclose = (event) => {
@@ -141,12 +153,88 @@ function connect() {
   };
 }
 
+// ── Answering (Envelope 4, M5a) ─────────────────────────────────────────────
+
+/* The second and last kind of frame this client sends. `answer` is exactly one of
+   `{option: id}` or `{cancel: true}` — never a string the player typed (Step 0.5's
+   no-free-text rule). The server decides it on the frame tick and answers with a
+   `submit_ack`; everything the answer DID reaches this client as the next `view`. */
+function submit(answer) {
+  if (!socket || !prompt || awaiting) return;
+  awaiting = prompt.id;
+  ackNote = "";
+  drawPrompt();
+  socket.send(JSON.stringify(Object.assign({ v: PROTOCOL_VERSION, t: "submit", id: prompt.id },
+                                           answer)));
+}
+
+const ACK_WORDS = {
+  not_live: "Already resolved.",
+  denied: "That decision is not yours to make.",
+  bad_option: "That option is not available.",
+  protocol: "The table did not understand that answer.",
+  // Step 0.5: the outcome is unknown, so this says so and waits for the next view rather
+  // than retrying — a blind resubmit is a second valid submission (NN4).
+  timeout: "The table is busy. Waiting to see whether it landed…",
+};
+
+function onAck(frame) {
+  if (frame.id !== awaiting) return;
+  if (frame.ok) {
+    ackNote = "";                    // the next view drops `prompt_id`; nothing to say
+  } else {
+    ackNote = ACK_WORDS[frame.error] || "Not accepted.";
+    // A timeout stays locked until a view arrives; every other refusal is final for this
+    // answer, and the player may pick again if the prompt is still theirs.
+    if (frame.error !== "timeout") awaiting = "";
+  }
+  drawPrompt();
+}
+
+/* Shown only while the view names it. `you.prompt_id` is the authority on liveness — it
+   passed `authorize()` on the frame tick — and the `prompt` frame is only the body. */
+function drawPrompt() {
+  const box = el("prompt");
+  const live = view && prompt && view.you.prompt_id === prompt.id;
+  const waiting = view && view.you.prompt_id && !live;
+  box.hidden = !live && !waiting;
+  el("prompt-title").textContent = live ? prompt.title
+    : "You are being asked for a decision…";
+  const list = el("prompt-options");
+  list.textContent = "";
+  el("prompt-cancel").hidden = !live;
+  el("prompt-cancel").disabled = !!awaiting;
+  el("prompt-note").textContent = ackNote;
+  el("prompt-note").hidden = !ackNote;
+  if (!live) return;
+  for (const option of prompt.options) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = option.label;
+    button.disabled = !option.enabled || !!awaiting;
+    button.addEventListener("click", () => submit({ option: option.id }));
+    item.append(button);
+    if (!option.enabled && option.disabled_reason) {
+      const why = document.createElement("span");
+      why.className = "hint";
+      why.textContent = ` ${option.disabled_reason}`;
+      item.append(why);
+    }
+    list.append(item);
+  }
+}
+
 // ── Rendering ───────────────────────────────────────────────────────────────
 
 function render(next) {
   view = next;
   el("who").textContent = recall(NAME_KEY) || "at the table";
-  el("prompt-banner").hidden = !view.you.prompt_id;
+  // A timed-out submit is resolved by this view either way: the prompt is gone, or it is
+  // still live and the player may answer it again.
+  if (awaiting && awaiting !== view.you.prompt_id) { awaiting = ""; ackNote = ""; }
+  else if (awaiting && ackNote) awaiting = "";
+  drawPrompt();
 
   el("round").textContent = view.combat.active ? view.combat.round : "–";
   el("combat-state").textContent = view.combat.active
@@ -180,13 +268,14 @@ function hpText(agent) {
 function drawInitiative() {
   const list = el("initiative");
   list.textContent = "";
-  /* `combat.turn_idx` indexes the UNFILTERED order (view.py's `_combat`), and this list is
-     cut to the tokens the view explains — so the active row cannot be resolved here, and
-     counting rows would mark the wrong creature exactly when a hidden one exists. The
-     marker needs a cursor Envelope 2 does not carry; it is owed, not guessed. */
+  /* `combat.turn_idx` indexes the UNFILTERED order, so counting rows would mark the wrong
+     creature exactly when a hidden one exists. `turn_agent` (D-M5-5) is the agent index
+     itself, and null when the creature on turn is one this view does not carry — so no row
+     is marked, and nothing about the hidden one is inferred. */
   for (const entry of view.combat.initiative) {
     const agent = agentByIndex(entry.agent);
     const row = document.createElement("li");
+    if (entry.agent === view.combat.turn_agent) row.className = "turn";
     const who = document.createElement("span");
     who.textContent = agent ? agent.name : `#${entry.agent}`;
     if (agent) who.className = classOf(agent);
@@ -456,6 +545,8 @@ el("join-form").addEventListener("submit", async (event) => {
     showJoin(err.message || "That code was not accepted.");
   }
 });
+
+el("prompt-cancel").addEventListener("click", () => submit({ cancel: true }));
 
 // A reload keeps the seat, which is the whole of what `sessionStorage` buys (D-M4e-2).
 connect();
