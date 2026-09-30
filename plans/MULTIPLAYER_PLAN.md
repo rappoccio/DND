@@ -13,8 +13,9 @@ serialization blocker. Phases are M0–M8 below, gated behind **Step 0**.
 started**: read [M5 — where it starts](#m5--where-it-starts-surveyed-2026-09-25) before
 anything else — it records what the M5 text below does not cover, and proposes the Step 0.12
 that has to be agreed and frozen before M5's first line of code.
-**2026-09-28: Step 0.12 is frozen** (user: "all approved"). M5 is cleared to start at slice
-M5a; see [the walk](#step-012--the-walk-started-2026-09-28) for D-M5-1 through D-M5-9.
+**2026-09-28: Step 0.12 is frozen** (user: "all approved"); see [the walk](#step-012--the-walk-started-2026-09-28)
+for D-M5-1 through D-M5-9. **M5a (reactions over the wire) has landed (`2ed68bd`). M5b is
+next**, and its handoff is at the end of "M5a — what landed".
 
 ---
 
@@ -4894,7 +4895,7 @@ mutant table.
 
 A table can play from M5c on, using weapons, moves and features; M5e adds spells.
 
-##### M5a — what landed *(2026-09-28, uncommitted at the time of writing)*
+##### M5a — what landed *(2026-09-28, commit `2ed68bd`)*
 
 Suite **162 / 0** (`test_submit.py` is new), determinism and snapshot unchanged. All
 eleven mutants in the table below die.
@@ -4945,6 +4946,136 @@ eleven mutants in the table below die.
   so this has to be fixed before any deadline is set.
 - **A manual pass in a real browser.** The client is checked only by `node --check` and
   static reads. No browser has rendered the prompt panel yet.
+
+##### Handoff — to M5b *(written 2026-09-28)*
+
+**State.** `main` @ `2ed68bd` (M5a), three commits ahead of `origin/main` (`38ea487`), none
+pushed. The suite is **162 / 0** in the container, with determinism and snapshot unchanged.
+Step 0.12 is frozen, and D-M5-1 through D-M5-9 are the contract. Read "The frozen
+decisions" above before touching code.
+
+**M5b is two commits, in this order, and never one:**
+
+1. **D-M5-1 — `App.perform(action_id, principal, anchor=None)`, and nothing else.** A pure
+   extraction:
+   - **Where the sites are.** The 110 `if self._action_clicked("<id>", event):` sites are
+     at `main.py:16923–17728`, all inside `_handle_events`'s combat-active `else:` branch.
+   - **Guards that must move in with the bodies.** These are handler-level guards, and
+     each one has to come along with the ids it covers:
+     - `if not self.action_used:` (`main.py:16938`) covers `dash`, `dodge`, `disengage`,
+       `hide`, `prone` and `spell_action`. D-M2-4 says these are drawn mid-sequence and
+       refused here, so the gate is a handler rule, not availability.
+     - `if not self.bonus_used:` (`main.py:17022`) spans the whole Bonus band through about
+       `17588`.
+     - `step_of_wind` (the F11 Fleet Step case) and `haste_action` sit deliberately
+       **outside** that band, and so do the session, turn and utility ids after it.
+     - `end_turn` refuses while `pending_beguiling` is armed or the combat is paused.
+     - `long_jump` refuses while `pending_spell_slot` is set.
+   - **Other shape details.** `nick` reads the local `_ev_idx`. Four bodies pass
+     `event.pos` and thirteen call `pygame.mouse.get_pos()`, and every one of those is only
+     a menu anchor, so it becomes `anchor` (default: the actor's screen position, as
+     `_ask_actor` already does).
+   - **What stays at the click site.** Each site becomes `if self._action_clicked(id,
+     event): self.perform(id, DM_PRINCIPAL_ID, event.pos)`.
+   - **What `perform` checks.** It re-checks the offer (`self._action_menu.get(id)`, and
+     `enabled`), then `authorize()` for a non-DM principal, before it dispatches.
+     `ActionMenu.build` must have run for the current actor. Today the panel draw builds it
+     each frame, so decide whether `perform` rebuilds the menu or trusts the last draw, and
+     write the choice down.
+   - **Oracle:**
+     - `test_combat_panel.py` (the panel golden) and `test_determinism.py` stay
+       byte-identical.
+     - `test_action_menu.py`'s click tests all pass. Several were verified against the
+       pre-M2 call sites and exercise the D-M2-4 refusals.
+     - A new test drives `perform` for a sample of I-class ids with no pygame event and
+       compares the engine state with the click path.
+   - **Mutants:** `perform` skipping the `enabled` re-check; the `action_used` guard
+     dropped for `dash`; `haste_action` moved inside the bonus band.
+   - **Build and memory.** No C++ changes, so there is no rebuild. It is still a ~800-line
+     move in a 17,940-line file, so check the diff for anything other than indentation and
+     the anchor substitution.
+2. **D-M5-2 — the offer.** A `kind:"action"`, `expects:"choice"` prompt, built from
+   `ActionMenu.build`, owned by the controller, and posted at the top of each step of a
+   remotely controlled token's turn. Its option callbacks call `perform`.
+   - **Filtering.** `GROUP_SESSION` and `place_terrain` are filtered out, and so is **Move**
+     (not until M5c) and **Interact** (not until M5f).
+   - **Re-posting.** The offer is re-posted after each resolved step and after a cancel.
+     That re-post is also where M5a's first carried item lands: a cancelled child re-offers
+     its parent.
+   - **Scope.** The 65 I / C→I rows and End Turn become playable. The A / X / S rows are
+     offered but still arm a map-click flag, which a remote player cannot answer until
+     M5d, so offer them **disabled** with a `disabled_reason` rather than letting a
+     player strand themselves.
+   - **Local vs remote.** "Remotely controlled" means the token's controller is not the DM.
+     The DM's own panel behaviour must not change, and the panel golden proves that.
+
+**Also owed in M5b** (M5a's carried items):
+- The reaction deadline (D-M5-7: 60 s, then Skip, set by the DM). This needs
+  `Prompt.to_wire`'s `deadline_ms` fixed to a *relative* value first. Today it projects the
+  absolute monotonic deadline.
+- A **manual browser pass** of M5a's prompt panel. Only the user can launch it (`./run.sh`,
+  join on 6081, drag an NPC out of a player token's reach).
+
+**Rules, unchanged:**
+- Container only.
+- A header change under `combat.hpp` builds with `cmake --build build --parallel 3` inside
+  the image, then `cmake --install build`.
+- Stage by name and use `git commit --only`. Never `-A`, never push unasked.
+- After a manual pass on TestDNDMap, run `git checkout -- maps/TestDNDMap_agents.json
+  maps/TestDNDMap_terrain.json`.
+- Mutant-check every new test.
+
+##### M5b, commit 1 — D-M5-1 landed *(2026-09-30)*
+
+Suite **163 / 0** (`test_perform.py` is new). The panel golden and the determinism golden
+are byte-identical. No C++ change.
+
+- **The move.** 111 sites went under `App._perform_action(action_id, anchor)`: the 110
+  literal `_action_clicked("<id>", event)` tests, plus the Metamagic loop. They were
+  moved by a script, and the only edits were the 8-space dedent, `_action_clicked(…)` →
+  `action_id == …`, and `event.pos` / `pygame.mouse.get_pos()` → `anchor`. A multiset
+  diff of the stripped lines shows nothing else changed. The `action_used` and
+  `bonus_used` guards, `dash_bonus`'s `not self.context_menu.visible`, End Turn's
+  refusals and `long_jump`'s refusal all moved in with their bodies. `draconic_resistance`'s
+  `bonus_used = True` still assigns a local, not `self.bonus_used`, exactly as before. That
+  is a pre-existing bug, preserved and noted here, not fixed in a no-change slice.
+- **Anchors.** Five anchors were in the bodies: `unarmed` read the mouse, and `use_item`,
+  `bend_luck`, `boon_of_fate` and `bastion_of_law` used `event.pos`. The other
+  `pygame.mouse.get_pos()` popups are inside `menus/features.py`'s helpers (portent,
+  arcane ward, wild shape, companion, familiar). They still read the mouse, which on
+  the DM's click is the same point. Threading `anchor` into them belongs with the offer,
+  not with this move.
+- **Decision: `perform` trusts the last draw.** It checks `self._action_menu`, the offer
+  the panel drew. It does not rebuild the menu. The panel rebuilds every frame before
+  events and submits are drained, so the offer is at most a frame old. What the DM sees
+  is then what may run, and the handler guards are the within-frame backstop, as they
+  always were. A rebuild inside `perform` would be a second offer that could disagree
+  with the drawn one. Out of combat the setup panel clears the menu, so nothing is
+  performable.
+- **Decision: `authorize()` is always asked, the DM included** (NN6: no call site
+  branches on who is asking). `GROUP_SESSION` and `place_terrain` ask `DM_COMMAND`.
+  Every other id asks `CONTROL_TOKEN` over the current actor. `perform` therefore cannot
+  be a back door to the DM tools, even before D-M5-2's filter.
+- **Click site.** This is one loop, not 110 one-liners: the first offered id under the
+  pointer goes to `perform(id, DM_PRINCIPAL_ID, event.pos)`. Since F10 there is one widget
+  per id, and a click is one event, so this is the same dispatch. The move-type buttons
+  and the three `btn_show_*` toggles are not actions and stay in `_handle_events`.
+- **Return value.** `perform` returns True when it dispatched, not when the body did
+  something. A mid-sequence Dash is dispatched, and the handler refuses it.
+
+| Mutant | Killed by |
+| --- | --- |
+| `perform` skips the `enabled` re-check | `test_perform_refuses_what_the_offer_does_not_name` |
+| the `action_used` guard dropped for `dash` | `test_the_handler_guards_moved_with_their_bodies` |
+| `haste_action` inside the bonus band | `test_the_handler_guards_moved_with_their_bodies` |
+| `perform` skips `authorize()` | `test_perform_asks_authorize` |
+| DM tools asked as `CONTROL_TOKEN` | `test_perform_asks_authorize` |
+
+`test_perform_is_the_click` runs 11 no-target ids (`dodge`, `dash`, `disengage`, `hide`,
+`prone`, `standup`, `second_wind`, `action_surge`, `drop_weapon_main`, `end_turn`,
+`pause_resume`). Each id runs once as a click and once as `perform` with no event, in
+same-seed twin apps. It then compares every combatant's stats, conditions, weapons,
+position and movement, plus the app's economy and the log.
 
 **0.12.9 — frozen 2026-09-28.** The user approved D-M5-1 through D-M5-5, D-M5-7, D-M5-9, the
 slice order and the D-M5-6b reading as written. Changing any of them now takes a dated

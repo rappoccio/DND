@@ -73,10 +73,13 @@ from net.mapimg import MapImageCache
 from net.commands import CommandQueue
 from net.submit import SubmitLog
 from net import link as net_link
+# `perform` (D-M5-1) asks `authorize()` for a verb, and reaches it qualified as
+# `net_roster.Action` so that the unqualified name stays unused (see below).
+from net import roster as net_roster
 # S3 (M2): what the combat panel may offer, as data. `actions.Action` is the game
 # option; `net.roster.Action` above is the authorization verb — unrelated, so only
 # ActionMenu is imported here and neither `Action` is in this module's namespace.
-from actions import (ActionMenu, fey_rider_index, METAMAGIC_OPTIONS,
+from actions import (ActionMenu, fey_rider_index, GROUP_SESSION, METAMAGIC_OPTIONS,
                      METAMAGIC_ID_BY_VALUE, METAMAGIC_VALUE_BY_ID)
 # M1, seam S2: every choice is a Prompt on the bus, and ContextMenu is one renderer of
 # it. The bus also fills the roster's prompt_lookup hook that M0 left empty (D-M0-3).
@@ -15041,6 +15044,846 @@ class App:
         act = self._action_menu.get(action_id)
         return act is not None and act.enabled and panel.cbt_btn(self, action_id).clicked(event)
 
+    def perform(self, action_id: str, principal: str, anchor=None) -> bool:
+        """Run one combat-panel action by id, for `principal` (D-M5-1).
+
+        This is the one place an action runs. The DM's click reaches it from
+        `_handle_events` with `DM_PRINCIPAL_ID` and the click position; a remote submit
+        reaches it with the player's id and no anchor. Either way it is refused, and
+        returns False, unless both hold:
+
+          · the offer names it: `self._action_menu` has the id and it is `enabled`.
+            This is the menu the panel LAST DREW, on purpose. The panel rebuilds it
+            every frame before events and submits are drained, so it is never more
+            than a frame old, and what the DM sees is what may run. The handler
+            guards below (`action_used`, `bonus_used`, End Turn's pause) remain the
+            backstop within a frame, exactly as they were at the click site.
+          · `authorize()` allows it. Always asked, for the DM too (NN6 forbids a call
+            site that branches on who is asking): the DM tools ask `DM_COMMAND`, and
+            every other id asks `CONTROL_TOKEN` over the creature whose turn it is.
+
+        `anchor` only places a popup; it defaults to the actor's token, as
+        `_ask_actor` does.
+        """
+        act = self._action_menu.get(action_id)
+        if act is None or not act.enabled:
+            return False
+        actor = self._current_agent_idx()
+        if act.group == GROUP_SESSION or action_id == "place_terrain":
+            verb, target = net_roster.Action.DM_COMMAND, None
+        else:
+            verb, target = net_roster.Action.CONTROL_TOKEN, net_roster.TokenTarget(actor)
+        if not self.roster.authorize(self.roster.get(principal), verb, target):
+            return False
+        self._perform_action(action_id, self._agent_screen_pos(actor) if anchor is None else anchor)
+        return True
+
+    def _perform_action(self, action_id: str, anchor):
+        """`perform`'s dispatch: the bodies that stood under `_action_clicked` in
+        `_handle_events` until D-M5-1, moved verbatim with their guards. Only one id
+        matches, so each `if` is the branch that used to test the click. `anchor`
+        replaces `event.pos` / `pygame.mouse.get_pos()`, which were only ever popup
+        positions."""
+        _ev_idx = self._current_agent_idx()
+        # §4 and §6 dispatch by action id: the weapon test, the mid-sequence
+        # test and Nick's own three-part guard are all `ActionMenu._action`'s
+        # now, and `_action_clicked` consults the offer the panel drew.
+        if action_id == "atk_action":
+            self._start_attack("action")
+        # Nick: relocate the off-hand attack into the Attack action (frees the bonus action).
+        if action_id == "nick":
+            self._start_extra_attack(weapon_idx=self._nick_offhand_idx(_ev_idx),
+                                     offhand=True, slot="action",
+                                     label="Nick: off-hand attack (part of Attack action)")
+        # Unarmed Strike (Punch/Grapple/Push) is part of the Attack action, so it also
+        # resumes mid-sequence (Extra Attack: grapple, then strike, or vice versa).
+        if action_id == "unarmed":
+            features.show_unarmed_menu(self, anchor)
+        # D-M2-4: these five are DRAWN mid-sequence (the band stays open for
+        # the swings still owed) and refused here, exactly as End Turn is
+        # refused while paused. The gate is a handler rule, not availability —
+        # moving it into the menu would make the row vanish mid-attack.
+        if not self.action_used:
+            if action_id == "dash":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    agent = self.bm.placed_agents[idx]
+                    self.bm.apply_dash(idx)
+                    self.move_remaining_walk   = agent.walk_remaining
+                    self.move_remaining_fly    = agent.fly_remaining
+                    self.move_remaining_swim   = agent.swim_remaining
+                    self.move_remaining_burrow = agent.burrow_remaining
+                    self._combat_log_add(f"{agent.name}: Dashing (+{self.combat.get_agent_stats(self.bm, idx).speed_walk}ft)")
+                    self._update_reach()
+                self.action_used = True
+            if action_id == "dodge":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.bm.placed_agents[idx].dodge()
+                    self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Dodging")
+                self.action_used = True
+            if action_id == "disengage":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.bm.placed_agents[idx].disengage()
+                    self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Disengaging")
+                self.action_used = True
+            if action_id == "hide":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    in_combat = len(self.initiative_order) > 0
+                    result = self.combat.check_hide(self.bm, idx, in_combat)
+                    if result.hidden:
+                        self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide (stealth {result.stealth_total})")
+                    else:
+                        self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide failed - {result.log_message}")
+                self.action_used = True
+            if action_id == "prone":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.combat.apply_prone(self.bm, idx)
+                    self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Going prone")
+                    self._update_reach()
+                    self._update_attack_overlay()
+                self.action_used = True
+            if action_id == "spell_action":
+                self._start_cast_spell("action")
+        # Long Jump costs a Bonus Action (and movement) — available regardless of the
+        # Action, but only while the bonus action is unspent.
+        if action_id == "long_jump":
+            if not self.pending_spell_slot:  # Don't allow jump while casting spell
+                self._toggle_jump_overlay()
+        # Stand up doesn't use an action, so it's available regardless of action_used
+        if action_id == "standup":
+            idx = self._current_agent_idx()
+            if 0 <= idx < len(self.bm.placed_agents):
+                self.combat.standup(self.bm, idx)
+                agent = self.bm.placed_agents[idx]
+                self.move_remaining_walk   = agent.walk_remaining
+                self.move_remaining_fly    = agent.fly_remaining
+                self.move_remaining_swim   = agent.swim_remaining
+                self.move_remaining_burrow = agent.burrow_remaining
+                self._combat_log_add(f"{agent.name}: Standing up")
+                self._update_reach()
+                self._update_attack_overlay()
+        if action_id == "use_portent":
+            features.show_portent_dice_menu(self)
+        if action_id == "grapple_drop":
+            self._execute_grapple_drop()
+        # Use Item is NOT gated on the bonus action: a potion is a Bonus Action, but a
+        # thrown flask or Net replaces one attack of the Attack action instead.
+        if action_id == "use_item":
+            features.show_use_item_menu(self, anchor)
+        if action_id == "extinguish":
+            self._resolve_extinguish()
+        if action_id == "escape_net":
+            self._begin_escape_net()
+        # F14, closed: the bonus band's attack header is the mirror of
+        # `atk_action` above and is dispatched the same way — ungated, on the
+        # offer the panel drew. `bonus_used` is already True while an off-hand
+        # or Flurry sequence is parked in the bonus slot, so the header the menu
+        # labels "⚔ Bonus (N)" used to be a button that counted the swings it
+        # could not take; `_start_attack` re-arms the parked sequence rather
+        # than seeding a new one (`attacks_remaining != 0` skips the seed).
+        if action_id == "atk_bonus":
+            self._start_attack("bonus")
+        if not self.bonus_used:
+            # `spell_bonus` stays behind the gate, and that is D-M2-4 rather
+            # than F14: it is `spell_action`'s mirror, drawn mid-sequence with
+            # the band and refused here, because a Bonus Action spell cannot be
+            # cast with the Bonus Action already spent on the sequence.
+            if action_id == "spell_bonus":
+                self._start_cast_spell("bonus")
+            if action_id == "shove_push":
+                self._start_shove("push")
+            if action_id == "shove_prone":
+                self._start_shove("prone")
+            if action_id == "grapple_esc":
+                self._execute_grapple_escape()
+            if action_id == "telekinetic_feat":
+                self._start_telekinetic_shove()
+            if action_id == "hide_bonus":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    in_combat = len(self.initiative_order) > 0
+                    result = self.combat.check_hide(self.bm, idx, in_combat)
+                    if result.hidden:
+                        self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide (Cunning Action, stealth {result.stealth_total})")
+                    else:
+                        self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide failed - {result.log_message}")
+                self.bonus_used = True
+            if action_id == "dash_bonus" and not self.context_menu.visible:
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    agent = self.bm.placed_agents[idx]
+                    self.bm.apply_dash(idx)
+                    self.move_remaining_walk   = agent.walk_remaining
+                    self.move_remaining_fly    = agent.fly_remaining
+                    self.move_remaining_swim   = agent.swim_remaining
+                    self.move_remaining_burrow = agent.burrow_remaining
+                    self._combat_log_add(f"{agent.name}: Dashing (Cunning Action, +{self.combat.get_agent_stats(self.bm, idx).speed_walk}ft)")
+                    self._update_reach()
+                self.bonus_used = True
+            if action_id == "disengage_bonus":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.bm.placed_agents[idx].disengage()
+                    self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Disengaging (Cunning Action)")
+                self.bonus_used = True
+            if action_id == "patient_defense":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    stats = self.combat.get_agent_stats(self.bm, idx)
+                    fp = stats.get_resource("Focus Points")
+                    if fp and fp.current > 0:
+                        self.combat.spend_resource(self.bm, idx, "Focus Points")
+                        self.bm.placed_agents[idx].dodge()
+                        self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Patient Defense (dodging)")
+                    self.bonus_used = True
+            if action_id == "wholeness_of_body":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    healed = self.combat.wholeness_of_body(self.bm, idx)
+                    agent = self.bm.placed_agents[idx]
+                    if healed > 0:
+                        self._combat_log_add(f"{agent.name}: Wholeness of Body — {healed} HP restored")
+                        self.bonus_used = True
+                    else:
+                        self._combat_log_add(f"{agent.name}: Wholeness of Body unavailable.")
+            if action_id == "hand_of_healing":
+                self.pending_hand_of_healing = True
+                self.hint = "Click target for Hand of Healing"
+            if action_id == "rage":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.combat.activate_rage(self.bm, idx)
+                    agent = self.bm.placed_agents[idx]
+                    self._combat_log_add(f"{agent.name}: Enters a rage!")
+                self.bonus_used = True
+            if action_id == "intimidating_presence":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.use_intimidating_presence(self.bm, idx):
+                        self._flush_combat_log()
+                        self.bonus_used = True
+                    else:
+                        self._combat_log_add("Intimidating Presence unavailable.")
+            if action_id == "zealous_presence":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.use_zealous_presence(self.bm, idx):
+                        self._flush_combat_log()
+                        self.bonus_used = True
+                    else:
+                        self._combat_log_add("Zealous Presence unavailable.")
+            if action_id == "clairvoyant_combatant":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_clairvoyant = True
+                    self._combat_log_add("Clairvoyant Combatant: click an enemy within 60 ft to target.")
+            if action_id == "vow_of_enmity":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_vow_of_enmity = True
+                    self._combat_log_add("Vow of Enmity: click an enemy within 30 ft to swear enmity against it.")
+            if action_id == "inspiring_smite":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_inspiring_smite = True
+                    self._combat_log_add("Inspiring Smite: click a creature within 30 ft (including yourself) to grant temp HP.")
+            if action_id == "avenging_angel":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._use_avenging_angel(idx)
+            if action_id == "elder_champion":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._use_elder_champion(idx)
+            if action_id == "living_legend":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._use_living_legend(idx)
+            if action_id == "magical_cunning":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.use_magical_cunning(self.bm, idx):
+                        self._flush_combat_log()
+                    else:
+                        self._combat_log_add("Magical Cunning unavailable.")
+            if action_id == "healing_light":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_heal_light = True
+                    self._combat_log_add("Healing Light — click an ally (or self) to heal.")
+            if action_id == "turn_undead":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    res = self.combat.use_turn_undead(self.bm, idx)
+                    self._flush_combat_log()
+                    if res.valid:
+                        self._combat_log_add(
+                            f"Turn Undead (DC {res.save_dc}): {len(list(res.turned))} turned"
+                            + (f", {res.sear_damage} Radiant each" if res.sear_damage else ""))
+                        self.action_used = True
+                    else:
+                        self._combat_log_add("Turn Undead unavailable.")
+            if action_id == "divine_intervention":
+                self._start_divine_intervention()
+            if action_id == "radiance":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    spells = self.combat.get_agent_spells(self.bm, idx)
+                    ridx = next((i for i, sp in enumerate(spells)
+                                 if sp.name == "Radiance of the Dawn"), -1)
+                    if ridx >= 0:
+                        self.pending_spell_slot = "action"
+                        self.pending_spell_idx = ridx
+                        self.pending_spell_slot_level = 0
+                        origin = self.bm.placed_agents[idx].origin
+                        self._resolve_spell_cast_aoe(rpg.Cell(origin.col, origin.row))
+                    else:
+                        self._combat_log_add("Radiance of the Dawn is not prepared.")
+            if action_id == "preserve_life":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    agents = self.bm.placed_agents
+                    origin = agents[idx].origin
+                    # Auto-distribute to the most-wounded allies (and self) within 30 ft that are
+                    # below half their HP max — most wounded first (matches Preserve Life's intent).
+                    cands = []
+                    for i in range(len(agents)):
+                        if i != idx and not self._are_allies(idx, i):
+                            continue
+                        s = self.combat.get_agent_stats(self.bm, i)
+                        if s.is_undead or s.hp_max <= 0 or s.hp_cur >= s.hp_max // 2:
+                            continue
+                        o = agents[i].origin
+                        if ((o.col - origin.col) ** 2 + (o.row - origin.row) ** 2) ** 0.5 * 5 > 30:
+                            continue
+                        cands.append((s.hp_cur, i))
+                    targets = [i for _, i in sorted(cands)]
+                    res = self.combat.use_preserve_life(self.bm, idx, targets)
+                    self._flush_combat_log()
+                    if res.valid:
+                        self._combat_log_add(
+                            f"Preserve Life ({res.pool} HP pool): restored {res.spent} HP "
+                            f"to {len(list(res.healed))} creature(s).")
+                        self.action_used = True
+                    else:
+                        self._combat_log_add("Preserve Life unavailable.")
+            if action_id == "invoke_duplicity":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    stats = self.combat.get_agent_stats(self.bm, idx)
+                    # Improved Duplicity (L17) creates up to four illusions; otherwise just one.
+                    self.pending_invoke_duplicity   = True
+                    self.pending_duplicity_remaining = 4 if stats.char_level >= 17 else 1
+                    self._duplicity_cd_pending      = True
+                    self.move_duplicity_idx         = -1
+                    self._combat_log_add(
+                        "Invoke Duplicity — click an empty cell within 30 ft to place "
+                        + ("a duplicate." if self.pending_duplicity_remaining == 1
+                           else f"the first of {self.pending_duplicity_remaining} duplicates."))
+            if action_id == "move_duplicity":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    dups = self._my_duplicates(idx)
+                    if not dups:
+                        self._combat_log_add("No active duplicate to move.")
+                    else:
+                        self.pending_move_duplicity = True
+                        # Lone duplicate: pre-select it so the next click is its destination.
+                        self.move_duplicity_idx = dups[0] if len(dups) == 1 else -1
+                        self._combat_log_add(
+                            "Move Duplicate — click a destination within 30 ft." if len(dups) == 1
+                            else "Move Duplicate — click one of your duplicates, then its destination.")
+            if action_id == "swap_duplicity":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    dups = self._my_duplicates(idx)
+                    if not dups:
+                        self._combat_log_add("No active duplicate to swap with.")
+                    elif len(dups) == 1:
+                        self._do_swap_duplicity(idx, dups[0])
+                    else:
+                        self.pending_swap_duplicity = True
+                        self._combat_log_add("Swap — click the duplicate to trade places with.")
+            if action_id == "steady_aim":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    cond = self.combat.get_agent_conditions(self.bm, idx)
+                    cond.steady_aim = True
+                    self.combat.set_agent_conditions(self.bm, idx, cond)
+                    # Steady Aim sets your Speed to 0 for the rest of the turn.
+                    self.move_remaining_walk = 0
+                    self.move_remaining_fly = 0
+                    self.move_remaining_swim = 0
+                    self.move_remaining_burrow = 0
+                    self._update_reach()
+                    self.bonus_used = True
+                    self._combat_log_add(
+                        f"{self.bm.placed_agents[idx].name}: Steady Aim — advantage on next attack (Speed 0).")
+            if action_id == "war_priest":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._start_extra_attack(weapon_idx=0, offhand=False,
+                                             resource="War Priest", label="War Priest")
+            if action_id == "bite_grappled":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    wslot, victim = self.combat.pending_auto_grapple_strike(self.bm, idx)
+                    if wslot >= 0 and victim >= 0:
+                        # Pre-seed the flagged weapon + grappled victim, then resolve straight
+                        # away (the button IS the DM's confirmation). Routes through the normal
+                        # attack dispatch on the Attack budget so forceAutoHit / save_for_damage
+                        # / the HP-max drain all fire unchanged (the victim still gets its save).
+                        self._start_extra_attack(weapon_idx=wslot, offhand=False,
+                                                 slot="action", label="🧛 Bite (grappled)")
+                        self._resolve_combat_attack(victim)
+            if action_id == "gwm_hew":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._start_gwm_hew(idx)
+            if action_id == "blink_steps":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents) and self._blink_steps_ready(idx):
+                    self.blink_steps_pending = True
+                    self._combat_log_add(
+                        "Blink Steps: click a destination within 30 ft you can see "
+                        "(or click yourself to skip).")
+            if action_id == "martial_arts":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._start_extra_attack(weapon_idx=0, offhand=False,
+                                             resource=None, label="Martial Arts")
+            if action_id == "flurry_of_blows":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    stats = self.combat.get_agent_stats(self.bm, idx)
+                    fp = stats.get_resource("Focus Points")
+                    if fp and fp.current > 0:
+                        # Show Open Hand rider menu if Way of the Open Hand
+                        if stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand:
+                            riders.show_flurry_rider_menu(self, idx)
+                        else:
+                            # No rider options, execute with no rider
+                            self._execute_flurry(idx, -1)
+            if action_id == "second_wind":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._use_second_wind(idx)
+            if action_id == "bm_maneuver":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    riders.offer_bonus_maneuver(self, idx)
+            if action_id == "one_with_shadows":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.apply_one_with_shadows(self.bm, idx):
+                        self._combat_log_add(f"{self.bm.placed_agents[idx].name}: One with Shadows — now invisible.")
+                    else:
+                        self._combat_log_add("One with Shadows requires standing in Dim Light or Darkness.")
+            if action_id == "merge_shadows":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.apply_merge_with_shadows(self.bm, idx):
+                        self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Merge with Shadows — now invisible.")
+                    else:
+                        self._combat_log_add("Merge with Shadows requires standing in Dim Light or Darkness.")
+            if action_id == "action_surge":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._use_action_surge(idx)
+            if action_id == "lay_on_hands":
+                self.pending_lay_on_hands = True
+                self.hint = "Click target for Lay on Hands healing"
+            if action_id == "grant_inspiration":
+                self.pending_grant_inspiration = True
+                self.hint = "Click an ally to grant a Bardic Inspiration die"
+            if action_id == "mantle":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._start_mantle(idx)
+                    self.hint = "Mantle of Inspiration: click recipients (≤CHA mod), Enter to confirm"
+            if action_id == "mantle_majesty":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    features.start_mantle_majesty(self, idx)
+            if action_id == "unbreakable_majesty":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._start_unbreakable_majesty(idx)
+            if action_id == "beguiling_restore":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._restore_beguiling_magic(idx)
+            if action_id == "use_inspiration":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._use_inspiration_die(idx)
+            if action_id == "sacred_weapon":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._use_sacred_weapon(idx)
+            if action_id == "corona":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._use_corona_of_light(idx)
+            if action_id == "telekinetic_psi":
+                self.pending_telekinetic = True
+                self.hint = "Click a creature to move with Telekinetic Movement"
+            if action_id == "dread_ambusher":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    stats = self.combat.get_agent_stats(self.bm, idx)
+                    da = stats.get_resource("Dread Ambusher")
+                    cond = self.combat.get_agent_conditions(self.bm, idx)
+                    if (da and da.current > 0 and not cond.dread_ambusher_used and
+                            not cond.dreadful_strike_armed):
+                        if self.combat.spend_resource(self.bm, idx, "Dread Ambusher", 1):
+                            cond.dreadful_strike_armed = True
+                            cond.dread_ambusher_used = True
+                            self.combat.set_agent_conditions(self.bm, idx, cond)
+                            # Ambusher's Leap: +10 ft Speed this turn.
+                            self.move_remaining_walk += 10
+                            self._update_reach()
+                            dn = stats.dreadful_strike_dice
+                            dz = stats.dreadful_strike_die_size
+                            self._combat_log_add(
+                                f"{self.bm.placed_agents[idx].name}: Dread Ambusher — "
+                                f"next weapon hit deals +{dn}d{dz} Psychic, +10 ft Speed.")
+            if action_id == "tireless":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._use_tireless(idx)
+            if action_id == "natures_veil":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._use_natures_veil(idx)
+            if action_id == "psychic_veil":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._use_psychic_veil(idx)
+            if action_id == "psychic_teleport":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_psychic_teleport = True
+                    self._combat_log_add(
+                        "Psychic Teleportation: click a destination (or click yourself to cancel).")
+            if action_id == "shadow_step":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_shadow_step = True
+                    self._combat_log_add(
+                        "Shadow Step: click a destination (or click yourself to cancel).")
+            if action_id == "cloak_of_shadows":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.cloak_of_shadows(self.bm, idx):
+                        self.bonus_used = True
+                        self._combat_log_add(
+                            f"{self.bm.placed_agents[idx].name}: Cloak of Shadows activated.")
+                    else:
+                        self._combat_log_add(
+                            f"{self.bm.placed_agents[idx].name}: cannot use Cloak of Shadows (not in dim/dark light).")
+            if action_id == "shadow_arts_darkness":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_shadow_darkness = True
+                    self._combat_log_add(
+                        "Shadow Arts: Darkness: click a center cell (or click yourself to cancel).")
+            if action_id == "fey_effect":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    stats = self.combat.get_agent_stats(self.bm, idx)
+                    n_effects = 5 if stats.char_level >= 6 else 3
+                    self.steps_of_fey_effect = (self.steps_of_fey_effect + 1) % n_effects
+                    self._combat_log_add(
+                        f"Steps of the Fey rider: {self._FEY_EFFECT_NAMES[self.steps_of_fey_effect]}")
+            if action_id == "steps_of_fey":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_steps_of_fey = True
+                    self._combat_log_add(
+                        "Steps of the Fey: click a destination (or click yourself to cancel).")
+            if action_id == "misty_escape":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_misty_escape = True
+                    self._combat_log_add(
+                        "Misty Escape: click a destination (or click yourself to cancel).")
+            if action_id == "elemental_attunement":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    features.show_elemental_attunement_menu(self, idx)
+            if action_id == "elemental_burst":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    features.show_elemental_burst_menu(self, idx)
+            if action_id == "quivering_palm":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._detonate_quivering_palm(idx)
+            if action_id == "dragon_wings":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.activate_dragon_wings(self.bm, idx):
+                        stats = self.combat.get_agent_stats(self.bm, idx)
+                        if stats.dragon_wings_active:
+                            self._combat_log_add(
+                                f"{self.bm.placed_agents[idx].name}: Dragon Wings extended (fly {stats.speed_walk} ft)")
+                            self.move_remaining_fly = self.bm.placed_agents[idx].fly_remaining
+                        else:
+                            self._combat_log_add(
+                                f"{self.bm.placed_agents[idx].name}: Dragon Wings retracted")
+                            self.move_remaining_fly = 0
+            if action_id == "draconic_resistance":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.activate_draconic_resistance(self.bm, idx):
+                        stats = self.combat.get_agent_stats(self.bm, idx)
+                        elem_name = features._DAMAGE_TYPE_NAMES.get(stats.draconic_affinity_type, str(stats.draconic_affinity_type))
+                        self._combat_log_add(
+                            f"{self.bm.placed_agents[idx].name}: Draconic Resistance — "
+                            f"{elem_name} resistance for 1 hour (1 SP spent)")
+                    else:
+                        self._combat_log_add("Draconic Resistance: not eligible")
+                    bonus_used = True
+            if action_id == "bend_luck":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    features.show_bend_luck_menu(self, idx, anchor)
+            if action_id == "boon_of_fate":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    features.show_boon_of_fate_menu(self, idx, anchor)
+            if action_id == "tides_of_chaos":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.activate_tides_of_chaos(self.bm, idx):
+                        self._flush_combat_log()
+                    else:
+                        self._combat_log_add("Tides of Chaos: not available (no use left / wrong subclass/level)")
+                        self._flush_combat_log()
+                    self._update_attack_overlay()
+            # Sorcerer Innate Sorcery (Bonus Action). At L7 (Sorcery Incarnate) a caster
+            # out of uses can still pay 2 SP for it — the engine picks the payment.
+            if action_id == "innate_sorcery":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.activate_innate_sorcery(self.bm, idx):
+                        self.bonus_used = True  # Innate Sorcery costs a Bonus Action
+                        self._flush_combat_log()
+                    else:
+                        self._combat_log_add(
+                            "Innate Sorcery: not available (no use left / not enough SP / wrong class)")
+                        self._flush_combat_log()
+                    self._update_attack_overlay()
+            # NOTE: the Metamagic arm-toggle click handler was moved OUT of this
+            # `not self.bonus_used` block (see below, next to the Haste handler) so the
+            # toggles stay clickable after the Bonus Action is spent — they are spell
+            # qualifiers, not Bonus Actions.
+            if action_id == "trance_of_order":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.activate_trance_of_order(self.bm, idx):
+                        self.bonus_used = True  # Trance of Order costs a Bonus Action
+                        self._flush_combat_log()
+                    else:
+                        self._combat_log_add("Trance of Order: not available (no use/5 SP, wrong subclass/level)")
+                        self._flush_combat_log()
+                    self._update_attack_overlay()
+            if action_id == "bastion_of_law":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    features.show_bastion_of_law_menu(self, idx, anchor)
+            if action_id == "clockwork_cavalcade":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.clockwork_cavalcade(self.bm, idx) >= 0:
+                        self.action_used = True  # Clockwork Cavalcade is a Magic Action
+                        self._flush_combat_log()
+                    else:
+                        self._combat_log_add("Clockwork Cavalcade: not available (no use/7 SP, wrong subclass/level)")
+                        self._flush_combat_log()
+                    self._update_attack_overlay()
+            if action_id == "revelation_in_flesh":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.activate_revelation_in_flesh(self.bm, idx):
+                        self.bonus_used = True  # Revelation in Flesh is a Bonus Action
+                        stats = self.combat.get_agent_stats(self.bm, idx)
+                        self.move_remaining_fly = self.bm.placed_agents[idx].fly_remaining
+                        self._combat_log_add(
+                            f"{self.bm.placed_agents[idx].name}: Revelation in Flesh — fly {stats.speed_fly} ft, "
+                            f"truesight 60 ft (1 SP)")
+                        self._flush_combat_log()
+                    else:
+                        self._combat_log_add("Revelation in Flesh: not available (no SP, already active, wrong subclass/level)")
+                        self._flush_combat_log()
+                    self._update_attack_overlay()
+            if action_id == "warping_implosion":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_warping_implosion = True
+                    self._combat_log_add(
+                        "Warping Implosion: click a destination within 120 ft (each creature within "
+                        "30 ft of where you stand makes a DEX save vs 3d10 Force). Click yourself to cancel.")
+                    self._flush_combat_log()
+            if action_id == "wild_magic_extra_action":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    stats = self.combat.get_agent_stats(self.bm, idx)
+                    stats.wild_magic_extra_action = False
+                    self.combat.set_agent_stats(self.bm, idx, stats)
+                    self.action_used = False  # grant the extra action
+                    self._combat_log_add(
+                        f"{self.bm.placed_agents[idx].name}: Wild Magic extra action granted!")
+            if action_id == "wild_magic_bonus_cast":
+                self._start_cast_spell("bonus")  # allow action-level spell as bonus
+            if action_id == "wild_magic_teleport":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_wild_magic_teleport = True
+                    self._combat_log_add("Wild Magic Teleport: click a destination cell.")
+            if action_id == "companion":
+                features.show_companion_menu(self)
+            if action_id == "familiar":
+                features.show_familiar_menu(self)
+            if action_id == "charge_arcane_ward":
+                features.show_arcane_ward_menu(self)
+            if action_id == "wild_shape":
+                features.show_wild_shape_menu(self)
+        # F11, closed: Open Hand L11 Fleet Step is the one option in the band that
+        # needs the Bonus Action to be GONE — it is a free Step of the Wind precisely
+        # because it rides alongside another Bonus Action. Dispatched outside the gate
+        # for that reason; the menu offers `step_of_wind` on the spent side only when
+        # `_fleet_step_ready` says so, and the focus-paying arm below still refuses to
+        # run with the Bonus Action spent (`fleet_step` is False, `bonus_used` True).
+        if action_id == "step_of_wind":
+            idx = self._current_agent_idx()
+            if 0 <= idx < len(self.bm.placed_agents):
+                stats = self.combat.get_agent_stats(self.bm, idx)
+                conds = self.combat.get_agent_conditions(self.bm, idx)
+                # Warrior of the Open Hand L11 Fleet Step: once per turn, Step of the Wind
+                # is free (no Focus Point, no Bonus Action) when it rides alongside another
+                # Bonus Action (i.e., the Bonus Action has already been spent this turn).
+                fp = stats.get_resource("Focus Points")
+                fleet_step = (stats.character_class == rpg.CharacterClass.Monk and
+                              stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and
+                              stats.char_level >= 11 and not conds.fleet_step_used and
+                              self.bonus_used)
+                can_pay_focus = bool(fp and fp.current > 0)
+                if fleet_step:
+                    conds.fleet_step_used = True
+                    self.combat.set_agent_conditions(self.bm, idx, conds)
+                    agent = self.bm.placed_agents[idx]
+                    agent.disengage()
+                    self.bm.apply_dash(idx)
+                    self.move_remaining_walk   = agent.walk_remaining
+                    self.move_remaining_fly    = agent.fly_remaining
+                    self.move_remaining_swim   = agent.swim_remaining
+                    self.move_remaining_burrow = agent.burrow_remaining
+                    self._combat_log_add(f"{agent.name}: Fleet Step — free Step of the Wind (disengaging and dashing)")
+                    self._update_reach()
+                elif can_pay_focus:
+                    self.combat.spend_resource(self.bm, idx, "Focus Points")
+                    agent = self.bm.placed_agents[idx]
+                    agent.disengage()
+                    self.bm.apply_dash(idx)
+                    self.move_remaining_walk   = agent.walk_remaining
+                    self.move_remaining_fly    = agent.fly_remaining
+                    self.move_remaining_swim   = agent.swim_remaining
+                    self.move_remaining_burrow = agent.burrow_remaining
+                    self._combat_log_add(f"{agent.name}: Step of the Wind (disengaging and dashing)")
+                    self._update_reach()
+                    self.bonus_used = True
+        # Sorcerer Metamagic arm-toggles — handled OUTSIDE the `not self.bonus_used` block
+        # above (they are spell qualifiers, not Bonus Actions), so spending the Bonus Action
+        # doesn't dead-key them. Radio-select (arming one clears the others; clicking the
+        # armed one disarms). Seeking toggles independently (it stacks). Under Sorcery
+        # Incarnate (L7 + Innate Sorcery active) a second option fills slot 2. Quickened is
+        # skipped once the Bonus Action is spent — it casts the spell AS a Bonus Action.
+        for _mm_id, opt in METAMAGIC_VALUE_BY_ID.items():
+            if _mm_id != action_id:
+                continue
+            # The Quickened/`bonus_used` re-check that used to stand here is
+            # gone with the rest of Step 0.3's F4: dispatch is by id against the
+            # offer the panel drew, so an option whose Sorcery Points have since
+            # been spent below its cost is no longer clickable either.
+            name = METAMAGIC_NAME_BY_VALUE.get(int(opt), "Metamagic")
+            cost = rpg.CombatEngine.metamagic_sp_cost(opt)
+            incarnate = self._sorcery_incarnate_active(self._current_agent_idx())
+            if not incarnate:
+                self.armed_metamagic2 = rpg.MetamagicOption.NONE
+            if opt == rpg.MetamagicOption.Seeking:
+                self.armed_seeking = not self.armed_seeking
+                self._combat_log_add(
+                    f"Metamagic {name} {'ARMED' if self.armed_seeking else 'disarmed'} "
+                    f"({cost} SP on next cast).")
+            elif self.armed_metamagic == opt:
+                # Disarming slot 1 promotes slot 2 (if any) so the armed set stays packed.
+                self.armed_metamagic = self.armed_metamagic2
+                self.armed_metamagic2 = rpg.MetamagicOption.NONE
+                self._combat_log_add(f"Metamagic {name} disarmed.")
+            elif incarnate and self.armed_metamagic2 == opt:
+                self.armed_metamagic2 = rpg.MetamagicOption.NONE
+                self._combat_log_add(f"Metamagic {name} disarmed.")
+            else:
+                if incarnate and self.armed_metamagic != rpg.MetamagicOption.NONE:
+                    # Sorcery Incarnate: keep the first option, add this one alongside it
+                    # (a third click replaces slot 2 — the engine takes at most two).
+                    self.armed_metamagic2 = opt
+                    self._combat_log_add(
+                        f"Metamagic {name} ARMED as the 2nd option ({cost} SP on next "
+                        f"cast — Sorcery Incarnate).")
+                else:
+                    self.armed_metamagic = opt
+                    self._combat_log_add(f"Metamagic {name} ARMED ({cost} SP on next cast).")
+                # Transmuted needs a replacement damage type chosen at arm time.
+                if opt == rpg.MetamagicOption.Transmuted:
+                    features.show_metamagic_transmute_menu(self)
+            self._flush_combat_log()
+            break
+        # Haste's extra action is an ACTION, not a bonus action — handle it OUTSIDE the
+        # `not self.bonus_used` block above so spending a bonus action first doesn't dead-key it.
+        if action_id == "haste_action":
+            idx = self._current_agent_idx()
+            if 0 <= idx < len(self.bm.placed_agents):
+                stats = self.combat.get_agent_stats(self.bm, idx)
+                stats.haste_action_available = False  # spend the extra action for this turn
+                self.combat.set_agent_stats(self.bm, idx, stats)
+                self.action_used = False  # grant the extra action
+                self._combat_log_add(
+                    f"{self.bm.placed_agents[idx].name}: Haste action granted (Attack ×1 / Dash / "
+                    "Disengage / Hide / Utilize only).")
+        if action_id == "place_terrain":
+            self._reset_zoom()   # dialog blits map at (0,0); fit scale first
+            self.terrain_placement_dialog.open(self.map_surf, self.bm, self)
+        if action_id == "pause_resume":
+            self.combat_paused = not self.combat_paused
+        if action_id == "end_turn":
+            if self.pending_beguiling:
+                # Don't let End Turn silently waste an armed Beguiling Magic offer — make the
+                # DM resolve (click a creature) or decline (Esc) it first.
+                self._combat_log_add(
+                    "Resolve Beguiling Magic first — click a creature within 60 ft, "
+                    "or press Esc to decline.")
+                self._flush_combat_log()
+            elif not self.combat_paused:
+                self._advance_turn()
+                self._flush_combat_log()
+        if action_id == "end_combat":
+            self._end_combat()
+        if action_id == "drop_concentration":
+            self._drop_concentration()
+        if action_id == "drop_weapon_main":
+            self._drop_weapon(0)
+        if action_id == "drop_weapon_off":
+            self._drop_weapon(1)
+        if action_id == "drop_weapon_rng":
+            self._drop_weapon(2)
+
     def _draw_combat_panel(self):
         """Draw the right panel while combat is active.
 
@@ -16916,817 +17759,26 @@ class App:
                             break
 
                 # ── Combat panel buttons ───────────────────────────────────
-                _ev_idx = self._current_agent_idx()
-                # §4 and §6 dispatch by action id: the weapon test, the mid-sequence
-                # test and Nick's own three-part guard are all `ActionMenu._action`'s
-                # now, and `_action_clicked` consults the offer the panel drew.
-                if self._action_clicked("atk_action", event):
-                    self._start_attack("action")
-                # Nick: relocate the off-hand attack into the Attack action (frees the bonus action).
-                if self._action_clicked("nick", event):
-                    self._start_extra_attack(weapon_idx=self._nick_offhand_idx(_ev_idx),
-                                             offhand=True, slot="action",
-                                             label="Nick: off-hand attack (part of Attack action)")
-                # Unarmed Strike (Punch/Grapple/Push) is part of the Attack action, so it also
-                # resumes mid-sequence (Extra Attack: grapple, then strike, or vice versa).
-                if self._action_clicked("unarmed", event):
-                    features.show_unarmed_menu(self, pygame.mouse.get_pos())
-                # D-M2-4: these five are DRAWN mid-sequence (the band stays open for
-                # the swings still owed) and refused here, exactly as End Turn is
-                # refused while paused. The gate is a handler rule, not availability —
-                # moving it into the menu would make the row vanish mid-attack.
-                if not self.action_used:
-                    if self._action_clicked("dash", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            agent = self.bm.placed_agents[idx]
-                            self.bm.apply_dash(idx)
-                            self.move_remaining_walk   = agent.walk_remaining
-                            self.move_remaining_fly    = agent.fly_remaining
-                            self.move_remaining_swim   = agent.swim_remaining
-                            self.move_remaining_burrow = agent.burrow_remaining
-                            self._combat_log_add(f"{agent.name}: Dashing (+{self.combat.get_agent_stats(self.bm, idx).speed_walk}ft)")
-                            self._update_reach()
-                        self.action_used = True
-                    if self._action_clicked("dodge", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.bm.placed_agents[idx].dodge()
-                            self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Dodging")
-                        self.action_used = True
-                    if self._action_clicked("disengage", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.bm.placed_agents[idx].disengage()
-                            self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Disengaging")
-                        self.action_used = True
-                    if self._action_clicked("hide", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            in_combat = len(self.initiative_order) > 0
-                            result = self.combat.check_hide(self.bm, idx, in_combat)
-                            if result.hidden:
-                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide (stealth {result.stealth_total})")
-                            else:
-                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide failed - {result.log_message}")
-                        self.action_used = True
-                    if self._action_clicked("prone", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.combat.apply_prone(self.bm, idx)
-                            self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Going prone")
-                            self._update_reach()
-                            self._update_attack_overlay()
-                        self.action_used = True
-                    if self._action_clicked("spell_action", event):
-                        self._start_cast_spell("action")
-                # Long Jump costs a Bonus Action (and movement) — available regardless of the
-                # Action, but only while the bonus action is unspent.
-                if self._action_clicked("long_jump", event):
-                    if not self.pending_spell_slot:  # Don't allow jump while casting spell
-                        self._toggle_jump_overlay()
-                # Stand up doesn't use an action, so it's available regardless of action_used
-                if self._action_clicked("standup", event):
-                    idx = self._current_agent_idx()
-                    if 0 <= idx < len(self.bm.placed_agents):
-                        self.combat.standup(self.bm, idx)
-                        agent = self.bm.placed_agents[idx]
-                        self.move_remaining_walk   = agent.walk_remaining
-                        self.move_remaining_fly    = agent.fly_remaining
-                        self.move_remaining_swim   = agent.swim_remaining
-                        self.move_remaining_burrow = agent.burrow_remaining
-                        self._combat_log_add(f"{agent.name}: Standing up")
-                        self._update_reach()
-                        self._update_attack_overlay()
-                if self._action_clicked("use_portent", event):
-                    features.show_portent_dice_menu(self)
-                if self._action_clicked("grapple_drop", event):
-                    self._execute_grapple_drop()
-                # Use Item is NOT gated on the bonus action: a potion is a Bonus Action, but a
-                # thrown flask or Net replaces one attack of the Attack action instead.
-                if self._action_clicked("use_item", event):
-                    features.show_use_item_menu(self, event.pos)
-                if self._action_clicked("extinguish", event):
-                    self._resolve_extinguish()
-                if self._action_clicked("escape_net", event):
-                    self._begin_escape_net()
-                # F14, closed: the bonus band's attack header is the mirror of
-                # `atk_action` above and is dispatched the same way — ungated, on the
-                # offer the panel drew. `bonus_used` is already True while an off-hand
-                # or Flurry sequence is parked in the bonus slot, so the header the menu
-                # labels "⚔ Bonus (N)" used to be a button that counted the swings it
-                # could not take; `_start_attack` re-arms the parked sequence rather
-                # than seeding a new one (`attacks_remaining != 0` skips the seed).
-                if self._action_clicked("atk_bonus", event):
-                    self._start_attack("bonus")
-                if not self.bonus_used:
-                    # `spell_bonus` stays behind the gate, and that is D-M2-4 rather
-                    # than F14: it is `spell_action`'s mirror, drawn mid-sequence with
-                    # the band and refused here, because a Bonus Action spell cannot be
-                    # cast with the Bonus Action already spent on the sequence.
-                    if self._action_clicked("spell_bonus", event):
-                        self._start_cast_spell("bonus")
-                    if self._action_clicked("shove_push", event):
-                        self._start_shove("push")
-                    if self._action_clicked("shove_prone", event):
-                        self._start_shove("prone")
-                    if self._action_clicked("grapple_esc", event):
-                        self._execute_grapple_escape()
-                    if self._action_clicked("telekinetic_feat", event):
-                        self._start_telekinetic_shove()
-                    if self._action_clicked("hide_bonus", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            in_combat = len(self.initiative_order) > 0
-                            result = self.combat.check_hide(self.bm, idx, in_combat)
-                            if result.hidden:
-                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide (Cunning Action, stealth {result.stealth_total})")
-                            else:
-                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Hide failed - {result.log_message}")
-                        self.bonus_used = True
-                    if self._action_clicked("dash_bonus", event) and not self.context_menu.visible:
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            agent = self.bm.placed_agents[idx]
-                            self.bm.apply_dash(idx)
-                            self.move_remaining_walk   = agent.walk_remaining
-                            self.move_remaining_fly    = agent.fly_remaining
-                            self.move_remaining_swim   = agent.swim_remaining
-                            self.move_remaining_burrow = agent.burrow_remaining
-                            self._combat_log_add(f"{agent.name}: Dashing (Cunning Action, +{self.combat.get_agent_stats(self.bm, idx).speed_walk}ft)")
-                            self._update_reach()
-                        self.bonus_used = True
-                    if self._action_clicked("disengage_bonus", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.bm.placed_agents[idx].disengage()
-                            self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Disengaging (Cunning Action)")
-                        self.bonus_used = True
-                    if self._action_clicked("patient_defense", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            stats = self.combat.get_agent_stats(self.bm, idx)
-                            fp = stats.get_resource("Focus Points")
-                            if fp and fp.current > 0:
-                                self.combat.spend_resource(self.bm, idx, "Focus Points")
-                                self.bm.placed_agents[idx].dodge()
-                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Patient Defense (dodging)")
-                            self.bonus_used = True
-                    if self._action_clicked("wholeness_of_body", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            healed = self.combat.wholeness_of_body(self.bm, idx)
-                            agent = self.bm.placed_agents[idx]
-                            if healed > 0:
-                                self._combat_log_add(f"{agent.name}: Wholeness of Body — {healed} HP restored")
-                                self.bonus_used = True
-                            else:
-                                self._combat_log_add(f"{agent.name}: Wholeness of Body unavailable.")
-                    if self._action_clicked("hand_of_healing", event):
-                        self.pending_hand_of_healing = True
-                        self.hint = "Click target for Hand of Healing"
-                    if self._action_clicked("rage", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.combat.activate_rage(self.bm, idx)
-                            agent = self.bm.placed_agents[idx]
-                            self._combat_log_add(f"{agent.name}: Enters a rage!")
-                        self.bonus_used = True
-                    if self._action_clicked("intimidating_presence", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.use_intimidating_presence(self.bm, idx):
-                                self._flush_combat_log()
-                                self.bonus_used = True
-                            else:
-                                self._combat_log_add("Intimidating Presence unavailable.")
-                    if self._action_clicked("zealous_presence", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.use_zealous_presence(self.bm, idx):
-                                self._flush_combat_log()
-                                self.bonus_used = True
-                            else:
-                                self._combat_log_add("Zealous Presence unavailable.")
-                    if self._action_clicked("clairvoyant_combatant", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.pending_clairvoyant = True
-                            self._combat_log_add("Clairvoyant Combatant: click an enemy within 60 ft to target.")
-                    if self._action_clicked("vow_of_enmity", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.pending_vow_of_enmity = True
-                            self._combat_log_add("Vow of Enmity: click an enemy within 30 ft to swear enmity against it.")
-                    if self._action_clicked("inspiring_smite", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.pending_inspiring_smite = True
-                            self._combat_log_add("Inspiring Smite: click a creature within 30 ft (including yourself) to grant temp HP.")
-                    if self._action_clicked("avenging_angel", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._use_avenging_angel(idx)
-                    if self._action_clicked("elder_champion", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._use_elder_champion(idx)
-                    if self._action_clicked("living_legend", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._use_living_legend(idx)
-                    if self._action_clicked("magical_cunning", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.use_magical_cunning(self.bm, idx):
-                                self._flush_combat_log()
-                            else:
-                                self._combat_log_add("Magical Cunning unavailable.")
-                    if self._action_clicked("healing_light", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.pending_heal_light = True
-                            self._combat_log_add("Healing Light — click an ally (or self) to heal.")
-                    if self._action_clicked("turn_undead", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            res = self.combat.use_turn_undead(self.bm, idx)
-                            self._flush_combat_log()
-                            if res.valid:
-                                self._combat_log_add(
-                                    f"Turn Undead (DC {res.save_dc}): {len(list(res.turned))} turned"
-                                    + (f", {res.sear_damage} Radiant each" if res.sear_damage else ""))
-                                self.action_used = True
-                            else:
-                                self._combat_log_add("Turn Undead unavailable.")
-                    if self._action_clicked("divine_intervention", event):
-                        self._start_divine_intervention()
-                    if self._action_clicked("radiance", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            spells = self.combat.get_agent_spells(self.bm, idx)
-                            ridx = next((i for i, sp in enumerate(spells)
-                                         if sp.name == "Radiance of the Dawn"), -1)
-                            if ridx >= 0:
-                                self.pending_spell_slot = "action"
-                                self.pending_spell_idx = ridx
-                                self.pending_spell_slot_level = 0
-                                origin = self.bm.placed_agents[idx].origin
-                                self._resolve_spell_cast_aoe(rpg.Cell(origin.col, origin.row))
-                            else:
-                                self._combat_log_add("Radiance of the Dawn is not prepared.")
-                    if self._action_clicked("preserve_life", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            agents = self.bm.placed_agents
-                            origin = agents[idx].origin
-                            # Auto-distribute to the most-wounded allies (and self) within 30 ft that are
-                            # below half their HP max — most wounded first (matches Preserve Life's intent).
-                            cands = []
-                            for i in range(len(agents)):
-                                if i != idx and not self._are_allies(idx, i):
-                                    continue
-                                s = self.combat.get_agent_stats(self.bm, i)
-                                if s.is_undead or s.hp_max <= 0 or s.hp_cur >= s.hp_max // 2:
-                                    continue
-                                o = agents[i].origin
-                                if ((o.col - origin.col) ** 2 + (o.row - origin.row) ** 2) ** 0.5 * 5 > 30:
-                                    continue
-                                cands.append((s.hp_cur, i))
-                            targets = [i for _, i in sorted(cands)]
-                            res = self.combat.use_preserve_life(self.bm, idx, targets)
-                            self._flush_combat_log()
-                            if res.valid:
-                                self._combat_log_add(
-                                    f"Preserve Life ({res.pool} HP pool): restored {res.spent} HP "
-                                    f"to {len(list(res.healed))} creature(s).")
-                                self.action_used = True
-                            else:
-                                self._combat_log_add("Preserve Life unavailable.")
-                    if self._action_clicked("invoke_duplicity", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            stats = self.combat.get_agent_stats(self.bm, idx)
-                            # Improved Duplicity (L17) creates up to four illusions; otherwise just one.
-                            self.pending_invoke_duplicity   = True
-                            self.pending_duplicity_remaining = 4 if stats.char_level >= 17 else 1
-                            self._duplicity_cd_pending      = True
-                            self.move_duplicity_idx         = -1
-                            self._combat_log_add(
-                                "Invoke Duplicity — click an empty cell within 30 ft to place "
-                                + ("a duplicate." if self.pending_duplicity_remaining == 1
-                                   else f"the first of {self.pending_duplicity_remaining} duplicates."))
-                    if self._action_clicked("move_duplicity", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            dups = self._my_duplicates(idx)
-                            if not dups:
-                                self._combat_log_add("No active duplicate to move.")
-                            else:
-                                self.pending_move_duplicity = True
-                                # Lone duplicate: pre-select it so the next click is its destination.
-                                self.move_duplicity_idx = dups[0] if len(dups) == 1 else -1
-                                self._combat_log_add(
-                                    "Move Duplicate — click a destination within 30 ft." if len(dups) == 1
-                                    else "Move Duplicate — click one of your duplicates, then its destination.")
-                    if self._action_clicked("swap_duplicity", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            dups = self._my_duplicates(idx)
-                            if not dups:
-                                self._combat_log_add("No active duplicate to swap with.")
-                            elif len(dups) == 1:
-                                self._do_swap_duplicity(idx, dups[0])
-                            else:
-                                self.pending_swap_duplicity = True
-                                self._combat_log_add("Swap — click the duplicate to trade places with.")
-                    if self._action_clicked("steady_aim", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            cond = self.combat.get_agent_conditions(self.bm, idx)
-                            cond.steady_aim = True
-                            self.combat.set_agent_conditions(self.bm, idx, cond)
-                            # Steady Aim sets your Speed to 0 for the rest of the turn.
-                            self.move_remaining_walk = 0
-                            self.move_remaining_fly = 0
-                            self.move_remaining_swim = 0
-                            self.move_remaining_burrow = 0
-                            self._update_reach()
-                            self.bonus_used = True
-                            self._combat_log_add(
-                                f"{self.bm.placed_agents[idx].name}: Steady Aim — advantage on next attack (Speed 0).")
-                    if self._action_clicked("war_priest", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._start_extra_attack(weapon_idx=0, offhand=False,
-                                                     resource="War Priest", label="War Priest")
-                    if self._action_clicked("bite_grappled", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            wslot, victim = self.combat.pending_auto_grapple_strike(self.bm, idx)
-                            if wslot >= 0 and victim >= 0:
-                                # Pre-seed the flagged weapon + grappled victim, then resolve straight
-                                # away (the button IS the DM's confirmation). Routes through the normal
-                                # attack dispatch on the Attack budget so forceAutoHit / save_for_damage
-                                # / the HP-max drain all fire unchanged (the victim still gets its save).
-                                self._start_extra_attack(weapon_idx=wslot, offhand=False,
-                                                         slot="action", label="🧛 Bite (grappled)")
-                                self._resolve_combat_attack(victim)
-                    if self._action_clicked("gwm_hew", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._start_gwm_hew(idx)
-                    if self._action_clicked("blink_steps", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents) and self._blink_steps_ready(idx):
-                            self.blink_steps_pending = True
-                            self._combat_log_add(
-                                "Blink Steps: click a destination within 30 ft you can see "
-                                "(or click yourself to skip).")
-                    if self._action_clicked("martial_arts", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._start_extra_attack(weapon_idx=0, offhand=False,
-                                                     resource=None, label="Martial Arts")
-                    if self._action_clicked("flurry_of_blows", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            stats = self.combat.get_agent_stats(self.bm, idx)
-                            fp = stats.get_resource("Focus Points")
-                            if fp and fp.current > 0:
-                                # Show Open Hand rider menu if Way of the Open Hand
-                                if stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand:
-                                    riders.show_flurry_rider_menu(self, idx)
-                                else:
-                                    # No rider options, execute with no rider
-                                    self._execute_flurry(idx, -1)
-                    if self._action_clicked("second_wind", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._use_second_wind(idx)
-                    if self._action_clicked("bm_maneuver", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            riders.offer_bonus_maneuver(self, idx)
-                    if self._action_clicked("one_with_shadows", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.apply_one_with_shadows(self.bm, idx):
-                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: One with Shadows — now invisible.")
-                            else:
-                                self._combat_log_add("One with Shadows requires standing in Dim Light or Darkness.")
-                    if self._action_clicked("merge_shadows", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.apply_merge_with_shadows(self.bm, idx):
-                                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Merge with Shadows — now invisible.")
-                            else:
-                                self._combat_log_add("Merge with Shadows requires standing in Dim Light or Darkness.")
-                    if self._action_clicked("action_surge", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._use_action_surge(idx)
-                    if self._action_clicked("lay_on_hands", event):
-                        self.pending_lay_on_hands = True
-                        self.hint = "Click target for Lay on Hands healing"
-                    if self._action_clicked("grant_inspiration", event):
-                        self.pending_grant_inspiration = True
-                        self.hint = "Click an ally to grant a Bardic Inspiration die"
-                    if self._action_clicked("mantle", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._start_mantle(idx)
-                            self.hint = "Mantle of Inspiration: click recipients (≤CHA mod), Enter to confirm"
-                    if self._action_clicked("mantle_majesty", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            features.start_mantle_majesty(self, idx)
-                    if self._action_clicked("unbreakable_majesty", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._start_unbreakable_majesty(idx)
-                    if self._action_clicked("beguiling_restore", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._restore_beguiling_magic(idx)
-                    if self._action_clicked("use_inspiration", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._use_inspiration_die(idx)
-                    if self._action_clicked("sacred_weapon", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._use_sacred_weapon(idx)
-                    if self._action_clicked("corona", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._use_corona_of_light(idx)
-                    if self._action_clicked("telekinetic_psi", event):
-                        self.pending_telekinetic = True
-                        self.hint = "Click a creature to move with Telekinetic Movement"
-                    if self._action_clicked("dread_ambusher", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            stats = self.combat.get_agent_stats(self.bm, idx)
-                            da = stats.get_resource("Dread Ambusher")
-                            cond = self.combat.get_agent_conditions(self.bm, idx)
-                            if (da and da.current > 0 and not cond.dread_ambusher_used and
-                                    not cond.dreadful_strike_armed):
-                                if self.combat.spend_resource(self.bm, idx, "Dread Ambusher", 1):
-                                    cond.dreadful_strike_armed = True
-                                    cond.dread_ambusher_used = True
-                                    self.combat.set_agent_conditions(self.bm, idx, cond)
-                                    # Ambusher's Leap: +10 ft Speed this turn.
-                                    self.move_remaining_walk += 10
-                                    self._update_reach()
-                                    dn = stats.dreadful_strike_dice
-                                    dz = stats.dreadful_strike_die_size
-                                    self._combat_log_add(
-                                        f"{self.bm.placed_agents[idx].name}: Dread Ambusher — "
-                                        f"next weapon hit deals +{dn}d{dz} Psychic, +10 ft Speed.")
-                    if self._action_clicked("tireless", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._use_tireless(idx)
-                    if self._action_clicked("natures_veil", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._use_natures_veil(idx)
-                    if self._action_clicked("psychic_veil", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._use_psychic_veil(idx)
-                    if self._action_clicked("psychic_teleport", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.pending_psychic_teleport = True
-                            self._combat_log_add(
-                                "Psychic Teleportation: click a destination (or click yourself to cancel).")
-                    if self._action_clicked("shadow_step", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.pending_shadow_step = True
-                            self._combat_log_add(
-                                "Shadow Step: click a destination (or click yourself to cancel).")
-                    if self._action_clicked("cloak_of_shadows", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.cloak_of_shadows(self.bm, idx):
-                                self.bonus_used = True
-                                self._combat_log_add(
-                                    f"{self.bm.placed_agents[idx].name}: Cloak of Shadows activated.")
-                            else:
-                                self._combat_log_add(
-                                    f"{self.bm.placed_agents[idx].name}: cannot use Cloak of Shadows (not in dim/dark light).")
-                    if self._action_clicked("shadow_arts_darkness", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.pending_shadow_darkness = True
-                            self._combat_log_add(
-                                "Shadow Arts: Darkness: click a center cell (or click yourself to cancel).")
-                    if self._action_clicked("fey_effect", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            stats = self.combat.get_agent_stats(self.bm, idx)
-                            n_effects = 5 if stats.char_level >= 6 else 3
-                            self.steps_of_fey_effect = (self.steps_of_fey_effect + 1) % n_effects
-                            self._combat_log_add(
-                                f"Steps of the Fey rider: {self._FEY_EFFECT_NAMES[self.steps_of_fey_effect]}")
-                    if self._action_clicked("steps_of_fey", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.pending_steps_of_fey = True
-                            self._combat_log_add(
-                                "Steps of the Fey: click a destination (or click yourself to cancel).")
-                    if self._action_clicked("misty_escape", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.pending_misty_escape = True
-                            self._combat_log_add(
-                                "Misty Escape: click a destination (or click yourself to cancel).")
-                    if self._action_clicked("elemental_attunement", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            features.show_elemental_attunement_menu(self, idx)
-                    if self._action_clicked("elemental_burst", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            features.show_elemental_burst_menu(self, idx)
-                    if self._action_clicked("quivering_palm", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self._detonate_quivering_palm(idx)
-                    if self._action_clicked("dragon_wings", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.activate_dragon_wings(self.bm, idx):
-                                stats = self.combat.get_agent_stats(self.bm, idx)
-                                if stats.dragon_wings_active:
-                                    self._combat_log_add(
-                                        f"{self.bm.placed_agents[idx].name}: Dragon Wings extended (fly {stats.speed_walk} ft)")
-                                    self.move_remaining_fly = self.bm.placed_agents[idx].fly_remaining
-                                else:
-                                    self._combat_log_add(
-                                        f"{self.bm.placed_agents[idx].name}: Dragon Wings retracted")
-                                    self.move_remaining_fly = 0
-                    if self._action_clicked("draconic_resistance", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.activate_draconic_resistance(self.bm, idx):
-                                stats = self.combat.get_agent_stats(self.bm, idx)
-                                elem_name = features._DAMAGE_TYPE_NAMES.get(stats.draconic_affinity_type, str(stats.draconic_affinity_type))
-                                self._combat_log_add(
-                                    f"{self.bm.placed_agents[idx].name}: Draconic Resistance — "
-                                    f"{elem_name} resistance for 1 hour (1 SP spent)")
-                            else:
-                                self._combat_log_add("Draconic Resistance: not eligible")
-                            bonus_used = True
-                    if self._action_clicked("bend_luck", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            features.show_bend_luck_menu(self, idx, event.pos)
-                    if self._action_clicked("boon_of_fate", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            features.show_boon_of_fate_menu(self, idx, event.pos)
-                    if self._action_clicked("tides_of_chaos", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.activate_tides_of_chaos(self.bm, idx):
-                                self._flush_combat_log()
-                            else:
-                                self._combat_log_add("Tides of Chaos: not available (no use left / wrong subclass/level)")
-                                self._flush_combat_log()
-                            self._update_attack_overlay()
-                    # Sorcerer Innate Sorcery (Bonus Action). At L7 (Sorcery Incarnate) a caster
-                    # out of uses can still pay 2 SP for it — the engine picks the payment.
-                    if self._action_clicked("innate_sorcery", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.activate_innate_sorcery(self.bm, idx):
-                                self.bonus_used = True  # Innate Sorcery costs a Bonus Action
-                                self._flush_combat_log()
-                            else:
-                                self._combat_log_add(
-                                    "Innate Sorcery: not available (no use left / not enough SP / wrong class)")
-                                self._flush_combat_log()
-                            self._update_attack_overlay()
-                    # NOTE: the Metamagic arm-toggle click handler was moved OUT of this
-                    # `not self.bonus_used` block (see below, next to the Haste handler) so the
-                    # toggles stay clickable after the Bonus Action is spent — they are spell
-                    # qualifiers, not Bonus Actions.
-                    if self._action_clicked("trance_of_order", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.activate_trance_of_order(self.bm, idx):
-                                self.bonus_used = True  # Trance of Order costs a Bonus Action
-                                self._flush_combat_log()
-                            else:
-                                self._combat_log_add("Trance of Order: not available (no use/5 SP, wrong subclass/level)")
-                                self._flush_combat_log()
-                            self._update_attack_overlay()
-                    if self._action_clicked("bastion_of_law", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            features.show_bastion_of_law_menu(self, idx, event.pos)
-                    if self._action_clicked("clockwork_cavalcade", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.clockwork_cavalcade(self.bm, idx) >= 0:
-                                self.action_used = True  # Clockwork Cavalcade is a Magic Action
-                                self._flush_combat_log()
-                            else:
-                                self._combat_log_add("Clockwork Cavalcade: not available (no use/7 SP, wrong subclass/level)")
-                                self._flush_combat_log()
-                            self._update_attack_overlay()
-                    if self._action_clicked("revelation_in_flesh", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            if self.combat.activate_revelation_in_flesh(self.bm, idx):
-                                self.bonus_used = True  # Revelation in Flesh is a Bonus Action
-                                stats = self.combat.get_agent_stats(self.bm, idx)
-                                self.move_remaining_fly = self.bm.placed_agents[idx].fly_remaining
-                                self._combat_log_add(
-                                    f"{self.bm.placed_agents[idx].name}: Revelation in Flesh — fly {stats.speed_fly} ft, "
-                                    f"truesight 60 ft (1 SP)")
-                                self._flush_combat_log()
-                            else:
-                                self._combat_log_add("Revelation in Flesh: not available (no SP, already active, wrong subclass/level)")
-                                self._flush_combat_log()
-                            self._update_attack_overlay()
-                    if self._action_clicked("warping_implosion", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.pending_warping_implosion = True
-                            self._combat_log_add(
-                                "Warping Implosion: click a destination within 120 ft (each creature within "
-                                "30 ft of where you stand makes a DEX save vs 3d10 Force). Click yourself to cancel.")
-                            self._flush_combat_log()
-                    if self._action_clicked("wild_magic_extra_action", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            stats = self.combat.get_agent_stats(self.bm, idx)
-                            stats.wild_magic_extra_action = False
-                            self.combat.set_agent_stats(self.bm, idx, stats)
-                            self.action_used = False  # grant the extra action
-                            self._combat_log_add(
-                                f"{self.bm.placed_agents[idx].name}: Wild Magic extra action granted!")
-                    if self._action_clicked("wild_magic_bonus_cast", event):
-                        self._start_cast_spell("bonus")  # allow action-level spell as bonus
-                    if self._action_clicked("wild_magic_teleport", event):
-                        idx = self._current_agent_idx()
-                        if 0 <= idx < len(self.bm.placed_agents):
-                            self.pending_wild_magic_teleport = True
-                            self._combat_log_add("Wild Magic Teleport: click a destination cell.")
-                    if self._action_clicked("companion", event):
-                        features.show_companion_menu(self)
-                    if self._action_clicked("familiar", event):
-                        features.show_familiar_menu(self)
-                    if self._action_clicked("charge_arcane_ward", event):
-                        features.show_arcane_ward_menu(self)
-                    if self._action_clicked("wild_shape", event):
-                        features.show_wild_shape_menu(self)
-                # F11, closed: Open Hand L11 Fleet Step is the one option in the band that
-                # needs the Bonus Action to be GONE — it is a free Step of the Wind precisely
-                # because it rides alongside another Bonus Action. Dispatched outside the gate
-                # for that reason; the menu offers `step_of_wind` on the spent side only when
-                # `_fleet_step_ready` says so, and the focus-paying arm below still refuses to
-                # run with the Bonus Action spent (`fleet_step` is False, `bonus_used` True).
-                if self._action_clicked("step_of_wind", event):
-                    idx = self._current_agent_idx()
-                    if 0 <= idx < len(self.bm.placed_agents):
-                        stats = self.combat.get_agent_stats(self.bm, idx)
-                        conds = self.combat.get_agent_conditions(self.bm, idx)
-                        # Warrior of the Open Hand L11 Fleet Step: once per turn, Step of the Wind
-                        # is free (no Focus Point, no Bonus Action) when it rides alongside another
-                        # Bonus Action (i.e., the Bonus Action has already been spent this turn).
-                        fp = stats.get_resource("Focus Points")
-                        fleet_step = (stats.character_class == rpg.CharacterClass.Monk and
-                                      stats.monk_subclass == rpg.MonkSubclass.WarriorOfTheOpenHand and
-                                      stats.char_level >= 11 and not conds.fleet_step_used and
-                                      self.bonus_used)
-                        can_pay_focus = bool(fp and fp.current > 0)
-                        if fleet_step:
-                            conds.fleet_step_used = True
-                            self.combat.set_agent_conditions(self.bm, idx, conds)
-                            agent = self.bm.placed_agents[idx]
-                            agent.disengage()
-                            self.bm.apply_dash(idx)
-                            self.move_remaining_walk   = agent.walk_remaining
-                            self.move_remaining_fly    = agent.fly_remaining
-                            self.move_remaining_swim   = agent.swim_remaining
-                            self.move_remaining_burrow = agent.burrow_remaining
-                            self._combat_log_add(f"{agent.name}: Fleet Step — free Step of the Wind (disengaging and dashing)")
-                            self._update_reach()
-                        elif can_pay_focus:
-                            self.combat.spend_resource(self.bm, idx, "Focus Points")
-                            agent = self.bm.placed_agents[idx]
-                            agent.disengage()
-                            self.bm.apply_dash(idx)
-                            self.move_remaining_walk   = agent.walk_remaining
-                            self.move_remaining_fly    = agent.fly_remaining
-                            self.move_remaining_swim   = agent.swim_remaining
-                            self.move_remaining_burrow = agent.burrow_remaining
-                            self._combat_log_add(f"{agent.name}: Step of the Wind (disengaging and dashing)")
-                            self._update_reach()
-                            self.bonus_used = True
-                # Sorcerer Metamagic arm-toggles — handled OUTSIDE the `not self.bonus_used` block
-                # above (they are spell qualifiers, not Bonus Actions), so spending the Bonus Action
-                # doesn't dead-key them. Radio-select (arming one clears the others; clicking the
-                # armed one disarms). Seeking toggles independently (it stacks). Under Sorcery
-                # Incarnate (L7 + Innate Sorcery active) a second option fills slot 2. Quickened is
-                # skipped once the Bonus Action is spent — it casts the spell AS a Bonus Action.
-                for _mm_id, opt in METAMAGIC_VALUE_BY_ID.items():
-                    if not self._action_clicked(_mm_id, event):
-                        continue
-                    # The Quickened/`bonus_used` re-check that used to stand here is
-                    # gone with the rest of Step 0.3's F4: dispatch is by id against the
-                    # offer the panel drew, so an option whose Sorcery Points have since
-                    # been spent below its cost is no longer clickable either.
-                    name = METAMAGIC_NAME_BY_VALUE.get(int(opt), "Metamagic")
-                    cost = rpg.CombatEngine.metamagic_sp_cost(opt)
-                    incarnate = self._sorcery_incarnate_active(self._current_agent_idx())
-                    if not incarnate:
-                        self.armed_metamagic2 = rpg.MetamagicOption.NONE
-                    if opt == rpg.MetamagicOption.Seeking:
-                        self.armed_seeking = not self.armed_seeking
-                        self._combat_log_add(
-                            f"Metamagic {name} {'ARMED' if self.armed_seeking else 'disarmed'} "
-                            f"({cost} SP on next cast).")
-                    elif self.armed_metamagic == opt:
-                        # Disarming slot 1 promotes slot 2 (if any) so the armed set stays packed.
-                        self.armed_metamagic = self.armed_metamagic2
-                        self.armed_metamagic2 = rpg.MetamagicOption.NONE
-                        self._combat_log_add(f"Metamagic {name} disarmed.")
-                    elif incarnate and self.armed_metamagic2 == opt:
-                        self.armed_metamagic2 = rpg.MetamagicOption.NONE
-                        self._combat_log_add(f"Metamagic {name} disarmed.")
-                    else:
-                        if incarnate and self.armed_metamagic != rpg.MetamagicOption.NONE:
-                            # Sorcery Incarnate: keep the first option, add this one alongside it
-                            # (a third click replaces slot 2 — the engine takes at most two).
-                            self.armed_metamagic2 = opt
-                            self._combat_log_add(
-                                f"Metamagic {name} ARMED as the 2nd option ({cost} SP on next "
-                                f"cast — Sorcery Incarnate).")
-                        else:
-                            self.armed_metamagic = opt
-                            self._combat_log_add(f"Metamagic {name} ARMED ({cost} SP on next cast).")
-                        # Transmuted needs a replacement damage type chosen at arm time.
-                        if opt == rpg.MetamagicOption.Transmuted:
-                            features.show_metamagic_transmute_menu(self)
-                    self._flush_combat_log()
-                    break
-                # Haste's extra action is an ACTION, not a bonus action — handle it OUTSIDE the
-                # `not self.bonus_used` block above so spending a bonus action first doesn't dead-key it.
-                if self._action_clicked("haste_action", event):
-                    idx = self._current_agent_idx()
-                    if 0 <= idx < len(self.bm.placed_agents):
-                        stats = self.combat.get_agent_stats(self.bm, idx)
-                        stats.haste_action_available = False  # spend the extra action for this turn
-                        self.combat.set_agent_stats(self.bm, idx, stats)
-                        self.action_used = False  # grant the extra action
-                        self._combat_log_add(
-                            f"{self.bm.placed_agents[idx].name}: Haste action granted (Attack ×1 / Dash / "
-                            "Disengage / Hide / Utilize only).")
+                # D-M5-1: a click names an action id and `perform` runs it; the bodies
+                # live there now, so a remote submit runs exactly what this click does.
+                # One widget per id (F10) and one click per event: the first offered id
+                # under the pointer is the only one.
+                _clicked = next((a for a in self._action_menu
+                                 if self._action_clicked(a, event)), None)
+                if _clicked is not None:
+                    self.perform(_clicked, DM_PRINCIPAL_ID, event.pos)
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for mv_mt, mv_rect in self._move_type_btns.items():
                         if mv_rect.collidepoint(event.pos):
                             self.move_type = mv_mt
                             self._update_reach()
                             break
-                if self._action_clicked("place_terrain", event):
-                    self._reset_zoom()   # dialog blits map at (0,0); fit scale first
-                    self.terrain_placement_dialog.open(self.map_surf, self.bm, self)
                 if self.btn_show_terrain.clicked(event):
                     self.show_terrain = not self.show_terrain
                 if self.btn_show_spell_effects.clicked(event):
                     self.show_spell_effects = not self.show_spell_effects
                 if self.btn_show_visible_targets.clicked(event):
                     self._show_visible_targets_popup()
-                if self._action_clicked("pause_resume", event):
-                    self.combat_paused = not self.combat_paused
-                if self._action_clicked("end_turn", event):
-                    if self.pending_beguiling:
-                        # Don't let End Turn silently waste an armed Beguiling Magic offer — make the
-                        # DM resolve (click a creature) or decline (Esc) it first.
-                        self._combat_log_add(
-                            "Resolve Beguiling Magic first — click a creature within 60 ft, "
-                            "or press Esc to decline.")
-                        self._flush_combat_log()
-                    elif not self.combat_paused:
-                        self._advance_turn()
-                        self._flush_combat_log()
-                if self._action_clicked("end_combat", event):
-                    self._end_combat()
-                if self._action_clicked("drop_concentration", event):
-                    self._drop_concentration()
-                if self._action_clicked("drop_weapon_main", event):
-                    self._drop_weapon(0)
-                if self._action_clicked("drop_weapon_off", event):
-                    self._drop_weapon(1)
-                if self._action_clicked("drop_weapon_rng", event):
-                    self._drop_weapon(2)
                 # Item pickup: click a cell with items
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map \
                         and not self.context_menu.visible \

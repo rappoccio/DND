@@ -36,6 +36,11 @@ test_scripts = [
     # availability rules that produced them, with no screen involved. Kept beside it
     # because the pair is only meaningful together.
     "test_action_menu.py",
+    # `App.perform` (M5b, D-M5-1): the action bodies behind the panel's buttons, run by
+    # id with no pygame event. Beside the menu suite because it is the menu's other
+    # half — what an offered id DOES — and because a remote submit reaches the game
+    # through nothing else.
+    "test_perform.py",
 
     # Rendered-geometry invariants for the same panel (MULTIPLAYER_PLAN.md M2) — the
     # third leg. The golden proves the structure did not CHANGE and the action menu
