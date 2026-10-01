@@ -14,8 +14,9 @@ started**: read [M5 — where it starts](#m5--where-it-starts-surveyed-2026-09-2
 anything else — it records what the M5 text below does not cover, and proposes the Step 0.12
 that has to be agreed and frozen before M5's first line of code.
 **2026-09-28: Step 0.12 is frozen** (user: "all approved"); see [the walk](#step-012--the-walk-started-2026-09-28)
-for D-M5-1 through D-M5-9. **M5a (reactions over the wire) has landed (`2ed68bd`). M5b is
-next**, and its handoff is at the end of "M5a — what landed".
+for D-M5-1 through D-M5-9. **M5a (reactions over the wire) has landed (`2ed68bd`), and so has
+M5b's first commit, D-M5-1 `perform` (`2ade754`). D-M5-2, the action offer, is next**; its
+handoff follows "M5b, commit 1 — D-M5-1 landed".
 
 ---
 
@@ -5077,9 +5078,211 @@ are byte-identical. No C++ change.
 same-seed twin apps. It then compares every combatant's stats, conditions, weapons,
 position and movement, plus the app's economy and the log.
 
+##### Handoff — to D-M5-2 *(written 2026-09-30)*
+
+**State.** `main` is at `2ade754` (D-M5-1), four commits ahead of `origin/main`
+(`38ea487`). None are pushed. The suite is **163 / 0** in the container, and the
+determinism and panel goldens are unchanged. D-M5-2 is M5b's second commit, and it stays
+separate from anything else.
+
+**What D-M5-2 is.** Take D-M5-2 as frozen above. On each step of a turn whose token is
+controlled by a player, post a `kind:"action"`, `expects:"choice"` prompt, owned by
+`roster.controller_of(actor)`, with one option per offered id. Each option's callback is
+`perform(id, owner)`. Choosing an option answers the prompt. The step resolves, and the
+next offer is derived fresh.
+
+**Where things are** (`gui/main.py` @ `2ade754`):
+- `perform` is at `:15047`, its dispatch `_perform_action` at `:15081`, and the click site
+  at `:17766`.
+- The frame loop is `run()`, at about `:17917`. Its order is `_handle_events` →
+  `pump_submits` → NPC drive → `_pump_net` → `push_cycle` → draw (`_draw_panel` at
+  `:17940`, which rebuilds `_action_menu`).
+- `_ask_actor` is at `:9264` and `_advance_turn` at `:4399`.
+  `_clear_pending_target_picks` is at `:4456`.
+- The bus is in `prompts.py`: `ask` `:379`, `cancel` `:528`, `renderer_dismissed` `:557`,
+  `_render` `:580` and `Prompt.to_wire` `:141`.
+- The per-id classes (I / C→I / A / A\* / C→A / X / C→X / S / DM) are in Step 0.12's
+  110-row table above. Its line numbers are @ `f9c4385`; the ids are what matter.
+
+**Recommended shape** (decide, then write it down, as D-M5-1 did):
+1. **Make the offer a poll, not a set of hooks.** Add `_ensure_action_offer()`, called
+   once per frame right after `_draw_panel()`, so the offer is built from the
+   `_action_menu` that `perform` will check and cannot offer an id `perform` would
+   refuse. Post an offer when all of these hold:
+   - combat is active and not paused;
+   - the actor's controller is not the DM;
+   - nothing is live on the bus;
+   - no `pending_*` target flag is armed;
+   - no NPC playback is running.
+
+   If an offer is live but its projection has changed, re-post it. The projection is the
+   actor plus `(id, label, enabled, reason)` for each option. A new actor after End Turn,
+   a DM edit and a resolved step all count as a change. One rule then covers "turn
+   start", "after every step" and "after a cancel", and nothing has to be patched: that is
+   what "re-derived rather than patched" means in D-M5-2.
+2. **The offer must not appear on the DM console.** Give it a renderer name
+   (`render="remote"`, say) whose renderer draws nothing and reports `is_showing()` True
+   while the prompt is live. **The trap:** `_render` with no renderer leaves `_showing =
+   None`. `renderer_dismissed()` then cancels the live prompt the next time the DM clicks
+   any popup (`main.py:16945`, `:17109`, `:17123`), so the offer would be cancelled every
+   time. Add a test for exactly this.
+3. **What goes in the options.**
+   - Leave out `GROUP_SESSION` and `place_terrain`. (`perform` refuses them for a player
+     anyway, but D-M5-9's mutant is "dropping the `GROUP_SESSION` filter", so the filter
+     is tested at the offer.)
+   - No Move and no Interact yet (M5c, M5f).
+   - I and C→I rows are enabled. A / A\* / C→A / X / C→X / S rows go out
+     `enabled:false`, with a `disabled_reason` such as "needs a map pick — coming in
+     M5d". That is 65 playable, 42 disabled and 3 withheld.
+   - Encode the class in one place. The natural home is `actions.Action.expects`, which
+     exists and is set nowhere (`"agent"` / `"cell"` for A/X). Check that the panel golden
+     does not serialize it. If it does, use a table in the offer module instead.
+   - **Verify each C→I row's leaves.** A leaf that arms a pick (a thrown flask under
+     `use_item`, for example) strands the player just as an A row would.
+   - Option ids: use the action ids themselves rather than `opt_N`, since they are closed
+     and stable. The client must still treat them as opaque.
+4. **C→I sub-prompts** already go to the controller through `_ask_actor`, and they open
+   with no parent, so they supersede the offer. That is fine: the offer was answered
+   first. With no anchor, a remote `perform` anchors them at the token.
+   `menus/features.py`'s five helpers (portent, arcane ward, wild shape, companion,
+   familiar) still read `pygame.mouse.get_pos()`. Pass them `anchor` now, since the DM's
+   mouse is no anchor for a remote player's popup.
+5. **Cancel.**
+   - A cancelled C→I child empties the bus, so the poll re-offers. That closes M5a's
+     carried "child cancel re-sends parent" for this slice, with no change to
+     `PromptBus.cancel`. Record it as closed in that reading. If you want literal
+     re-send semantics, that is a dated amendment.
+   - Decide what cancelling the offer itself does. The recommendation is to refuse it
+     (`cancel_as` gives `not_cancellable`), because the next frame would re-post it
+     anyway and each attempt would be a log line.
+6. **Take over (D-M5-7).** A DM panel click on a remote turn must resolve the live offer
+   *as the DM* before it calls `perform`, so the submit log gets its `takeover` line and a
+   late player submit gets `not_live`. Do it at the click site at `:17766`: if a live
+   `kind:"action"` prompt is on the bus, cancel it with `principal_id=DM_PRINCIPAL_ID`
+   before `perform`, and check that the M5a observer logs that as a takeover. Map clicks
+   on a remote turn belong to M5d.
+
+**Oracle, and a mutant for each** (all new tests go in `tests/test_offer.py` or extend
+`test_submit.py`):
+
+| Test | Mutant that must die |
+| --- | --- |
+| the offer never carries `pause_resume` / `end_combat` / `place_terrain` (byte level, on the wire) | dropping the `GROUP_SESSION` filter |
+| no offer on a DM-controlled or NPC turn | posting whenever combat is active |
+| the DM panel golden is unchanged with a player seated on the current token | the offer rendered through the default ContextMenu renderer |
+| a DM popup click-away does not cancel the live offer | the remote renderer's `is_showing()` returning False |
+| a remote Dodge through the socket: `action_used` set, then a fresh offer without Dodge | no re-post after a step |
+| End Turn through the socket advances the turn and moves the offer to the next owner, or to none | the offer kept across a turn change |
+| an A/X row is offered disabled, with a reason, and a submit of it is refused | offering A/X rows enabled |
+| a DM click during the offer logs `takeover`, and the player's late submit gets `not_live` | the click site not resolving the offer first |
+
+End to end, extend `test_submit.py`'s `_table` harness: a seated player, a live socket, and
+a submit of `dodge` from the offer.
+
+**Also owed in M5b** (carried from M5a; not part of the D-M5-2 commit, and each is its
+own small commit):
+- **The reaction deadline (D-M5-7).**
+  - First fix `Prompt.to_wire` (`prompts.py:153`). It sends `int(deadline * 1000)`, an
+    absolute monotonic value, and Envelope 4 wants the time remaining:
+    `max(0, deadline - monotonic())` in ms, or null.
+  - Then add a DM-set session value, default 60 s, applied to reaction prompts only.
+  - Expire on the frame tick by submitting Skip, and log it.
+  - Action and target prompts keep `deadline_ms: null`.
+- **The manual browser pass.** The user runs `./run.sh`, joins on 6081 from a phone, and
+  drags an NPC out of a player token's reach to trigger an opportunity attack. After
+  D-M5-2, the same pass should also cover a player's own turn: Dodge, then End Turn.
+  Afterwards run `git checkout -- maps/TestDNDMap_agents.json maps/TestDNDMap_terrain.json`.
+
+**Rules, unchanged.**
+- Container only.
+- No C++ is expected. A header change under `combat.hpp` builds with
+  `cmake --build build --parallel 3`, then `cmake --install build`, inside the image.
+- Stage files by name and use `git commit --only`. Never `-A`, never push unasked.
+- Mutant-check every new test.
+
 **0.12.9 — frozen 2026-09-28.** The user approved D-M5-1 through D-M5-5, D-M5-7, D-M5-9, the
 slice order and the D-M5-6b reading as written. Changing any of them now takes a dated
 amendment here, as with every earlier Step 0.
+
+##### D-M5-2 — decisions *(frozen 2026-10-01; user: "Confirmed all")*
+
+These settle the six points the handoff left open. Three of them depart from its
+recommendation, and each is marked **(departure)** with its reason.
+
+1. **The offer comes from a once-per-frame check, not from turn hooks.**
+   `net/offer.ensure(app)` runs in `run()` right after `_draw_panel()`, so it reads the
+   `_action_menu` that `perform` checks.
+   - **The gate.** An offer is posted only when all of these hold:
+     - combat is active and not paused;
+     - the actor index is valid, and its controller is not the DM;
+     - no NPC drive or playback is pending;
+     - the engine has no parked decision;
+     - no target pick is armed (`App._target_pick_armed()`);
+     - nothing is live on the bus, or what is live is our own offer.
+   - **Staleness.** The offer's projection is the actor, the owner, and
+     `(id, label, enabled, reason)` per option. When it changes, the offer is re-posted
+     with `ask(parent=None)`, which supersedes the old one.
+   - **(departure) `PromptBus.withdraw(id)`.** A live offer whose gate has closed (a pause,
+     combat ending, an NPC playback) is marked `SUPERSEDED` with no callbacks. The submit
+     log ignores superseded prompts, so a withdrawal never reads as a takeover.
+2. **The offer stays off the DM console.** It is posted with `render="remote"`.
+   `RemoteRenderer` draws nothing, and its `is_showing()` is True while it holds a prompt,
+   so `renderer_dismissed()` (the only DM-side canceller, at three call sites) leaves it
+   alone.
+3. **What goes in the options.**
+   - **(departure)** The class (I / C→I / A / A\* / C→A / X / C→X / S / DM) lives in a
+     110-row table in `net/offer.py`, not in `Action.expects`. `test_action_menu.py`
+     asserts `expects == "none"` for every built action, and the wire's `expects` cannot
+     tell C→A from A anyway. A test holds the table to the ids `_perform_action`
+     dispatches. An id missing from the table goes out disabled.
+   - Enabled: I and C→I (65). Disabled, with a reason written for the player: A, A\*,
+     C→A, X, C→X and S (42). Withheld: `GROUP_SESSION` and `place_terrain` (3). No Move
+     and no Interact yet. Option ids are the action ids, and each callback is
+     `perform(id, owner)`.
+   - **The C→I leaves were verified.** None of the eight handlers or their callees arms a
+     pick (summons place themselves; Wild Shape loads its file).
+   - **Known gap, carried to M5d.** `action_surge` (EK L15's `arcane_charge_pending`),
+     `radiance` and `bite_grappled` (attack riders) can arm a pick as a follow-up. The
+     gate then closes, and the player sees no offer until the DM resolves the pick or the
+     turn ends. That is a stall, not a corrupted state.
+4. **C→I sub-prompts** keep `_ask_actor`: they are owned by the controller and opened
+   with no parent. The five `menus/features.py` helpers (portent, arcane ward, wild
+   shape, companion, familiar) take `anchor` instead of reading the DM's mouse. They are
+   still drawn on the DM console as the normal popup, as M5a's reactions are, so a DM
+   click-away cancels them and is logged as a takeover (D-M5-7).
+5. **Cancel.**
+   - A cancelled C→I child leaves the bus empty, so the next frame posts a fresh offer.
+     **M5a's carried "cancelling a child re-sends its parent" is closed for this slice in
+     that reading**, with no change to `PromptBus.cancel`.
+   - **(departure)** A player may cancel the offer itself. `not_cancellable` is not in the
+     closed `submit` error set, and adding it would amend Envelope 4. The cancel is
+     logged, and the gate re-posts the same options under a new id on the next frame. A
+     client should not show Esc on a `kind:"action"` prompt.
+6. **Take over (D-M5-7).** At the panel click site, when the live prompt is the offer, the
+   DM cancels it as `DM_PRINCIPAL_ID` before `perform` runs. The observer logs the
+   `takeover`, and the player's late submit gets `not_live`. Map clicks stay with M5c and
+   M5d.
+
+The oracle is the handoff's eight-row table plus three more:
+- a pause withdraws a live offer with no takeover line (mutant: no withdraw);
+- the class table covers exactly the dispatched ids (mutant: drop a row);
+- `_target_pick_armed()` accounts for every field `_clear_pending_target_picks` resets
+  (mutant: drop a flag).
+
+##### M5b, commit 2 — D-M5-2 landed *(2026-10-01)*
+
+- **New code:** `gui/net/offer.py` holds the class table, `offered`, `gate`, `ensure` and
+  `take_over`. `prompts.py` gains `RemoteRenderer` and `PromptBus.withdraw`. `main.py`
+  registers the `"remote"` renderer, adds `_target_pick_armed()` with its two field
+  lists, calls `ensure` after `_draw_panel()`, and calls `take_over` at the panel click
+  site. The five `menus/features.py` helpers take `anchor`.
+- **Tests:** `tests/test_offer.py` has 11 checks, and each one fails against its mutant
+  (12 mutants, all of them killed). The wire checks drive a real socket, through
+  `test_submit._Table` with the drawing half of the frame tick added.
+- **Results:** the suite is **164 / 0** in the container, and the panel and determinism
+  goldens are unchanged. No C++ changed.
+- **Still owed in M5b:** the reaction deadline (D-M5-7), and the manual browser pass,
+  which should now include Dodge then End Turn from a phone.
 
 
 ---

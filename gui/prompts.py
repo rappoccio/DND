@@ -299,6 +299,30 @@ class ElementPickerRenderer:
         return bool(getattr(self._dlg, "visible", False))
 
 
+class RemoteRenderer:
+    """Holds a prompt that only its owner's browser draws: the player's action offer
+    (D-M5-2). It draws nothing on the DM console.
+
+    It exists because "no renderer" is not "drawn elsewhere". With none, ``_render``
+    leaves ``_showing`` empty, and ``renderer_dismissed()`` then reads the DM's next
+    click-away on any popup as a dismissal of this prompt and cancels it. Reporting
+    ``is_showing()`` while it holds the prompt is what tells the bus the widget is up,
+    just somewhere else.
+    """
+
+    def __init__(self):
+        self._prompt: Prompt | None = None
+
+    def show(self, prompt: Prompt, submit: Callable[[str], None]) -> None:
+        self._prompt = prompt
+
+    def dismiss(self) -> None:
+        self._prompt = None
+
+    def is_showing(self) -> bool:
+        return self._prompt is not None
+
+
 class PromptBus:
     """Holds the live prompt (and its ancestors), validates every answer, and owns the
     single resumption point each call site used to own itself.
@@ -552,6 +576,25 @@ class PromptBus:
         for p in reversed(doomed):
             if p.on_cancel is not None:
                 p.on_cancel()
+        return True
+
+    def withdraw(self, prompt_id: str) -> bool:
+        """Take a live prompt down because the state that asked for it has gone, not
+        because anyone answered or declined it (D-M5-2).
+
+        The action offer is the case: it was posted while a player's turn was open, and
+        the DM has since paused, or combat ended. It is marked ``SUPERSEDED``, as if a
+        later prompt had taken the renderer, and no callback runs. The submit log
+        observes only answers and cancels, so a withdrawal is never logged as a takeover.
+        A prompt that is not on the displayed stack is left alone.
+        """
+        prompt = self._prompts.get(prompt_id)
+        if prompt is None or not prompt.is_live or prompt not in self._stack:
+            return False
+        for p in self._clear_stack():
+            if p.is_live:
+                p.state = PromptState.SUPERSEDED
+                self._publish("superseded", p)
         return True
 
     def renderer_dismissed(self) -> bool:

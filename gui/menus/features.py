@@ -48,7 +48,7 @@ _DAMAGE_TYPE_NAMES = {0: "Acid", 1: "Cold", 2: "Fire", 3: "Force", 4: "Lightning
                       5: "Necrotic", 6: "Poison", 7: "Psychic", 8: "Radiant", 9: "Thunder"}
 
 
-def show_portent_dice_menu(app):
+def show_portent_dice_menu(app, anchor=None):
     """Show available portent dice for selection."""
     idx = app._current_agent_idx()
     if idx < 0:
@@ -69,10 +69,10 @@ def show_portent_dice_menu(app):
         items.append((label, lambda idx=die_idx: app._use_portent_die_at_index(idx)))
 
     app._ask_actor(idx, "action", f"{app._agent_name(idx)}: spend a Portent die", items,
-                    anchor=pygame.mouse.get_pos())
+                    anchor=anchor)
 
 
-def show_arcane_ward_menu(app):
+def show_arcane_ward_menu(app, anchor=None):
     """Show available spell slots for Arcane Ward charging."""
     idx = app._current_agent_idx()
     if idx < 0:
@@ -99,10 +99,10 @@ def show_arcane_ward_menu(app):
         return
 
     app._ask_actor(idx, "action", f"{app._agent_name(idx)}: charge the Arcane Ward", items,
-                    anchor=pygame.mouse.get_pos())
+                    anchor=anchor)
 
 
-def show_wild_shape_menu(app):
+def show_wild_shape_menu(app, anchor=None):
     """Show Wild Shape form options or end Wild Shape if already active."""
     idx = app._current_agent_idx()
     if idx < 0:
@@ -168,7 +168,7 @@ def show_wild_shape_menu(app):
         items.append((label, lambda b=beast['name']: app._activate_wild_shape(idx, b)))
 
     app._ask_actor(idx, "action", f"{app._agent_name(idx)}: choose a Wild Shape form", items,
-                    anchor=pygame.mouse.get_pos())
+                    anchor=anchor)
 
 
 def show_unarmed_menu(app, mouse_pos):
@@ -237,7 +237,7 @@ def show_use_item_menu(app, pos):
                     anchor=pos)
 
 
-def show_companion_menu(app):
+def show_companion_menu(app, anchor=None):
     """Beast Master L3+: summon a Beast of the Land/Sea/Sky, or dismiss the
     active companion. Mirrors the Wild Shape menu (context_menu)."""
     idx = app._current_agent_idx()
@@ -257,10 +257,10 @@ def show_companion_menu(app):
               lambda f=form: app._summon_companion(idx, f))
              for form in ("Land", "Sea", "Sky")]
     app._ask_actor(idx, "action", f"{app._agent_name(idx)}: summon a Primal Companion",
-                    items, anchor=pygame.mouse.get_pos())
+                    items, anchor=anchor)
 
 
-def show_familiar_menu(app):
+def show_familiar_menu(app, anchor=None):
     """Pact of the Chain (L1+): summon one of the six familiar forms, or dismiss the
     active familiar (the button label toggles). Mirrors the Primal Companion / Wild
     Shape menus (context_menu)."""
@@ -279,7 +279,7 @@ def show_familiar_menu(app):
     items = [(f"😈 {form}", lambda f=form: app._summon_familiar(idx, f))
              for form in PACT_CHAIN_FAMILIARS]
     app._ask_actor(idx, "action", f"{app._agent_name(idx)}: summon a Pact familiar",
-                    items, anchor=pygame.mouse.get_pos())
+                    items, anchor=anchor)
 
 
 def show_legendary_action_menu(app, idx: int, st):

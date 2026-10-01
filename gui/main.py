@@ -76,6 +76,8 @@ from net import link as net_link
 # `perform` (D-M5-1) asks `authorize()` for a verb, and reaches it qualified as
 # `net_roster.Action` so that the unqualified name stays unused (see below).
 from net import roster as net_roster
+# D-M5-2: a player's own turn, as one prompt on the bus; see net/offer.py.
+from net import offer as net_offer
 # S3 (M2): what the combat panel may offer, as data. `actions.Action` is the game
 # option; `net.roster.Action` above is the authorization verb — unrelated, so only
 # ActionMenu is imported here and neither `Action` is in this module's namespace.
@@ -84,7 +86,7 @@ from actions import (ActionMenu, fey_rider_index, GROUP_SESSION, METAMAGIC_OPTIO
 # M1, seam S2: every choice is a Prompt on the bus, and ContextMenu is one renderer of
 # it. The bus also fills the roster's prompt_lookup hook that M0 left empty (D-M0-3).
 from prompts import (PromptBus, Option, ContextMenuRenderer, SpellGridRenderer,
-                     ElementPickerRenderer, options_from_pairs)
+                     ElementPickerRenderer, RemoteRenderer, options_from_pairs)
 
 # S3 (M2b): §4's three rows, as the only place row membership is written down. The
 # ActionMenu builds the Action group in column order; these say where each row breaks.
@@ -652,6 +654,8 @@ class App:
                 "grid":   SpellGridRenderer(self.spell_grid_menu,
                                             lambda: self.screen.get_size()),
                 "picker": ElementPickerRenderer(self._element_dialog),
+                # D-M5-2: the player's action offer. Drawn only in their browser.
+                net_offer.OFFER_RENDER: RemoteRenderer(),
             })
         # D-M5-6a: the intent log. It observes the bus so that the DM taking a player's
         # prompt from them is a line too (D-M5-7); remote submits log themselves.
@@ -778,6 +782,8 @@ class App:
         self.initiative_item_rects = []  # list[pygame.Rect], clickable areas for initiative items
         self.on_deck_item_rects   = []    # list[(pygame.Rect, name)], clickable Deploy rows for On Deck groups
         self._action_menu         = {}    # id -> actions.Action, rebuilt each combat-panel frame (S3/M2)
+        self._offer               = None  # D-M5-2: the player's live action offer (a Prompt), if any
+        self._offer_key           = None  # ...and the projection it was built from (net/offer.py)
         self.turn_idx             = 0     # index into initiative_order
         self.action_used          = False
         self.bonus_used           = False
@@ -4507,6 +4513,51 @@ class App:
         self.pending_duplicity_remaining = 0
         self._duplicity_cd_pending       = False
         self.pending_mantle_targets      = []
+
+    # The arms `_target_pick_armed` reads, with the idle value each rests at. Every field
+    # `_clear_pending_target_picks` resets is either here or in `_TARGET_PICK_COMPANIONS`;
+    # tests/test_offer.py holds the two lists to that function's body.
+    _TARGET_PICK_ARMS = (
+        ("arcane_charge_pending", False), ("blink_steps_pending", False),
+        ("pending_psychic_teleport", False), ("pending_shadow_step", False),
+        ("pending_wild_magic_teleport", False), ("pending_warping_implosion", False),
+        ("pending_shadow_darkness", False), ("pending_steps_of_fey", False),
+        ("pending_misty_escape", False), ("pending_bewitching_misty", False),
+        ("pending_invoke_duplicity", False), ("pending_move_duplicity", False),
+        ("pending_swap_duplicity", False), ("pending_heal_light", False),
+        ("pending_lay_on_hands", False), ("pending_bastion_of_law", False),
+        ("pending_hand_of_healing", False), ("pending_escape_net", False),
+        ("pending_grant_inspiration", False), ("pending_mantle_active", False),
+        ("pending_beguiling", False), ("pending_clairvoyant", False),
+        ("pending_vow_of_enmity", False), ("pending_inspiring_smite", False),
+        ("pending_telekinetic", False), ("pending_flurry_target", False),
+        ("pending_vitality_target", False), ("_legendary_target_pick", False),
+        ("pending_cleave", None), ("pending_sweep", None),
+        ("pending_rally", None), ("pending_feint", None),
+        ("pending_use_item", -1), ("pending_elemental_burst", -1),
+        ("pending_beguiling_bard", -1),
+        # Not reset at a turn boundary, but armed the same way: the attack, shove and
+        # spell picks, and the jump overlay.
+        ("pending_attack_slot", ""), ("pending_shove_slot", ""),
+        ("pending_spell_slot", ""), ("jump_overlay_active", False),
+    )
+    # Reset beside the arms, but state that rides along with one rather than arming a
+    # click itself. Some of them can rest off their idle value after the pick resolves,
+    # which is why they must not hold the offer back.
+    _TARGET_PICK_COMPANIONS = (
+        "move_duplicity_idx", "_vitality_option_index", "pending_flurry_atk_idx",
+        "pending_flurry_rider_option", "pending_bastion_sp", "pending_duplicity_remaining",
+        "_duplicity_cd_pending", "pending_mantle_targets",
+    )
+
+    def _target_pick_armed(self) -> bool:
+        """True while the next map click belongs to a pick in progress (D-M5-2).
+
+        A player cannot make that click over the wire until M5d, so the action offer is
+        held back while one is armed: offering another action mid-pick would let it run
+        over the armed one. The DM resolves the pick on the map, or the turn boundary's
+        `_clear_pending_target_picks()` clears it."""
+        return any(getattr(self, name, idle) != idle for name, idle in self._TARGET_PICK_ARMS)
 
     def _proceed_to_new_turn(self):
         """Begin the next combatant's turn. Runs after _advance_turn ends the previous turn and the
@@ -15167,7 +15218,7 @@ class App:
                 self._update_reach()
                 self._update_attack_overlay()
         if action_id == "use_portent":
-            features.show_portent_dice_menu(self)
+            features.show_portent_dice_menu(self, anchor)
         if action_id == "grapple_drop":
             self._execute_grapple_drop()
         # Use Item is NOT gated on the bonus action: a potion is a Bonus Action, but a
@@ -15747,13 +15798,13 @@ class App:
                     self.pending_wild_magic_teleport = True
                     self._combat_log_add("Wild Magic Teleport: click a destination cell.")
             if action_id == "companion":
-                features.show_companion_menu(self)
+                features.show_companion_menu(self, anchor)
             if action_id == "familiar":
-                features.show_familiar_menu(self)
+                features.show_familiar_menu(self, anchor)
             if action_id == "charge_arcane_ward":
-                features.show_arcane_ward_menu(self)
+                features.show_arcane_ward_menu(self, anchor)
             if action_id == "wild_shape":
-                features.show_wild_shape_menu(self)
+                features.show_wild_shape_menu(self, anchor)
         # F11, closed: Open Hand L11 Fleet Step is the one option in the band that
         # needs the Bonus Action to be GONE — it is a free Step of the Wind precisely
         # because it rides alongside another Bonus Action. Dispatched outside the gate
@@ -17766,6 +17817,7 @@ class App:
                 _clicked = next((a for a in self._action_menu
                                  if self._action_clicked(a, event)), None)
                 if _clicked is not None:
+                    net_offer.take_over(self)   # D-M5-7: the DM acts; the player's offer ends
                     self.perform(_clicked, DM_PRINCIPAL_ID, event.pos)
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for mv_mt, mv_rect in self._move_type_btns.items():
@@ -17938,6 +17990,7 @@ class App:
             self._draw_hover_cursor()                       # always-on map cursor (in & out of combat)
             self._draw_agent_hover_name()                   # token name shown only under the pointer
             self._draw_panel()                              # config panel (hosts the Floor-nav block)
+            net_offer.ensure(self)                          # D-M5-2: the offer, from the menu just built
             self._draw_cursor_cell_info()                   # debug: cell under cursor
             self._draw_xp_total()                           # running party-XP scoreboard (bottom-right)
             self.terrain_editor.draw(self.screen)          # modal — always on top

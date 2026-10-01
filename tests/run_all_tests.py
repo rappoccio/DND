@@ -41,6 +41,10 @@ test_scripts = [
     # half — what an offered id DOES — and because a remote submit reaches the game
     # through nothing else.
     "test_perform.py",
+    # The action offer (M5b, D-M5-2): a player's own turn as one prompt, derived each
+    # frame from the menu `perform` checks. Beside it because it is `perform`'s caller
+    # for every remote action.
+    "test_offer.py",
 
     # Rendered-geometry invariants for the same panel (MULTIPLAYER_PLAN.md M2) — the
     # third leg. The golden proves the structure did not CHANGE and the action menu
