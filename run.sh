@@ -34,8 +34,8 @@ if [[ "$MAP_PATH" = "$HOME"* ]]; then
     CONTAINER_MAP_PATH="/home/user${MAP_PATH#$HOME}"
 fi
 
-echo "[*] Building Docker image (if needed)..."
-docker build -t rpg_map "$SCRIPT_DIR" > /dev/null 2>&1
+#echo "[*] Building Docker image (if needed)..."
+#docker build -t rpg_map "$SCRIPT_DIR" > /dev/null 2>&1
 
 echo "[*] Launching RPG Battle Map GUI..."
 echo "[*] Map: $MAP_PATH"

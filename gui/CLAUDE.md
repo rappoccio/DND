@@ -82,10 +82,30 @@ So every command below is a container command. If a recipe anywhere starts `cmak
 `python main.py …` with no `docker run` around it, it is a recipe to run **inside** the
 image — never on the host.
 
+## The Docker image is built by the user, separately, and only when necessary
+
+**Updated 2026-10-01 (user's decision).** Building the `rpg_map` image is decoupled from
+building, testing and running the project. The user builds it themselves, in a separate
+directory, and only when the image actually needs to change — a `Dockerfile` change, such
+as a new pip or apt dependency. A rebuild from scratch on every run cost minutes for
+nothing when the change was trivial.
+
+- **No project script runs `docker build`.** `run.sh`, `build.sh` and `test.sh` all assume
+  `rpg_map` already exists and only `docker run` it. Don't add a `docker build` back to any
+  of them, not even "if needed".
+- **Never run `docker build` yourself**, and never suggest it as a routine step. A code
+  change, C++ or Python, never needs a new image: `./build.sh` / `./test.sh` recompile the
+  extension inside the existing one.
+- **If a change does need a new image** (you edited the `Dockerfile`, or added a
+  dependency the image lacks), say so plainly and stop: tell the user what changed and
+  why the image needs rebuilding, and let them do it.
+- If `docker run` fails because `rpg_map` is missing or stale, report that. Don't build
+  it to work around it.
+
 ## Build
 
 ```bash
-./build.sh                     # the supported way
+./build.sh                     # the supported way: compiles the extension in the existing image
 ```
 
 Under the hood, inside the image (`compile.sh`):
@@ -108,8 +128,8 @@ headers, and (since M4) `aiohttp`. Nothing needs installing on the host but Dock
 Then open **http://localhost:6080/vnc.html** — the DM console, over noVNC. `run.sh`
 publishes 6080 on `127.0.0.1` only (it is an unauthenticated `x11vnc -nopw` session, so
 anyone who reaches it *is* the DM) and publishes the M4 player server on `6081` to the
-LAN. Rebuilding the image is `docker build -t rpg_map .`, and is needed when the
-`Dockerfile` changes — a new pip dependency, most recently.
+LAN. `run.sh` does not build the image; the user rebuilds it separately when the
+`Dockerfile` changes (see *The Docker image is built by the user* above).
 
 ## Tests
 

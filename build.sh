@@ -2,12 +2,12 @@
 set -e
 
 # Build script for RPG Battle Map
-# Builds the C++ extension inside Docker with volume mounts
+# Builds the C++ extension inside the existing rpg_map image, with volume mounts
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-echo "[*] Building Docker image..."
-docker build -t rpg_map "$SCRIPT_DIR"
+# The rpg_map image is NOT built here. The user builds it separately, in another
+# directory, only when the Dockerfile changes; this script assumes it exists.
 
 CONTAINER_DIR="/home/user${SCRIPT_DIR#$HOME}"
 

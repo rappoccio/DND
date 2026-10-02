@@ -39,8 +39,10 @@ git lock issues. The user fixed the root cause by moving the repo to `~/Claude/D
   docker run --rm -v "$HOME":/home/user rpg_map -c "cd /home/user/Claude/DND && python3 tests/test_prompts.py"
   ```
 - Pure `main.py` edits need no rebuild. Re-running is `./run.sh`, also a container launch.
-- A `Dockerfile` change (a new pip dependency — `aiohttp` for M4) needs
-  `docker build -t rpg_map .`, which installs, so it is the user's call.
+- The image is built by the user, in a separate directory, only when necessary
+  (2026-10-01). No script runs `docker build`, and neither does Claude. A `Dockerfile`
+  change (a new pip dependency — `aiohttp` for M4) needs a new image: say so and let the
+  user build it.
 
 **Git, unchanged:** the user owns git. **Commit only when asked** — a direct request is
 enough and is common ("commit and mark it done"); **pushing is a separate ask** and every
