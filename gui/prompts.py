@@ -34,6 +34,7 @@ may invent a field.
 from __future__ import annotations
 
 import enum
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, Sequence
 
@@ -58,6 +59,12 @@ ERR_TIMEOUT    = "timeout"       # reserved for the M5 transport; never produced
 # "not_live" (true, and useful); a submit for one that has fallen out gets "protocol"
 # (also true, and the client's recovery — re-read /state — is the same either way).
 HISTORY_LIMIT = 64
+
+# Who resolved a prompt whose deadline passed (D-M5-7). Not a roster principal: no one can
+# authenticate as it, and it cannot collide with "dm" or a minted "p_…" id. It is what
+# `resolved_by` says after an expiry, which is how the submit log tells an expiry from the
+# DM taking over.
+CLOCK_PRINCIPAL_ID = "clock"
 
 
 class PromptState(enum.Enum):
@@ -119,7 +126,7 @@ class Prompt:
     title:     str
     options:   tuple[Option, ...]
     expects:   str = "choice"
-    deadline:  float | None = None      # monotonic deadline; unused until M5's expiry
+    deadline:  float | None = None      # time.monotonic() at which `PromptBus.expire` skips it
     parent_id: str | None = None        # the stack, per Step 0.5
     anchor:    tuple[int, int] | None = None   # local render hint; not on the wire
     render:    str | None = None        # which local renderer draws it; not on the wire
@@ -150,7 +157,18 @@ class Prompt:
                 "title": self.title,
                 "expects": self.expects,
                 "options": [o.to_wire() for o in self.options],
-                "deadline_ms": None if self.deadline is None else int(self.deadline * 1000)}
+                "deadline_ms": self.deadline_ms()}
+
+    def deadline_ms(self, now: float | None = None) -> int | None:
+        """Envelope 4's ``deadline_ms``: what is left, in ms, or None for no deadline.
+
+        Relative, because ``deadline`` is a ``time.monotonic()`` value and means nothing on
+        another machine. It shrinks on every push, since the prompt is re-sent each cycle,
+        and it is 0 once the deadline has passed and the frame tick has not yet expired it."""
+        if self.deadline is None:
+            return None
+        now = time.monotonic() if now is None else now
+        return max(0, int((self.deadline - now) * 1000))
 
 
 @dataclass(frozen=True)
@@ -577,6 +595,26 @@ class PromptBus:
             if p.on_cancel is not None:
                 p.on_cancel()
         return True
+
+    def expire(self, now: float | None = None) -> Prompt | None:
+        """Skip the live prompt if its deadline has passed, and return it (D-M5-7).
+
+        Expiry is a cancel by `CLOCK_PRINCIPAL_ID`, so the prompt's ``on_cancel`` runs, and a
+        prompt that carries a deadline must make that its Skip: `App._reaction_deadline`
+        gives one only to a prompt that has an ``on_cancel``. The prompt is then
+        ``CANCELLED``, so a late submit gets ``not_live``. The submit log reads
+        ``resolved_by`` and writes one ``expired`` line, never a ``takeover``.
+
+        Only the displayed leaf is checked. An ancestor's deadline means nothing while a
+        child is up, and no prompt with a deadline opens a submenu today.
+        """
+        prompt = self.live
+        if prompt is None or not prompt.is_live or prompt.deadline is None:
+            return None
+        if (time.monotonic() if now is None else now) < prompt.deadline:
+            return None
+        self.cancel(prompt.id, CLOCK_PRINCIPAL_ID)
+        return prompt
 
     def withdraw(self, prompt_id: str) -> bool:
         """Take a live prompt down because the state that asked for it has gone, not

@@ -45,6 +45,9 @@ test_scripts = [
     # frame from the menu `perform` checks. Beside it because it is `perform`'s caller
     # for every remote action.
     "test_offer.py",
+    # The reaction deadline (M5b, D-M5-7): a player's unanswered reaction is skipped on
+    # the frame tick, and only a reaction ever is.
+    "test_deadline.py",
 
     # Rendered-geometry invariants for the same panel (MULTIPLAYER_PLAN.md M2) — the
     # third leg. The golden proves the structure did not CHANGE and the action menu

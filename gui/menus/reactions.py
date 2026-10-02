@@ -10,6 +10,13 @@ the attacker's player is refused (M1 Step 0.2's G3, pinned by
 
 `_ask_actor` derives the owner from whoever is anchored, so each site's contribution is
 simply passing the REACTOR's index rather than the actor's.
+
+Each of the five reactions passes its own Skip as `on_cancel` (D-M5-7). That is what a
+player's reaction deadline runs when it expires (`PromptBus.expire`), and what the DM's
+click-away runs, as it already did for the engine-parked windows. Before, a dismissal
+ran nothing: the original attack's line was never logged and the attack sequence it
+interrupted never continued. Restore Balance is `kind="action"`, carries its own Skip row
+and no deadline, and is unchanged.
 """
 
 import rpg_battle_map as rpg
@@ -57,7 +64,8 @@ def offer_riposte(app, action, atk_idx, target_idx, atk_name, tgt_name, result, 
     ]
     # The reactor is the DEFENDER, so `owner` follows target_idx and not the actor —
     # _ask_actor derives it from whoever is anchored (Step 0.2's G3).
-    app._ask_actor(target_idx, "reaction", f"{tgt_name} may Riposte {atk_name}", options)
+    app._ask_actor(target_idx, "reaction", f"{tgt_name} may Riposte {atk_name}", options,
+                   on_cancel=_skip)
 
 
 def offer_sentinel_guard(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
@@ -114,7 +122,7 @@ def offer_sentinel_guard(app, action, atk_idx, target_idx, atk_name, tgt_name, r
     ]
     app._ask_actor(sentinel_idx, "reaction",
                     f"{sent_name} may guard {tgt_name} — Sentinel reaction vs {atk_name}",
-                    options)
+                    options, on_cancel=_skip)
 
 
 def offer_soul_of_vengeance(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
@@ -170,7 +178,7 @@ def offer_soul_of_vengeance(app, action, atk_idx, target_idx, atk_name, tgt_name
     ]
     app._ask_actor(pal_idx, "reaction",
                     f"{pal_name} may strike back at {atk_name} — Soul of Vengeance",
-                    options)
+                    options, on_cancel=_skip)
 
 
 def offer_protective_field(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
@@ -202,7 +210,7 @@ def offer_protective_field(app, atk_idx, target_idx, atk_name, tgt_name, result,
     ]
     app._ask_actor(target_idx, "reaction",
                     f"{tgt_name} may blunt {atk_name}'s hit — Protective Field",
-                    options)
+                    options, on_cancel=_skip)
 
 
 def offer_interception(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
@@ -238,7 +246,7 @@ def offer_interception(app, action, atk_idx, target_idx, atk_name, tgt_name, res
     ]
     app._ask_actor(interceptor_idx if interceptor_idx >= 0 else target_idx, "reaction",
                     f"{itc_name} may intercept {atk_name}'s hit on {tgt_name}",
-                    options)
+                    options, on_cancel=_skip)
 
 
 def offer_restore_balance_miss(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):

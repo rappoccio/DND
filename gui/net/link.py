@@ -84,8 +84,16 @@ def pump_submits(app, budget: int = commands.DEFAULT_BUDGET) -> int:
     D-M4d-4 forbids a command to do. So this sits in the frame loop beside
     `_handle_events`, and a blocking modal holds submits back rather than running them
     underneath itself.
+
+    **The reaction deadline expires here too (D-M5-7), after the queue is drained.** Expiry
+    runs a Skip, which is input in the same sense, so it needs the same quiet point and is
+    held back by the same modals. Draining first means a submit that reached the queue
+    before this frame wins over the deadline: the player who answered in time is not
+    skipped because the frame tick was late.
     """
-    return app._net_submits.pump(app, budget)
+    done = app._net_submits.pump(app, budget)
+    app.prompts.expire()
+    return done
 
 
 def build_live(app, viewer) -> list[dict]:

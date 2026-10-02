@@ -15,6 +15,7 @@ import re
 import math
 import random
 import shutil
+import time
 
 os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')
 
@@ -87,6 +88,11 @@ from actions import (ActionMenu, fey_rider_index, GROUP_SESSION, METAMAGIC_OPTIO
 # it. The bus also fills the roster's prompt_lookup hook that M0 left empty (D-M0-3).
 from prompts import (PromptBus, Option, ContextMenuRenderer, SpellGridRenderer,
                      ElementPickerRenderer, RemoteRenderer, options_from_pairs)
+
+# D-M5-7: the reaction deadline's choices, in the order the session-row button cycles them.
+# None is "no limit". The default is the frozen 60 s.
+REACTION_TIMEOUT_DEFAULT_S = 60
+REACTION_TIMEOUT_CHOICES_S = (15, 30, 60, 120, None)
 
 # S3 (M2b): §4's three rows, as the only place row membership is written down. The
 # ActionMenu builds the Action group in column order; these say where each row breaks.
@@ -783,6 +789,10 @@ class App:
         self.on_deck_item_rects   = []    # list[(pygame.Rect, name)], clickable Deploy rows for On Deck groups
         self._action_menu         = {}    # id -> actions.Action, rebuilt each combat-panel frame (S3/M2)
         self._offer               = None  # D-M5-2: the player's live action offer (a Prompt), if any
+        # D-M5-7: how long a player has to answer a reaction before it is skipped, in
+        # seconds, or None for no limit. A table rule the DM sets from the session row; it
+        # is not reset between fights, and `_combat.json` carries it across a resume.
+        self.reaction_timeout_s   = REACTION_TIMEOUT_DEFAULT_S
         self._offer_key           = None  # ...and the projection it was built from (net/offer.py)
         self.turn_idx             = 0     # index into initiative_order
         self.action_used          = False
@@ -1456,6 +1466,9 @@ class App:
         self.btn_cbt_pause_resume = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "⏸ Pause",
                                           (200, 150, 80), (230, 180, 110), self.font_md)
+        self.btn_cbt_reaction_timer = Button(pygame.Rect(px, dummy_y, HW, B),
+                                          "React 60s",
+                                          (120, 140, 170), (150, 170, 200), self.font_md)
         self.btn_cbt_end_turn    = Button(pygame.Rect(px, dummy_y, W, B),
                                           "End Turn",
                                           COL_BTN_ENDTURN, COL_BTN_ENDTURN_HOV, self.font_md)
@@ -9204,13 +9217,17 @@ class App:
         # The first prompt on the bus (M1 Step 2). The owner is the REACTOR's controller,
         # not the actor's: an opportunity attack belongs to the creature taking it, which
         # is why `owner` is load-bearing from the very first conversion (Step 0.2).
+        owner = self.roster.controller_of(ctx.reactor_idx)
         self.prompts.ask(
             actor_idx=ctx.reactor_idx,
-            owner=self.roster.controller_of(ctx.reactor_idx),
+            owner=owner,
             kind="reaction",
             title=title,
             options=options_from_pairs(
                 (opt.label, _make_cb(i, opt.feature)) for i, opt in enumerate(ctx.options)),
+            # D-M5-7: a player's window is skipped when the DM's timer runs out, through
+            # the same on_cancel a click-away runs.
+            deadline=self._reaction_deadline("reaction", owner, self._submit_reaction_skip),
             anchor=self._agent_screen_pos(ctx.reactor_idx),
             # Dismissing the popup must still resolve the parked window, or a queued
             # following reactor never gets its own (Branches after Vitality of the Tree).
@@ -9330,16 +9347,45 @@ class App:
         answers itself, and is passed explicitly where it is not — the defender
         reactions of G3, and the DM-authoring menus, which take ``DM_PRINCIPAL_ID``.
         """
+        owner = self.roster.controller_of(actor_idx) if owner is None else owner
         return self.prompts.ask(
             actor_idx=actor_idx,
-            owner=self.roster.controller_of(actor_idx) if owner is None else owner,
+            owner=owner,
             kind=kind,
             title=title,
             options=options_from_pairs(pairs),
+            deadline=self._reaction_deadline(kind, owner, on_cancel),
             parent=parent,
             render=render,
             anchor=self._agent_screen_pos(actor_idx) if anchor is None else anchor,
             on_cancel=on_cancel)
+
+    def _reaction_deadline(self, kind, owner, on_cancel):
+        """The ``deadline`` a new prompt carries: D-M5-7's rule, in one place.
+
+        A deadline goes only on a ``reaction`` prompt that a player owns. Action and target
+        prompts never get one, because expiry must never end a player's turn and the DM is
+        the timeout there. The DM's own reactions never get one either, because the DM is
+        sitting at the console the prompt is drawn on.
+
+        Expiry runs ``on_cancel`` (`PromptBus.expire`), so a prompt with no ``on_cancel``
+        gets no deadline: skipping it would run nothing, and a prompt that waits for the DM
+        is better than one that vanishes and leaves the attack it interrupted parked.
+        """
+        if (kind != "reaction" or owner == DM_PRINCIPAL_ID or on_cancel is None
+                or self.reaction_timeout_s is None):
+            return None
+        return time.monotonic() + self.reaction_timeout_s
+
+    def _cycle_reaction_timeout(self):
+        """The session row's timer button: the next of `REACTION_TIMEOUT_CHOICES_S`.
+
+        It applies to the next reaction prompt. One already live keeps the deadline it was
+        asked with, which its owner has already been shown."""
+        choices = REACTION_TIMEOUT_CHOICES_S
+        cur = self.reaction_timeout_s
+        i = choices.index(cur) if cur in choices else choices.index(REACTION_TIMEOUT_DEFAULT_S)
+        self.reaction_timeout_s = choices[(i + 1) % len(choices)]
 
     def _ask_dm(self, kind, title, pairs, *, anchor=None, actor_idx=-1,
                 parent=None, on_cancel=None):
@@ -11402,6 +11448,7 @@ class App:
             "engine":       json.loads(self.combat.snapshot_json()),
             "combat_active": bool(self.combat_active),
             "combat_paused": bool(self.combat_paused),
+            "reaction_timeout_s": self.reaction_timeout_s,
             "turn_idx":      int(self.turn_idx),
             "round_num":     int(self.round_num),
             "initiative_order": [
@@ -11454,6 +11501,11 @@ class App:
         self.initiative_order = order
         self.combat_active    = bool(doc.get("combat_active", False)) and bool(order)
         self.combat_paused    = bool(doc.get("combat_paused", False))
+        # Absent in a sidecar written before D-M5-7: keep the session's value. An unknown
+        # value is refused the same way, rather than trusted as a number of seconds.
+        timeout = doc.get("reaction_timeout_s", self.reaction_timeout_s)
+        if timeout in REACTION_TIMEOUT_CHOICES_S:
+            self.reaction_timeout_s = timeout
         self.turn_idx  = min(max(0, int(doc.get("turn_idx", 0))), max(0, len(order) - 1))
         self.round_num = int(doc.get("round_num", 0))
         self._initiative_autopaged_turn = -1   # re-arm auto-paging for the resumed turn
@@ -15913,6 +15965,8 @@ class App:
             self.terrain_placement_dialog.open(self.map_surf, self.bm, self)
         if action_id == "pause_resume":
             self.combat_paused = not self.combat_paused
+        if action_id == "reaction_timer":
+            self._cycle_reaction_timeout()
         if action_id == "end_turn":
             if self.pending_beguiling:
                 # Don't let End Turn silently waste an armed Beguiling Magic offer — make the
@@ -15988,7 +16042,7 @@ class App:
         txt("⚔  Combat", lx, y, COL_INITIATIVE_CUR, self.font_lg)
         y += 28
 
-        # ── Pause + End Combat row ─────────────────────────────────────────
+        # ── Pause + reaction timer + End Combat row ────────────────────────
         y = panel.draw_action_row(self, panel.menu_group(self, "session"), lx, y, W, gap,
                                   trail=8, font=self.font_sm)
 
@@ -17817,7 +17871,10 @@ class App:
                 _clicked = next((a for a in self._action_menu
                                  if self._action_clicked(a, event)), None)
                 if _clicked is not None:
-                    net_offer.take_over(self)   # D-M5-7: the DM acts; the player's offer ends
+                    # D-M5-7: the DM acts; the player's offer ends. Setting the reaction
+                    # timer is not acting on their turn, so it leaves the offer up.
+                    if _clicked != "reaction_timer":
+                        net_offer.take_over(self)
                     self.perform(_clicked, DM_PRINCIPAL_ID, event.pos)
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     for mv_mt, mv_rect in self._move_type_btns.items():
@@ -17974,7 +18031,7 @@ class App:
         running = True
         while running:
             running = self._handle_events()
-            net_link.pump_submits(self)         # M5a: remote answers, decided where clicks are
+            net_link.pump_submits(self)         # M5a: remote answers, decided where clicks are; D-M5-7 expiry
             self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
             self._advance_npc_playback()        # NPC turn playback: animate the recorded turn
             self._refresh_fog()                 # fog of war: monotonic reveal when marked stale

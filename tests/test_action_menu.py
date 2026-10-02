@@ -107,7 +107,7 @@ def test_session_group_is_unconditional_and_labels_the_pause_state():
 
     for idx in (aria, -1, 999):
         ids = _ids(app, idx)
-        assert "pause_resume" in ids and "end_combat" in ids, idx
+        assert "pause_resume" in ids and "reaction_timer" in ids and "end_combat" in ids, idx
     print("✅ test_session_group_is_unconditional_and_labels_the_pause_state passed")
 
 
@@ -173,7 +173,7 @@ def test_out_of_range_agent_yields_only_the_creature_free_groups():
         for spent in (False, True):
             app.bonus_used = spent
             ids = _ids(app, idx)
-            assert ids == ["pause_resume", "end_combat", "end_turn",
+            assert ids == ["pause_resume", "reaction_timer", "end_combat", "end_turn",
                            "place_terrain"], (idx, spent, ids)
         app.bonus_used = False
     print("✅ test_out_of_range_agent_yields_only_the_creature_free_groups passed")

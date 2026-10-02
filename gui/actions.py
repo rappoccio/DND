@@ -43,7 +43,7 @@ import rpg_battle_map as rpg
 # The panel's visual sections, as Step 0.3 numbered them. `group` is the projection a
 # renderer batches by — the DM panel draws a section per group, and M4's client will
 # too — so it is part of the model and not a comment.
-GROUP_SESSION = "session"    # §1  DM tools: pause, end combat
+GROUP_SESSION = "session"    # §1  DM tools: pause, reaction timer, end combat
 GROUP_TURN    = "turn"       # §3  turn control: end turn
 GROUP_ACTION  = "action"     # §4  the Action economy band          (M2b)
 GROUP_PORTENT = "portent"    # §6  Portent dice                     (M2b)
@@ -313,10 +313,16 @@ class ActionMenu:
     # ── §1 — DM tools ──────────────────────────────────────────────────────────
     @staticmethod
     def _session(app) -> list[Action]:
-        # Both are DM tools standing outside the fiction, so neither has an economy.
+        # All three are DM tools standing outside the fiction, so none has an economy.
+        # The timer is D-M5-7's: how long a player has to answer a reaction. Its label is
+        # the value, and a click moves it to the next one.
+        timeout = app.reaction_timeout_s
         return [
             Action("pause_resume",
                    "▶ Resume" if app.combat_paused else "⏸ Pause",
+                   GROUP_SESSION),
+            Action("reaction_timer",
+                   "React untimed" if timeout is None else f"React {timeout}s",
                    GROUP_SESSION),
             Action("end_combat", "End Combat", GROUP_SESSION),
         ]

@@ -27,7 +27,7 @@ import os
 import time
 
 from net.roster import DM_PRINCIPAL_ID
-from prompts import ERR_PROTOCOL, Response, SubmitResult
+from prompts import CLOCK_PRINCIPAL_ID, ERR_PROTOCOL, Response, SubmitResult
 
 SUBMIT_LOG_PATH = "submit_log.jsonl"
 
@@ -125,7 +125,9 @@ class SubmitLog:
     It is also a bus observer: `observe` logs **the DM taking over**, meaning a prompt owned
     by someone else that was answered or dismissed by the DM principal (D-M5-7). The
     player's own answers never reach it: they come through `handle_submit`, which logs them
-    first, so nothing is logged twice.
+    first, so nothing is logged twice. It logs **an expiry** too, as an `expired` line with
+    `CLOCK_PRINCIPAL_ID` as the principal: the deadline skipped the prompt, and neither the
+    player nor the DM chose anything.
     """
 
     def __init__(self, path: str | None = None) -> None:
@@ -152,8 +154,13 @@ class SubmitLog:
         self._append(entry)
 
     def observe(self, event: str, prompt) -> None:
-        """`PromptBus` observer: the DM resolved a prompt that belongs to someone else."""
+        """`PromptBus` observer: the DM resolved a prompt that belongs to someone else, or
+        its deadline did."""
         if event not in ("answered", "cancelled") or self.remote:
+            return
+        if event == "cancelled" and prompt.resolved_by == CLOCK_PRINCIPAL_ID:
+            self.write(CLOCK_PRINCIPAL_ID, SubmitResult(True, prompt.id), prompt,
+                       {"cancel": True}, event="expired")
             return
         if prompt.owner == DM_PRINCIPAL_ID or prompt.resolved_by != DM_PRINCIPAL_ID:
             return

@@ -51,7 +51,7 @@ from test_live import _auth_frame, _faster_cadence, _ws
 from test_submit import _Table, _drain, _next, _submit
 
 _MAIN = os.path.join(_ROOT, "gui", "main.py")
-_DM_TOOLS = ("pause_resume", "end_combat", "place_terrain")
+_DM_TOOLS = ("pause_resume", "reaction_timer", "end_combat", "place_terrain")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -154,13 +154,13 @@ def test_the_class_table_is_the_dispatch():
                 and node.left.id == "action_id"
                 and isinstance(node.comparators[0], ast.Constant)):
             dispatched.add(node.comparators[0].value)
-    assert len(dispatched) == 110, len(dispatched)
+    assert len(dispatched) == 111, len(dispatched)
     assert set(net_offer.CLASS) == dispatched, (
         f"missing {sorted(dispatched - set(net_offer.CLASS))}, "
         f"extra {sorted(set(net_offer.CLASS) - dispatched)}")
     counts = collections.Counter(net_offer.CLASS.values())
     assert counts == {"I": 57, "C→I": 8, "A": 16, "A*": 1, "C→A": 7, "X": 12,
-                      "C→X": 1, "S": 5, "DM": 3}, counts
+                      "C→X": 1, "S": 5, "DM": 4}, counts
     assert sorted(i for i, c in net_offer.CLASS.items() if c == "DM") == sorted(_DM_TOOLS)
     print("✅ test_the_class_table_is_the_dispatch")
 
@@ -295,7 +295,7 @@ def test_the_wire_never_carries_dm_tools():
     """Byte level: Kira's whole stream, over enough cycles that the offer went out many
     times, never names a DM tool, even though the DM's menu holds all of them."""
     with _table() as t:
-        assert all(i in t.app._action_menu for i in ("pause_resume", "end_combat"))
+        assert all(i in t.app._action_menu for i in ("pause_resume", "reaction_timer", "end_combat"))
         t.start()
         with _ws(t.srv.port) as kira:
             kira.send_text(_auth_frame(t.credential(t.kira.id)))

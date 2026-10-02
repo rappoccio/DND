@@ -53,6 +53,7 @@ let view = null;
 let prompt = null;                         // the last `prompt` frame; shown only while live
 let awaiting = "";                         // the prompt id a submit is out for, or ""
 let ackNote = "";                          // what the last failed ack said, in words
+let promptEndsAt = 0;                      // performance.now() when the prompt is skipped; 0 = never
 let attempt = 0;
 let page = { url: "", img: null, objectUrl: "" };   // the map image, re-fetched on a re-key
 let pageFail = { url: "", at: 0 };        // the last key that would not load, and when
@@ -130,6 +131,9 @@ function connect() {
     } else if (frame.t === "prompt") {
       if (!prompt || prompt.id !== frame.id) { awaiting = ""; ackNote = ""; }
       prompt = frame;
+      // `deadline_ms` is the time left when the frame was built (D-M5-7), re-sent every
+      // cycle, so the countdown re-anchors on each push and never drifts far.
+      promptEndsAt = frame.deadline_ms == null ? 0 : performance.now() + frame.deadline_ms;
       drawPrompt();
     } else if (frame.t === "submit_ack") {
       onAck(frame);
@@ -206,6 +210,7 @@ function drawPrompt() {
   el("prompt-cancel").disabled = !!awaiting;
   el("prompt-note").textContent = ackNote;
   el("prompt-note").hidden = !ackNote;
+  drawTimer();
   if (!live) return;
   for (const option of prompt.options) {
     const item = document.createElement("li");
@@ -224,6 +229,18 @@ function drawPrompt() {
     list.append(item);
   }
 }
+
+/* A reaction the player owns is skipped when the DM's timer runs out. The server decides
+   that on its own clock; this only says how long is left. */
+function drawTimer() {
+  const timer = el("prompt-timer");
+  const live = view && prompt && view.you.prompt_id === prompt.id;
+  if (!live || !promptEndsAt) { timer.hidden = true; return; }
+  const left = Math.max(0, Math.ceil((promptEndsAt - performance.now()) / 1000));
+  timer.textContent = `Skipped in ${left} s if you don't answer`;
+  timer.hidden = false;
+}
+setInterval(drawTimer, 250);
 
 // ── Rendering ───────────────────────────────────────────────────────────────
 

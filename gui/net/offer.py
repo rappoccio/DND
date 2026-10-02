@@ -155,6 +155,7 @@ CLASS: dict[str, str] = {
     "haste_action": I,
     "place_terrain": DM,
     "pause_resume": DM,
+    "reaction_timer": DM,
     "end_turn": I,
     "end_combat": DM,
     "drop_concentration": I,

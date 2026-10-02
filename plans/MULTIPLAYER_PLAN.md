@@ -5284,6 +5284,72 @@ The oracle is the handoff's eight-row table plus three more:
 - **Still owed in M5b:** the reaction deadline (D-M5-7), and the manual browser pass,
   which should now include Dodge then End Turn from a phone.
 
+##### M5b, commit 3 — the reaction deadline (D-M5-7) landed *(2026-10-01)*
+
+**Decisions taken while building it:**
+- **Where the setting lives:** `App.reaction_timeout_s`, default 60, with `None` meaning
+  no limit. It is a table rule, not something a principal owns. It is saved in
+  `_combat.json` beside `combat_paused`, so a resumed fight keeps it. A sidecar without the
+  key, or with a value that isn't one of the choices, keeps the session's value. It is not
+  reset between fights, but it does not outlive the process unless a fight is resumed:
+  `_combat.json` is deleted when combat ends.
+- **How the DM sets it** *(user's choice: the session panel)*: a third button in the
+  session row, `reaction_timer`, labelled `React 60s`. Each click moves it on through
+  15 / 30 / 60 / 120 s / untimed. It is `GROUP_SESSION`, so `perform` asks `DM_COMMAND`, the
+  offer filters it out, and `CLASS` lists it as `DM` (111 dispatched ids, 4 DM tools). A
+  click on it does not take the player's turn over. A change applies to the next reaction
+  prompt; one already live keeps the deadline its owner has already been shown. The panel
+  golden was regenerated, and its diff is only the header row: three 102-px buttons where
+  there were two of 156 px, in all 72 checkpoints.
+- **Who gets a deadline:** `App._reaction_deadline(kind, owner, on_cancel)` is the one rule.
+  A deadline goes only on `kind == "reaction"`, only when the owner isn't the DM, and only
+  when the prompt has an `on_cancel`. The action offer, and action and target prompts, never
+  get one, and neither do the DM's own reactions on the DM's own console.
+- **Expiry = Skip = `on_cancel`.** `PromptBus.expire()` cancels the live leaf as
+  `CLOCK_PRINCIPAL_ID` (`"clock"`, which is not a roster principal). The engine-parked
+  windows already had `_submit_reaction_skip`. The five `menus/reactions.py` reactions now
+  pass their own `_skip` as `on_cancel`, which is why no closed "skip" option id was needed.
+  **This changes DM behaviour:** a click-away on Riposte, Sentinel Guard, Soul of Vengeance,
+  Protective Field or Interception used to run nothing, so the original attack's log line
+  was lost and the attack sequence never continued. It now runs Skip, the same as the
+  engine-parked windows. Restore Balance is `kind="action"` and is unchanged. A reaction
+  site with no `on_cancel` gets no deadline rather than an expiry that runs nothing.
+- **When it fires:** at the end of `net_link.pump_submits`, after the submit queue is
+  drained. A submit that was already queued wins over the deadline, and a blocking modal
+  holds expiry back the same way it holds submits back.
+- **The log:** `SubmitLog.observe` writes one `expired` line with principal `"clock"`.
+  `resolved_by` isn't the DM, so no `takeover` line is written. A late submit gets
+  `not_live`.
+- **The wire:** `deadline_ms` is now the time remaining (`Prompt.deadline_ms()`). The phone
+  shows "Skipped in N s if you don't answer" under the prompt title, re-anchored on every
+  push.
+
+**Tests:** `tests/test_deadline.py` has 9 checks, and each one fails against its mutant
+(13 mutants, all killed).
+- **Mutant-runner hazard, fixed here and worth keeping:** one mutant
+  (`prompt.deadline = None; prompt.on_cancel()`) is the same byte length as the line it
+  replaces. Python accepts a `.pyc` whose source has the same mtime second and the same
+  size. So the copy ran stale bytecode, and one run's results flipped. Run mutants with
+  `PYTHONDONTWRITEBYTECODE=1`, and leave `__pycache__` out of the copy.
+
+**Results:** the suite is **165 / 0** in the container. The determinism golden is
+unchanged; the panel golden changed only as described above. No C++ changed.
+
+**Manual browser pass, done by the user on 2026-10-01, with a phone on 6081.** All of it
+worked:
+- an OA answered on the phone;
+- Dodge, then End Turn, from the phone, with no DM popup for the offer;
+- a DM panel click taking the turn over;
+- a 15 s reaction left to expire.
+
+The submit log read, in order:
+- a `submit` for the reaction;
+- four `submit` lines for the action offer;
+- one `takeover` line, from `dm`;
+- one `expired` line, from `clock`, with no `takeover` beside it.
+
+It held principal ids only. **M5b is complete; M5c (movement) is next.**
+
 
 ---
 
