@@ -5441,11 +5441,59 @@ TokenTarget(idx))` as `perform` does; the drag passes `DM_PRINCIPAL_ID`.
 - **Tests:** `tests/test_move.py` has 12 checks. The handoff's table, plus Steady Aim, the drag takeover, the gate withdrawing the Move prompt, a player's OA expiring mid-move, and Move being first in the offer. 15 mutants were run on a `/tmp` copy without `__pycache__`, with `PYTHONDONTWRITEBYTECODE=1`. All 15 were killed. That count includes "a mode option writes `move_type`", which was added after item 4's amendment.
 - **Results:** the suite is **166 / 0** in the container. The panel and determinism goldens are unchanged. No C++ changed.
 - **Manual browser pass:** run by the user on 6081, reported 2026-10-04 as "all confirmed". It followed the eleven-step script handed over on 2026-10-02: Move, a tap off the overlay, a leg, cancel, Dodge then move, mode, an OA, the DM drag takeover, the fog check and Speed 0.
-- **Open, carried:** `you.reachable` is not fog-filtered, so the overlay outlines walls in unexplored areas. The user wants walls covered by fog (2026-10-02), which supersedes item 2 above. A choice between two fixes is still to be made:
-  - **(A)** filter both the overlay and the accepted set to explored cells.
-  - **(B)** plan the reach from what the party knows, treating unexplored cells as open, and resolve a hidden wall when the move is tried. This probably needs a C++ change.
+- **Fog, decided 2026-10-04** (user: "do A now, B later"). This supersedes item 2 above, which had left `reachable` unfiltered.
+  - **Fix A, done** (committed 2026-10-04, "M5c, D-M5-4.2: fog fix A"). With fog up, `net/move.reachable_cells` cuts the reachable set to cells whose whole footprint is explored. That one set is both the overlay and the accepted set. With fog down, nothing is cut, which is the same rule `net/view.py` applies to terrain and lighting. A player can't move into a never-seen cell from the browser; the DM drags. `test_reachable_is_cut_to_the_explored_mask` covers it, and 3 mutants are killed: no filter, ignoring the fog switch, and checking only the origin of a Large token.
+  - **Fix B, deferred.** Plan a player's reach from what the party knows, with unexplored cells treated as open. When a move hits an unseen wall, walk until it stops the token. Today `BattleMap::moveAgent` refuses an unreachable destination outright (`battle_map.cpp:431`), and that refusal would leak the wall one tap at a time. So B needs a C++ change to `advanceMove` / `moveAgent`, plus rules decisions: the partial path, OAs along it, and what the move costs. It is its own slice, not a fix.
 
-**M5c is complete; M5d (agent and cell picks) is next**, with the fog decision above to settle first.
+**M5c is complete; M5d (agent and cell picks) is next.**
+
+
+##### Handoff — to M5d *(written 2026-10-04)*
+
+**State.**
+- `main` is nine commits ahead of `origin/main` (`38ea487`), none pushed. The last two are `ee2ec4b` (M5c, D-M5-4) and the fog fix A commit that carries this handoff.
+- The suite is **166 / 0** in the container. The panel and determinism goldens are unchanged.
+- **Flaky, not investigated:** `test_menus.test_on_deck_row_deploys_its_group_on_click` failed once in a full run ("the reserves should start outside the initiative order"). It passed alone, and on the next full run. A guess, not checked: suites sharing cwd encounter files.
+
+**What M5c left that M5d reuses:**
+- `Prompt.cells` plus the cell-prompt option path in `PromptBus.submit`. An `expects:"cell"` prompt takes an enabled option or a cell. A cell outside `cells` is `bad_option`, and the prompt stays live. M5d's target prompts use it as is: `cells` holds the valid picks, and `"done"` is the multi-pick option.
+- `you.reachable` in `net/view.py`, which reads the live prompt's `cells` and is gated by `prompt_id`. `you.targets` and `you.aoe` (Envelope 2) can follow the same pattern.
+- `net/move.reachable_cells`, the fog rule (fix A): with fog up, keep a cell only if its whole footprint is explored.
+- `offer.ensure` treats the Move prompt as the offer's child: it leaves it up while the turn is open, and withdraws it when the gate closes. `offer.take_over` cancels the offer or the Move prompt as the DM. The DM's drag calls it.
+- `App.commit_move` (`main.py:~9442`) and `App.reachable_for` / `move_budget` (`:~3530`).
+
+**What D-M5-3 says (frozen 2026-09-28):**
+- The `pending_*` flags stay the state. When one is armed for a remotely controlled actor, a target prompt is posted as its projection:
+  - `kind:"target"` for a creature, `kind:"cell"` for a place, both `expects:"cell"`;
+  - parent = the offer, owner = the controller.
+- A submitted cell goes into the same resolver chain as the DM's map click. That chain, about `main.py:17468–17660` (it starts at `hit = self._agent_at(cell)`), gets extracted into `resolve_pick(cell)`, which computes `hit` itself. A hidden creature is resolved by the engine's perception, not by the client.
+- Multi-picks (`mantle`, the Chromatic chain, `invoke_duplicity`, `spell_num_targets`) get one prompt per pick, with a `"done"` option.
+- **Cancel:** the existing Esc branch where there is one. Where there isn't, the matching slice of `_clear_pending_target_picks()` (`:~4484`), followed by a re-offer. Esc on the DM console then goes through the same cancel, which gives about 30 arms an Esc they lack today. That is a recorded behaviour change.
+- **Owed before M5d:** for each arm with no Esc, confirm that arming spends nothing. If one does spend, a cancel must refund it, and that is a rules decision.
+
+**Decisions to freeze before coding (Step-0 style):**
+1. **The gate.** `offer.gate` closes on `_target_pick_armed()` today. That is why `action_surge` (EK L15), `radiance` and `bite_grappled` stall a player's turn. In M5d, an armed pick for a remote actor posts its target prompt. Decide whether `ensure` owns that projection, the way it owns the Move prompt, or whether each arm site posts it.
+2. **What `cells` holds for a creature pick.** The visible, valid targets' footprint cells, or every cell. D-M5-3 has hidden creatures resolved by perception, so limiting the set to visible targets would block a guess at a hidden one. Also decide whether `you.targets` (agent indices) ships as well, for highlighting.
+3. **Fog for place picks (X / C→X).** Recommendation: fix A's rule, explored cells only.
+4. **Sub-slicing the 37 rows.** Suggested order:
+   - weapon attacks first (`atk_action`, `atk_bonus`, `unarmed`, C→A), since that makes a table self-sufficient;
+   - then single A picks;
+   - then X;
+   - then multi-picks.
+   Each row flips in `net/offer.CLASS` only when it is wired, and the class-count assertion in `test_offer.py` moves with it.
+5. **C→A.** The choice half already reaches the player (`_ask_actor`). The target prompt that follows it needs a parent, either the offer or the choice prompt.
+6. **DM map click during a player's target prompt** is a take-over, like the drag (D-M5-4.6). Extend `take_over` to cover it.
+7. **The oracle for the `resolve_pick` extraction:** the panel and determinism goldens stay byte-identical. The mutant is `resolve_pick` computing `hit` differently from the map click (D-M5-9).
+
+**Also owed:**
+- Re-run D-M5-2's twelve mutants under the fixed method.
+- Fix B, knowledge-based reach (see M5c above), is its own later slice.
+
+**Rules:**
+- Everything runs in the container. Never run `docker build`; if M5d needs a new image, say so and stop.
+- Stage files by name and use `git commit --only`. Never `-A`, never push unasked.
+- Mutants: run them on a `/tmp` copy without `__pycache__`, with `PYTHONDONTWRITEBYTECODE=1`. Copy `gui tests maps tools`.
+- After a manual pass on TestDNDMap, run `git checkout -- maps/TestDNDMap_agents.json maps/TestDNDMap_terrain.json`.
 
 
 ---

@@ -282,8 +282,8 @@ def _you(app, roster, viewer, shown: set[int]) -> dict:
            "prompt_id": prompt_id}
     # Envelope 2's `reachable` overlay (D-M5-4): the live prompt's own `cells`, read and
     # never recomputed, so it is exactly the set the bus will accept. It rides only with
-    # the prompt id it belongs to, so a viewer who may not answer never sees it. It is not
-    # fog-filtered, by the user's decision; the outline of an unexplored wall is the leak.
+    # the prompt id it belongs to, so a viewer who may not answer never sees it. It was cut
+    # to the explored mask when it was built (`net/move.reachable_cells`, fix A).
     if prompt_id is not None and live.cells is not None:
         you["reachable"] = sorted([c, r] for c, r in live.cells)
     return you

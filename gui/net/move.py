@@ -5,9 +5,11 @@ by the token's controller, with the offer as its parent. It carries:
 
   · `cells`, the reachable set for the current mode. The bus refuses any other cell with
     `bad_option` and leaves the prompt live; `net/view.py` sends the same set to the
-    owner (and the DM) as `you.reachable`, so the overlay and the check are one set. It is
-    not fog-filtered: a player must never have to tap into fog to find out where they can
-    go (D-M5-4.2, user's decision), and the leak of a wall's outline is accepted.
+    owner (and the DM) as `you.reachable`, so the overlay and the check are one set. With
+    fog up it holds only cells whose whole footprint the party has explored (D-M5-4.2,
+    fix A): the true reachable set, drawn into the fog, would trace the walls hidden
+    there. A player cannot move into a never-seen cell from the browser; the DM drags.
+    Planning the reach from the party's knowledge instead is fix B, deferred.
   · one option per OTHER mode with budget left. Choosing one re-posts the prompt for that
     mode. The mode lives in the prompt, never in `App.move_type`: the DM's own panel
     selection is not the player's to flip (D-M5-4.4).
@@ -64,7 +66,7 @@ def ask(app, actor: int, owner: str, parent, mode=None):
     if current is None:
         return None
     _, mt, word, ft = current
-    cells = [(c.col, c.row) for c in app.reachable_for(actor, mt)]
+    cells = reachable_cells(app, actor, mt)
     options = [Option(mid, mid.capitalize(),
                       on_choose=lambda m=m: ask(app, actor, owner, parent, m))
                for mid, m, _, left in budgets if left > 0 and m != mt]
@@ -79,6 +81,23 @@ def ask(app, actor: int, owner: str, parent, mode=None):
                              cells=cells, on_answer=_answer)
     app._move_prompt = prompt
     return prompt
+
+
+def reachable_cells(app, actor: int, mt) -> list[tuple[int, int]]:
+    """`App.reachable_for`, cut to the explored mask when fog is up (D-M5-4.2, fix A).
+
+    The filter is the one `net/view.py` applies to terrain and lighting: with fog off the
+    DM's own screen shows the whole map, so nothing is hidden. A cell is kept only when
+    every cell of the token's footprint there is explored, so a Large creature's overlay
+    cannot reach past the mask either."""
+    cells = [(c.col, c.row) for c in app.reachable_for(actor, mt)]
+    if not app._fog_active():
+        return cells
+    explored = {(c.col, c.row) for c in app.bm.explored_cells()}
+    size = max(1, int(app.bm.placed_agents[actor].size))
+    return [(col, row) for col, row in cells
+            if all((col + dc, row + dr) in explored
+                   for dc in range(size) for dr in range(size))]
 
 
 def is_move_prompt(app, prompt) -> bool:

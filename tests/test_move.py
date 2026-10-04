@@ -12,6 +12,7 @@ runs `App.commit_move`, the function the DM's drag release runs. These checks pi
   · a mode option re-posts, and App.move_type is untouched  (test_a_mode_option_reposts_and_leaves_move_type)
   · cancelling Move re-offers and spends nothing             (test_cancelling_move_reoffers_and_spends_nothing)
   · a pause or a turn change withdraws the Move prompt       (test_the_gate_withdraws_the_move_prompt)
+  · with fog up, the set is cut to the explored mask         (test_reachable_is_cut_to_the_explored_mask)
   · you.reachable rides only with its prompt id              (test_reachable_rides_only_with_the_prompt)
   · a provoking move parks the OA and resumes                (test_a_provoking_move_parks_and_resumes)
   · a player's OA left to expire lets the move finish        (test_an_expired_oa_lets_the_move_finish)
@@ -268,6 +269,47 @@ def test_the_gate_withdraws_the_move_prompt():
     print("✅ test_the_gate_withdraws_the_move_prompt")
 
 
+def test_reachable_is_cut_to_the_explored_mask():
+    """D-M5-4.2, fix A. With fog up and only rows 0-4 explored, the Move prompt and the
+    view hold just the explored part of Aria's reach, so no hidden wall is outlined; a
+    truly reachable cell in the fog is refused. With fog down, the whole set is back."""
+    app, kira, _ = _aria_turn()
+    aria = _idx(app, "Aria")
+    full = {(c.col, c.row) for c in app.reachable_for(aria, rpg.MovementType.Walk)}
+    cols, rows = int(app.bm.grid_cols), int(app.bm.grid_rows)
+    explored = {(c, r) for c in range(cols) for r in range(rows) if r <= 4}
+    app.bm.set_explored_cells([rpg.Cell(c, r) for c, r in explored])
+    app.show_fog = True
+    assert app._fog_active()
+
+    _, move = _open_move(app, kira)
+    assert move.cells == frozenset(full & explored), "the set was not cut to the mask"
+    fogged = sorted(full - explored)
+    assert fogged and move.cells, "the scene no longer straddles the mask"
+    assert all(r <= 4 for _, r in net_view.build_view(app, kira)["you"]["reachable"])
+    res = app.prompts.submit(move.id, Response(cell=fogged[0]), kira.id)
+    assert not res.ok and res.error == "bad_option", res
+    assert move.is_live
+
+    app.prompts.cancel_as(move.id, kira.id)
+    app.show_fog = False
+    _frame(app)
+    _, move = _open_move(app, kira)
+    assert move.cells == frozenset(full), "fog down still cut the set"
+
+    # A Large token: a cell is kept only when its whole 2x2 footprint is explored. The
+    # scene has no Large creature, so this half drives the filter with a stand-in App.
+    from types import SimpleNamespace as NS
+    cell = lambda c, r: NS(col=c, row=r)
+    big = NS(_fog_active=lambda: True,
+             reachable_for=lambda idx, mt: [cell(0, 0), cell(0, 3), cell(2, 2)],
+             bm=NS(placed_agents=[NS(size=2)],
+                   explored_cells=lambda: [cell(c, r) for c in range(4) for r in range(4)]))
+    assert net_move.reachable_cells(big, 0, rpg.MovementType.Walk) == [(0, 0), (2, 2)], \
+        "a Large footprint reaching into the fog was kept"
+    print("✅ test_reachable_is_cut_to_the_explored_mask")
+
+
 def test_reachable_rides_only_with_the_prompt():
     """`you.reachable` is the live prompt's own `cells`, for the viewers who get its id:
     Kira and the DM. Wen never sees it, and nobody does once the prompt is gone."""
@@ -379,6 +421,7 @@ if __name__ == "__main__":
         test_a_mode_option_reposts_and_leaves_move_type()
         test_cancelling_move_reoffers_and_spends_nothing()
         test_the_gate_withdraws_the_move_prompt()
+        test_reachable_is_cut_to_the_explored_mask()
         test_reachable_rides_only_with_the_prompt()
         test_a_provoking_move_parks_and_resumes()
         test_an_expired_oa_lets_the_move_finish()
