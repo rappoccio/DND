@@ -130,6 +130,10 @@ class Prompt:
     parent_id: str | None = None        # the stack, per Step 0.5
     anchor:    tuple[int, int] | None = None   # local render hint; not on the wire
     render:    str | None = None        # which local renderer draws it; not on the wire
+    # The cells an `expects:"cell"` answer may name, or None for any. Not on the wire as
+    # such: `net/view.py` sends it as `you.reachable` to the viewers who may answer, so
+    # what a player is shown and what the bus accepts are one set (D-M5-4).
+    cells:     frozenset | None = None
     on_answer: Callable[[Response], None] | None = None
     on_cancel: Callable[[], None] | None = None
     state:     PromptState = PromptState.LIVE
@@ -424,6 +428,7 @@ class PromptBus:
             parent: Prompt | None = None,
             anchor: tuple[int, int] | None = None,
             render: str | None = None,
+            cells: Iterable[tuple[int, int]] | None = None,
             on_answer: Callable[[Response], None] | None = None,
             on_cancel: Callable[[], None] | None = None) -> Prompt:
         """Open a prompt and render it. Returns the ``Prompt`` so a caller that opens a
@@ -440,6 +445,7 @@ class PromptBus:
                         options=tuple(options), expects=expects, deadline=deadline,
                         parent_id=parent.id if parent is not None else None,
                         anchor=anchor, render=render,
+                        cells=None if cells is None else frozenset(cells),
                         on_answer=on_answer, on_cancel=on_cancel)
 
         if parent is None:
@@ -495,8 +501,18 @@ class PromptBus:
             if option is None or not option.enabled:
                 return SubmitResult(False, prompt_id, ERR_BAD_OPTION)
         elif prompt.expects == "cell":
-            if not (isinstance(response.cell, tuple) and len(response.cell) == 2):
+            # Envelope 4, amended 2026-09-28 and 2026-10-02 (D-M5-3, D-M5-4): a cell prompt
+            # may carry closed options, and a submit names exactly one of option / cell.
+            # A cell outside `cells` is refused BEFORE the commit below, so the prompt
+            # stays live and a mis-tap costs the player nothing.
+            if response.option is not None:
+                option = prompt.option(response.option)
+                if option is None or not option.enabled:
+                    return SubmitResult(False, prompt_id, ERR_BAD_OPTION)
+            elif not (isinstance(response.cell, tuple) and len(response.cell) == 2):
                 return SubmitResult(False, prompt_id, ERR_PROTOCOL)
+            elif prompt.cells is not None and response.cell not in prompt.cells:
+                return SubmitResult(False, prompt_id, ERR_BAD_OPTION)
         elif prompt.expects == "agent":
             if not isinstance(response.agent, int):
                 return SubmitResult(False, prompt_id, ERR_PROTOCOL)

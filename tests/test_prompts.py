@@ -177,9 +177,12 @@ def test_submit_errors():
     assert bus.submit(p.id, Response(option="opt_0")).ok
     assert bus.submit(p.id, Response(option="opt_0")).error == ERR_NOT_LIVE
 
-    # expects="cell" wants a cell, not an option id.
+    # expects="cell" wants a cell, or one of its own closed options (Envelope 4, amended
+    # 2026-10-02): an option it does not carry is `bad_option`, and no answer at all is
+    # the wrong shape.
     q = bus.ask(0, DM_PRINCIPAL_ID, "cell", "Click a square", expects="cell")
-    assert bus.submit(q.id, Response(option="opt_0")).error == ERR_PROTOCOL
+    assert bus.submit(q.id, Response(option="opt_0")).error == ERR_BAD_OPTION
+    assert bus.submit(q.id, Response()).error == ERR_PROTOCOL
     assert bus.submit(q.id, Response(cell=(3, 4))).ok
     assert q.response.cell == (3, 4)
     print("✅ test_submit_errors passed")

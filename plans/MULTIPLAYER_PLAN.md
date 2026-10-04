@@ -5351,6 +5351,103 @@ The submit log read, in order:
 It held principal ids only. **M5b is complete; M5c (movement) is next.**
 
 
+##### Handoff — to M5c *(written 2026-10-02)*
+
+**State.** `main` is at `1daa8c4`, seven commits ahead of `origin/main` (`38ea487`), none
+pushed. The suite is **165 / 0** in the container; the determinism golden is unchanged
+and the panel golden changed in `e1c887d` only in the session row. M5b is complete.
+
+**What M5b left behind.** The offer is `net/offer.py` (`ensure` every frame after
+`_draw_panel()`, `take_over` at the panel click site), with no Move row yet. The deadline
+is `App._reaction_deadline` + `PromptBus.expire()` at the end of `pump_submits`, set by
+the `reaction_timer` session button and saved in `_combat.json`. Known gap still carried
+to M5d: `action_surge` (EK L15), `radiance` and `bite_grappled` can arm a map pick that
+closes the offer gate until the DM resolves it.
+
+**Mutant runs.** Copy the repo into the container's `/tmp` without `__pycache__`, with
+`PYTHONDONTWRITEBYTECODE=1`. D-M5-2's twelve mutants predate that rule and are worth
+re-running under it.
+
+##### D-M5-4 — decisions *(frozen 2026-10-02)*
+
+The user confirmed 1, 3, 5 and 6 as proposed, and changed 2 and 4.
+
+1. **Mode switch is an option on the cell prompt.** Envelope 4, amended 2026-10-02: an
+   `expects:"cell"` prompt accepts either an `option` (it must name an enabled option;
+   its `on_choose` runs) or a `cell` (its `on_answer` runs). `Prompt` gains an off-wire
+   `cells: frozenset | None`; a cell outside it is refused with `bad_option` and the
+   prompt **stays live**, so a mis-tap costs nothing. The mode options are the modes with
+   **remaining budget > 0** other than the current one; the title names the current mode
+   and the feet left. With one mode there are no options.
+2. **`reachable` is not fog-filtered** *(user's change)*. The player sees, and may pick,
+   the whole reachable set, exactly as the DM's drag overlay does; a player must never
+   have to tap into fog to find out where they can go. **The leak is accepted and
+   recorded:** the set's outline can show walls and blocked cells the party has not
+   explored. The set is stored on the prompt (`prompt.cells`); `view.py` only reads it,
+   and sends it as `you.reachable` only while the live prompt is a Move prompt and only
+   to viewers who get its `prompt_id` (owner and DM). The overlay and the validation are
+   one source.
+3. **The Move row is an extra option from `offered()`**, first in the list, id `"move"`,
+   with its own callback (not `perform`). A test holds that no `ActionMenu` id is
+   `"move"`. Disabled with `"Speed is 0"` when `can_agent_move` is False, and with
+   `"No movement left this turn"` when every `App.move_remaining_*` is 0.
+4. **The mode lives in the prompt; `App.move_type` is never written** *(amended
+   2026-10-02, user: "confirm your recommendation then"; an earlier draft of this item
+   had the player's choice write `move_type`)*. The Move prompt opens on the DM's current
+   `move_type` if it has budget, else the first mode that does, and a mode option re-posts
+   the prompt for its mode. `reachable_for(idx, mt)` reads `App.move_remaining_*`, not the
+   agent's own budgets, because Steady Aim zeroes only the App fields
+   (`main.py:15521`); it keeps the grapple halving, and `_update_reach` calls it. That is
+   safe because the offer gate already requires the actor to be the current turn agent;
+   legendary out-of-turn moves stay DM-only.
+5. **Cancel.** The Move prompt is asked with `parent=offer`. A cancel leaves the bus empty
+   and `ensure` posts a fresh offer next frame, as in D-M5-2 item 5. Arming Move spends
+   nothing.
+6. **A DM drag takes the turn over.** When the DM releases a drag of the actor in combat
+   while that player's offer or Move prompt is live, the prompt is cancelled as the DM
+   (one `takeover` line) before `commit_move` runs.
+
+`commit_move(idx, cell, mt, principal)` checks `authorize(CONTROL_TOKEN,
+TokenTarget(idx))` as `perform` does; the drag passes `DM_PRINCIPAL_ID`.
+
+**Tests** (`tests/test_move.py`), each with a mutant that must fail it:
+
+| Test | Mutant |
+| --- | --- |
+| `commit_move` extraction: panel and determinism goldens byte-identical | `commit_move` skipping `can_agent_move` |
+| remote Move through the socket: token moves, budgets drop, offer re-posted with Move on it | no re-post after the leg |
+| a cell outside `reachable` is refused with `bad_option`, the prompt stays live, nothing moves | trusting the client's cell / checking after commit |
+| a remote move that provokes parks the OA, resumes on the answer, completes | `move_agent` instead of `begin_move` |
+| a mode option re-posts with that mode's set; `App.move_type` untouched | writing `move_type` |
+| `you.reachable` only for viewers who get the prompt id, and equals `prompt.cells` | sending it to every viewer |
+| cancelling Move re-offers and spends nothing | cancel leaving the offer withdrawn |
+| Move disabled with a reason at speed 0 | offering it enabled |
+| Steady Aim actor: Move disabled | `reachable_for` reading `ag.walk_remaining` |
+| DM drag mid-prompt: one `takeover` line | no cancel on the drag |
+
+
+##### M5c — movement (D-M5-4) landed *(2026-10-04, commit `M5c, D-M5-4`)*
+
+- **New code:**
+  - `gui/net/move.py` builds the Move row (`option`), the Move prompt (`ask`) and the mode switch.
+  - `App.commit_move(idx, cell, mt, principal)` is the drag release's combat branch, extracted verbatim, plus an `authorize(CONTROL_TOKEN)` check.
+  - `App.move_budget` and `App.reachable_for` are factored out of `_update_reach`, which now calls them.
+  - `Prompt.cells` and the cell-prompt option path were added to `PromptBus.submit` (the Envelope 4 amendment of D-M5-4.1).
+  - `you.reachable` is now in `net/view.py`.
+  - `offer.ensure` and `take_over` both know about the Move prompt.
+  - The drag release calls `take_over`.
+  - Client: the reachable overlay, tap → cell submit (still exactly two `.send(`), and a "Tap a highlighted square." hint.
+- **Changed test:** `test_prompts.test_submit_errors`. An unknown option on a cell prompt is now `bad_option` (it used to be `protocol`), and an empty answer is `protocol`.
+- **Tests:** `tests/test_move.py` has 12 checks. The handoff's table, plus Steady Aim, the drag takeover, the gate withdrawing the Move prompt, a player's OA expiring mid-move, and Move being first in the offer. 15 mutants were run on a `/tmp` copy without `__pycache__`, with `PYTHONDONTWRITEBYTECODE=1`. All 15 were killed. That count includes "a mode option writes `move_type`", which was added after item 4's amendment.
+- **Results:** the suite is **166 / 0** in the container. The panel and determinism goldens are unchanged. No C++ changed.
+- **Manual browser pass:** run by the user on 6081, reported 2026-10-04 as "all confirmed". It followed the eleven-step script handed over on 2026-10-02: Move, a tap off the overlay, a leg, cancel, Dodge then move, mode, an OA, the DM drag takeover, the fog check and Speed 0.
+- **Open, carried:** `you.reachable` is not fog-filtered, so the overlay outlines walls in unexplored areas. The user wants walls covered by fog (2026-10-02), which supersedes item 2 above. A choice between two fixes is still to be made:
+  - **(A)** filter both the overlay and the accepted set to explored cells.
+  - **(B)** plan the reach from what the party knows, treating unexplored cells as open, and resolve a hidden wall when the move is tried. This probably needs a C++ change.
+
+**M5c is complete; M5d (agent and cell picks) is next**, with the fog decision above to settle first.
+
+
 ---
 
 ### M6 — Reconnect, resync, restart

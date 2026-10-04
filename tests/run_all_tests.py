@@ -48,6 +48,9 @@ test_scripts = [
     # The reaction deadline (M5b, D-M5-7): a player's unanswered reaction is skipped on
     # the frame tick, and only a reaction ever is.
     "test_deadline.py",
+    # Movement from the browser (M5c, D-M5-4): the offer's Move row, its cell prompt, and
+    # the DM's drag, all through `commit_move`.
+    "test_move.py",
 
     # Rendered-geometry invariants for the same panel (MULTIPLAYER_PLAN.md M2) — the
     # third leg. The golden proves the structure did not CHANGE and the action menu

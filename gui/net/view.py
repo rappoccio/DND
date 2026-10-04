@@ -277,9 +277,16 @@ def _you(app, roster, viewer, shown: set[int]) -> dict:
     if live is not None and roster.authorize(viewer, Action.ANSWER_PROMPT,
                                              PromptTarget(live.id)):
         prompt_id = live.id
-    return {"principal_id": viewer.id,
-            "controls": sorted(i for i in roster.controlled_by(viewer.id) if i in shown),
-            "prompt_id": prompt_id}
+    you = {"principal_id": viewer.id,
+           "controls": sorted(i for i in roster.controlled_by(viewer.id) if i in shown),
+           "prompt_id": prompt_id}
+    # Envelope 2's `reachable` overlay (D-M5-4): the live prompt's own `cells`, read and
+    # never recomputed, so it is exactly the set the bus will accept. It rides only with
+    # the prompt id it belongs to, so a viewer who may not answer never sees it. It is not
+    # fog-filtered, by the user's decision; the outline of an unexplored wall is the leak.
+    if prompt_id is not None and live.cells is not None:
+        you["reachable"] = sorted([c, r] for c, r in live.cells)
+    return you
 
 
 def page_image(app, explored=None, fog_on=None) -> mapimg.PageImage | None:

@@ -794,6 +794,7 @@ class App:
         # is not reset between fights, and `_combat.json` carries it across a resume.
         self.reaction_timeout_s   = REACTION_TIMEOUT_DEFAULT_S
         self._offer_key           = None  # ...and the projection it was built from (net/offer.py)
+        self._move_prompt         = None  # D-M5-4: the player's live Move prompt, if any (net/move.py)
         self.turn_idx             = 0     # index into initiative_order
         self.action_used          = False
         self.bonus_used           = False
@@ -3510,42 +3511,10 @@ class App:
         # movement range — the overlay would betray the position of an undrawn token.
         if self._npc_concealed_from_party(idx, pt):
             return
-        stats = self.combat.get_agent_stats(self.bm, idx)
-
-        if self.combat_active:
-            walk_ft   = self.move_remaining_walk
-            fly_ft    = self.move_remaining_fly
-            swim_ft   = self.move_remaining_swim
-            burrow_ft = self.move_remaining_burrow
-        else:
-            walk_ft   = stats.speed_walk
-            fly_ft    = stats.speed_fly
-            swim_ft   = stats.speed_swim
-            burrow_ft = stats.speed_burrow
-
-        # Dragging a grappled creature costs double per foot (BattleMap::moveAgent), so the agent
-        # can only reach half as far. Halve the previewed budget so the overlay matches enforcement.
-        if any(o.conditions.grappled and o.conditions.grappler_idx == idx
-               for j, o in enumerate(self.bm.placed_agents) if j != idx):
-            walk_ft   //= 2
-            fly_ft    //= 2
-            swim_ft   //= 2
-            burrow_ft //= 2
-
-        # Pass idx so faction-spared difficult terrain (e.g. the agent's own / an ally's
-        # Spirit Guardians) does not shrink the previewed reach.
-        if walk_ft > 0:
-            self._reach_walk = self.bm.reachable_cells(
-                pt.origin, pt.size, walk_ft, rpg.MovementType.Walk, idx)
-        if fly_ft > 0:
-            self._reach_fly = self.bm.reachable_cells(
-                pt.origin, pt.size, fly_ft, rpg.MovementType.Fly, idx)
-        if swim_ft > 0:
-            self._reach_swim = self.bm.reachable_cells(
-                pt.origin, pt.size, swim_ft, rpg.MovementType.Swim, idx)
-        if burrow_ft > 0:
-            self._reach_burrow = self.bm.reachable_cells(
-                pt.origin, pt.size, burrow_ft, rpg.MovementType.Burrow, idx)
+        self._reach_walk   = self.reachable_for(idx, rpg.MovementType.Walk)
+        self._reach_fly    = self.reachable_for(idx, rpg.MovementType.Fly)
+        self._reach_swim   = self.reachable_for(idx, rpg.MovementType.Swim)
+        self._reach_burrow = self.reachable_for(idx, rpg.MovementType.Burrow)
 
         # Drag validity uses only the selected movement type's reach.
         _reach_by_type = {
@@ -3556,6 +3525,46 @@ class App:
         }
         self._reach_set = {(c.col, c.row)
                            for c in _reach_by_type.get(self.move_type, [])}
+
+    def move_budget(self, idx: int, move_type) -> int:
+        """Feet agent `idx` may still move by `move_type`, as the overlay and the drag use it.
+
+        In combat the budget is the App's `move_remaining_*`, which belong to the creature
+        whose turn it is. They, not the agent's own `*_remaining`, are what the turn's
+        effects write: Steady Aim zeroes only these. Outside combat it is the stat speed.
+        Dragging a grappled creature costs double per foot (BattleMap::moveAgent), so the
+        agent can only reach half as far, and the budget is halved to match enforcement.
+        """
+        if self.combat_active:
+            ft = {rpg.MovementType.Walk:   self.move_remaining_walk,
+                  rpg.MovementType.Fly:    self.move_remaining_fly,
+                  rpg.MovementType.Swim:   self.move_remaining_swim,
+                  rpg.MovementType.Burrow: self.move_remaining_burrow}.get(move_type, 0)
+        else:
+            stats = self.combat.get_agent_stats(self.bm, idx)
+            ft = {rpg.MovementType.Walk:   stats.speed_walk,
+                  rpg.MovementType.Fly:    stats.speed_fly,
+                  rpg.MovementType.Swim:   stats.speed_swim,
+                  rpg.MovementType.Burrow: stats.speed_burrow}.get(move_type, 0)
+        if any(o.conditions.grappled and o.conditions.grappler_idx == idx
+               for j, o in enumerate(self.bm.placed_agents) if j != idx):
+            ft //= 2
+        return ft
+
+    def reachable_for(self, idx: int, move_type) -> list:
+        """The cells agent `idx` can end a `move_type` move on, from `move_budget`.
+
+        The one computation behind the DM's drag overlay (`_update_reach`) and a player's
+        Move prompt (D-M5-4), so the two cannot disagree. Passes idx so faction-spared
+        difficult terrain (e.g. the agent's own / an ally's Spirit Guardians) does not
+        shrink the reach."""
+        if not 0 <= idx < len(self.bm.placed_agents):
+            return []
+        ft = self.move_budget(idx, move_type)
+        if ft <= 0:
+            return []
+        pt = self.bm.placed_agents[idx]
+        return self.bm.reachable_cells(pt.origin, pt.size, ft, move_type, idx)
 
     # Origin feats the GUI can assign (must mirror StatsDialog.ORIGIN_FEATS minus "NONE").
     _ORIGIN_FEATS = {"Alert", "Crafter", "Healer", "Lucky", "Magic Initiate", "Musician",
@@ -9429,6 +9438,75 @@ class App:
         x1, y1 = self._cell_to_screen(o.col + 1, o.row + 1)
         return ((x0 + x1) // 2, (y0 + y1) // 2)
 
+
+    def commit_move(self, idx: int, cell, move_type, principal: str) -> bool:
+        """Move agent `idx` to `cell` by `move_type`, as `principal` (D-M5-4).
+
+        The one place a combat move starts. The DM's drag release reaches it with
+        `DM_PRINCIPAL_ID`; a player's Move prompt reaches it with the player's id. It asks
+        `authorize(CONTROL_TOKEN)` over the mover, as `perform` does for actions, and
+        refuses a creature whose Speed is 0. Otherwise the engine's `begin_move` runs, so
+        opportunity attacks park and resume through `_show_pending_reaction_menu` exactly
+        as they always have. Reachability is the caller's check: the drag validates
+        against `_reach_set`, the Move prompt against its own `cells`.
+
+        Returns False when the move was refused or failed, True once it has started.
+        """
+        if not self.roster.authorize(self.roster.get(principal),
+                                     net_roster.Action.CONTROL_TOKEN,
+                                     net_roster.TokenTarget(idx)):
+            return False
+        # Calculate Manhattan distance moved (for running jump qualification)
+        ag_old = self.bm.placed_agents[idx]
+        dist_moved = abs(cell.col - ag_old.origin.col) + abs(cell.row - ag_old.origin.row)
+        dist_moved *= 5  # Each cell = 5 feet
+
+        # Compute Chebyshev distance (D&D 5e diagonal = 5 ft).
+        print(f"[Movement] Attempting to move agent {idx} to ({cell.col},{cell.row}) using {move_type}")
+        # Debug: check terrain types along the path
+        print(f"[Movement] Terrain at dest: {self.bm.get_terrain_type(cell)}")
+
+        # Check if agent can move at all (Speed = 0 check)
+        agents = self.bm.placed_agents
+        moving_agent = agents[idx]
+        can_move = self.combat.can_agent_move(self.bm, idx)
+
+        if not can_move:
+            # Speed = 0, no movement possible, no OA
+            move_success = False
+            print(f"[Movement] Move result: {move_success}")
+            self._combat_log_add(f"{moving_agent.name}: movement blocked — Speed = 0")
+            self._update_reach()
+            self._update_attack_overlay()
+            return False
+        # In combat, the C++ engine owns Opportunity-Attack detection AND
+        # resolution via the flow-checkpoint API (begin_move -> pending_decision
+        # -> submit_decision). It does per-creature /
+        # per-step provoke and commits the move itself. Out of combat, just move.
+        self._reaction_mover_idx  = idx
+        self._reaction_dist_moved = dist_moved
+        self._reaction_finish     = lambda: self._after_move_committed(self._reaction_mover_idx)
+        if self.combat_active:
+            status = self.combat.begin_move(self.bm, idx, cell, move_type)
+            self._flush_combat_log()
+            if status == rpg.FlowStatus.AwaitingDecision:
+                # Engine parked at an OA checkpoint — render the menu; the click
+                # routes back through submit_decision, which resumes the move.
+                self._show_pending_reaction_menu()
+            else:
+                self._after_move_committed(idx)
+            return True
+        move_success = self.combat.move_agent(self.bm, idx, cell, move_type)
+        print(f"[Movement] Move result: {move_success}")
+        self._flush_combat_log()
+        if move_success:
+            self._after_move_committed(idx)
+            return True
+        print(f"[Movement] Move failed - likely blocked by terrain")
+        self.selected_idx = idx
+        self._update_reach()
+        self._update_attack_overlay()
+        return False
 
     def _after_move_committed(self, idx: int):
         """Refresh GUI state after the engine commits a (possibly OA-interrupted) move.
@@ -17683,59 +17761,11 @@ class App:
                         self._update_reach()
                         self._update_attack_overlay()
                     elif self.drag_valid and self.drag_cell is not None:
-                        # Calculate Manhattan distance moved (for running jump qualification)
-                        ag_old = self.bm.placed_agents[self.drag_idx]
-                        dist_moved = abs(self.drag_cell.col - ag_old.origin.col) + abs(self.drag_cell.row - ag_old.origin.row)
-                        dist_moved *= 5  # Each cell = 5 feet
-
-                        # Compute Chebyshev distance (D&D 5e diagonal = 5 ft).
-                        print(f"[Movement] Attempting to move agent {self.drag_idx} to ({self.drag_cell.col},{self.drag_cell.row}) using {self.move_type}")
-                        # Debug: check terrain types along the path
-                        print(f"[Movement] Terrain at dest: {self.bm.get_terrain_type(self.drag_cell)}")
-
-                        # Check if agent can move at all (Speed = 0 check)
-                        agents = self.bm.placed_agents
-                        moving_agent = agents[self.drag_idx]
-                        can_move = self.combat.can_agent_move(self.bm, self.drag_idx)
-
-                        if not can_move:
-                            # Speed = 0, no movement possible, no OA
-                            move_success = False
-                            print(f"[Movement] Move result: {move_success}")
-                            self._combat_log_add(f"{moving_agent.name}: movement blocked — Speed = 0")
-                            self.drag_idx = -1
-                            self.drag_cell = None
+                        # A DM drag during a player's turn takes that turn over (D-M5-4.6).
+                        net_offer.take_over(self)
+                        if not self.commit_move(self.drag_idx, self.drag_cell, self.move_type,
+                                                DM_PRINCIPAL_ID):
                             self.drag_valid = False
-                            self._update_reach()
-                            self._update_attack_overlay()
-                        else:
-                            # In combat, the C++ engine owns Opportunity-Attack detection AND
-                            # resolution via the flow-checkpoint API (begin_move -> pending_decision
-                            # -> submit_decision). It does per-creature /
-                            # per-step provoke and commits the move itself. Out of combat, just move.
-                            self._reaction_mover_idx  = self.drag_idx
-                            self._reaction_dist_moved = dist_moved
-                            self._reaction_finish     = lambda: self._after_move_committed(self._reaction_mover_idx)
-                            if self.combat_active:
-                                status = self.combat.begin_move(self.bm, self.drag_idx, self.drag_cell, self.move_type)
-                                self._flush_combat_log()
-                                if status == rpg.FlowStatus.AwaitingDecision:
-                                    # Engine parked at an OA checkpoint — render the menu; the click
-                                    # routes back through submit_decision, which resumes the move.
-                                    self._show_pending_reaction_menu()
-                                else:
-                                    self._after_move_committed(self.drag_idx)
-                            else:
-                                move_success = self.combat.move_agent(self.bm, self.drag_idx, self.drag_cell, self.move_type)
-                                print(f"[Movement] Move result: {move_success}")
-                                self._flush_combat_log()
-                                if move_success:
-                                    self._after_move_committed(self.drag_idx)
-                                else:
-                                    print(f"[Movement] Move failed - likely blocked by terrain")
-                                    self.selected_idx = self.drag_idx
-                                    self._update_reach()
-                                    self._update_attack_overlay()
                     # else: agent stays at original position (C++ not updated)
                     self.drag_idx = -1
                     self.drag_cell = None

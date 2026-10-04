@@ -160,8 +160,8 @@ function connect() {
 // ── Answering (Envelope 4, M5a) ─────────────────────────────────────────────
 
 /* The second and last kind of frame this client sends. `answer` is exactly one of
-   `{option: id}` or `{cancel: true}` — never a string the player typed (Step 0.5's
-   no-free-text rule). The server decides it on the frame tick and answers with a
+   `{option: id}`, `{cell: [col, row]}` or `{cancel: true}` — never a string the player
+   typed (Step 0.5's no-free-text rule). The server decides it on the frame tick and answers with a
    `submit_ack`; everything the answer DID reaches this client as the next `view`. */
 function submit(answer) {
   if (!socket || !prompt || awaiting) return;
@@ -210,6 +210,7 @@ function drawPrompt() {
   el("prompt-cancel").disabled = !!awaiting;
   el("prompt-note").textContent = ackNote;
   el("prompt-note").hidden = !ackNote;
+  el("prompt-hint").hidden = !(live && prompt.expects === "cell");
   drawTimer();
   if (!live) return;
   for (const option of prompt.options) {
@@ -377,8 +378,42 @@ function drawBoard() {
 
   drawFog(cell, map.cols, map.rows);
   drawGrid(cell, map.cols, map.rows);
+  drawReachable(cell);
   for (const agent of view.agents) drawToken(agent, cell);
 }
+
+/* `you.reachable` (D-M5-4): the cells the live Move prompt will accept, exactly as the
+   server sent them. This file never computes one (NN2); it only paints the list. */
+function drawReachable(cell) {
+  const cells = view.you.reachable;
+  if (!cells) return;
+  ctx.fillStyle = "rgba(90, 200, 120, 0.28)";
+  ctx.strokeStyle = "rgba(90, 200, 120, 0.7)";
+  ctx.lineWidth = 1;
+  for (const [col, row] of cells) {
+    ctx.fillRect(col * cell, row * cell, cell, cell);
+    ctx.strokeRect(col * cell + 0.5, row * cell + 0.5, cell - 1, cell - 1);
+  }
+}
+
+/* A tap on the board answers a live cell prompt with the cell under it. The canvas is
+   scaled by CSS, so the tap is mapped back through the canvas's own size onto the nominal
+   `col * cell_px` lattice the board is drawn on. Only a cell the server listed is sent:
+   any other tap would only come back `bad_option`. */
+function cellAt(event) {
+  const rect = canvas.getBoundingClientRect();
+  const cell = (view.map.cell_px || 1);
+  const x = (event.clientX - rect.left) * canvas.width / rect.width;
+  const y = (event.clientY - rect.top) * canvas.height / rect.height;
+  return [Math.floor(x / cell), Math.floor(y / cell)];
+}
+
+canvas.addEventListener("click", (event) => {
+  if (!view || !prompt || view.you.prompt_id !== prompt.id) return;
+  if (prompt.expects !== "cell" || !view.you.reachable) return;
+  const [col, row] = cellAt(event);
+  if (view.you.reachable.some(([c, r]) => c === col && r === row)) submit({ cell: [col, row] });
+});
 
 /* The page art is FETCHED, not assigned to an `<img src>`.
  *

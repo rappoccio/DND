@@ -27,6 +27,7 @@ The offer is posted with `render="remote"`, so the DM console draws nothing for 
 from __future__ import annotations
 
 from actions import GROUP_SESSION
+from net import move as net_move
 from net.roster import DM_PRINCIPAL_ID
 from prompts import Option
 
@@ -172,8 +173,11 @@ def offered(app, actor: int, owner: str) -> list[Option]:
     `perform` would refuse for not being on the menu. Disabled rows carry no callback: the
     bus refuses a disabled option before any callback could run, and a row that cannot run
     should not hold a reference that could.
+
+    Move comes first (D-M5-4). It is not an `ActionMenu` id and its callback is not
+    `perform`: it opens the Move prompt, which `net/move.py` owns.
     """
-    out: list[Option] = []
+    out: list[Option] = [net_move.option(app, actor, owner)]
     for act in app._action_menu.values():
         # The one filter for DM tools. It is the group test, not the DM rows of `CLASS`,
         # so that a session tool added later is withheld whether or not anyone
@@ -221,17 +225,25 @@ def ensure(app) -> None:
 
     Runs once per frame, after `_draw_panel()`. It never touches a prompt that is not its
     own: while anything else is live (a reaction, a sub-prompt, a DM popup), it waits, and
-    the next frame after that prompt resolves posts a fresh offer.
+    the next frame after that prompt resolves posts a fresh offer. The Move prompt counts
+    as its own: it is the offer's child, so it is withdrawn when the gate closes or the
+    turn moves on, and left alone while the turn it belongs to is still open.
     """
     bus = app.prompts
     live = bus.live
     mine = live is not None and live is app._offer and live.is_live
+    moving = live is not None and live.is_live and net_move.is_move_prompt(app, live)
     want = gate(app)
     if want is None:
-        if mine:
+        if mine or moving:
             bus.withdraw(live.id)
         app._offer = None
         return
+    if moving:
+        if (live.actor_idx, live.owner) == want:
+            return
+        bus.withdraw(live.id)
+        live, mine = None, False
     if live is not None and not mine:
         return
     actor, owner = want
@@ -247,11 +259,14 @@ def ensure(app) -> None:
 
 
 def take_over(app) -> None:
-    """The DM is about to act from the panel during a player's turn (D-M5-7).
+    """The DM is about to act from the panel, or drag a token, during a player's turn
+    (D-M5-7, D-M5-4.6).
 
-    The live offer is cancelled as the DM before `perform` runs. The bus observer then
-    logs the take-over, and the player's late submit for that offer gets `not_live`.
+    The live offer, or the Move prompt under it, is cancelled as the DM before the DM's
+    action runs. The bus observer then logs the take-over, and the player's late submit
+    gets `not_live`.
     """
     live = app.prompts.live
-    if live is not None and live is app._offer and live.is_live:
+    if (live is not None and live.is_live
+            and (live is app._offer or net_move.is_move_prompt(app, live))):
         app.prompts.cancel(live.id, DM_PRINCIPAL_ID)
