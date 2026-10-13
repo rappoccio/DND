@@ -896,6 +896,15 @@ blind retry a second valid submission.
 > its submit then carries exactly one of `option` / `cell`. Nothing a client writes is a free
 > string.
 
+> **Amended 2026-10-13, user-agreed (M5d manual pass, 7(b)):** the `prompt` frame carries
+> `"cancellable": true | false`, always present, default `true`. It is a **display hint**:
+> `false` tells the client not to draw Cancel, because the server re-posts that prompt as
+> soon as it is cancelled. v1 sets it `false` on the action offer (`kind:"action"`) only.
+> The bus still accepts `{cancel:true}` on such a prompt (logged, then re-posted); no
+> `not_cancellable` error is added, and the closed `submit` error set is unchanged.
+> **Reason:** the offer's Cancel button did nothing visible, and a client heuristic ("the
+> prompt whose options include `move`") would break the first time the option set changed.
+
 **`disabled_reason` is a rules string, never an authorization one** — Step 0.4 is explicit
 that denial reasons belong to the audit log. A prompt the viewer is not entitled to answer is
 not sent to them at all; it is never sent greyed out.
@@ -5494,6 +5503,201 @@ TokenTarget(idx))` as `perform` does; the drag passes `DM_PRINCIPAL_ID`.
 - Stage files by name and use `git commit --only`. Never `-A`, never push unasked.
 - Mutants: run them on a `/tmp` copy without `__pycache__`, with `PYTHONDONTWRITEBYTECODE=1`. Copy `gui tests maps tools`.
 - After a manual pass on TestDNDMap, run `git checkout -- maps/TestDNDMap_agents.json maps/TestDNDMap_terrain.json`.
+
+
+##### M5d — Step 0 *(frozen 2026-10-04, user: "agreed")*
+
+**The owed audit (D-M5-3): does arming spend?** Checked arm by arm for every arm without an
+Esc. Slots, Focus, Superiority Dice, Sorcery Points and the Action are all spent at
+resolution, not at arming. Arcane Charge arms after Action Surge is spent, but the teleport
+itself is free, so cancelling it is the same as declining it. **Two exceptions, found while
+implementing:** Great Weapon Master's Hew clears `gwm_hew_available` when it arms, and the
+Unarmed Strike's Damage option swaps the punch weapon into slot 0 when it arms. A cancel puts
+both back. That restores the state from before the arm, so it is not a new rules decision.
+
+**Amendment to D-M5-3's cancel.** "The matching slice of `_clear_pending_target_picks()`" is
+wrong for four arms, because a bare flag reset leaves a continuation stuck:
+
+| Arm | A flag reset alone leaves | The cancel therefore |
+|---|---|---|
+| `pending_sweep` | the Extra Attack sequence stalled | calls `_continue_attack_sequence_after_rider(atk)`, as a refused pick does |
+| `pending_vitality_target` | the engine's reaction window parked (a deadlock) | calls `_submit_reaction_skip()` |
+| `pending_attack_slot` | `attacks_remaining` / `_attack_sequence_slot` seeded by the arm | restores them from the snapshot `perform` took, when no pick has resolved since; otherwise it only disarms |
+| `pending_flurry_target` | two companion fields set | resets the companions too |
+
+So **each arm has its own cancel function, and Esc runs that same function.** Arms that had
+an Esc keep its body, now as the arm's cancel. D-M5-9's cancel mutant applies to each arm.
+
+**Decisions:**
+1. **The gate.** `offer.ensure` owns the target prompt, the way it owns the Move prompt. One
+   table, `net/picks.ARMS`, lists every arm in the click chain's order, with its kind, its
+   actor, its title and its cancel. A test holds the table's order to `resolve_pick`'s. The
+   arm sites are unchanged, so it does not matter who armed the pick. When the first armed
+   arm is wired and the actor's controller is a player, `ensure` posts its prompt. Otherwise
+   the offer stays held, as in M5b, and the DM resolves the pick on the map.
+2. **`cells` for a creature pick** is every cell the viewer may hear about: the explored mask
+   with fog up, the whole grid with fog down (`net/view._visible_cells`'s rule). The set
+   does not depend on where hidden creatures stand, so it cannot leak them, and a guess at a
+   hidden one stays possible. `you.targets` is not sent in M5d. The client outlines tokens
+   from its own `agents[]`.
+   - `resolve_pick(cell, anchor=None)` returns whether a branch took the click. On the DM
+     console, False falls through to doors, ladders and the drag, exactly as before. For a
+     remote submit, False logs a line, and the prompt is posted again on the next frame.
+3. **Place picks (X, C→X)** use the same set. The resolvers still check range, line of
+   sight and light.
+4. **Sub-slices.**
+   - **M5d.0:** extract `resolve_pick`, add the arm table, the cancels and the `ensure`
+     projection. No row is wired yet, and the panel and determinism goldens stay
+     byte-identical.
+   - **M5d.1:** weapon attacks and the picks that follow them: `atk_action`, `atk_bonus`,
+     `unarmed`, `nick`, `flurry_of_blows`, `martial_arts`, `gwm_hew`, `war_priest`, the
+     shoves and `bm_maneuver` (Rally, Feint), plus Cleave and Sweep.
+   - **M5d.2:** single-creature picks (A), and Vitality of the Tree.
+   - **M5d.3:** place picks (X, C→X).
+   - **M5d.4:** `mantle` and the duplicity rows.
+   - **Moved to M5e:** the Chromatic chain, `spell_num_targets`, Beguiling and Bewitching
+     (spells and spell riders). **Dropped:** `_legendary_target_pick`, which is NPC-only.
+   - A row is enabled in the offer when its id is in `net/offer.WIRED`. `CLASS` keeps the
+     row's class, and `test_offer.py` asserts the unwired counts.
+5. **C→A's parent is the offer.** Once the choice's callback has armed the pick, the choice
+   prompt is already answered, so it cannot be the parent. Vitality of the Tree arms inside a
+   reaction window, and its prompt is posted while the window is parked.
+6. **A DM map click during a player's target prompt is a take-over.** It cancels the prompt
+   as the DM, which logs the `takeover` line, but **the DM's cancel does not disarm**, so the
+   DM's click then resolves the pick that is still armed. `take_over` covers the offer and
+   both of its children (Move and target prompts).
+7. **The oracle:** the panel and determinism goldens stay byte-identical across the
+   extraction; the mutant is `resolve_pick` computing `hit` differently from the map click.
+   Each continuation cancel (Sweep, Vitality, a fresh attack) gets its own mutant.
+
+**Not checked:** after an arm-then-Dash with no swing, `attacks_remaining > 0` may keep
+`mid_sequence_action` (`actions.py:834`) live once the Action is spent. This is a DM-console
+bug too, and it is left alone in M5d.
+
+##### M5d — what landed *(2026-10-04, uncommitted)*
+
+M5d.0 through M5d.4 were built together, with one table, so the sub-slices are rows in
+`WIRED` rather than separate commits.
+
+- **`App.resolve_pick(cell, anchor=None)`** (`main.py`) is the click chain, moved unchanged.
+  The map click calls it and falls through to doors, ladders and the drag when it returns
+  False. Dispel Magic's popup takes `anchor` instead of `event.pos`. A resolved pick drops
+  `_attack_arm_snapshot`.
+- **`gui/net/picks.py`** holds `ARMS` (the 40 chain arms plus the long jump, in chain
+  order), one cancel per arm, `WIRED` (35 arms), `wanted`, `cells`, `projection`, `post`
+  and `cancel`. The prompt's `on_cancel` skips the disarm when `resolved_by` is the DM.
+- **`net/offer.py`:** `ensure` handles the pick first: it posts, re-posts on a changed
+  projection, or withdraws a pick prompt whose arm has gone. `take_over` covers pick
+  prompts. `WIRED` lists the 37 pick rows, and `offered` enables them.
+- **`main.py`:** `perform` calls `_snapshot_attack_arm(actor)`. The inline Esc bodies for
+  duplicity, Clairvoyant, Vow and Inspiring Smite now call the arm's cancel. A last Esc
+  branch runs `net_picks.cancel`, which gives every other armed pick an Esc. The DM's map
+  click and the jump click call `take_over` while a pick prompt is live.
+- **`net/move.explored_footprints`** is fix A's cut on its own. The jump's landing set uses
+  it.
+- **Client (`app.js`):** a `kind:"target"` prompt rings the tokens instead of painting the
+  accepted squares, and its hint reads "Tap a creature on the board". Nothing on the wire
+  changed.
+- **Behavior changes on the DM console, recorded as D-M5-3 said:** Esc now cancels each of
+  the arms that had none, and a cancelled attack restores the fields its arm seeded. A
+  cancelled punch restores the weapons. Before, an abandoned punch left the unarmed weapon
+  in slot 0, because nothing restored it at the turn boundary either.
+- **Handoff stalls:** `action_surge` (Arcane Charge) and `bite_grappled` (attack slot) arm
+  wired picks now. `radiance` arms `pending_spell_slot`, which is M5e's, and still holds the
+  offer if it is left armed.
+- **Tests:** `tests/test_picks.py` has 20 checks. `test_offer.py` now checks the unwired
+  rows by emptying `WIRED` for the duration, and asserts that `WIRED` is exactly the
+  A / A* / C→A / X / C→X rows. 22 M5d mutants were run on a container `/tmp` copy, and all
+  22 were killed. D-M5-2's twelve mutants were re-run the same way, and all 12 were killed.
+  The original list isn't in this document, so the twelve were rebuilt from D-M5-2's
+  oracle (eight rows plus three, plus a disabled row with no reason).
+- **Results:** the suite is **167 / 0** in the container. The panel and determinism goldens
+  are unchanged. No C++ changed.
+- **Not covered by a test:** most wired arms are checked only through
+  `test_every_wired_arm_projects_and_cancels`, which arms each flag directly on a
+  Fighter 5. That test checks the projection and the cancel, not that each class's own
+  resolver accepts a remote cell. End to end, only Attack, Unarmed, the jump and Mantle's
+  Done were driven. The client's ring drawing has no test, so it needs the manual pass.
+
+**Owed:**
+- ~~The manual browser pass~~ — done 2026-10-13, results below.
+- The arm-then-Dash question above.
+
+**Manual browser pass, 2026-10-13** (user; a browser seat and a phone seat, a Barbarian and
+a Paladin, because the test file has no Fighter):
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Attack from the phone | **OK.** Rings, hint and resolution right, and Reckless Attack reached the phone. Brutal Strike once showed only on the DM console (`submit_log.jsonl`: phone target `pr_00012`, then the DM answered the player-owned `pr_00013` 7.5 s later). Not reproduced: a headless run shows it live, player-owned and named in the player's view, and it later reached the phone. User: "mark it as okay". |
+| 2 | Extra Attack | **OK.** |
+| 3 | Tap on an empty square | **OK.** |
+| 4 | Cancel | **OK.** |
+| 5 | DM map click during a target prompt | **Not reproduced; watching.** The takeover works, but the player's screen then "stays stuck and cannot resume control". The log shows the DM takeover of `pr_00037` at t=863, nothing from the player until t=920, then five Cancels on re-posted offers (`pr_00038`–`42`). Not diagnosed. On 2026-10-13 the user tried again and could not make it stick, and will watch for it in normal play. The five Cancels on `pr_00038`–`42` fit the dead Cancel button that 7(b) has since hidden, so part of what looked stuck may have been that button. |
+| 6 | Long Jump | **Works, but provokes no Opportunity Attacks.** It predates M5d (the DM console does the same): C++ `jumpAgent` never runs OA detection. Logged in `memory/known_limitations.md` as a [needs C++] TODO. |
+| 7 | Lay on Hands on the other seated player | **Fixed (a) and (b).** (a) A full-HP target used to disarm the pick silently, so the player landed back on the offer. It is now refused like an empty square: the pick stays armed and the log asks again (`_resolve_lay_on_hands`, test `test_lay_on_hands_on_a_full_hp_creature_keeps_the_pick`, mutant-checked). (b) The offer shows a Cancel button that does nothing, because the offer is derived and re-posts at once. Hiding it needs either a wire field (`"cancellable": false` on the offer, an Envelope 4 amendment that needs the user's agreement) or a client heuristic. **(b) fixed 2026-10-13 with the wire field** (user's choice): `Prompt.cancellable`, sent by `to_wire`; `net/offer.ensure` posts the offer with `cancellable=False`; `app.js` `drawPrompt` hides `#prompt-cancel`. Envelope 4 amended. Tests: `test_prompts.test_wire_projection` (default `true`), `test_offer.test_the_wire_never_carries_dm_tools` (offer `false`, mutant-checked). Not yet re-checked in a browser. |
+
+
+##### Handoff — M5d committed *(written 2026-10-13)*
+
+**State.**
+- M5d is committed as "M5d, D-M5-3: agent and cell picks from the browser", on top of
+  `8bc5a1f`. `main` is ten commits ahead of `origin/main`, none pushed. Never push unasked.
+- Suite: **167 / 0** in the container (2026-10-13). The panel and determinism goldens are
+  unchanged. No C++ changed, and no image rebuild is needed.
+- The user's manual browser pass is done. Results are in the table under "Owed", above.
+  Row 7(b) is fixed with the `cancellable` wire field (Envelope 4, amended 2026-10-13).
+  Row 5, the player stuck after a DM takeover, did not reproduce on a retry; the user is
+  watching for it.
+- Left out of the commit on purpose: `maps/TestDNDMap_terrain.json` (modified by the
+  manual pass; the **user** resets it), `submit_log.jsonl` (repo root, untracked, the
+  manual pass's intent log) and `gui/replay_log.txt`.
+
+**Read first:** "M5d — Step 0", "M5d — what landed" and the manual-pass table under "Owed".
+
+**Next, in order:**
+1. **Coverage gap, before M5e:** drive a few real arms from the offer through to
+   resolution with a remote cell: Battle Master Rally, Misty Escape / Shadow Step,
+   Elemental Burst (C→X), Invoke Duplicity at L17 (Done after the first placement), EK L15
+   Action Surge → Arcane Charge. Lay on Hands is already covered.
+2. **M5e — the spell pipeline.** The arms waiting on it are already in `ARMS`, unwired:
+   `pending_spell_slot`, `pending_chromatic_active`, `pending_summon_slot`,
+   `pending_beguiling` and `pending_bewitching_misty`. `radiance` still holds the offer while
+   it leaves `pending_spell_slot` armed. Wiring an arm means adding it to `picks.WIRED`
+   with a cancel; the cancel must restore whatever the arm changed.
+3. **If row 5 comes back:** reproduce it with a Paladin on a player seat (Attack, then the
+   DM clicks during the target prompt) and capture the player page's `you.prompt_id`
+   against the prompt frame's id, plus the live prompt on the bus. Suspects, unverified: a
+   player-owned rider prompt the phone never draws, or an offer whose rows are all
+   disabled after the DM's swing. Launching `./run.sh` needs the user's go-ahead.
+
+**Still open:**
+- The Long Jump draws no Opportunity Attacks (C++, `known_limitations.md`).
+- The arm-then-Dash question (`mid_sequence_action`, `actions.py:834`), which nobody has
+  checked.
+- Fix B (planning a player's reach from what the party knows) needs a C++ change, and is
+  its own slice.
+- The flaky `test_menus.test_on_deck_row_deploys_its_group_on_click` was not investigated.
+
+**Probes.** A headless probe that imports the test rig (`test_offer._aria_turn`,
+`test_picks._choose` / `_until_pick`) reproduces a remote attack in about a minute. Run it
+from a file mounted into the container. Piping a heredoc into `docker run` without `-i`
+silently runs nothing. Wrap it in `_preserve_cwd_logs` / `_restore_cwd_logs`, or it
+overwrites `gui/replay_log.txt`. The scene's seed is fixed, so to force a hit, lower the
+target's `ac_temporary_modifications`.
+
+**Mutant runners** (not in the repo; recreate them if needed). Pipe a Python script into
+`docker run --rm -i -v "$HOME":/home/user rpg_map -c "python3 -"`. The script copies
+`gui tests maps tools` into the container's `/tmp`, ignoring `__pycache__`, applies a single
+string replacement, and runs the suite with `PYTHONDONTWRITEBYTECODE=1`. Each of the 22 M5d mutants
+pairs with one test in `tests/test_picks.py`: the `hit` swap, each continuation cancel, the
+DM's cancel disarming, `take_over` skipping pick prompts, cells drawn from creature
+positions, the order of `ARMS`, an unwired arm or the DM's token being projected, a pick
+posted over a parked window, and the snapshot taken or dropped at the wrong time.
+
+**Rules:**
+- Container only. Never run `docker build`.
+- Stage files by name and use `git commit --only`. Never `-A`, never push unasked.
+- Commit only when the user asks.
 
 
 ---

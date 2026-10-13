@@ -134,6 +134,10 @@ class Prompt:
     # such: `net/view.py` sends it as `you.reachable` to the viewers who may answer, so
     # what a player is shown and what the bus accepts are one set (D-M5-4).
     cells:     frozenset | None = None
+    # Whether the client should offer Cancel. False only for a prompt the server re-posts
+    # at once when cancelled (the offer), where the button would do nothing visible. A
+    # display hint: the bus still accepts the cancel (Envelope 4, amended 2026-10-13).
+    cancellable: bool = True
     on_answer: Callable[[Response], None] | None = None
     on_cancel: Callable[[], None] | None = None
     state:     PromptState = PromptState.LIVE
@@ -161,6 +165,7 @@ class Prompt:
                 "title": self.title,
                 "expects": self.expects,
                 "options": [o.to_wire() for o in self.options],
+                "cancellable": self.cancellable,
                 "deadline_ms": self.deadline_ms()}
 
     def deadline_ms(self, now: float | None = None) -> int | None:
@@ -429,6 +434,7 @@ class PromptBus:
             anchor: tuple[int, int] | None = None,
             render: str | None = None,
             cells: Iterable[tuple[int, int]] | None = None,
+            cancellable: bool = True,
             on_answer: Callable[[Response], None] | None = None,
             on_cancel: Callable[[], None] | None = None) -> Prompt:
         """Open a prompt and render it. Returns the ``Prompt`` so a caller that opens a
@@ -446,6 +452,7 @@ class PromptBus:
                         parent_id=parent.id if parent is not None else None,
                         anchor=anchor, render=render,
                         cells=None if cells is None else frozenset(cells),
+                        cancellable=cancellable,
                         on_answer=on_answer, on_cancel=on_cancel)
 
         if parent is None:

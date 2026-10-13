@@ -79,6 +79,7 @@ from net import link as net_link
 from net import roster as net_roster
 # D-M5-2: a player's own turn, as one prompt on the bus; see net/offer.py.
 from net import offer as net_offer
+from net import picks as net_picks
 # S3 (M2): what the combat panel may offer, as data. `actions.Action` is the game
 # option; `net.roster.Action` above is the authorization verb — unrelated, so only
 # ActionMenu is imported here and neither `Action` is in this module's namespace.
@@ -795,6 +796,12 @@ class App:
         self.reaction_timeout_s   = REACTION_TIMEOUT_DEFAULT_S
         self._offer_key           = None  # ...and the projection it was built from (net/offer.py)
         self._move_prompt         = None  # D-M5-4: the player's live Move prompt, if any (net/move.py)
+        self._pick_prompt         = None  # M5d: the player's live target prompt, if any (net/picks.py)
+        self._pick_key            = None  # ...and the projection it was built from
+        # M5d: the attack-sequence fields as they were before the last `perform`, so that
+        # cancelling an armed attack undoes the arm (net/picks.cancel_attack). A resolved
+        # pick and the turn boundary drop it.
+        self._attack_arm_snapshot = None
         self.turn_idx             = 0     # index into initiative_order
         self.action_used          = False
         self.bonus_used           = False
@@ -4481,6 +4488,177 @@ class App:
         # completes, via _proceed_to_new_turn (the queue-drain continuation).
         self._begin_legendary_phase(prev_idx)
 
+    def resolve_pick(self, cell, anchor=None) -> bool:
+        """Resolve a click on `cell` against the pick in progress (D-M5-3).
+
+        This is the chain the DM's map click ran inline, moved here unchanged so that a remote
+        submit and the DM's click cannot disagree: it computes `hit` itself, from `_agent_at`,
+        so a hidden creature is resolved by the engine's perception rules and never by what a
+        client could see. Returns True when a branch took the click. On the DM console, False
+        falls through to doors, ladders and the drag, exactly as it did before the extraction.
+        `anchor` only places a popup (Dispel Magic's picker).
+        """
+        hit = self._agent_at(cell)
+        # Arcane Charge (EK L15): teleport up to 30 ft after Action Surge.
+        if self.arcane_charge_pending:
+            self._resolve_arcane_charge(cell)
+        # Blink Steps (Boon of Dimensional Travel): teleport up to 30 ft after the action.
+        elif self.blink_steps_pending:
+            self._resolve_blink_steps(cell)
+        # Psychic Teleportation (Soulknife L9): teleport up to 10×die ft.
+        elif self.pending_psychic_teleport:
+            self._resolve_psychic_teleport(cell)
+        elif self.pending_shadow_step:
+            self._resolve_shadow_step(cell)
+        elif self.pending_steps_of_fey:
+            self._resolve_steps_of_fey(cell)
+        elif self.pending_misty_escape:
+            self._resolve_misty_escape(cell)
+        elif self.pending_bewitching_misty:
+            self._resolve_bewitching_misty(cell)
+        elif self.pending_wild_magic_teleport:
+            self._resolve_wild_magic_teleport(cell)
+        elif self.pending_warping_implosion:
+            self._resolve_warping_implosion(cell)
+        elif self.pending_shadow_darkness:
+            self._resolve_shadow_darkness(cell)
+        elif self.pending_elemental_burst >= 0:
+            self._resolve_elemental_burst(cell)
+        # Trickery Cleric — Invoke Duplicity placement / movement / multi-dup swap.
+        elif self.pending_invoke_duplicity:
+            self._resolve_invoke_duplicity(cell)
+        elif self.pending_move_duplicity:
+            self._resolve_move_duplicity(cell)
+        elif self.pending_swap_duplicity:
+            self._resolve_swap_duplicity(cell)
+        # Pending attack: resolve against the clicked agent.
+        elif self.pending_cleave is not None and hit >= 0:
+            self._resolve_cleave(hit)
+        elif self.pending_sweep is not None and hit >= 0:
+            self._resolve_sweep(hit)
+        elif self.pending_rally is not None and hit >= 0:
+            self._resolve_rally(hit)
+        elif self.pending_feint is not None and hit >= 0:
+            self._resolve_feint(hit)
+        elif self.pending_mantle_active and hit >= 0:
+            # Collecting Mantle of Inspiration recipients: each click adds one.
+            self._mantle_add_target(hit)
+        elif self.pending_beguiling and hit >= 0:
+            # Beguiling Magic: the clicked creature must make a WIS save (then pick Charmed/Frightened).
+            features.beguiling_pick_target(self, hit)
+        elif self.pending_clairvoyant and hit >= 0:
+            # Clairvoyant Combatant: the clicked enemy makes a WIS save against the GOO warlock.
+            self._resolve_clairvoyant_combatant(hit)
+        elif self.pending_vow_of_enmity and hit >= 0:
+            # Vow of Enmity: the clicked enemy becomes the Vengeance paladin's sworn foe.
+            self._resolve_vow_of_enmity(hit)
+        elif self.pending_inspiring_smite and hit >= 0:
+            # Inspiring Smite: the clicked creature (within 30 ft) gains temp HP.
+            self._resolve_inspiring_smite(hit)
+        elif self._legendary_target_pick and hit >= 0:
+            self._resolve_legendary_attack(hit)
+        elif self.pending_attack_slot and hit >= 0:
+            features.confirm_friendly_harm(self, hit, lambda h=hit: self._resolve_combat_attack(h))
+        elif self.pending_summon_slot:
+            self._resolve_summon(cell)
+        elif self.pending_chromatic_active and self.pending_spell_slot:
+            # Collecting Chromatic Orb's leap chain: each click adds a hop.
+            self._chromatic_add_leap(hit)
+        elif self.pending_spell_slot:
+            if self._pending_spell_targets_corpse():
+                # Raise Dead / Revivify / Animate Dead: click a true-dead body
+                # (invisible to _agent_at). Routed through _corpse_at.
+                self._resolve_corpse_spell(cell)
+            elif self._pending_spell_binds_creature() and hit >= 0:
+                # Planar Binding: click a living creature to bind to the caster's
+                # team on a failed Charisma save (control transfer, no damage).
+                self._resolve_planar_binding(hit)
+            elif self._pending_spell_opens_doors() and self.bm.door_at(cell) >= 0:
+                # Knock targets a doorway cell (no creature). Route through the
+                # cell path so the engine reads aoe_col/aoe_row for the door.
+                self._resolve_spell_cast_aoe(cell)
+            elif self._pending_spell_dispels_magic():
+                # Dispel Magic: open a picker for the ongoing spells at the clicked
+                # creature and/or cell (buff vs debuff, or one of several AoEs) — the
+                # chosen effect is cast via _cast_dispel_selection.
+                features.begin_dispel_pick(self, hit, cell, anchor)
+            elif self.pending_spell_is_aoe:
+                if self._pending_spell_is_wall():
+                    if self.spell_anchor_cell is None:
+                        # First click: anchor the wall (must be in range).
+                        if self._wall_anchor_in_range(cell):
+                            self.spell_anchor_cell = cell
+                            self._combat_log_add("Wall anchored — click to set its direction and length.")
+                        else:
+                            self._combat_log_add("Out of range — pick a closer start point.")
+                    else:
+                        # Second click: commit the wall toward this cell.
+                        self._resolve_spell_cast_aoe(cell)
+                else:
+                    self._resolve_spell_cast_aoe(cell)
+            elif hit >= 0:
+                # Check line of sight for single-target spells
+                caster_idx = self._current_agent_idx()
+                if caster_idx >= 0 and caster_idx < len(self.bm.placed_agents):
+                    caster = self.bm.placed_agents[caster_idx]
+                    target = self.bm.placed_agents[hit]
+                    c_cond = self.combat.get_agent_conditions(self.bm, caster_idx)
+                    t_cond = self.combat.get_agent_conditions(self.bm, hit)
+                    if not self.bm.has_line_of_sight(caster.origin, caster.size, target.origin, target.size):
+                        self._combat_log_add("No line of sight to target!")
+                    elif not self.combat.can_perceive_target(self.bm, caster_idx, hit):
+                        self._combat_log_add("Cannot perceive target (invisible)!")
+                    elif getattr(c_cond, "forcecage_sealed", False) != getattr(t_cond, "forcecage_sealed", False):
+                        # Forcecage Box: a solid wall between the occupant and the outside — no spell crosses.
+                        self._combat_log_add("A Forcecage wall blocks that — no spell crosses it.")
+                    elif self._is_chromatic_pending():
+                        # Chromatic Orb: the primary target opens leap-chain selection
+                        # instead of casting immediately (confirm friendly harm first).
+                        features.confirm_friendly_harm(self, hit, lambda h=hit: self._enter_chromatic_chain(h))
+                    elif self._pending_spell_is_harm():
+                        # Faction rule 4: confirm before a harmful spell on a teammate.
+                        features.confirm_friendly_harm(self, hit, lambda h=hit: self._resolve_spell_cast(h))
+                    else:
+                        self._resolve_spell_cast(hit)
+                else:
+                    self._resolve_spell_cast(hit)
+            else:
+                # Single-target spell armed, but the click landed on no
+                # creature (hit < 0) — previously a totally silent no-op,
+                # which read as "targeting is broken." Tell the user so a
+                # near-miss on a big creature's footprint is obvious.
+                self._combat_log_add(
+                    f"No creature on that cell to target — click directly on the "
+                    f"target (cell {cell.col},{cell.row}).")
+        elif self.pending_shove_slot and hit >= 0:
+            self._resolve_shove(hit)
+        elif self.pending_unarmed_type and hit >= 0:
+            self._resolve_unarmed_option(hit)
+        elif self.pending_heal_light and hit >= 0:
+            self._resolve_healing_light(hit)
+        elif self.pending_lay_on_hands and hit >= 0:
+            self._resolve_lay_on_hands(hit)
+        elif self.pending_bastion_of_law and hit >= 0:
+            self._resolve_bastion_of_law(hit)
+        elif self.pending_hand_of_healing and hit >= 0:
+            self._resolve_hand_of_healing(hit)
+        elif self.pending_use_item >= 0 and hit >= 0:
+            self._resolve_use_item(hit)
+        elif self.pending_escape_net and hit >= 0:
+            self._resolve_escape_net(hit)
+        elif self.pending_grant_inspiration and hit >= 0:
+            self._resolve_grant_inspiration(hit)
+        elif self.pending_telekinetic and hit >= 0:
+            self._resolve_telekinetic(hit)
+        elif self.pending_flurry_target and hit >= 0:
+            self._resolve_flurry_target(hit)
+        elif self.pending_vitality_target and hit >= 0:
+            self._resolve_vitality_target(hit)
+        else:
+            return False
+        self._attack_arm_snapshot = None   # a pick resolved: the arm is no longer undoable
+        return True
+
     def _clear_pending_target_picks(self):
         """Reset EVERY 'awaiting a map click' target-pick flag to its idle value.
 
@@ -4575,10 +4753,10 @@ class App:
     def _target_pick_armed(self) -> bool:
         """True while the next map click belongs to a pick in progress (D-M5-2).
 
-        A player cannot make that click over the wire until M5d, so the action offer is
-        held back while one is armed: offering another action mid-pick would let it run
-        over the armed one. The DM resolves the pick on the map, or the turn boundary's
-        `_clear_pending_target_picks()` clears it."""
+        The action offer is held back while one is armed: offering another action mid-pick
+        would let it run over the armed one. A wired arm reaches its player as a target
+        prompt instead (net/picks.py, M5d); any other is resolved by the DM on the map, or
+        cleared by the turn boundary's `_clear_pending_target_picks()`."""
         return any(getattr(self, name, idle) != idle for name, idle in self._TARGET_PICK_ARMS)
 
     def _proceed_to_new_turn(self):
@@ -4599,6 +4777,7 @@ class App:
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""
         self._reaction_mover_idx       = -1
+        self._attack_arm_snapshot      = None
         # World Tree Vitality of the Tree: diagnostic for a stale turn-start target-pick (the actual
         # clear now lives in _clear_pending_target_picks, called just below).
         if self.pending_vitality_target or self._vitality_option_index != -1:
@@ -7510,7 +7689,11 @@ class App:
         # For now, heal the full amount (can add a dialog for partial healing later)
         healing = max_healing
         if healing <= 0:
-            self._combat_log_add(f"{self.bm.placed_agents[target_idx].name}: Already at full HP.")
+            # Refused like an empty square: the pick stays armed, so the player is asked
+            # again and the DM can click someone else or Esc out.
+            self.pending_lay_on_hands = True
+            self._combat_log_add(f"{self.bm.placed_agents[target_idx].name}: Already at full HP. "
+                                 "Choose another creature, or cancel.")
             return
 
         # Call C++ lay_on_hands method
@@ -15256,8 +15439,18 @@ class App:
             verb, target = net_roster.Action.CONTROL_TOKEN, net_roster.TokenTarget(actor)
         if not self.roster.authorize(self.roster.get(principal), verb, target):
             return False
+        self._snapshot_attack_arm(actor)
         self._perform_action(action_id, self._agent_screen_pos(actor) if anchor is None else anchor)
         return True
+
+    def _snapshot_attack_arm(self, actor: int) -> None:
+        """Keep what an attack arm may change, for `net/picks.cancel_attack` (M5d Step 0)."""
+        hew = False
+        if 0 <= actor < len(self.bm.placed_agents):
+            hew = bool(self.combat.get_agent_conditions(self.bm, actor).gwm_hew_available)
+        self._attack_arm_snapshot = (actor, self.attacks_remaining, self._attack_sequence_slot,
+                                     self.pending_attack_offhand, self.pending_attack_resource,
+                                     self.pending_weapon_idx, hew)
 
     def _perform_action(self, action_id: str, anchor):
         """`perform`'s dispatch: the bodies that stood under `_action_clicked` in
@@ -17334,13 +17527,7 @@ class App:
                 # is spent until a duplicate is actually placed, so cancelling here costs nothing).
                 if event.key == pygame.K_ESCAPE and (self.pending_invoke_duplicity or
                         self.pending_move_duplicity or self.pending_swap_duplicity):
-                    self.pending_invoke_duplicity    = False
-                    self.pending_duplicity_remaining = 0
-                    self._duplicity_cd_pending       = False
-                    self.pending_move_duplicity      = False
-                    self.move_duplicity_idx          = -1
-                    self.pending_swap_duplicity      = False
-                    self._combat_log_add("Invoke Duplicity cancelled.")
+                    net_picks.cancel_duplicity(self)
                     continue
                 # Enter casts Chromatic Orb with the leap chain collected so far (may be empty —
                 # the orb still leaps to the nearest foe on a match). Esc cancels the whole cast.
@@ -17371,16 +17558,13 @@ class App:
                     continue
                 # Esc cancels a pending Clairvoyant Combatant target pick (nothing spent until resolve).
                 if self.pending_clairvoyant and event.key == pygame.K_ESCAPE:
-                    self.pending_clairvoyant = False
-                    self._combat_log_add("Clairvoyant Combatant cancelled.")
+                    net_picks.cancel_clairvoyant(self)
                     continue
                 if self.pending_vow_of_enmity and event.key == pygame.K_ESCAPE:
-                    self.pending_vow_of_enmity = False
-                    self._combat_log_add("Vow of Enmity cancelled.")
+                    net_picks.cancel_vow_of_enmity(self)
                     continue
                 if self.pending_inspiring_smite and event.key == pygame.K_ESCAPE:
-                    self.pending_inspiring_smite = False
-                    self._combat_log_add("Inspiring Smite cancelled.")
+                    net_picks.cancel_inspiring_smite(self)
                     continue
                 # Esc cancels a pending spell cast. For an anchored wall, the first
                 # Esc drops back to anchor selection; a second Esc cancels the cast.
@@ -17394,6 +17578,10 @@ class App:
                         self.spell_anchor_cell    = None
                         self.spell_hover_cell     = None
                         self._combat_log_add("Spell cast cancelled.")
+                    continue
+                # M5d: every other armed pick cancels through its arm's own cancel, the one a
+                # player's remote cancel runs (net/picks.py). Before M5d these had no Esc.
+                if event.key == pygame.K_ESCAPE and self.combat_active and net_picks.cancel(self):
                     continue
                 # Delete / Backspace removes the selected placed agent,
                 # but ONLY when not in combat.
@@ -17482,184 +17670,34 @@ class App:
                         # Evoker safe-target editing: clicking an ally toggles it; empty/self finishes.
                         self._toggle_safe_target(hit)
                     elif self.combat_active:
-                        # Arcane Charge (EK L15): teleport up to 30 ft after Action Surge.
-                        if self.arcane_charge_pending:
-                            self._resolve_arcane_charge(cell)
-                        # Blink Steps (Boon of Dimensional Travel): teleport up to 30 ft after the action.
-                        elif self.blink_steps_pending:
-                            self._resolve_blink_steps(cell)
-                        # Psychic Teleportation (Soulknife L9): teleport up to 10×die ft.
-                        elif self.pending_psychic_teleport:
-                            self._resolve_psychic_teleport(cell)
-                        elif self.pending_shadow_step:
-                            self._resolve_shadow_step(cell)
-                        elif self.pending_steps_of_fey:
-                            self._resolve_steps_of_fey(cell)
-                        elif self.pending_misty_escape:
-                            self._resolve_misty_escape(cell)
-                        elif self.pending_bewitching_misty:
-                            self._resolve_bewitching_misty(cell)
-                        elif self.pending_wild_magic_teleport:
-                            self._resolve_wild_magic_teleport(cell)
-                        elif self.pending_warping_implosion:
-                            self._resolve_warping_implosion(cell)
-                        elif self.pending_shadow_darkness:
-                            self._resolve_shadow_darkness(cell)
-                        elif self.pending_elemental_burst >= 0:
-                            self._resolve_elemental_burst(cell)
-                        # Trickery Cleric — Invoke Duplicity placement / movement / multi-dup swap.
-                        elif self.pending_invoke_duplicity:
-                            self._resolve_invoke_duplicity(cell)
-                        elif self.pending_move_duplicity:
-                            self._resolve_move_duplicity(cell)
-                        elif self.pending_swap_duplicity:
-                            self._resolve_swap_duplicity(cell)
-                        # Pending attack: resolve against the clicked agent.
-                        elif self.pending_cleave is not None and hit >= 0:
-                            self._resolve_cleave(hit)
-                        elif self.pending_sweep is not None and hit >= 0:
-                            self._resolve_sweep(hit)
-                        elif self.pending_rally is not None and hit >= 0:
-                            self._resolve_rally(hit)
-                        elif self.pending_feint is not None and hit >= 0:
-                            self._resolve_feint(hit)
-                        elif self.pending_mantle_active and hit >= 0:
-                            # Collecting Mantle of Inspiration recipients: each click adds one.
-                            self._mantle_add_target(hit)
-                        elif self.pending_beguiling and hit >= 0:
-                            # Beguiling Magic: the clicked creature must make a WIS save (then pick Charmed/Frightened).
-                            features.beguiling_pick_target(self, hit)
-                        elif self.pending_clairvoyant and hit >= 0:
-                            # Clairvoyant Combatant: the clicked enemy makes a WIS save against the GOO warlock.
-                            self._resolve_clairvoyant_combatant(hit)
-                        elif self.pending_vow_of_enmity and hit >= 0:
-                            # Vow of Enmity: the clicked enemy becomes the Vengeance paladin's sworn foe.
-                            self._resolve_vow_of_enmity(hit)
-                        elif self.pending_inspiring_smite and hit >= 0:
-                            # Inspiring Smite: the clicked creature (within 30 ft) gains temp HP.
-                            self._resolve_inspiring_smite(hit)
-                        elif self._legendary_target_pick and hit >= 0:
-                            self._resolve_legendary_attack(hit)
-                        elif self.pending_attack_slot and hit >= 0:
-                            features.confirm_friendly_harm(self, hit, lambda h=hit: self._resolve_combat_attack(h))
-                        elif self.pending_summon_slot:
-                            self._resolve_summon(cell)
-                        elif self.pending_chromatic_active and self.pending_spell_slot:
-                            # Collecting Chromatic Orb's leap chain: each click adds a hop.
-                            self._chromatic_add_leap(hit)
-                        elif self.pending_spell_slot:
-                            if self._pending_spell_targets_corpse():
-                                # Raise Dead / Revivify / Animate Dead: click a true-dead body
-                                # (invisible to _agent_at). Routed through _corpse_at.
-                                self._resolve_corpse_spell(cell)
-                            elif self._pending_spell_binds_creature() and hit >= 0:
-                                # Planar Binding: click a living creature to bind to the caster's
-                                # team on a failed Charisma save (control transfer, no damage).
-                                self._resolve_planar_binding(hit)
-                            elif self._pending_spell_opens_doors() and self.bm.door_at(cell) >= 0:
-                                # Knock targets a doorway cell (no creature). Route through the
-                                # cell path so the engine reads aoe_col/aoe_row for the door.
-                                self._resolve_spell_cast_aoe(cell)
-                            elif self._pending_spell_dispels_magic():
-                                # Dispel Magic: open a picker for the ongoing spells at the clicked
-                                # creature and/or cell (buff vs debuff, or one of several AoEs) — the
-                                # chosen effect is cast via _cast_dispel_selection.
-                                features.begin_dispel_pick(self, hit, cell, event.pos)
-                            elif self.pending_spell_is_aoe:
-                                if self._pending_spell_is_wall():
-                                    if self.spell_anchor_cell is None:
-                                        # First click: anchor the wall (must be in range).
-                                        if self._wall_anchor_in_range(cell):
-                                            self.spell_anchor_cell = cell
-                                            self._combat_log_add("Wall anchored — click to set its direction and length.")
-                                        else:
-                                            self._combat_log_add("Out of range — pick a closer start point.")
-                                    else:
-                                        # Second click: commit the wall toward this cell.
-                                        self._resolve_spell_cast_aoe(cell)
-                                else:
-                                    self._resolve_spell_cast_aoe(cell)
-                            elif hit >= 0:
-                                # Check line of sight for single-target spells
-                                caster_idx = self._current_agent_idx()
-                                if caster_idx >= 0 and caster_idx < len(self.bm.placed_agents):
-                                    caster = self.bm.placed_agents[caster_idx]
-                                    target = self.bm.placed_agents[hit]
-                                    c_cond = self.combat.get_agent_conditions(self.bm, caster_idx)
-                                    t_cond = self.combat.get_agent_conditions(self.bm, hit)
-                                    if not self.bm.has_line_of_sight(caster.origin, caster.size, target.origin, target.size):
-                                        self._combat_log_add("No line of sight to target!")
-                                    elif not self.combat.can_perceive_target(self.bm, caster_idx, hit):
-                                        self._combat_log_add("Cannot perceive target (invisible)!")
-                                    elif getattr(c_cond, "forcecage_sealed", False) != getattr(t_cond, "forcecage_sealed", False):
-                                        # Forcecage Box: a solid wall between the occupant and the outside — no spell crosses.
-                                        self._combat_log_add("A Forcecage wall blocks that — no spell crosses it.")
-                                    elif self._is_chromatic_pending():
-                                        # Chromatic Orb: the primary target opens leap-chain selection
-                                        # instead of casting immediately (confirm friendly harm first).
-                                        features.confirm_friendly_harm(self, hit, lambda h=hit: self._enter_chromatic_chain(h))
-                                    elif self._pending_spell_is_harm():
-                                        # Faction rule 4: confirm before a harmful spell on a teammate.
-                                        features.confirm_friendly_harm(self, hit, lambda h=hit: self._resolve_spell_cast(h))
-                                    else:
-                                        self._resolve_spell_cast(hit)
-                                else:
-                                    self._resolve_spell_cast(hit)
+                        # M5d Step 0.6: the DM's click during a player's target prompt takes
+                        # the turn over. The pick stays armed, so this click resolves it.
+                        if net_picks.is_pick_prompt(self, self.prompts.live):
+                            net_offer.take_over(self)
+                        if not self.resolve_pick(cell, event.pos):
+                            if hit < 0 and self.bm.door_at(cell) >= 0:
+                                # No pending action and an empty door cell: offer door interaction.
+                                dm.show_door_menu(self, cell, event.pos)
+                            elif hit < 0 and self._ladder_at(cell) >= 0:
+                                dm.show_ladder_menu(self, cell, event.pos)
                             else:
-                                # Single-target spell armed, but the click landed on no
-                                # creature (hit < 0) — previously a totally silent no-op,
-                                # which read as "targeting is broken." Tell the user so a
-                                # near-miss on a big creature's footprint is obvious.
-                                self._combat_log_add(
-                                    f"No creature on that cell to target — click directly on the "
-                                    f"target (cell {cell.col},{cell.row}).")
-                        elif self.pending_shove_slot and hit >= 0:
-                            self._resolve_shove(hit)
-                        elif self.pending_unarmed_type and hit >= 0:
-                            self._resolve_unarmed_option(hit)
-                        elif self.pending_heal_light and hit >= 0:
-                            self._resolve_healing_light(hit)
-                        elif self.pending_lay_on_hands and hit >= 0:
-                            self._resolve_lay_on_hands(hit)
-                        elif self.pending_bastion_of_law and hit >= 0:
-                            self._resolve_bastion_of_law(hit)
-                        elif self.pending_hand_of_healing and hit >= 0:
-                            self._resolve_hand_of_healing(hit)
-                        elif self.pending_use_item >= 0 and hit >= 0:
-                            self._resolve_use_item(hit)
-                        elif self.pending_escape_net and hit >= 0:
-                            self._resolve_escape_net(hit)
-                        elif self.pending_grant_inspiration and hit >= 0:
-                            self._resolve_grant_inspiration(hit)
-                        elif self.pending_telekinetic and hit >= 0:
-                            self._resolve_telekinetic(hit)
-                        elif self.pending_flurry_target and hit >= 0:
-                            self._resolve_flurry_target(hit)
-                        elif self.pending_vitality_target and hit >= 0:
-                            self._resolve_vitality_target(hit)
-                        elif hit < 0 and self.bm.door_at(cell) >= 0:
-                            # No pending action and an empty door cell: offer door interaction.
-                            dm.show_door_menu(self, cell, event.pos)
-                        elif hit < 0 and self._ladder_at(cell) >= 0:
-                            dm.show_ladder_menu(self, cell, event.pos)
-                        else:
-                            # When paused, allow dragging any agent; otherwise only the current
-                            # combatant — or the legendary creature performing an out-of-turn Dash.
-                            cur = self._current_agent_idx()
-                            allow_drag = (hit >= 0) and (
-                                self.combat_paused or hit == cur
-                                or (self._legendary_move_active and hit == self._legendary_actor))
-                            if allow_drag:
-                                pt = self.bm.placed_agents[hit]
-                                self.drag_idx    = hit
-                                self.drag_origin = rpg.Cell(pt.origin.col, pt.origin.row)
-                                self.drag_offset = (cell.col - pt.origin.col,
-                                                    cell.row - pt.origin.row)
-                                self.drag_cell   = rpg.Cell(pt.origin.col, pt.origin.row)
-                                self.drag_valid  = True
-                                # During pause, allow selecting other agents; otherwise keep on current.
-                                if self.combat_paused:
-                                    self.selected_idx = hit
+                                # When paused, allow dragging any agent; otherwise only the current
+                                # combatant — or the legendary creature performing an out-of-turn Dash.
+                                cur = self._current_agent_idx()
+                                allow_drag = (hit >= 0) and (
+                                    self.combat_paused or hit == cur
+                                    or (self._legendary_move_active and hit == self._legendary_actor))
+                                if allow_drag:
+                                    pt = self.bm.placed_agents[hit]
+                                    self.drag_idx    = hit
+                                    self.drag_origin = rpg.Cell(pt.origin.col, pt.origin.row)
+                                    self.drag_offset = (cell.col - pt.origin.col,
+                                                        cell.row - pt.origin.row)
+                                    self.drag_cell   = rpg.Cell(pt.origin.col, pt.origin.row)
+                                    self.drag_valid  = True
+                                    # During pause, allow selecting other agents; otherwise keep on current.
+                                    if self.combat_paused:
+                                        self.selected_idx = hit
                     else:
                         # Normal mode: door interaction, drag any agent, or deselect.
                         # But disable dragging if jump overlay is active (use jump instead)
@@ -17781,6 +17819,8 @@ class App:
                     if is_jump_cell:
                         idx = self._current_agent_idx()
                         if 0 <= idx < len(self.bm.placed_agents):
+                            if net_picks.is_pick_prompt(self, self.prompts.live):
+                                net_offer.take_over(self)     # M5d Step 0.6
                             self._execute_jump(idx, cell)
 
             # ── Mob selection dialog ──────────────────────────────────────

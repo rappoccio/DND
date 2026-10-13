@@ -211,6 +211,16 @@ Two coupled on-hit-rider fixes (surfaced by a Vampire Spawn Claw Grappled rider 
 
 </details>
 
+### A Long Jump provokes no Opportunity Attacks [TODO] [needs C++]
+Found in the M5d manual pass (2026-10-13), from the DM console and the browser alike, so it is
+not an M5d regression. `CombatEngine::jumpAgent` (`combat_movement.cpp`) moves the token with
+`BattleMap::jumpAgent` and applies spell zones along the path, but never runs Opportunity-Attack
+detection. A walk does, through `begin_move` → `pending_decision` → `submit_decision`. So a
+creature that jumps out of an enemy's reach draws no attack. A jump is movement (PHB 2024), so it
+should provoke like any other. **To fix:** route the jump through the same flow checkpoint as
+`begin_move` (per-step reach exits along the jump path, parking on `AwaitingDecision`), and have
+`_execute_jump` handle `AwaitingDecision` the way `commit_move` does.
+
 ### Rider-laden Attack actions skip the unarmed-weapon restore [minor]
 The Attack-action sequence advance (disarm between attacks, `action_used`, ending the sequence) is now
 done **centrally** in `_finish_attack` right after the attack-count decrement, so it runs for every

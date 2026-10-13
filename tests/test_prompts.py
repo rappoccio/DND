@@ -142,6 +142,7 @@ def test_wire_projection():
     assert w["actor"] == 4 and w["kind"] == "reaction" and w["expects"] == "choice"
     assert w["title"] == "Kira may react to Ghoul's attack"
     assert w["deadline_ms"] is None
+    assert w["cancellable"] is True, "a prompt is cancellable unless it says otherwise"
     assert w["options"][1] == {"id": "opt_1", "label": "Uncanny Dodge",
                                "enabled": False,
                                "disabled_reason": "Reaction already used"}

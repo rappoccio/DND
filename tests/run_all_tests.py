@@ -51,6 +51,7 @@ test_scripts = [
     # Movement from the browser (M5c, D-M5-4): the offer's Move row, its cell prompt, and
     # the DM's drag, all through `commit_move`.
     "test_move.py",
+    "test_picks.py",
 
     # Rendered-geometry invariants for the same panel (MULTIPLAYER_PLAN.md M2) — the
     # third leg. The golden proves the structure did not CHANGE and the action menu

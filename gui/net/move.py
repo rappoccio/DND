@@ -90,7 +90,13 @@ def reachable_cells(app, actor: int, mt) -> list[tuple[int, int]]:
     DM's own screen shows the whole map, so nothing is hidden. A cell is kept only when
     every cell of the token's footprint there is explored, so a Large creature's overlay
     cannot reach past the mask either."""
-    cells = [(c.col, c.row) for c in app.reachable_for(actor, mt)]
+    return explored_footprints(app, actor, [(c.col, c.row) for c in app.reachable_for(actor, mt)])
+
+
+def explored_footprints(app, actor: int, cells) -> list[tuple[int, int]]:
+    """Fix A's cut, on its own: with fog up, keep a cell only when the actor's whole
+    footprint there is explored. The long jump's landing set takes the same cut (M5d)."""
+    cells = list(cells)
     if not app._fog_active():
         return cells
     explored = {(c.col, c.row) for c in app.bm.explored_cells()}

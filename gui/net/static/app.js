@@ -135,6 +135,7 @@ function connect() {
       // cycle, so the countdown re-anchors on each push and never drifts far.
       promptEndsAt = frame.deadline_ms == null ? 0 : performance.now() + frame.deadline_ms;
       drawPrompt();
+      if (view) drawBoard();   // a target pick rings tokens instead of painting squares
     } else if (frame.t === "submit_ack") {
       onAck(frame);
     }
@@ -206,11 +207,13 @@ function drawPrompt() {
     : "You are being asked for a decision…";
   const list = el("prompt-options");
   list.textContent = "";
-  el("prompt-cancel").hidden = !live;
+  el("prompt-cancel").hidden = !live || prompt.cancellable === false;
   el("prompt-cancel").disabled = !!awaiting;
   el("prompt-note").textContent = ackNote;
   el("prompt-note").hidden = !ackNote;
   el("prompt-hint").hidden = !(live && prompt.expects === "cell");
+  el("prompt-hint").textContent = live && prompt.kind === "target"
+    ? "Tap a creature on the board." : "Tap a highlighted square.";
   drawTimer();
   if (!live) return;
   for (const option of prompt.options) {
@@ -380,13 +383,14 @@ function drawBoard() {
   drawGrid(cell, map.cols, map.rows);
   drawReachable(cell);
   for (const agent of view.agents) drawToken(agent, cell);
+  drawTargets(cell);
 }
 
 /* `you.reachable` (D-M5-4): the cells the live Move prompt will accept, exactly as the
    server sent them. This file never computes one (NN2); it only paints the list. */
 function drawReachable(cell) {
   const cells = view.you.reachable;
-  if (!cells) return;
+  if (!cells || pickingCreature()) return;
   ctx.fillStyle = "rgba(90, 200, 120, 0.28)";
   ctx.strokeStyle = "rgba(90, 200, 120, 0.7)";
   ctx.lineWidth = 1;
@@ -394,6 +398,28 @@ function drawReachable(cell) {
     ctx.fillRect(col * cell, row * cell, cell, cell);
     ctx.strokeRect(col * cell + 0.5, row * cell + 0.5, cell - 1, cell - 1);
   }
+}
+
+/* A creature pick (M5d, `kind:"target"`) accepts every square this viewer can see, so that
+   a guess at a hidden creature stays possible; painting all of them would say nothing.
+   The tokens this view carries are ringed instead. Which of them the pick can actually
+   take is the server's call when the tap lands — this file decides nothing (NN2). */
+function pickingCreature() {
+  return !!(prompt && view.you.prompt_id === prompt.id && prompt.kind === "target");
+}
+
+function drawTargets(cell) {
+  if (!pickingCreature()) return;
+  ctx.strokeStyle = "rgba(240, 192, 64, 0.9)";
+  ctx.lineWidth = Math.max(2, cell * 0.08);
+  ctx.setLineDash([cell * 0.2, cell * 0.12]);
+  for (const agent of view.agents) {
+    const span = (agent.size || 1) * cell;
+    ctx.beginPath();
+    ctx.arc(agent.col * cell + span / 2, agent.row * cell + span / 2, span * 0.48, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
 }
 
 /* A tap on the board answers a live cell prompt with the cell under it. The canvas is

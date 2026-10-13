@@ -14,7 +14,7 @@ what it offers, when, to whom, and that the DM console neither sees it nor loses
   · a DM popup click-away does not cancel the offer         (test_a_dm_click_away_keeps_the_offer)
   · a remote Dodge, then a fresh offer without it           (test_a_remote_dodge_then_a_fresh_offer)
   · End Turn moves the offer to the next owner, or none     (test_end_turn_moves_the_offer)
-  · A and X rows go out disabled, and are refused           (test_a_pick_row_is_offered_disabled)
+  · an unwired pick row goes out disabled, and is refused  (test_a_pick_row_is_offered_disabled)
   · a DM click takes the turn over, and is logged           (test_a_dm_click_takes_over)
   · a pause withdraws the offer, without a takeover line    (test_a_pause_withdraws_the_offer)
 
@@ -162,6 +162,10 @@ def test_the_class_table_is_the_dispatch():
     assert counts == {"I": 57, "C→I": 8, "A": 16, "A*": 1, "C→A": 7, "X": 12,
                       "C→X": 1, "S": 5, "DM": 4}, counts
     assert sorted(i for i, c in net_offer.CLASS.items() if c == "DM") == sorted(_DM_TOOLS)
+    # M5d: every pick row is wired, and only those. S waits for M5e.
+    picks = {i for i, c in net_offer.CLASS.items() if c in ("A", "A*", "C→A", "X", "C→X")}
+    assert net_offer.WIRED == picks, (sorted(picks - net_offer.WIRED),
+                                      sorted(net_offer.WIRED - picks))
     print("✅ test_the_class_table_is_the_dispatch")
 
 
@@ -303,6 +307,8 @@ def test_the_wire_never_carries_dm_tools():
             raw = _drain(kira, 0.5)
     ids = [o["id"] for o in wire["options"]]
     assert "dodge" in ids and "end_turn" in ids, ids
+    # 7(b): cancelling the offer only re-posts it, so the client is told not to show Cancel.
+    assert wire["cancellable"] is False, "the offer does not say it is not cancellable"
     assert any('"kind":"action"' in r.replace(" ", "") for r in raw), "the offer was sent once"
     for tool in _DM_TOOLS:
         assert tool not in json.dumps(wire), f"{tool} is in the offer"
@@ -311,8 +317,19 @@ def test_the_wire_never_carries_dm_tools():
 
 
 def test_a_pick_row_is_offered_disabled():
-    """Attack (C→A), Shove (A) and the long jump (X) go out greyed with a reason, and a
-    submit of one is refused before anything runs."""
+    """A pick row that is not wired goes out greyed with a reason, and a submit of one is
+    refused before anything runs. Since M5d every A / C→A / X row is wired, so the check
+    unwires Attack (C→A), Shove (A) and the long jump (X) for its duration."""
+    saved = net_offer.WIRED
+    net_offer.WIRED = frozenset()
+    try:
+        _check_unwired_rows_are_refused()
+    finally:
+        net_offer.WIRED = saved
+    print("✅ test_a_pick_row_is_offered_disabled")
+
+
+def _check_unwired_rows_are_refused():
     with _table() as t:
         t.start()
         with _ws(t.srv.port) as kira:
@@ -329,7 +346,6 @@ def test_a_pick_row_is_offered_disabled():
         t.stop()
         assert ack["ok"] is False and ack["error"] == "bad_option", ack
         assert t.app.pending_attack_slot == "", "a refused attack armed its pick"
-    print("✅ test_a_pick_row_is_offered_disabled")
 
 
 def test_a_remote_dodge_then_a_fresh_offer():

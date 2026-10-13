@@ -15,8 +15,9 @@ step" and "after a cancel" are all that one rule, so no action needs an "it chan
 **What a player is offered** follows Step 0.12's walk of the 110 dispatch sites (`CLASS`):
   · I and C→I resolve on the choice, or through choice sub-prompts the bus already sends
     to the controller, so they are enabled;
-  · A, A*, C→A, X, C→X and S need a pick on the map, which the wire cannot carry until
-    M5d and M5e, so they go out disabled, with a reason a player can read;
+  · A, A*, C→A, X and C→X need a pick on the map. A row in `WIRED` is enabled: its pick
+    reaches the player as a target prompt (`net/picks.py`, M5d). The rest, and S until
+    M5e, go out disabled, with a reason a player can read;
   · DM tools (`GROUP_SESSION`, `place_terrain`) are never sent at all.
 An id this table does not know goes out disabled: a new action is unplayable remotely until
 someone classifies it, never playable by accident.
@@ -27,7 +28,7 @@ The offer is posted with `render="remote"`, so the DM console draws nothing for 
 from __future__ import annotations
 
 from actions import GROUP_SESSION
-from net import move as net_move
+from net import move as net_move, picks as net_picks
 from net.roster import DM_PRINCIPAL_ID
 from prompts import Option
 
@@ -39,6 +40,24 @@ I, C_I, A, A_MULTI, C_A, X, C_X, S, DM = (
     "I", "C→I", "A", "A*", "C→A", "X", "C→X", "S", "DM")
 
 PLAYABLE = frozenset({I, C_I})
+
+# The pick rows whose arms `net/picks.WIRED` projects (M5d). `CLASS` keeps their class;
+# this is what makes them playable. A row goes in only with every arm it can reach.
+WIRED = frozenset({
+    # M5d.1 — weapon attacks and the picks that follow them
+    "atk_action", "atk_bonus", "unarmed", "nick", "flurry_of_blows", "martial_arts",
+    "gwm_hew", "war_priest", "shove_push", "shove_prone", "telekinetic_feat", "bm_maneuver",
+    # M5d.2 — single-creature picks
+    "escape_net", "hand_of_healing", "clairvoyant_combatant", "vow_of_enmity",
+    "inspiring_smite", "healing_light", "lay_on_hands", "grant_inspiration",
+    "telekinetic_psi", "use_item", "bastion_of_law",
+    # M5d.3 — place picks
+    "long_jump", "blink_steps", "psychic_teleport", "shadow_step", "shadow_arts_darkness",
+    "steps_of_fey", "misty_escape", "warping_implosion", "wild_magic_teleport",
+    "elemental_burst",
+    # M5d.4 — multi-picks
+    "mantle", "invoke_duplicity", "move_duplicity", "swap_duplicity",
+})
 
 # Why a disabled row is disabled, in the player's words. The DM can still run any of these
 # for them from the console (a take-over), which is what "ask the DM" means.
@@ -189,7 +208,7 @@ def offered(app, actor: int, owner: str) -> list[Option]:
         if not act.enabled:
             out.append(Option(act.id, act.label, enabled=False,
                               disabled_reason=act.disabled_reason or None))
-        elif cls in PLAYABLE:
+        elif cls in PLAYABLE or act.id in WIRED:
             out.append(Option(act.id, act.label,
                               on_choose=lambda aid=act.id: app.perform(aid, owner)))
         else:
@@ -225,14 +244,39 @@ def ensure(app) -> None:
 
     Runs once per frame, after `_draw_panel()`. It never touches a prompt that is not its
     own: while anything else is live (a reaction, a sub-prompt, a DM popup), it waits, and
-    the next frame after that prompt resolves posts a fresh offer. The Move prompt counts
-    as its own: it is the offer's child, so it is withdrawn when the gate closes or the
-    turn moves on, and left alone while the turn it belongs to is still open.
+    the next frame after that prompt resolves posts a fresh offer. The Move prompt and the
+    target prompt count as its own: they are the offer's children, so they are withdrawn
+    when the state that asked for them has gone, and left alone while it holds.
+
+    An armed pick comes first (M5d Step 0.1). While one is armed for a player, its target
+    prompt is what that player is offered; the gate below stays closed until it resolves
+    or is cancelled, and the frame after that posts the offer again.
     """
     bus = app.prompts
     live = bus.live
-    mine = live is not None and live is app._offer and live.is_live
-    moving = live is not None and live.is_live and net_move.is_move_prompt(app, live)
+    live_ok = live is not None and live.is_live
+    mine = live_ok and live is app._offer
+    moving = live_ok and net_move.is_move_prompt(app, live)
+    picking = live_ok and net_picks.is_pick_prompt(app, live)
+
+    pick = net_picks.wanted(app)
+    if pick is not None:
+        arm, actor, owner = pick
+        key = net_picks.projection(app, arm, actor, owner)
+        if picking and key == app._pick_key:
+            return
+        if live_ok and not (mine or moving or picking):
+            return
+        if mine or moving or picking:
+            bus.withdraw(live.id)
+        app._pick_key = key
+        net_picks.post(app, arm, actor, owner, app._offer)
+        return
+    if picking:
+        bus.withdraw(live.id)
+        live, live_ok = None, False
+    app._pick_key = None
+
     want = gate(app)
     if want is None:
         if mine or moving:
@@ -254,19 +298,21 @@ def ensure(app) -> None:
     # No parent: a re-post supersedes the stale offer, and no callback of the old one runs.
     app._offer = bus.ask(actor, owner, OFFER_KIND,
                          f"{app.bm.placed_agents[actor].name}'s turn", options,
-                         render=OFFER_RENDER)
+                         render=OFFER_RENDER, cancellable=False)
     app._offer_key = key
 
 
 def take_over(app) -> None:
-    """The DM is about to act from the panel, or drag a token, during a player's turn
-    (D-M5-7, D-M5-4.6).
+    """The DM is about to act from the panel, drag a token, or click the map during a
+    player's turn (D-M5-7, D-M5-4.6, M5d Step 0.6).
 
-    The live offer, or the Move prompt under it, is cancelled as the DM before the DM's
-    action runs. The bus observer then logs the take-over, and the player's late submit
-    gets `not_live`.
+    The live offer, or the Move or target prompt under it, is cancelled as the DM before
+    the DM's action runs. The bus observer then logs the take-over, and the player's late
+    submit gets `not_live`. A target prompt cancelled by the DM leaves its pick armed
+    (`net/picks.post`), so the DM's click resolves it.
     """
     live = app.prompts.live
     if (live is not None and live.is_live
-            and (live is app._offer or net_move.is_move_prompt(app, live))):
+            and (live is app._offer or net_move.is_move_prompt(app, live)
+                 or net_picks.is_pick_prompt(app, live))):
         app.prompts.cancel(live.id, DM_PRINCIPAL_ID)
