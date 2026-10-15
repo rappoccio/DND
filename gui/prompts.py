@@ -326,6 +326,49 @@ class ElementPickerRenderer:
         return bool(getattr(self._dlg, "visible", False))
 
 
+# The render hint of a closed spell list too long for a popup (D-M1-12c, M5e E-5): Wish's
+# duplicate and Divine Intervention's pick. Its option labels are spell names.
+SPELL_BROWSER_RENDER = "spell_browser"
+
+
+class SpellBrowserRenderer:
+    """Draws a ``Prompt`` whose options are spells as the tabbed, searchable
+    ``SpellSelectionDialog`` (D-M1-12c).
+
+    The question is a closed ``choice``; "browser" is a property of this widget, not of the
+    prompt. A remote client gets the same option list and draws it with a filter box.
+
+    The dialog lists spell dicts, not options, so the renderer looks each label up in
+    ``catalogue()`` (the spells the App loaded, by name) and commits the id of the row
+    that was clicked. A label with no spell behind it is not drawn. The dialog is shown
+    with the highest level on offer as its cap, so it draws no tab that would be empty
+    above it. Esc or a click outside closes the dialog without a commit, and the event
+    loop's ``renderer_dismissed()`` turns that into the cancel.
+    """
+
+    def __init__(self, dialog, catalogue: Callable[[], list]):
+        self._dlg = dialog
+        self._catalogue = catalogue
+
+    def show(self, prompt: Prompt, submit: Callable[[str], None]) -> None:
+        by_name = {s.get("name"): s for s in self._catalogue()}
+        rows = [(by_name[o.label], o.id) for o in prompt.options
+                if o.enabled and o.label in by_name]
+        if not rows:
+            return
+        ids = {s["name"]: oid for s, oid in rows}
+        spells = [s for s, _ in rows]
+        self._dlg.show(lambda chosen: submit(ids[chosen["name"]]),
+                       max_level=max(s.get("level", 0) for s in spells),
+                       title=prompt.title, spells=spells)
+
+    def dismiss(self) -> None:
+        self._dlg.dismiss()
+
+    def is_showing(self) -> bool:
+        return bool(getattr(self._dlg, "visible", False))
+
+
 class RemoteRenderer:
     """Holds a prompt that only its owner's browser draws: the player's action offer
     (D-M5-2). It draws nothing on the DM console.

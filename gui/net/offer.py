@@ -57,9 +57,10 @@ WIRED = frozenset({
     "elemental_burst",
     # M5d.4 — multi-picks
     "mantle", "invoke_duplicity", "move_duplicity", "swap_duplicity",
-    # M5e.1 — the spell pipeline. Divine Intervention waits for M5e.2 (its picker is a
-    # DM widget).
+    # M5e.1 — the spell pipeline
     "spell_action", "spell_bonus", "mantle_majesty", "wild_magic_bonus_cast",
+    # M5e.2 — its spell list is a bus prompt now (E-5)
+    "divine_intervention",
 })
 
 # Why a disabled row is disabled, in the player's words. The DM can still run any of these

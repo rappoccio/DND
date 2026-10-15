@@ -20,8 +20,8 @@ handoff follows "M5b, commit 1 — D-M5-1 landed".
 **2026-10-14: M5b–M5d have landed. M5e (the spell pipeline) has started.** Its Step 0 is
 frozen (user: "agreed"). M5e.0, the two bug fixes, is committed. **M5e.1 has landed
 (committed, 2026-10-14)**; it found two DM-console bugs (F-M5e-9, F-M5e-10) that want their
-own commits; both are now fixed and committed. **M5e.2 is next.** Read "Handoff — M5e.1
-landed", just before M6.
+own commits. Both are now fixed and committed. **M5e.2 has landed (committed,
+2026-10-14). M5e.3 is next.** Read "Handoff — M5e.2 landed", just before M6.
 
 ---
 
@@ -6246,7 +6246,7 @@ what landed".
 - Commit only when asked. Never push unasked.
 
 
-##### M5e.1 — what landed *(2026-10-14, uncommitted)*
+##### M5e.1 — what landed *(2026-10-14, commit `f26ba9e`)*
 
 E-1, E-2, E-3 and E-7, and the wiring. The `radiance` claim is struck.
 
@@ -6384,24 +6384,140 @@ Sorcery's SP levels.
 ##### Handoff — M5e.1 landed *(written 2026-10-14)*
 
 **State.**
-- **Uncommitted**, on top of "M5e.0, F-M5e-5". The files are `gui/net/picks.py`,
-  `gui/net/offer.py`, `gui/main.py`, `gui/menus/features.py`, `tests/test_picks.py`,
-  `tests/test_offer.py` and this plan. Commit when asked, staging by name.
+- Three commits sit on top of "M5e.0, F-M5e-5" (`c765fcc`), each made at the user's request:
+  - `f26ba9e` "M5e.1: the spell pipeline from the browser";
+  - `54589be` "F-M5e-9: Animate Dead no longer raises when the undead is chosen";
+  - `e06af78` "F-M5e-10: Mantle of Majesty's Command, first cast and after Forcecage".
+
+  Each fix had its test written first and watched fail. `main` is sixteen commits ahead of
+  `origin/main`, none pushed. Never push unasked.
+- Suite: **167 / 0** in the container (2026-10-14). The goldens are unchanged. No C++
+  changed, and no image rebuild is needed.
+- `tests/test_picks.py` has 58 checks. The mutant runner is the one under "Mutant
+  runners", running `test_picks.py` and `test_offer.py`.
+- No tracked file is modified. The untracked scratch (encounters, `replay_log.txt`,
+  `.DS_Store`, …) stays out of every commit.
+
+**Read first:** "M5e — Step 0" (frozen; E-1 through E-10 are the contract), then "M5e.1 —
+what landed" and its findings.
+
+**Next, in order:**
+1. **M5e.2:** Wish and DI as one bus `choice` prompt with `render="spell_browser"` (E-5).
+   Then flip `divine_intervention`.
+2. **M5e.3:** the ward toggle loop (E-6).
+3. **M5e.4:** aim, then confirm, with `you.aoe` (E-8).
+
+**Still open:** everything in the M5e.0 handoff's list, plus F-M5e-11 until M5e.2 and M5e.3,
+and the gaps under "Not covered by a test" above.
+
+**Rules:**
+- Container only. Never run `docker build`.
+- Stage files by name. Never `-A`.
+- Commit only when asked. Never push unasked.
+
+
+##### M5e.2 — what landed *(2026-10-14, commit "M5e.2: Wish and Divine Intervention from the browser")*
+
+E-5 as written: Wish and Divine Intervention each ask one bus `choice` prompt, and
+`divine_intervention` is on the offer. Nothing on the wire changed.
+
+- **The prompt.** `App._ask_spell_browser(idx, title, spells, on_pick)` posts one
+  `kind:"action"` prompt through `_ask_actor`, owned by the caster's controller. It has an
+  option per spell, labelled with the spell's name, in catalogue order, and
+  `render="spell_browser"` (`prompts.SPELL_BROWSER_RENDER`). There is no `on_cancel`,
+  because both spells pay on the pick, so a cancel has nothing to undo.
+  - Wish: every spell of level 8 or lower, **389** options.
+  - DI: level 5 or lower and in `CLERIC_DI_SPELL_NAMES`, **80** options. The cap is applied
+    before the names, as the dialog applied it (see F-M5e-12).
+  - The titles are the dialog's, unchanged.
+- **The DM console's renderer.** `prompts.SpellBrowserRenderer(dialog, catalogue)` draws the
+  prompt with the same `SpellSelectionDialog`. It looks each label up in `all_spells`, shows
+  only those, and caps the tabs at the highest level on offer. A click commits that row's
+  option id. The event loop now calls `renderer_dismissed()` after the dialog handles an
+  event, so Esc or a click outside cancels the prompt, as it does for the element picker.
+- **Two dialog changes**, both invisible on the DM console:
+  - `show(spells=…)` narrows the list for one showing. The authoring callers pass nothing,
+    so they still get the whole catalogue.
+  - `_commit` closes the dialog *before* calling back. A callback that opens the browser
+    again (Greater DI choosing Wish) was otherwise closed by the dismiss that followed it.
+    The authoring callbacks do not re-open it, so nothing they do changes.
+- **The client.** A prompt with more than 40 options (`FILTER_AT`) gets a filter box
+  (`#prompt-filter`). The action offer stays under that number, so it gets no box. The box
+  hides buttons whose label does not contain the text. What is typed never leaves the
+  page: the answer is still an option id, and the two-send check still passes. The list
+  scrolls inside the band (`max-height: 50vh`).
+- **Wired.** `offer.WIRED` gains `divine_intervention`, so every S row is on offer.
+  `test_offer` now asserts `WIRED` covers every pick row and every S row.
+- **F-M5e-11 is half closed.** Wish no longer opens a DM widget for a player's cast. The
+  ward picker is M5e.3.
+- **Tests:** `tests/test_picks.py` has 62 checks, up from 58.
+  - `test_wish_is_one_choice_prompt_over_the_bus`: the kind, render and owner, the 389
+    labels in order, the wire option has no extra keys, and Fireball spends the 9th slot
+    and is then cast free from a cell pick.
+  - `test_a_cancelled_wish_spends_nothing`: the slot and Action are kept, and the offer is
+    back.
+  - `test_divine_intervention_from_the_offer`: enabled at Cleric 10, the 80 labels, and
+    Guiding Bolt spends the use and the Action, then casts on Skarn for no slot.
+  - `test_the_dm_console_draws_the_browser`: the dialog lists exactly the options; Esc
+    cancels and spends nothing; a DM click answers with that row's id; a callback that
+    re-opens the dialog leaves it open.
+- **Mutants:** 7 of 8 killed (`test_picks.py` and `test_offer.py`):
+  - the render hint dropped;
+  - DI unwired;
+  - no `renderer_dismissed()` after the dialog;
+  - `_commit` dismissing after the callback;
+  - Wish listing 9th-level spells;
+  - the renderer committing the first option;
+  - the renderer ignoring the prompt's options.
+
+  The survivor is the DI list without its level cap. It is equivalent below Cleric 20,
+  because every name in `CLERIC_DI_SPELL_NAMES` is level 5 or lower. At 20 it would add
+  Wish, which is F-M5e-12's fix, so no test pins the cap.
+- **Suite:** 167 / 0 in the container. The panel and determinism goldens are unchanged. No
+  C++ changed.
+- **Recorded behaviour changes on the DM console:** none visible. A Wish or DI cast opens the
+  same dialog with the same rows, title and tabs. It is now a bus prompt, so the submit
+  log records the answer or cancel, and a cast for a player can be answered by the player.
+
+**Findings.**
+
+- **F-M5e-12: Greater Divine Intervention never offers Wish, and its Wish would leak a free
+  slot.** Found by reading. Not run, and not fixed.
+  1. `_start_divine_intervention` adds "Wish" to the allowed names at Cleric 20. It also
+     passed `max_level=5`, and the dialog applies the cap before the names, so Wish (9th)
+     was always filtered out. M5e.2 keeps that order so the conversion changes nothing.
+  2. If Wish were reachable, `_on_divine_intervention_pick` would set `_di_wish_free` and
+     open Wish's browser. Cancelling that browser leaves `_di_wish_free` set, so the
+     caster's next real Wish costs no 9th-level slot. Nothing resets the flag at the turn
+     boundary.
+
+  The fix: list Wish whenever `greater` holds, and give Wish's browser an `on_cancel` that
+  clears `_di_wish_free` (the DI use stays spent; F-M5e-2 stands). It needs its own
+  commit, with a failing test first, and your OK.
+  Recorded in `memory/known_limitations.md` (Cleric section).
+
+**Not covered by a test:** the client's filter box (only `node --check` and the two-send
+check read `app.js`), and a phone drawing 389 buttons. Both want a look in a real browser.
+
+##### Handoff — M5e.2 landed *(written 2026-10-14)*
+
+**State.**
+- Committed at the user's request as "M5e.2: Wish and Divine Intervention from the
+  browser", on top of `e06af78`. It carries the code, the tests, this plan and the
+  F-M5e-12 entry in `memory/known_limitations.md`. `main` is seventeen commits ahead of
+  `origin/main`, none pushed. Never push unasked.
 - Suite: **167 / 0** in the container (2026-10-14). The goldens are unchanged. No C++
   changed, and no image rebuild is needed.
 
-**Update (2026-10-14).** The user asked for the commits. M5e.1 is committed, and so are
-F-M5e-9 and F-M5e-10, each in its own commit with its test written first. The suite is
-**167 / 0**, and `tests/test_picks.py` has 58 checks.
-
 **Next, in order:**
-1. ~~F-M5e-9 and F-M5e-10~~ (done, above).
-2. **M5e.2:** Wish and DI as one bus `choice` prompt with `render="spell_browser"` (E-5).
-   Then flip `divine_intervention`.
-3. **M5e.3:** the ward toggle loop (E-6).
-4. **M5e.4:** aim, then confirm, with `you.aoe` (E-8).
+1. **F-M5e-12**, if you OK it: its own commit, with a failing test first.
+2. **M5e.3:** the ward toggle loop (E-6). Check first whether the panel golden draws the
+   ward widget (E-10).
+3. **M5e.4:** aim, then confirm, with `you.aoe` (E-8).
+4. A manual look at the filter box on a phone (Wish's 389 rows).
 
-**Still open:** everything in the M5e.0 handoff's list, plus F-M5e-11 until M5e.2 and M5e.3.
+**Still open:** everything in the M5e.0 handoff's list, F-M5e-11's ward half until M5e.3,
+and the gaps under "Not covered by a test" in M5e.1 and M5e.2.
 
 **Rules:**
 - Container only. Never run `docker build`.

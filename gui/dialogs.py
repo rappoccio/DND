@@ -3260,6 +3260,7 @@ class SpellSelectionDialog:
 
     def __init__(self, spells: list, font_sm=None, font_md=None):
         self.all_spells = spells  # All available spells (dicts with "name")
+        self.source_spells = spells  # what this showing lists (show(spells=…) narrows it)
         self.filtered_spells = spells  # Filtered by search + active tab
         self.font_sm = font_sm
         self.font_md = font_md
@@ -3276,11 +3277,13 @@ class SpellSelectionDialog:
         self.allow_names = None   # None == no name filter; else keep only spells whose name is in this set
         self.title = "Select a Spell"
 
-    def show(self, callback, max_level=None, title=None, allow_names=None):
+    def show(self, callback, max_level=None, title=None, allow_names=None, spells=None):
         """Open the picker. ``max_level`` (e.g. 8 for Wish) hides the higher-level
         tabs and filters those spells out of the list; ``allow_names`` (a set, e.g. the
         Divine Intervention Cleric list) restricts the list to those names; ``title``
-        overrides the header."""
+        overrides the header. ``spells`` replaces the catalogue for this showing only:
+        ``SpellBrowserRenderer`` passes a prompt's options through it."""
+        self.source_spells = self.all_spells if spells is None else spells
         self.visible = True
         self.selected_callback = callback
         self.scroll_y = 0
@@ -3301,6 +3304,15 @@ class SpellSelectionDialog:
     def dismiss(self):
         self.visible = False
 
+    def _commit(self, spell):
+        """Close, then call back. In that order because the callback may open the
+        picker again (Greater Divine Intervention choosing Wish), and a dismiss after it
+        would close the new showing."""
+        callback = self.selected_callback
+        self.dismiss()
+        if callback:
+            callback(spell)
+
     def _update_filtered_spells(self):
         """Filter spells based on search text and the active level tab.
 
@@ -3309,12 +3321,12 @@ class SpellSelectionDialog:
         """
         search_lower = self.search_text.strip().lower()
         if search_lower:
-            self.filtered_spells = [s for s in self.all_spells
+            self.filtered_spells = [s for s in self.source_spells
                                     if search_lower in s.get("name", "").lower()]
         elif self.active_level is None:
-            self.filtered_spells = self.all_spells[:]
+            self.filtered_spells = self.source_spells[:]
         else:
-            self.filtered_spells = [s for s in self.all_spells
+            self.filtered_spells = [s for s in self.source_spells
                                     if s.get("level", 0) == self.active_level]
         # Level cap (e.g. Wish duplicates only spells of level ≤ 8): applies across
         # every branch — search, All, and a specific tab — so a capped spell can
@@ -3363,9 +3375,7 @@ class SpellSelectionDialog:
             elif event.key == pygame.K_RETURN:
                 # Select first filtered spell if only one matches
                 if len(self.filtered_spells) == 1:
-                    if self.selected_callback:
-                        self.selected_callback(self.filtered_spells[0])
-                    self.dismiss()
+                    self._commit(self.filtered_spells[0])
                     return True
             elif event.unicode.isprintable():
                 self.search_text += event.unicode
@@ -3393,9 +3403,7 @@ class SpellSelectionDialog:
                         item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
                                               self.rect.w - self.PAD * 2, self.ITEM_H)
                         if item_rect.collidepoint(*event.pos):
-                            if self.selected_callback:
-                                self.selected_callback(spell)
-                            self.dismiss()
+                            self._commit(spell)
                             return True
             else:
                 self.dismiss()

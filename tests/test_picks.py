@@ -47,6 +47,14 @@ runs. These checks pin:
     the offer, the Beguiling rider, Radiance arming nothing, and Esc agreeing with the
     remote spell cancel
                          (test_a_single_target_spell_picked_over_the_bus … test_esc_and_the_remote_spell_cancel_agree)
+  · M5e.2: Wish's and Divine Intervention's spell lists are one bus `choice` prompt each,
+    drawn on the DM console by the spell browser. A player picks the duplicate, cancels
+    it for free, and casts DI; the DM's Esc on the browser cancels it, and a DM click
+    answers it with the spell clicked
+                         (test_wish_is_one_choice_prompt_over_the_bus,
+                          test_a_cancelled_wish_spends_nothing,
+                          test_divine_intervention_from_the_offer,
+                          test_the_dm_console_draws_the_browser)
   · end to end: an attack over the socket                    (test_an_attack_over_the_wire)
 
 The scene is `test_offer.py`'s: Aria (Fighter 5) at (3,3) with Skarn, a foe, at (4,3);
@@ -71,7 +79,7 @@ import rpg_battle_map as rpg
 
 from net import offer as net_offer, picks as net_picks
 from net.roster import DM_PRINCIPAL_ID
-from prompts import Response
+from prompts import Response, SPELL_BROWSER_RENDER
 
 from gui_driver import cell_center, post_click
 from test_combat_panel import _idx, _preserve_cwd_logs, _restore_cwd_logs
@@ -1446,6 +1454,137 @@ def test_esc_and_the_remote_spell_cancel_agree():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  M5e.2 — Wish and Divine Intervention (E-5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _until_title(app, who, title_part):
+    """Answer `who`'s prompts with their first enabled option until the live one names
+    `title_part`. Returns it, unanswered."""
+    for _ in range(6):
+        _frame(app)
+        live = app.prompts.live
+        assert live is not None and live.is_live, "nothing is asking anything"
+        if title_part in live.title:
+            return live
+        assert live.owner == who.id, f"{live.title!r} is owned by {live.owner}"
+        enabled = [o for o in live.options if o.enabled]
+        assert app.prompts.submit(live.id, Response(option=enabled[0].id), who.id).ok
+    raise AssertionError(f"no prompt named {title_part!r} was posted")
+
+
+def _choose_label(app, who, prompt, label):
+    opt = next(o for o in prompt.options if o.label == label)
+    assert app.prompts.submit(prompt.id, Response(option=opt.id), who.id).ok
+
+
+def _wish_browser(app, kira):
+    aria = _caster(app, rpg.CharacterClass.Wizard, 17, ["Wish"])
+    _choose(app, kira, "spell_action")
+    return aria, _until_title(app, kira, "Wish — duplicate a spell")
+
+
+def test_wish_is_one_choice_prompt_over_the_bus():
+    """Wish's duplicate is one `choice` prompt owned by the caster's player: an option per
+    spell of level 8 or lower, named for it, in catalogue order (D-M1-12c). Picking
+    Fireball spends Wish's 9th-level slot and arms a free Fireball, whose cell pick is
+    next."""
+    app, kira, _ = _aria_turn()
+    aria, browser = _wish_browser(app, kira)
+    expected = [d["name"] for d in app.all_spells if d.get("level", 0) <= 8]
+    assert (browser.kind, browser.expects, browser.render) == \
+        ("action", "choice", SPELL_BROWSER_RENDER), browser
+    assert [o.label for o in browser.options] == expected, len(browser.options)
+    assert len(expected) == 389 and "Wish" not in expected, len(expected)
+    assert browser.to_wire()["options"][0].keys() == {"id", "label", "enabled"}
+    nine, three = _slots(app, aria, 9), _slots(app, aria, 3)
+    _choose_label(app, kira, browser, "Fireball")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("cell", "Fireball: choose the center"), pick
+    assert _slots(app, aria, 9) == nine - 1, "Wish's own slot was not spent"
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    assert app.pending_spell_slot == "" and app.action_used
+    assert _slots(app, aria, 3) == three, "the duplicated Fireball spent a slot"
+    print("✅ test_wish_is_one_choice_prompt_over_the_bus")
+
+
+def test_a_cancelled_wish_spends_nothing():
+    """Kira's Cancel on the list: no slot, no Action, nothing armed, and the offer is back
+    with Cast a Spell on it. Wish pays when the duplicate is picked."""
+    app, kira, _ = _aria_turn()
+    aria, browser = _wish_browser(app, kira)
+    nine = _slots(app, aria, 9)
+    assert app.prompts.cancel_as(browser.id, kira.id).ok
+    _frame(app)
+    assert _slots(app, aria, 9) == nine and not app.action_used
+    assert app.pending_spell_slot == "" and not app.spell_selection_dialog.visible
+    offer = _offer(app)
+    assert offer is not None and any(o.id == "spell_action" and o.enabled
+                                     for o in offer.options), offer
+    print("✅ test_a_cancelled_wish_spends_nothing")
+
+
+def test_divine_intervention_from_the_offer():
+    """Cleric 10: the row is on offer and enabled. Its list is the Cleric spells of level 5
+    or lower, and Guiding Bolt from it spends the use and the Action, then asks for a
+    target and casts for no slot."""
+    from main import CLERIC_DI_SPELL_NAMES
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Cleric, 10, ["Sacred Flame"])
+    assert any(o.id == "divine_intervention" and o.enabled for o in _offer(app).options)
+    _choose(app, kira, "divine_intervention")
+    browser = _until_title(app, kira, "Divine Intervention — choose a Cleric spell")
+    expected = [d["name"] for d in app.all_spells
+                if d.get("level", 0) <= 5 and d["name"] in CLERIC_DI_SPELL_NAMES]
+    assert browser.render == SPELL_BROWSER_RENDER and browser.owner == kira.id
+    assert [o.label for o in browser.options] == expected and len(expected) == 80, \
+        len(browser.options)
+    one = _slots(app, aria, 1)
+    _choose_label(app, kira, browser, "Guiding Bolt")
+    assert app.action_used and not app.combat.can_use_divine_intervention(app.bm, aria)
+    pick = _until_pick(app, kira)
+    assert pick.title == "Guiding Bolt: choose a target", pick.title
+    new = _record(app)
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    assert app.pending_spell_slot == "" and _slots(app, aria, 1) == one
+    assert any("Guiding Bolt" in line for line in new), new
+    print("✅ test_divine_intervention_from_the_offer")
+
+
+def test_the_dm_console_draws_the_browser():
+    """On the DM console the prompt is the tabbed dialog, listing exactly its options.
+    Esc there cancels the prompt (and spends nothing); a click on a row answers it with
+    that row's spell. The dialog closes before it calls back, so a callback that opens
+    the browser again leaves it open."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Cleric, 10, ["Sacred Flame"])
+    dlg = app.spell_selection_dialog
+    _choose(app, kira, "divine_intervention")
+    browser = _until_title(app, kira, "Divine Intervention")
+    assert dlg.visible and dlg.title == browser.title
+    assert [d["name"] for d in dlg.filtered_spells] == [o.label for o in browser.options]
+    _esc(app)
+    assert not browser.is_live and not dlg.visible, browser.state
+    assert app.combat.can_use_divine_intervention(app.bm, aria) and not app.action_used
+
+    _frame(app)
+    _choose(app, kira, "divine_intervention")
+    browser = _until_title(app, kira, "Divine Intervention")
+    dlg._commit(next(d for d in dlg.filtered_spells if d["name"] == "Guiding Bolt"))
+    assert browser.response.option == next(o.id for o in browser.options
+                                           if o.label == "Guiding Bolt")
+    assert browser.resolved_by == DM_PRINCIPAL_ID
+    pick = _until_pick(app, kira)
+    assert pick.title == "Guiding Bolt: choose a target", pick.title
+
+    reopened = []
+    dlg.show(lambda d: (reopened.append(d["name"]), dlg.show(lambda _d: None)))
+    dlg._commit(dlg.filtered_spells[0])
+    assert reopened and dlg.visible, "the commit closed the picker its callback opened"
+    dlg.dismiss()
+    print("✅ test_the_dm_console_draws_the_browser")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Over the wire
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1539,6 +1678,10 @@ if __name__ == "__main__":
         test_beguiling_rides_on_a_players_spell()
         test_radiance_leaves_nothing_armed()
         test_esc_and_the_remote_spell_cancel_agree()
+        test_wish_is_one_choice_prompt_over_the_bus()
+        test_a_cancelled_wish_spends_nothing()
+        test_divine_intervention_from_the_offer()
+        test_the_dm_console_draws_the_browser()
         test_an_attack_over_the_wire()
     finally:
         _restore_cwd_logs(_saved)

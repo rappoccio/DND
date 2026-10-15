@@ -103,6 +103,10 @@ header {
 .prompt button.secondary { margin-top: 8px; padding: 7px 12px; color: var(--ink);
                            background: transparent; border: 1px solid var(--line); }
 .prompt .error { margin: 6px 0 0; }
+/* A long spell list (Wish, Divine Intervention) gets a filter box, and the list scrolls
+   inside the band instead of pushing the board off the screen. */
+.prompt input[type="search"] { width: 100%; box-sizing: border-box; margin: 0 0 6px; }
+.prompt-options { max-height: 50vh; overflow-y: auto; }
 
 .initiative li.turn { background: rgba(240, 192, 64, 0.12); }
 

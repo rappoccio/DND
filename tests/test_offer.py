@@ -176,9 +176,9 @@ def test_the_class_table_is_the_dispatch():
                       "C→X": 1, "S": 5, "DM": 4}, counts
     assert sorted(i for i, c in net_offer.CLASS.items() if c == "DM") == sorted(_DM_TOOLS)
     assert all(net_offer.CLASS[i] == "I" for i in actions.METAMAGIC_VALUE_BY_ID)
-    # M5d: every pick row is wired. M5e.1: every S row but Divine Intervention (M5e.2).
+    # M5d: every pick row is wired. M5e.2: every S row, Divine Intervention last.
     picks = {i for i, c in net_offer.CLASS.items() if c in ("A", "A*", "C→A", "X", "C→X")}
-    spells = {i for i, c in net_offer.CLASS.items() if c == "S"} - {"divine_intervention"}
+    spells = {i for i, c in net_offer.CLASS.items() if c == "S"}
     assert net_offer.WIRED == picks | spells, (sorted((picks | spells) - net_offer.WIRED),
                                                sorted(net_offer.WIRED - picks - spells))
     print("✅ test_the_class_table_is_the_dispatch")

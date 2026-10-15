@@ -88,7 +88,8 @@ from actions import (ActionMenu, ECONOMY_ATTACK, fey_rider_index, GROUP_SESSION,
 # M1, seam S2: every choice is a Prompt on the bus, and ContextMenu is one renderer of
 # it. The bus also fills the roster's prompt_lookup hook that M0 left empty (D-M0-3).
 from prompts import (PromptBus, Option, ContextMenuRenderer, SpellGridRenderer,
-                     ElementPickerRenderer, RemoteRenderer, options_from_pairs)
+                     ElementPickerRenderer, RemoteRenderer, SpellBrowserRenderer,
+                     SPELL_BROWSER_RENDER, options_from_pairs)
 
 # D-M5-7: the reaction deadline's choices, in the order the session-row button cycles them.
 # None is "no limit". The default is the frozen 60 s.
@@ -661,6 +662,9 @@ class App:
                 "grid":   SpellGridRenderer(self.spell_grid_menu,
                                             lambda: self.screen.get_size()),
                 "picker": ElementPickerRenderer(self._element_dialog),
+                # M5e E-5: Wish's and Divine Intervention's spell lists.
+                SPELL_BROWSER_RENDER: SpellBrowserRenderer(self.spell_selection_dialog,
+                                                           lambda: self.all_spells),
                 # D-M5-2: the player's action offer. Drawn only in their browser.
                 net_offer.OFFER_RENDER: RemoteRenderer(),
             })
@@ -8579,10 +8583,10 @@ class App:
         # via another Wish can't recurse. See _on_wish_duplicate.
         if sp_.name == "Wish" and not free_cast:
             wish_slot = max(slot_level_, sp_.level)   # the slot Wish itself is cast from (9)
-            self.spell_selection_dialog.show(
-                lambda d, s=s, wl=wish_slot: self._on_wish_duplicate(idx, s, wl, d),
-                max_level=8,
-                title="Wish — duplicate a spell (≤ 8th level)")
+            self._ask_spell_browser(
+                idx, "Wish — duplicate a spell (≤ 8th level)",
+                [d for d in self.all_spells if d.get("level", 0) <= 8],
+                lambda d, s=s, wl=wish_slot: self._on_wish_duplicate(idx, s, wl, d))
             self._combat_log_add("Wish — choose a spell of level 8 or lower to duplicate.")
             return
 
@@ -8849,12 +8853,26 @@ class App:
         stats = self.combat.get_agent_stats(self.bm, idx)
         greater = stats.class_level(rpg.CharacterClass.Cleric) >= 20
         allow = CLERIC_DI_SPELL_NAMES | ({"Wish"} if greater else set())
-        self.spell_selection_dialog.show(
-            lambda d, i=idx, g=greater: self._on_divine_intervention_pick(i, g, d),
-            max_level=5,
-            allow_names=allow,
-            title="Divine Intervention — choose a Cleric spell (≤ 5th level)")
+        # The level cap is applied before the names, as the dialog applied it, so Wish
+        # (9th) is never listed even at 20th level. That is F-M5e-12, kept as it was.
+        self._ask_spell_browser(
+            idx, "Divine Intervention — choose a Cleric spell (≤ 5th level)",
+            [d for d in self.all_spells
+             if d.get("level", 0) <= 5 and d.get("name") in allow],
+            lambda d, i=idx, g=greater: self._on_divine_intervention_pick(i, g, d))
         self._combat_log_add("Divine Intervention — choose a Cleric spell of level 5 or lower.")
+
+    def _ask_spell_browser(self, idx, title, spells, on_pick):
+        """Ask the caster's controller for one spell out of ``spells`` (D-M1-12c, E-5).
+
+        One ``choice`` prompt, an option per spell labelled with its name, in catalogue
+        order. The DM console draws it as ``SpellSelectionDialog`` (tabs and a search);
+        a browser draws a list with a filter box. ``on_pick`` gets the spell's dict.
+        Cancelling spends nothing, because Wish and Divine Intervention pay on the pick.
+        """
+        self._ask_actor(idx, "action", title,
+                        [(d["name"], (lambda d=d: on_pick(d))) for d in spells],
+                        render=SPELL_BROWSER_RENDER)
 
     def _on_divine_intervention_pick(self, caster_idx: int, greater: bool, spell_dict: dict):
         """A spell was chosen from the DI picker. Spend the DI use, inject the spell, and free-cast
@@ -17422,6 +17440,9 @@ class App:
                     continue
             if self.spell_selection_dialog.visible:
                 if self.spell_selection_dialog.handle(event):
+                    # Esc or a click outside closes it with no spell chosen. When it is
+                    # drawing a bus prompt (Wish, Divine Intervention), that is a cancel.
+                    self.prompts.renderer_dismissed()
                     continue
             if self.item_selection_dialog.visible:
                 if self.item_selection_dialog.handle(event):

@@ -54,6 +54,7 @@ let prompt = null;                         // the last `prompt` frame; shown onl
 let awaiting = "";                         // the prompt id a submit is out for, or ""
 let ackNote = "";                          // what the last failed ack said, in words
 let promptEndsAt = 0;                      // performance.now() when the prompt is skipped; 0 = never
+let filter = { id: "", text: "" };         // the filter box, for the prompt it was typed into
 let attempt = 0;
 let page = { url: "", img: null, objectUrl: "" };   // the map image, re-fetched on a re-key
 let pageFail = { url: "", at: 0 };        // the last key that would not load, and when
@@ -160,6 +161,11 @@ function connect() {
 
 // ── Answering (Envelope 4, M5a) ─────────────────────────────────────────────
 
+/* A prompt with more options than this gets a filter box (D-M1-12c): Wish lists 389
+   spells and Divine Intervention 80. The box only hides buttons. What was typed never
+   leaves this page, and the answer is still an option id (Step 0.5's no-free-text rule). */
+const FILTER_AT = 40;
+
 /* The second and last kind of frame this client sends. `answer` is exactly one of
    `{option: id}`, `{cell: [col, row]}` or `{cancel: true}` — never a string the player
    typed (Step 0.5's no-free-text rule). The server decides it on the frame tick and answers with a
@@ -215,8 +221,16 @@ function drawPrompt() {
   el("prompt-hint").textContent = live && prompt.kind === "target"
     ? "Tap a creature on the board." : "Tap a highlighted square.";
   drawTimer();
+  const filterBox = el("prompt-filter");
+  if (!live || filter.id !== prompt.id) {
+    filter = { id: live ? prompt.id : "", text: "" };
+    filterBox.value = "";
+  }
+  filterBox.hidden = !live || prompt.options.length <= FILTER_AT;
   if (!live) return;
+  const needle = filter.text.trim().toLowerCase();
   for (const option of prompt.options) {
+    if (needle && !option.label.toLowerCase().includes(needle)) continue;
     const item = document.createElement("li");
     const button = document.createElement("button");
     button.type = "button";
@@ -625,6 +639,10 @@ el("join-form").addEventListener("submit", async (event) => {
 });
 
 el("prompt-cancel").addEventListener("click", () => submit({ cancel: true }));
+el("prompt-filter").addEventListener("input", (event) => {
+  filter.text = event.target.value;
+  drawPrompt();
+});
 
 // A reload keeps the seat, which is the whole of what `sessionStorage` buys (D-M4e-2).
 connect();
