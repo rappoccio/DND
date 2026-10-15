@@ -83,8 +83,8 @@ from net import picks as net_picks
 # S3 (M2): what the combat panel may offer, as data. `actions.Action` is the game
 # option; `net.roster.Action` above is the authorization verb — unrelated, so only
 # ActionMenu is imported here and neither `Action` is in this module's namespace.
-from actions import (ActionMenu, fey_rider_index, GROUP_SESSION, METAMAGIC_OPTIONS,
-                     METAMAGIC_ID_BY_VALUE, METAMAGIC_VALUE_BY_ID)
+from actions import (ActionMenu, ECONOMY_ATTACK, fey_rider_index, GROUP_SESSION,
+                     METAMAGIC_OPTIONS, METAMAGIC_ID_BY_VALUE, METAMAGIC_VALUE_BY_ID)
 # M1, seam S2: every choice is a Prompt on the bus, and ContextMenu is one renderer of
 # it. The bus also fills the roster's prompt_lookup hook that M0 left empty (D-M0-3).
 from prompts import (PromptBus, Option, ContextMenuRenderer, SpellGridRenderer,
@@ -7087,15 +7087,17 @@ class App:
     def _resolve_rally(self, target_idx: int):
         """Resolve a pending Rally against the clicked creature (within 30 ft)."""
         fighter = self.pending_rally
-        self.pending_rally = None
         agents = self.bm.placed_agents
         if fighter is None or not (0 <= target_idx < len(agents)):
+            self.pending_rally = None
             return
         fo, to = agents[fighter].origin, agents[target_idx].origin
         if max(abs(fo.col - to.col), abs(fo.row - to.row)) > 6:   # 30 ft = 6 cells (Chebyshev)
-            self._combat_log_add("Rally: the target must be within 30 ft.")
+            # Refused like an empty square: the pick stays armed, and the player is asked again.
+            self._combat_log_add("Rally: the target must be within 30 ft — pick a closer creature.")
             self._flush_combat_log()
             return
+        self.pending_rally = None
         amount = self.combat.apply_rally(self.bm, fighter, target_idx)
         if amount > 0:
             self.bonus_used = True
@@ -7105,15 +7107,21 @@ class App:
     def _resolve_feint(self, target_idx: int):
         """Resolve a pending Feinting Attack against the clicked creature (within 5 ft)."""
         fighter = self.pending_feint
-        self.pending_feint = None
         agents = self.bm.placed_agents
-        if fighter is None or not (0 <= target_idx < len(agents)) or target_idx == fighter:
+        if fighter is None or not (0 <= target_idx < len(agents)):
+            self.pending_feint = None
+            return
+        # Refused like an empty square: the pick stays armed, and the player is asked again.
+        if target_idx == fighter:
+            self._combat_log_add("Feinting Attack: pick another creature, not yourself.")
+            self._flush_combat_log()
             return
         fo, to = agents[fighter].origin, agents[target_idx].origin
         if max(abs(fo.col - to.col), abs(fo.row - to.row)) > 1:    # 5 ft = adjacent
-            self._combat_log_add("Feinting Attack: the target must be within 5 ft.")
+            self._combat_log_add("Feinting Attack: the target must be within 5 ft — pick an adjacent creature.")
             self._flush_combat_log()
             return
+        self.pending_feint = None
         if self.combat.apply_feinting_attack(self.bm, fighter, target_idx):
             self.bonus_used = True
         self._flush_combat_log()
@@ -15439,9 +15447,27 @@ class App:
             verb, target = net_roster.Action.CONTROL_TOKEN, net_roster.TokenTarget(actor)
         if not self.roster.authorize(self.roster.get(principal), verb, target):
             return False
-        self._snapshot_attack_arm(actor)
+        # While an Attack is chosen and unswung, the snapshot already holds the state from
+        # before it; re-taking it here would make the arm look like the baseline.
+        unswung = self._attack_unswung()
+        if not unswung:
+            self._snapshot_attack_arm(actor)
         self._perform_action(action_id, self._agent_screen_pos(actor) if anchor is None else anchor)
+        # D3 (MULTIPLAYER_PLAN.md, M5d handoff): the Action went to something else before
+        # the attack swung, so the attack is abandoned, as Cancel abandons it. Without
+        # this, Dash then a full Attack was a free Action. A row paid out of the Attack's
+        # own swings (Bite) swings inside its handler, and is not an abandonment.
+        if unswung and self.action_used and act.economy != ECONOMY_ATTACK:
+            net_picks.cancel_attack(self)
         return True
+
+    def _attack_unswung(self) -> bool:
+        """An Attack action is chosen and nothing has swung: its sequence is seeded for the
+        Action, the Action is unspent (the first swing spends it), and the snapshot from
+        before the Attack is held (a resolved pick drops it)."""
+        return (self._attack_arm_snapshot is not None
+                and self._attack_sequence_slot == "action"
+                and self.attacks_remaining > 0 and not self.action_used)
 
     def _snapshot_attack_arm(self, actor: int) -> None:
         """Keep what an attack arm may change, for `net/picks.cancel_attack` (M5d Step 0)."""

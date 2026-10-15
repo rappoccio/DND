@@ -25,6 +25,15 @@ runs. These checks pin:
   · a DM map click takes over and resolves the pick          (test_a_dm_click_takes_over_the_pick)
   · the long jump, picked over the bus                       (test_a_long_jump_picked_over_the_bus)
   · Lay on Hands refuses a full-HP creature, keeps the pick  (test_lay_on_hands_on_a_full_hp_creature_keeps_the_pick)
+  · Rally, Misty Escape, Shadow Step, Elemental Burst, Invoke Duplicity at 17 and
+    Arcane Charge, each from the offer to resolution          (test_*_picked_over_the_bus)
+  · Rally and Feint refuse an out-of-reach or own-token tap, and keep the pick
+                                   (test_rally_out_of_range_keeps_the_pick, test_feint_*)
+  · Dash after an unswung Attack undoes the arm; Attack after a Dash is refused; a Bite
+    is one of the Attack's swings; a player's Cancel then Dash, and the DM's takeover
+    then Dash, leave no attack           (test_dash_after_an_unswung_attack_undoes_the_arm,
+    test_attack_after_a_dash_is_refused, test_a_bite_after_an_unswung_attack_is_one_of_its_swings,
+    test_a_player_cancels_then_dashes, test_a_dm_takeover_then_dash_leaves_no_attack)
   · end to end: an attack over the socket                    (test_an_attack_over_the_wire)
 
 The scene is `test_offer.py`'s: Aria (Fighter 5) at (3,3) with Skarn, a foe, at (4,3);
@@ -99,6 +108,40 @@ def _until_pick(app, who, first=0):
         assert res.ok, res
         first = 0
     raise AssertionError("no target prompt was posted")
+
+
+def _make(app, idx, cls, level, **subclass):
+    """Re-class agent `idx` in place, single-class. `subclass` fields (`fighter_subclass`,
+    `monk_subclass`, …) are set BEFORE `initialize_class_resources`, so the resources
+    that depend on them are granted. The turn does not move."""
+    s = app.combat.get_agent_stats(app.bm, idx)
+    s.set_class_level(cls, level)
+    for k, v in subclass.items():
+        setattr(s, k, v)
+    s.initialize_class_resources(cls, level)
+    app.combat.set_agent_stats(app.bm, idx, s)
+    return s
+
+
+def _free_cell(app, near, within, beyond=0, size=1):
+    """The first cell, nearest first, more than `beyond` and at most `within` cells
+    (Chebyshev) from agent `near`, where a `size` token can stand (`_can_place`, the
+    check Invoke Duplicity makes). Asserts one exists, so a changed map fails loudly."""
+    c0, r0 = _pos(app, near)
+    found = sorted(
+        (max(abs(c - c0), abs(r - r0)), r, c)
+        for r in range(max(0, r0 - within), min(app.bm.grid_rows, r0 + within + 1))
+        for c in range(max(0, c0 - within), min(app.bm.grid_cols, c0 + within + 1))
+        if beyond < max(abs(c - c0), abs(r - r0))
+        and app._can_place(rpg.Cell(c, r), size))
+    assert found, f"no free cell within {within} (beyond {beyond}) of agent {near}"
+    _, r, c = found[0]
+    return (c, r)
+
+
+def _res(app, idx, name):
+    r = app.combat.get_agent_stats(app.bm, idx).get_resource(name)
+    return r.current if r else 0
 
 
 def _record(app):
@@ -536,10 +579,7 @@ def test_lay_on_hands_on_a_full_hp_creature_keeps_the_pick():
     in the M5d manual pass: the full-HP tap used to disarm the pick silently.)"""
     app, kira, _ = _aria_turn()
     aria, skarn = _idx(app, "Aria"), _idx(app, "Skarn")
-    s = app.combat.get_agent_stats(app.bm, aria)
-    s.set_class_level(rpg.CharacterClass.Paladin, 3)
-    s.initialize_class_resources(rpg.CharacterClass.Paladin, 3)
-    app.combat.set_agent_stats(app.bm, aria, s)
+    s = _make(app, aria, rpg.CharacterClass.Paladin, 3)
     pool = s.get_resource("Lay on Hands").current
     _frame(app)
     _choose(app, kira, "lay_on_hands")
@@ -559,6 +599,336 @@ def test_lay_on_hands_on_a_full_hp_creature_keeps_the_pick():
     t = app.combat.get_agent_stats(app.bm, skarn)
     assert t.hp_cur == t.hp_max, (t.hp_cur, t.hp_max)
     print("✅ test_lay_on_hands_on_a_full_hp_creature_keeps_the_pick")
+
+
+def test_rally_picked_over_the_bus():
+    """Battle Master Rally, from the offer: the maneuver prompt, then a creature. The die is
+    spent, the Bonus Action is used, and the creature has temporary HP."""
+    app, kira, _ = _aria_turn()
+    aria, skarn = _idx(app, "Aria"), _idx(app, "Skarn")
+    _make(app, aria, rpg.CharacterClass.Fighter, 3,
+          fighter_subclass=rpg.FighterSubclass.BattleMaster)
+    dice = _res(app, aria, "Superiority Dice")
+    _frame(app)
+    _choose(app, kira, "bm_maneuver")
+    pick = _until_pick(app, kira)
+    assert pick.title == "Rally: choose a creature", pick.title
+    assert app.prompts.submit(pick.id, Response(cell=_pos(app, skarn)), kira.id).ok
+    assert app.pending_rally is None and app.bonus_used
+    assert app.combat.get_agent_stats(app.bm, skarn).temp_hp > 0
+    assert _res(app, aria, "Superiority Dice") == dice - 1
+    print("✅ test_rally_picked_over_the_bus")
+
+
+def _maneuver_out_of_reach(option, flag, beyond):
+    """Arm a maneuver (option `option` of the maneuver prompt), move Skarn more than
+    `beyond` cells away, tap him. Returns (app, kira, pick, dice before)."""
+    app, kira, _ = _aria_turn()
+    aria, skarn = _idx(app, "Aria"), _idx(app, "Skarn")
+    _make(app, aria, rpg.CharacterClass.Fighter, 3,
+          fighter_subclass=rpg.FighterSubclass.BattleMaster)
+    dice = _res(app, aria, "Superiority Dice")
+    app.bm.set_agent_position(skarn, rpg.Cell(*_free_cell(app, aria, 12, beyond=beyond)))
+    _frame(app)
+    _choose(app, kira, "bm_maneuver")
+    pick = _until_pick(app, kira, first=option)
+    assert getattr(app, flag) is not None
+    assert app.prompts.submit(pick.id, Response(cell=_pos(app, skarn)), kira.id).ok
+    return app, kira, pick, dice
+
+
+def test_rally_out_of_range_keeps_the_pick():
+    """A creature beyond 30 ft is refused the way an empty square is: nothing is spent,
+    the pick stays armed and Kira is asked again (the Lay on Hands 7(a) pattern)."""
+    app, kira, pick, dice = _maneuver_out_of_reach(0, "pending_rally", 6)
+    assert app.pending_rally is not None, "a far creature disarmed Rally"
+    assert not app.bonus_used and _res(app, _idx(app, "Aria"), "Superiority Dice") == dice
+    _frame(app)
+    again = _pick(app)
+    assert again is not None and again.id != pick.id, "Kira was not asked again"
+    print("✅ test_rally_out_of_range_keeps_the_pick")
+
+
+def test_feint_out_of_reach_keeps_the_pick():
+    """The same for Feinting Attack, whose reach is 5 ft."""
+    app, kira, pick, dice = _maneuver_out_of_reach(1, "pending_feint", 1)
+    assert app.pending_feint is not None, "a far creature disarmed Feinting Attack"
+    assert not app.bonus_used and _res(app, _idx(app, "Aria"), "Superiority Dice") == dice
+    _frame(app)
+    again = _pick(app)
+    assert again is not None and again.id != pick.id, "Kira was not asked again"
+    print("✅ test_feint_out_of_reach_keeps_the_pick")
+
+
+def test_dash_after_an_unswung_attack_undoes_the_arm():
+    """The arm-then-Dash question, on the DM console. Skarn is the DM's, so no prompt is
+    involved. Attack arms the pick and seeds the sequence with the Action still unspent;
+    Dash then spends the Action. Nothing has swung, so nothing of the attack may survive:
+    no armed pick, no swings owed, and no Attack row on the menu."""
+    from test_combat_panel import _goto
+    app, _, _ = _aria_turn()
+    _goto(app, "Skarn")
+    _frame(app)
+    assert app.perform("atk_action", DM_PRINCIPAL_ID), "Attack was refused"
+    weapon = app.prompts.live          # Greataxe or a fist: the DM picks the axe
+    assert app.prompts.submit(weapon.id, Response(option=weapon.options[0].id),
+                              DM_PRINCIPAL_ID).ok
+    _frame(app)
+    armed = _attack_fields(app)
+    assert app.pending_attack_slot == "action", armed
+    assert app.perform("dash", DM_PRINCIPAL_ID), "Dash was refused"
+    _frame(app)
+    after = _attack_fields(app)
+    assert app.action_used, after
+    assert (app.pending_attack_slot, app.attacks_remaining, app._attack_sequence_slot) \
+        == ("", 0, ""), f"armed {armed}, after the Dash {after}"
+    atk = app._action_menu.get("atk_action")
+    assert atk is None or not atk.enabled, "Attack is still on offer after the Dash"
+    print("✅ test_dash_after_an_unswung_attack_undoes_the_arm")
+
+
+def test_a_bite_after_an_unswung_attack_is_one_of_its_swings():
+    """Bite (grappled) spends the Action by swinging inside its own handler. It is paid out
+    of the Attack's swings, so it does not abandon the Attack: Aria (Fighter 5, DM-run
+    here, no seats) still owes her second swing after it."""
+    from test_action_menu import _app
+    from test_combat_panel import _goto, _set_conditions, _weapon
+    app = _app()
+    aria, skarn = _goto(app, "Aria"), _idx(app, "Skarn")
+    bite = _weapon(app, "Longsword")
+    bite.auto_use_when_grappling = True
+    app.combat.set_agent_weapons(app.bm, aria, [bite])
+    _set_conditions(app, skarn, grappled=True, grappler_idx=aria)
+    _frame(app)
+    assert app.perform("atk_action", DM_PRINCIPAL_ID), "Attack was refused"
+    weapon = app.prompts.live
+    if weapon is not None and weapon.is_live:
+        assert app.prompts.submit(weapon.id, Response(option=weapon.options[0].id),
+                                  DM_PRINCIPAL_ID).ok
+    _frame(app)
+    assert app.pending_attack_slot == "action" and app.attacks_remaining == 2, _attack_fields(app)
+    assert app.perform("bite_grappled", DM_PRINCIPAL_ID), "the Bite was refused"
+    assert app.action_used
+    assert (app.attacks_remaining, app._attack_sequence_slot) == (1, "action"), _attack_fields(app)
+    print("✅ test_a_bite_after_an_unswung_attack_is_one_of_its_swings")
+
+
+def test_attack_after_a_dash_is_refused():
+    """The other order: Dash spends the Action at once, so the Attack row is gone and a
+    stale click on it is refused."""
+    from test_combat_panel import _goto
+    app, _, _ = _aria_turn()
+    _goto(app, "Skarn")
+    _frame(app)
+    assert app.perform("dash", DM_PRINCIPAL_ID), "Dash was refused"
+    _frame(app)
+    atk = app._action_menu.get("atk_action")
+    assert atk is None or not atk.enabled, "Attack is on offer after the Dash"
+    assert not app.perform("atk_action", DM_PRINCIPAL_ID), "Attack ran after the Dash"
+    assert (app.pending_attack_slot, app.attacks_remaining) == ("", 0), _attack_fields(app)
+    print("✅ test_attack_after_a_dash_is_refused")
+
+
+def test_feint_on_yourself_keeps_the_pick():
+    """Feinting Attack on the fighter's own token is refused, not silently dropped."""
+    app, kira, _ = _aria_turn()
+    aria = _idx(app, "Aria")
+    _make(app, aria, rpg.CharacterClass.Fighter, 3,
+          fighter_subclass=rpg.FighterSubclass.BattleMaster)
+    _frame(app)
+    _choose(app, kira, "bm_maneuver")
+    pick = _until_pick(app, kira, first=1)
+    assert app.prompts.submit(pick.id, Response(cell=_pos(app, aria)), kira.id).ok
+    assert app.pending_feint == aria and not app.bonus_used
+    print("✅ test_feint_on_yourself_keeps_the_pick")
+
+
+def test_a_player_cancels_then_dashes():
+    """Kira alone cannot reach Dash while her attack pick is up: the offer is gated. Her
+    Cancel undoes the arm from the snapshot, so a Dash after it leaves no attack behind."""
+    app, kira, _ = _aria_turn()
+    _choose(app, kira, "atk_action")
+    pick = _until_pick(app, kira)
+    assert app.prompts.cancel_as(pick.id, kira.id).ok
+    _frame(app)
+    _choose(app, kira, "dash")
+    _frame(app)
+    assert app.action_used
+    assert (app.pending_attack_slot, app.attacks_remaining, app._attack_sequence_slot) \
+        == ("", 0, ""), _attack_fields(app)
+    offer = _offer(app)
+    assert offer is None or not any(o.id == "atk_action" and o.enabled
+                                    for o in offer.options), offer.options
+    print("✅ test_a_player_cancels_then_dashes")
+
+
+def test_a_dm_takeover_then_dash_leaves_no_attack():
+    """The DM takes Kira's attack pick over from the panel (which leaves the arm armed for
+    the DM's click) and clicks Dash instead. That is the DM-console state above, on a
+    player's token: Kira's next offer must not carry an enabled Attack."""
+    app, kira, _ = _aria_turn()
+    _choose(app, kira, "atk_action")
+    _until_pick(app, kira)
+    net_offer.take_over(app)
+    assert app.perform("dash", DM_PRINCIPAL_ID), "Dash was refused"
+    _frame(app)
+    assert (app.pending_attack_slot, app.attacks_remaining, app._attack_sequence_slot) \
+        == ("", 0, ""), _attack_fields(app)
+    offer = _offer(app)
+    assert offer is None or not any(o.id == "atk_action" and o.enabled
+                                    for o in offer.options), (
+        "Kira's offer carries an enabled Attack", app.prompts.live)
+    print("✅ test_a_dm_takeover_then_dash_leaves_no_attack")
+
+
+def test_misty_escape_picked_over_the_bus():
+    """Archfey Misty Escape spends the Reaction, not the Bonus Action. A cell beyond 30 ft
+    keeps the pick and asks again; a near one teleports Aria and brings the offer back."""
+    app, kira, _ = _aria_turn()
+    aria = _idx(app, "Aria")
+    _make(app, aria, rpg.CharacterClass.Warlock, 6,
+          warlock_subclass=rpg.WarlockSubclass.Archfey)
+    steps = _res(app, aria, "Steps of the Fey")
+    assert steps > 0
+    _frame(app)
+    _choose(app, kira, "misty_escape")
+    pick = _until_pick(app, kira)
+    far = _free_cell(app, aria, 12, beyond=6)
+    assert app.prompts.submit(pick.id, Response(cell=far), kira.id).ok
+    assert app.pending_misty_escape, "a far cell disarmed the pick"
+    _frame(app)
+    again = _pick(app)
+    assert again is not None and again.id != pick.id, "Kira was not asked again"
+    dest = _free_cell(app, aria, 6)
+    assert app.prompts.submit(again.id, Response(cell=dest), kira.id).ok
+    assert _pos(app, aria) == dest, (_pos(app, aria), dest)
+    assert not app.pending_misty_escape
+    assert app.combat.get_agent_conditions(app.bm, aria).reaction_used
+    assert _res(app, aria, "Steps of the Fey") == steps - 1
+    assert not app.bonus_used, "Misty Escape spent the Bonus Action"
+    _frame(app)
+    assert _offer(app) is not None, "the offer did not come back"
+    print("✅ test_misty_escape_picked_over_the_bus")
+
+
+def test_shadow_step_picked_over_the_bus():
+    """Shadow Step at Monk 11, so the dim-light gate of level 6 does not apply on this lit
+    map. Kira's own cell cancels and spends nothing, like the Cancel button; a free cell
+    then teleports her and spends the Bonus Action."""
+    app, kira, _ = _aria_turn()
+    aria = _idx(app, "Aria")
+    _make(app, aria, rpg.CharacterClass.Monk, 11,
+          monk_subclass=rpg.MonkSubclass.WarriorOfShadow)
+    _frame(app)
+    _choose(app, kira, "shadow_step")
+    pick = _until_pick(app, kira)
+    new = _record(app)
+    assert app.prompts.submit(pick.id, Response(cell=_pos(app, aria)), kira.id).ok
+    assert not app.pending_shadow_step and not app.bonus_used
+    assert "Shadow Step cancelled." in new, new
+    _frame(app)
+    _choose(app, kira, "shadow_step")
+    pick = _until_pick(app, kira)
+    dest = _free_cell(app, aria, 6)
+    assert app.prompts.submit(pick.id, Response(cell=dest), kira.id).ok
+    assert _pos(app, aria) == dest, (_pos(app, aria), dest)
+    assert not app.pending_shadow_step and app.bonus_used
+    print("✅ test_shadow_step_picked_over_the_bus")
+
+
+def test_elemental_burst_picked_over_the_bus():
+    """Elemental Burst: the element picker (a `render="picker"` prompt) takes an option id
+    over the bus, then the center cell. 2 Focus and the Action are spent, Skarn inside
+    the sphere is hit or saves, and the arm is idle."""
+    app, kira, _ = _aria_turn()
+    aria, skarn = _idx(app, "Aria"), _idx(app, "Skarn")
+    _make(app, aria, rpg.CharacterClass.Monk, 6,
+          monk_subclass=rpg.MonkSubclass.WarriorOfFourElements)
+    focus = _res(app, aria, "Focus Points")
+    assert focus >= 2, focus
+    _frame(app)
+    _choose(app, kira, "elemental_burst")
+    pick = _until_pick(app, kira)
+    assert app.pending_elemental_burst >= 0
+    new = _record(app)
+    assert app.prompts.submit(pick.id, Response(cell=_pos(app, skarn)), kira.id).ok
+    assert app.pending_elemental_burst == -1 and app.action_used
+    assert _res(app, aria, "Focus Points") == focus - 2
+    assert any("Skarn" in line for line in new), new
+    print("✅ test_elemental_burst_picked_over_the_bus")
+
+
+def test_invoke_duplicity_at_17_picked_over_the_bus():
+    """Improved Duplicity places up to four. Before the first placement there is no Done,
+    and a cancel spends nothing. The first placement spends Channel Divinity and the Bonus
+    Action, and the re-posted pick then carries Done; a second placement spends nothing
+    more, and Done ends the activation with two duplicates."""
+    app, kira, _ = _aria_turn()
+    aria = _idx(app, "Aria")
+    _make(app, aria, rpg.CharacterClass.Cleric, 17,
+          cleric_subclass=rpg.ClericSubclass.TrickeryDomain)
+    cd = _res(app, aria, "Channel Divinity")
+    assert cd > 0
+    _frame(app)
+    _choose(app, kira, "invoke_duplicity")
+    pick = _until_pick(app, kira)
+    assert net_picks.DONE_ID not in [o.id for o in pick.options], pick.options
+    assert app.prompts.cancel_as(pick.id, kira.id).ok
+    assert not app.pending_invoke_duplicity
+    assert _res(app, aria, "Channel Divinity") == cd and not app.bonus_used
+    _frame(app)
+    _choose(app, kira, "invoke_duplicity")
+    pick = _until_pick(app, kira)
+    assert app.prompts.submit(pick.id, Response(cell=_free_cell(app, aria, 2)), kira.id).ok
+    assert _res(app, aria, "Channel Divinity") == cd - 1 and app.bonus_used
+    assert len(app._my_duplicates(aria)) == 1
+    _frame(app)
+    second = _pick(app)
+    assert second is not None and second.id != pick.id
+    assert second.title == pick.title, (second.title, pick.title)
+    assert net_picks.DONE_ID in [o.id for o in second.options], second.options
+    assert app.prompts.submit(second.id, Response(cell=_free_cell(app, aria, 2)), kira.id).ok
+    assert _res(app, aria, "Channel Divinity") == cd - 1, "the second placement spent again"
+    assert len(app._my_duplicates(aria)) == 2
+    _frame(app)
+    third = _pick(app)
+    assert app.prompts.submit(third.id, Response(option=net_picks.DONE_ID), kira.id).ok
+    assert not app.pending_invoke_duplicity
+    assert len(app._my_duplicates(aria)) == 2
+    _frame(app)
+    assert _offer(app) is not None, "the offer did not come back"
+    print("✅ test_invoke_duplicity_at_17_picked_over_the_bus")
+
+
+def test_arcane_charge_picked_over_the_bus():
+    """EK 15 has attacked; Action Surge gives the Action back and arms Arcane Charge. A
+    cell beyond 30 ft keeps the pick, a near one teleports Aria, and the offer comes back
+    with Attack enabled: the surge's fresh Action survives the pick."""
+    app, kira, _ = _aria_turn()
+    aria = _idx(app, "Aria")
+    _make(app, aria, rpg.CharacterClass.Fighter, 15,
+          fighter_subclass=rpg.FighterSubclass.EldritchKnight)
+    surges = _res(app, aria, "Action Surge")
+    app.action_used = True
+    _frame(app)
+    _choose(app, kira, "action_surge")
+    pick = _until_pick(app, kira)
+    assert pick.title.startswith("Arcane Charge: "), pick.title
+    assert _res(app, aria, "Action Surge") == surges - 1 and not app.action_used
+    far = _free_cell(app, aria, 12, beyond=6)
+    assert app.prompts.submit(pick.id, Response(cell=far), kira.id).ok
+    assert app.arcane_charge_pending, "a far cell disarmed the pick"
+    _frame(app)
+    again = _pick(app)
+    assert again is not None and again.id != pick.id, "Kira was not asked again"
+    dest = _free_cell(app, aria, 6)
+    assert app.prompts.submit(again.id, Response(cell=dest), kira.id).ok
+    assert _pos(app, aria) == dest and not app.arcane_charge_pending
+    _frame(app)
+    offer = _offer(app)
+    assert offer is not None, "the offer did not come back"
+    assert any(o.id == "atk_action" and o.enabled for o in offer.options), offer.options
+    print("✅ test_arcane_charge_picked_over_the_bus")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -618,6 +988,20 @@ if __name__ == "__main__":
         test_a_dm_click_takes_over_the_pick()
         test_a_long_jump_picked_over_the_bus()
         test_lay_on_hands_on_a_full_hp_creature_keeps_the_pick()
+        test_rally_picked_over_the_bus()
+        test_misty_escape_picked_over_the_bus()
+        test_shadow_step_picked_over_the_bus()
+        test_elemental_burst_picked_over_the_bus()
+        test_invoke_duplicity_at_17_picked_over_the_bus()
+        test_arcane_charge_picked_over_the_bus()
+        test_rally_out_of_range_keeps_the_pick()
+        test_feint_out_of_reach_keeps_the_pick()
+        test_feint_on_yourself_keeps_the_pick()
+        test_dash_after_an_unswung_attack_undoes_the_arm()
+        test_a_bite_after_an_unswung_attack_is_one_of_its_swings()
+        test_attack_after_a_dash_is_refused()
+        test_a_player_cancels_then_dashes()
+        test_a_dm_takeover_then_dash_leaves_no_attack()
         test_an_attack_over_the_wire()
     finally:
         _restore_cwd_logs(_saved)

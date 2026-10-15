@@ -5572,7 +5572,8 @@ an Esc keep its body, now as the arm's cancel. D-M5-9's cancel mutant applies to
 
 **Not checked:** after an arm-then-Dash with no swing, `attacks_remaining > 0` may keep
 `mid_sequence_action` (`actions.py:834`) live once the Action is spent. This is a DM-console
-bug too, and it is left alone in M5d.
+bug too, and it is left alone in M5d. **Confirmed and fixed 2026-10-14** (fragments D1–D3,
+see "Progress on the fragments" below): Dash then a full Attack was a free Action.
 
 ##### M5d — what landed *(2026-10-04, uncommitted)*
 
@@ -5670,10 +5671,208 @@ a Paladin, because the test file has no Fighter):
    player-owned rider prompt the phone never draws, or an offer whose rows are all
    disabled after the DM's swing. Launching `./run.sh` needs the user's go-ahead.
 
+**Fragments — the coverage gap (Next 1) and the arm-then-Dash question** *(written
+2026-10-13)*. Each fragment is one sitting: write the test, watch it fail or pass, run a
+mutant, run the whole suite, stop. No fragment commits on its own; commit when the user
+asks. Line numbers are as of `f130bf1`.
+
+*Coverage gap.* All of these go in `tests/test_picks.py`, after
+`test_lay_on_hands_on_a_full_hp_creature_keeps_the_pick`, which is the template: it drives
+the arm from the offer with `_choose(app, kira, "<action id>")`, reaches the pick with
+`_until_pick(app, kira)` and answers it with `Response(cell=...)`. Register each new test
+in the suite's `__main__` block. `tests/run_all_tests.py` needs nothing, because the suite
+is already registered.
+
+- **C0 — the rig.**
+  1. Add `_make(app, idx, cls, level, **subclass)` to the rig. It runs `set_class_level`,
+     `initialize_class_resources` and the subclass field (`fighter_subclass`,
+     `monk_subclass`, `warlock_subclass`, `cleric_subclass`), then `set_agent_stats`. Lay
+     on Hands inlines this; switch it over.
+  2. Add `_free_cell(app, near, within)`: the first cell within `within` cells (Chebyshev)
+     of agent `near` that `app._can_place(cell, size)` accepts. That is the check
+     `_resolve_invoke_duplicity` uses (`main.py:9956`). Assert that one exists, so a
+     changed test map fails loudly instead of skipping.
+  3. Done when Lay on Hands still passes on the new helpers.
+- **C1 — Battle Master Rally** (`bm_maneuver` → the maneuver prompt → `_rally` →
+  `pending_rally`, `riders.py:874`; resolver `main.py:7087`).
+  1. `_make(aria, Fighter, 3, fighter_subclass=BattleMaster)`. `_choose("bm_maneuver")`.
+     `_until_pick` with `first=0` picks Rally, the first option.
+  2. Happy path: put Skarn within 6 cells. Answer with Skarn's cell. Assert that
+     `pending_rally is None`, `bonus_used`, Skarn's temp HP is above 0 and the Superiority
+     Die count went down by one.
+  3. **Expected finding, check it first:** `_resolve_rally` sets `pending_rally = None`
+     *before* its range test (`main.py:7090` against 7095), so a creature more than 30 ft
+     away disarms the pick silently, and the player lands back on the offer. That is the
+     class of bug as Lay on Hands 7(a). Write the test for the far tap and confirm it.
+     If confirmed, ask the user before fixing it. The proposed fix is the Lay on Hands
+     pattern: refuse, keep the pick armed, ask again. `_resolve_feint` (`main.py:7106`) has
+     the same shape. Check it in the same sitting.
+  4. Mutant: drop `bonus_used = True` from `_resolve_rally`.
+- **C2 — Misty Escape and Shadow Step** (`misty_escape`, `main.py:15986`, resolver
+  7247; `shadow_step`, `main.py:15950`, resolver 7200).
+  1. Misty Escape: `_make(aria, Warlock, 6, warlock_subclass=Archfey)`. The action is
+     offered only while `reaction_used` is False and Steps of the Fey is above 0
+     (`actions.py:1030`). Answer with `_free_cell(aria, 6)`. Assert that Aria is on that
+     cell, `reaction_used` is set, Steps of the Fey went down by one, `bonus_used` is
+     **unchanged** (it is a reaction), and the offer re-posts.
+  2. Answer once with a cell beyond 30 ft first: the resolver keeps the pick (`main.py:7266`).
+     Assert that `pending_misty_escape` is still set, and that `_pick` returns a new prompt
+     id after a `_frame`.
+  3. Shadow Step: `_make(aria, Monk, 11, monk_subclass=WarriorOfShadow)`. Use level 11 so
+     the dim-light gate does not apply, and write that choice in the docstring. Assert the
+     move and `bonus_used`.
+  4. Own-cell tap: `cells` is the whole grid (`picks.cells`), so a player may send their
+     own cell. Assert that it cancels (`"Shadow Step cancelled."`) and spends nothing,
+     the same as the Cancel button.
+  5. Mutant: `_resolve_misty_escape` sets `bonus_used` instead of the reaction.
+- **C3 — Elemental Burst** (`elemental_burst` → `show_elemental_burst_menu`, a
+  `render="picker"` prompt, `features.py:600` → `pending_elemental_burst = element`;
+  resolver `main.py:7379`).
+  1. `_make(aria, Monk, 6, monk_subclass=WarriorOfFourElements)` with Focus at 2 or more.
+  2. **Risk:** `_until_pick` answers with `Response(option=...)`. Check that the picker
+     prompt accepts an option id over the bus the way a choice does. If it does not,
+     that is a finding for M5d, not a test workaround: write it down and stop.
+  3. Answer with a cell that has Skarn inside the 20-ft sphere. Assert that `action_used`
+     is set, Focus went down by 2, Skarn took damage or the log shows his save, and the arm
+     is back at -1.
+  4. Mutant: `_resolve_elemental_burst` leaves `pending_elemental_burst` armed on success.
+- **C4 — Invoke Duplicity at L17** (`invoke_duplicity`, `main.py:15753`; resolver 9933;
+  Done appears once `_duplicity_cd_pending` is False).
+  1. `_make(aria, Cleric, 17, cleric_subclass=TrickeryDomain)`. Note the Channel Divinity
+     count.
+  2. Before any placement, the pick has **no** Done option (the `done` lambda). Cancel
+     here, and assert that Channel Divinity and `bonus_used` are untouched (`cancel_duplicity`).
+  3. Arm again. Place one: assert that CD went down by one, `bonus_used` is set, a
+     duplicate spawned, the re-posted pick now carries Done, and the title is unchanged.
+  4. Place a second: CD does **not** go down again.
+  5. Choose Done: assert that the arm is idle, two duplicates exist and the offer is back.
+  6. Mutant: drop `self._duplicity_cd_pending = False` (`main.py:9976`). Expected: CD
+     goes down twice, and Done never appears.
+- **C5 — EK L15 Action Surge → Arcane Charge** (`action_surge`, `main.py:7425–7445`;
+  resolver 7447).
+  1. `_make(aria, Fighter, 15, fighter_subclass=EldritchKnight)`. Set `action_used =
+     True` first, as if Aria had already attacked. `_choose("action_surge")`.
+  2. Assert that the Arcane Charge pick is up (an `expects:"cell"` prompt titled
+     "Arcane Charge: …"), that Action Surge went down by one and that `action_used` is False.
+  3. Answer with a cell beyond 30 ft: the pick stays (`feet == -2`, `main.py:7464`).
+     Then a free cell within 6: Aria moves, the arm is idle, and the offer re-posts with the
+     Attack row enabled. That last check is the point. It proves the surge's fresh Action
+     survives the pick.
+  4. Mutant: `_resolve_arcane_charge` clears `arcane_charge_pending` before the range test.
+- **C6 — close out.**
+  1. Run the whole suite in the container.
+  2. Update "Owed" (the coverage-gap bullet) and this handoff.
+  3. List any findings from C1.3 and C3.2 for the user, each with a proposed fix and no
+     fix applied.
+
+*The arm-then-Dash question* (`mid_sequence_action`, `actions.py:834`, and the panel's
+copy at `main.py:16501`).
+**What the code says, read but not run:** `_start_attack("action")` seeds
+`attacks_remaining = num_attacks` and `_attack_sequence_slot = "action"` **at the arm**,
+with `action_used` still False (`main.py:5637–5642`). Dash (`main.py:15481`) sets
+`action_used = True` and touches neither field, nor `pending_attack_slot`. So after "Attack
+(arm), then Dash, with no swing", `mid_sequence_action` is still True. The suspicion is
+that the band stays open, and that the map may still be armed, so a click would swing.
+Dash plus the full Attack would be a free Action.
+- **D1 — reproduce it, DM console path.**
+  1. A new test in `tests/test_picks.py`, or `tests/test_offer.py` if it reads better
+     there. Use a DM-owned token (Skarn's turn) so no prompt is involved.
+     `app.perform(..., "atk_action")`, then `app.perform(..., "dash")`. Match how the
+     existing tests call `perform` and with which principal.
+  2. Record `_attack_fields(app)` after each step.
+  3. Assert the *correct* outcome. The test should fail today: after the Dash,
+     `pending_attack_slot == ""`, `attacks_remaining == 0`, `_attack_sequence_slot == ""`,
+     and the action menu offers no `atk_action` row.
+  4. If it passes, the suspicion is wrong. Write that down here and skip to D4.
+- **D2 — the remote paths.**
+  1. *Player alone:* while Kira's attack pick is live, the offer is gated, so Kira
+     cannot reach Dash without cancelling. `cancel_attack` restores the snapshot. Assert
+     that path is clean: cancel, then Dash, then no `atk_action` row.
+  2. *DM takeover:* `take_over` cancels the pick **as the DM**, and `picks.post._cancel`
+     deliberately leaves the arm armed for the DM's click. Then the DM clicks Dash on the
+     panel. That is the D1 state on a player's token. Test it, and check what Kira's next
+     offer contains. If it carries an enabled `atk_action`, note that it may bear on row 5
+     (the player stuck after a takeover), and tell the user. It is not a diagnosis of row 5.
+- **D3 — the fix, only after the user agrees on the rule.** The proposed rule: an Action
+  other than Attack, taken while an attack is armed and **no swing has landed**, first
+  undoes the arm, exactly as `cancel_attack` does. The snapshot is still held then, so
+  the restore is exact. Mid-sequence (one swing landed), `action_used` is already True and
+  Dash is refused anyway (the `if not self.action_used:` gate, `main.py:15480`), so the fix
+  touches only the no-swing case.
+  1. Place it at the top of the `if not self.action_used:` block in `_perform_action`,
+     guarded by `self._attack_arm_snapshot is not None`.
+  2. Mutant: remove the guard's body. D1 and D2 must fail.
+  3. The panel draw (`main.py:16501`) and `actions.py:834` need no change once the state
+     is right. Confirm that, don't assume it.
+- **D4 — close out.** Run the whole suite. Update the "Not checked" note under "M5d — Step 0"
+  and the "Still open" bullet below with the outcome.
+
+**Progress on the fragments** *(2026-10-14)*. All of C0–C6 and D1–D4 are done. Suite
+**167 / 0** in the container, goldens unchanged. **Nothing committed**: `gui/main.py`,
+`tests/test_picks.py` and this file are modified.
+
+- **C0:** `_make`, `_free_cell` (with an optional `beyond`, for the out-of-range taps) and
+  `_res` are in the rig, and Lay on Hands uses `_make`. The test map is 11×11, so with Aria
+  at (3,3) the farthest cell is 7 away: "beyond 30 ft" is `beyond=6`.
+- **C1–C5 pass**, each registered: `test_rally_picked_over_the_bus`,
+  `test_misty_escape_picked_over_the_bus`, `test_shadow_step_picked_over_the_bus`,
+  `test_elemental_burst_picked_over_the_bus`, `test_invoke_duplicity_at_17_picked_over_the_bus`,
+  `test_arcane_charge_picked_over_the_bus`. The five mutants (Rally without `bonus_used`,
+  Misty Escape spending the Bonus Action, Burst left armed, `_duplicity_cd_pending` never
+  cleared, Arcane Charge disarmed before its range test) were all killed, each by its own
+  test, on a container `/tmp` copy.
+- **C3.2, no finding:** the element picker (`render="picker"`) takes an option id over the
+  bus like any choice.
+- **C1.3, finding confirmed:** `_resolve_rally` and `_resolve_feint` clear their flag before
+  the range test, so an out-of-range tap disarms the pick silently and the player lands on
+  the offer. Tests `test_rally_out_of_range_keeps_the_pick` and
+  `test_feint_out_of_reach_keeps_the_pick` are written and fail; they are **not registered**.
+  Feint's self-tap (`target_idx == fighter`) disarmed silently too. **Fixed 2026-10-14**
+  (user: "go for it"), the Lay on Hands pattern: each resolver clears its flag only once
+  the target passes, so a refusal keeps the pick armed and the log asks again. Tests
+  registered, plus `test_feint_on_yourself_keeps_the_pick`.
+- **D1, confirmed:** on the DM console (Skarn), Attack → the weapon prompt → Dash leaves
+  `('action', 1, 'action')` armed with `action_used` True. The panel still enables Attack, and
+  a map click swings. Test `test_dash_after_an_unswung_attack_undoes_the_arm`.
+- **D2.1 passes** (`test_a_player_cancels_then_dashes`, registered): Kira's own Cancel
+  restores the snapshot, so Dash after it is clean.
+- **D2.2, confirmed and worse:** after the DM's panel takeover and a DM Dash, the attack
+  stays armed with **2** swings, and `ensure` re-posts it to Kira as "Attack: choose a target
+  (2 left)". Test `test_a_dm_takeover_then_dash_leaves_no_attack`. This may bear on row 5,
+  though it is not a diagnosis: Kira is not stuck here, she is handed a pick she should not
+  have.
+- **D3, fixed 2026-10-14** (user: "Agreed, go for it"). The plan's placement, at the top of
+  the Dash block, could not work: `perform` re-takes `_attack_arm_snapshot` before **every**
+  action, so by the time Dash ran the snapshot held the armed state. The fix is in `perform`
+  instead:
+  - `_attack_unswung()`: the snapshot is held, the sequence is seeded for `"action"`, and
+    the Action is unspent. The first swing spends the Action, so this means "Attack chosen,
+    nothing swung".
+  - While it holds, `perform` keeps the snapshot from before the Attack instead of re-taking
+    it. That also fixes arm → a Bonus Action → Cancel, which used to restore the armed counts.
+  - After the handler: if it was unswung and the Action is now spent, `perform` runs
+    `net_picks.cancel_attack`. The test is on the outcome, not on `economy`, because the
+    economy tags are a vocabulary, not a rules audit (Stand Up, Go Prone and Unarmed are
+    tagged `action`). Rows tagged `ECONOMY_ATTACK` are excluded: Bite (grappled) swings
+    inside its handler and is one of the Attack's swings.
+  - D3.3 confirmed: once the state is right, the panel and `actions.py:834` drop Attack
+    with no change of their own.
+  - New tests: `test_attack_after_a_dash_is_refused` (the other order) and
+    `test_a_bite_after_an_unswung_attack_is_one_of_its_swings`.
+- **Mutants, all killed**, on a container `/tmp` copy: the undo's body removed, the snapshot
+  re-taken while unswung, Bite not excluded, Rally and Feint disarmed before their reach
+  test, and Feint's self-tap disarming.
+- **Recorded behaviour change, DM console and players alike:** an Action taken while an
+  Attack is chosen and unswung now abandons the Attack, logging "Attack cancelled.". Before,
+  the Attack stayed armed.
+
 **Still open:**
 - The Long Jump draws no Opportunity Attacks (C++, `known_limitations.md`).
-- The arm-then-Dash question (`mid_sequence_action`, `actions.py:834`), which nobody has
-  checked.
+- ~~The arm-then-Dash bug~~ and ~~Rally / Feint disarming silently~~: fixed 2026-10-14,
+  uncommitted. See "Progress on the fragments" below.
+- An Action spent in a prompt's callback, after `perform` has returned (an item from Use
+  Item, a spell), does not run D3's undo. No free Action was found that way, because the
+  attack pick comes first in the click chain, but it was not audited.
 - Fix B (planning a player's reach from what the party knows) needs a C++ change, and is
   its own slice.
 - The flaky `test_menus.test_on_deck_row_deploys_its_group_on_click` was not investigated.
@@ -5698,6 +5897,58 @@ posted over a parked window, and the snapshot taken or dropped at the wrong time
 - Container only. Never run `docker build`.
 - Stage files by name and use `git commit --only`. Never `-A`, never push unasked.
 - Commit only when the user asks.
+
+
+##### Handoff — the M5d fragments committed *(written 2026-10-14)*
+
+**State.**
+- Committed as "M5d fragments: pick coverage, Rally/Feint refusals, arm-then-Dash", on top
+  of `f130bf1`. `main` is eleven commits ahead of `origin/main`, none pushed. Never push
+  unasked.
+- Suite: **167 / 0** in the container (2026-10-14). The panel and determinism goldens are
+  unchanged. No C++ changed, and no image rebuild is needed.
+- `tests/test_picks.py` has 35 checks, up from 21. The 11 mutants for this work were all
+  killed. The runners are recreated as described under "Mutant runners" above; the two used
+  here were piped into `docker run -i … python3 -` and ran only `test_picks.py`.
+- Still uncommitted on purpose: `maps/TestDNDMap_terrain.json` (the **user** resets it),
+  `submit_log.jsonl`, `gui/replay_log.txt` and the untracked scratch.
+
+**What landed** (details under "Progress on the fragments", above):
+- **Coverage:** Rally, Misty Escape, Shadow Step, Elemental Burst, Invoke Duplicity at 17
+  and EK Action Surge → Arcane Charge are each driven from the offer to resolution with a
+  remote cell. Rig helpers `_make`, `_free_cell` (with `beyond`) and `_res`.
+- **Rally / Feinting Attack** (`main.py:7087`, `:7107`): an out-of-reach tap, or Feint on
+  yourself, is refused and keeps the pick, the Lay on Hands pattern.
+- **Arm-then-Dash (D3)**, in `App.perform` (`main.py:15419`; `_attack_unswung` at `:15464`):
+  - while an Attack is chosen and unswung, `perform` keeps the snapshot from before it;
+  - an action that spends the Action in that state runs `net_picks.cancel_attack` after its
+    handler;
+  - `ECONOMY_ATTACK` rows (Bite (grappled)) are exempt.
+  - Recorded behaviour change: an Action taken while an Attack is chosen and unswung now
+    abandons the Attack ("Attack cancelled.").
+
+**Next, in order:**
+1. **M5e, the spell pipeline.** Unchanged from the previous handoff: the arms
+   `pending_spell_slot`, `pending_chromatic_active`, `pending_summon_slot`,
+   `pending_beguiling` and `pending_bewitching_misty` are in `ARMS`, unwired. `radiance`
+   still holds the offer while it leaves `pending_spell_slot` armed. Wiring an arm means
+   adding it to `picks.WIRED` with a cancel that restores whatever the arm changed. Freeze
+   a Step 0 with the user before coding.
+   - M5e should also settle the gap D3 left. An Action spent inside a prompt callback, after
+     `perform` has returned, does not run D3's undo; spells and Use Item spend that way.
+     Check, case by case, whether an Attack chosen and unswung, followed by a spell cast
+     through its prompt, leaves the attack armed after the Action is spent. If it does, the
+     undo belongs where the callback spends the Action, not in `perform`.
+2. **Row 5 (a player stuck after a DM takeover)**, if it comes back. D2.2 found that a
+   takeover followed by a DM Action used to re-post the player's attack pick. That is fixed
+   now, and may have been part of row 5, but it is not a diagnosis. The capture steps are in
+   the previous handoff's "Next" 3.
+
+**Still open:** the Long Jump draws no Opportunity Attacks (C++), Fix B (C++), the flaky
+`test_menus.test_on_deck_row_deploys_its_group_on_click`, and the D3 callback gap above.
+
+**Rules:** unchanged. Container only, never `docker build`, stage files by name with
+`git commit --only`, never `-A`, commit only when asked, never push unasked.
 
 
 ---
