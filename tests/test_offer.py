@@ -148,24 +148,39 @@ def test_the_class_table_is_the_dispatch():
 
     A row missing here would send that action disabled forever; an extra row would be a
     class for an action that no longer exists."""
+    import actions
     dispatched = set()
     for node in ast.walk(_method("_perform_action")):
         if (isinstance(node, ast.Compare) and isinstance(node.left, ast.Name)
                 and node.left.id == "action_id"
                 and isinstance(node.comparators[0], ast.Constant)):
             dispatched.add(node.comparators[0].value)
-    assert len(dispatched) == 111, len(dispatched)
+        # A loop dispatch: `for x, … in TABLE.items(): if x != action_id: continue`.
+        # Every key of `actions.TABLE` is then an id (the nine Metamagic toggles, E-7).
+        if (isinstance(node, ast.For) and isinstance(node.iter, ast.Call)
+                and isinstance(node.iter.func, ast.Attribute)
+                and node.iter.func.attr == "items"
+                and isinstance(node.iter.func.value, ast.Name)
+                and isinstance(node.target, ast.Tuple)):
+            key = node.target.elts[0].id
+            if any(isinstance(n, ast.Compare) and isinstance(n.left, ast.Name)
+                   and n.left.id == key and isinstance(n.comparators[0], ast.Name)
+                   and n.comparators[0].id == "action_id" for n in ast.walk(node)):
+                dispatched |= set(getattr(actions, node.iter.func.value.id))
+    assert len(dispatched) == 120, len(dispatched)
     assert set(net_offer.CLASS) == dispatched, (
         f"missing {sorted(dispatched - set(net_offer.CLASS))}, "
         f"extra {sorted(set(net_offer.CLASS) - dispatched)}")
     counts = collections.Counter(net_offer.CLASS.values())
-    assert counts == {"I": 57, "C→I": 8, "A": 16, "A*": 1, "C→A": 7, "X": 12,
+    assert counts == {"I": 66, "C→I": 8, "A": 16, "A*": 1, "C→A": 7, "X": 12,
                       "C→X": 1, "S": 5, "DM": 4}, counts
     assert sorted(i for i, c in net_offer.CLASS.items() if c == "DM") == sorted(_DM_TOOLS)
-    # M5d: every pick row is wired, and only those. S waits for M5e.
+    assert all(net_offer.CLASS[i] == "I" for i in actions.METAMAGIC_VALUE_BY_ID)
+    # M5d: every pick row is wired. M5e.1: every S row but Divine Intervention (M5e.2).
     picks = {i for i, c in net_offer.CLASS.items() if c in ("A", "A*", "C→A", "X", "C→X")}
-    assert net_offer.WIRED == picks, (sorted(picks - net_offer.WIRED),
-                                      sorted(net_offer.WIRED - picks))
+    spells = {i for i, c in net_offer.CLASS.items() if c == "S"} - {"divine_intervention"}
+    assert net_offer.WIRED == picks | spells, (sorted((picks | spells) - net_offer.WIRED),
+                                               sorted(net_offer.WIRED - picks - spells))
     print("✅ test_the_class_table_is_the_dispatch")
 
 

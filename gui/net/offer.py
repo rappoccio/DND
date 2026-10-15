@@ -15,9 +15,9 @@ step" and "after a cancel" are all that one rule, so no action needs an "it chan
 **What a player is offered** follows Step 0.12's walk of the 110 dispatch sites (`CLASS`):
   · I and C→I resolve on the choice, or through choice sub-prompts the bus already sends
     to the controller, so they are enabled;
-  · A, A*, C→A, X and C→X need a pick on the map. A row in `WIRED` is enabled: its pick
-    reaches the player as a target prompt (`net/picks.py`, M5d). The rest, and S until
-    M5e, go out disabled, with a reason a player can read;
+  · A, A*, C→A, X, C→X and S need a pick on the map. A row in `WIRED` is enabled: its
+    pick reaches the player as a target prompt (`net/picks.py`, M5d and M5e). The rest
+    go out disabled, with a reason a player can read;
   · DM tools (`GROUP_SESSION`, `place_terrain`) are never sent at all.
 An id this table does not know goes out disabled: a new action is unplayable remotely until
 someone classifies it, never playable by accident.
@@ -27,7 +27,7 @@ The offer is posted with `render="remote"`, so the DM console draws nothing for 
 
 from __future__ import annotations
 
-from actions import GROUP_SESSION
+from actions import GROUP_SESSION, METAMAGIC_VALUE_BY_ID
 from net import move as net_move, picks as net_picks
 from net.roster import DM_PRINCIPAL_ID
 from prompts import Option
@@ -57,6 +57,9 @@ WIRED = frozenset({
     "elemental_burst",
     # M5d.4 — multi-picks
     "mantle", "invoke_duplicity", "move_duplicity", "swap_duplicity",
+    # M5e.1 — the spell pipeline. Divine Intervention waits for M5e.2 (its picker is a
+    # DM widget).
+    "spell_action", "spell_bonus", "mantle_majesty", "wild_magic_bonus_cast",
 })
 
 # Why a disabled row is disabled, in the player's words. The DM can still run any of these
@@ -68,8 +71,9 @@ _REASON_UNKNOWN = "Not playable remotely yet — ask the DM"
 REASONS = {A: _REASON_AGENT, A_MULTI: _REASON_AGENT, C_A: _REASON_AGENT,
            X: _REASON_CELL, C_X: _REASON_CELL, S: _REASON_SPELL}
 
-# Every id `App._perform_action` dispatches, in dispatch order, with its Step 0.12 class.
-# `tests/test_offer.py` holds this to the dispatch sites both ways.
+# Every id `App._perform_action` dispatches, in dispatch order, with its Step 0.12 class
+# (the Metamagic rows are M5e's E-7). `tests/test_offer.py` holds this to the dispatch
+# sites both ways, the loop over the Metamagic ids included.
 CLASS: dict[str, str] = {
     "atk_action": C_A,
     "nick": A,
@@ -172,6 +176,9 @@ CLASS: dict[str, str] = {
     "charge_arcane_ward": C_I,
     "wild_shape": C_I,
     "step_of_wind": I,
+    # The nine Metamagic toggles, dispatched by one loop over `METAMAGIC_VALUE_BY_ID`.
+    # Arming costs nothing; the Sorcery Points go with the cast that carries it (E-7).
+    **{mm_id: I for mm_id in METAMAGIC_VALUE_BY_ID},
     "haste_action": I,
     "place_terrain": DM,
     "pause_resume": DM,

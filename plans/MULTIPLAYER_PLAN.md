@@ -18,8 +18,9 @@ for D-M5-1 through D-M5-9. **M5a (reactions over the wire) has landed (`2ed68bd`
 M5b's first commit, D-M5-1 `perform` (`2ade754`). D-M5-2, the action offer, is next**; its
 handoff follows "M5b, commit 1 — D-M5-1 landed".
 **2026-10-14: M5b–M5d have landed. M5e (the spell pipeline) has started.** Its Step 0 is
-frozen (user: "agreed"). M5e.0, the two bug fixes, is committed. **M5e.1 is next.** Read
-"Handoff — M5e.0 committed", just before M6.
+frozen (user: "agreed"). M5e.0, the two bug fixes, is committed. **M5e.1 has landed
+(uncommitted, 2026-10-14)**; it found two DM-console bugs (F-M5e-9, F-M5e-10) that want their
+own commits. Read "Handoff — M5e.1 landed", just before M6.
 
 ---
 
@@ -6041,7 +6042,8 @@ posted over a parked window, and the snapshot taken or dropped at the wrong time
   follow the mouse (`_draw_spell_aoe_preview`). A client sends only `auth` and `submit` (the
   two-send tripwire), so the server never learns where a player is hovering. A player who
   taps for Fireball sees nothing before the tap resolves.
-- **To check in M5e.1, not assumed:** the previous handoff says `radiance` "leaves
+- **To check in M5e.1, not assumed** *(settled in M5e.1: the claim is struck; see
+  "M5e.1 — what landed")*: the previous handoff says `radiance` "leaves
   `pending_spell_slot` armed". Its dispatch resolves at once through
   `_resolve_spell_cast_aoe`, which clears the slot before `begin_cast`. Find the path that
   leaves it armed (a parked reaction window is the suspect), or strike the claim.
@@ -6236,6 +6238,158 @@ what landed".
 - No test covers the Bonus Action rows of `_ARMS_A_SPELL` (`spell_bonus`, `mantle_majesty`,
   `wild_magic_bonus_cast`).
 - Out of M5e by decision: refunds (F-M5e-2) and Overchannel (E-7).
+
+**Rules:**
+- Container only. Never run `docker build`.
+- Stage files by name. Never `-A`.
+- Commit only when asked. Never push unasked.
+
+
+##### M5e.1 — what landed *(2026-10-14, uncommitted)*
+
+E-1, E-2, E-3 and E-7, and the wiring. The `radiance` claim is struck.
+
+- **`radiance` (step 1).** It never leaves `pending_spell_slot` armed. Its dispatch arms the
+  slot and calls `_resolve_spell_cast_aoe` on the same line. That function's only early
+  return is for a missing caster or slot, and every other path clears the slot before
+  `begin_cast`. So a parked reaction window finds it already idle. The riders it could arm
+  afterwards are Beguiling and Bewitching, which are wired now (below). Pinned by
+  `test_radiance_leaves_nothing_armed`, which runs it from the offer. The M5d handoffs
+  that make the claim are left as written, as history.
+- **E-1, the arm table** (`net/picks.py`).
+  - `Arm.kind` is a string or a function of the app, read through `Arm.kind_for(app)`.
+    `projection` and `post` use it, so a changed kind re-posts the prompt, as a changed
+    title does.
+  - `spell_shape(app)` returns one of the nine shapes. It tests them in the order of
+    `resolve_pick`'s spell branch: corpse, binding, door, dispel, then for an AoE, wall,
+    teleport, area, and otherwise multi or single. "Multi" is `_resolve_spell_cast`'s own
+    test: Multiple geometry, or Twinned armed on a Single spell. `SHAPE_KIND` maps each
+    shape to a kind. Dispel is a `target`.
+  - The titles are "Fire Bolt: choose a target", "Magic Missile: choose a target (2 of 3)",
+    "Fireball: choose the center" (Sphere or Square), "…: choose where to aim" (Line or
+    Cone), "Wall of Fire: choose the start point" and then "…the end point", "…: choose a
+    body", "…: choose a creature to bind", "Knock: choose a door", "Dispel Magic: choose
+    a creature or a spot" and "Misty Step: choose a destination".
+  - The Chromatic arm's title counts its leaps ("(0 chosen)"). The summon arm's title
+    names the creature ("Summon: choose where to place Bestial Spirit (Air)").
+- **E-2, cancels.**
+  - `picks.cancel_spell` is the spell's Esc body, lifted. The Esc branch in `main.py` now
+    calls it. On a wall with an anchor, it clears the anchor and keeps the arm.
+  - The Chromatic arm: cancel = `_cancel_chromatic_chain`, `done` always, `finish` =
+    `_finalize_chromatic_cast`. The console's Enter and Esc branches already call those
+    two functions, so they are unchanged.
+  - The summon arm keeps `cancel_summon` from M5e.0.
+  - Nothing is refunded (F-M5e-2).
+- **E-3.** `_ask_actor` takes `cancellable` and passes it to `prompts.ask`. The element,
+  Vistani Curse, Command-word and Forcecage pickers, and Mantle of Majesty's word
+  (`menus/features.py`), pass `cancellable=False`. Nothing on the DM console reads the
+  flag. A player's cancel sent over the wire anyway still runs the default, as today.
+- **E-7.** The nine `metamagic_*` ids are in `offer.CLASS` as `I`, through one
+  comprehension over `actions.METAMAGIC_VALUE_BY_ID`. `test_the_class_table_is_the_dispatch`
+  now also finds the loop dispatch (`for x, … in TABLE.items(): if x != action_id`) and
+  takes every key of `actions.TABLE`. So the ids are checked both ways, with no special
+  case. The counts are 120 ids, with 66 of them `I`.
+- **Wired.**
+  - `picks.WIRED` gains `pending_spell_slot`, `pending_chromatic_active`,
+    `pending_summon_slot`, `pending_beguiling` and `pending_bewitching_misty`. The only
+    arm still unwired is `_legendary_target_pick`, which is NPC-only.
+    `test_an_unwired_arm_holds_the_offer` uses it now.
+  - **The riders are in.** Both arm on the caster's own slot-fueled spell: `_finish_cast`
+    → `maybe_offer_beguiling_magic` / `maybe_offer_bewitching_magic` → a `confirm`
+    prompt owned by the caster's controller → the arm. Left unwired, a player's own spell
+    would have held their turn until the DM clicked.
+  - `offer.WIRED` gains `spell_action`, `spell_bonus`, `mantle_majesty` and
+    `wild_magic_bonus_cast`. `divine_intervention` stays disabled until M5e.2.
+- **Tests:** `tests/test_picks.py` has 56 checks, up from 40. Each shape is driven from the
+  offer to resolution with a remote cell:
+  - Fire Bolt (one target);
+  - Magic Missile (three counted picks);
+  - Fireball (a `cell`);
+  - Wall of Fire (two picks, and a Cancel that clears the anchor);
+  - Misty Step (through `spell_bonus`);
+  - Revivify (a body);
+  - Planar Binding;
+  - Knock (on a locked door);
+  - Dispel Magic on nothing (asks again, then Cancel).
+
+  Also covered: Chromatic Orb (the element picker not cancellable, then Done casts), a
+  summon placed and a summon cancelled, Mantle of Majesty, Twinned armed from the offer,
+  the Beguiling rider end to end, Radiance, and Esc agreeing with the remote cancel. The
+  rig gains `_caster`, which re-classes Aria and fills her slots (`_make` sets the
+  maximum, not what remains), plus `_slots`, `_answer` and `_tap`.
+- **Mutants, all 14 killed** (runner as under "Mutant runners", on `test_picks.py` and
+  `test_offer.py`):
+  - the spell kind fixed at `target`;
+  - the wall cancel disarming;
+  - Chromatic Done not casting;
+  - the summon cancel keeping the creature;
+  - the element picker cancellable;
+  - Mantle's word picker cancellable;
+  - the Attack → Spell undo removed;
+  - the summon missing from the clear;
+  - the spell arm unwired;
+  - the Metamagic rows unclassified;
+  - the multi count off by one;
+  - the wall shape skipped;
+  - Dispel's kind as `cell`;
+  - Beguiling unwired.
+
+  E-10's eighth mutant (`you.aoe` uncut) belongs to M5e.4.
+- **Suite:** 167 / 0 in the container. The panel and determinism goldens are unchanged.
+  No C++ changed.
+- **Recorded behaviour changes on the DM console:** none. The spell Esc runs the same
+  body through `cancel_spell`, and `cancellable` is not drawn.
+
+**Findings.**
+
+- **F-M5e-9: Animate Dead's finish raises on the DM console.** `_finish_animate_dead`
+  (`main.py`, "Consume the corpse") assigns `placed_agents[i].removed_from_play = True`.
+  The binding is `def_property_readonly` (`bind_types.cpp:136`). So choosing Skeleton or
+  Zombie raises `AttributeError`, after the corpse pick and before anything is spent. No
+  test covered it (`test_animate_dead.py` checks only flags and JSON). The fix is
+  `self.bm.set_agent_removed_from_play(i, …)`, in both places. It needs its own commit,
+  and your OK. Until then, the corpse test uses Revivify.
+- **F-M5e-10: Mantle of Majesty's Command raises if no spell has been cast this session.**
+  `pending_forcecage_sealed` is set only in `_activate_spell`. It is not in `__init__`, and
+  Mantle's `_on_word` never sets it. So `_resolve_spell_cast` raises `AttributeError` on a
+  session's first Mantle cast, and the DM console hits this too. The reverse also
+  happens: Mantle inherits a Box choice left over from an earlier Forcecage. The fix:
+  initialise it in `__init__`, and reset it in Mantle's `_on_word`. It needs its own
+  commit, and your OK. `test_mantle_of_majesty_from_the_offer` sets the attribute itself,
+  with a comment to drop that line once the fix lands.
+- **F-M5e-11: two pickers still open on the DM's screen when a player casts.** Wish
+  (`SpellSelectionDialog`) and the Magic Circle / Hallow ward picker (`_element_dialog`)
+  are DM widgets, not bus prompts. `spell_action` is on offer now, so a player who
+  casts either spell opens that widget on the DM console. While it is up, nothing is
+  armed and no bus prompt is live, so the next frame posts the player a fresh offer. The
+  DM completes the picker. Nothing is spent until resolution, so no resource is lost.
+  M5e.2 (Wish) and M5e.3 (the ward) close this, as planned.
+
+**Not covered by a test:** a Bewitching Magic cast end to end (only projection and cancel,
+through `test_every_wired_arm_projects_and_cancels`). Also untested: `wild_magic_bonus_cast`,
+which is `_start_cast_spell("bonus")`, the same call `spell_bonus` makes, and Psionic
+Sorcery's SP levels.
+
+##### Handoff — M5e.1 landed *(written 2026-10-14)*
+
+**State.**
+- **Uncommitted**, on top of "M5e.0, F-M5e-5". The files are `gui/net/picks.py`,
+  `gui/net/offer.py`, `gui/main.py`, `gui/menus/features.py`, `tests/test_picks.py`,
+  `tests/test_offer.py` and this plan. Commit when asked, staging by name.
+- Suite: **167 / 0** in the container (2026-10-14). The goldens are unchanged. No C++
+  changed, and no image rebuild is needed.
+
+**Next, in order:**
+1. **F-M5e-9 and F-M5e-10**, each in its own commit, each with a failing test first, and
+   only with the user's OK (standing rule). When F-M5e-10 lands, drop the workaround line
+   in `test_mantle_of_majesty_from_the_offer`. Once F-M5e-9 lands, Animate Dead can join
+   the corpse test.
+2. **M5e.2:** Wish and DI as one bus `choice` prompt with `render="spell_browser"` (E-5).
+   Then flip `divine_intervention`.
+3. **M5e.3:** the ward toggle loop (E-6).
+4. **M5e.4:** aim, then confirm, with `you.aoe` (E-8).
+
+**Still open:** everything in the M5e.0 handoff's list, plus F-M5e-11 until M5e.2 and M5e.3.
 
 **Rules:**
 - Container only. Never run `docker build`.

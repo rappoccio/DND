@@ -8601,9 +8601,13 @@ class App:
                 type_name = next((lbl for lbl, val in elem_opts
                                   if val == self.pending_spell_damage_type), "?")
                 self._combat_log_add(f"Casting {sp_.name} ({type_name}) — click a target.")
+            # Cancel here casts with the default (F-M5e-3), so a remote client is told not to
+            # draw a Cancel that would cast the spell (E-3). The same holds for the curse,
+            # Command-word and Forcecage pickers below, and Mantle of Majesty's word.
             self._ask_actor(idx, "action", f"{sp_.name}: damage type",
                             [(lbl, (lambda v=val: _on_elem([v]))) for lbl, val in elem_opts],
-                            render="picker", on_cancel=lambda: _on_elem([]))
+                            render="picker", on_cancel=lambda: _on_elem([]),
+                            cancellable=False)
             return
 
         # Vistani Curse sub-choice (Curse of Vulnerability / Weakness / Affliction): pick the
@@ -8624,7 +8628,8 @@ class App:
                 self._combat_log_add(f"Casting {sp_.name} ({choice_name}) — click a target.")
             self._ask_actor(idx, "action", f"{sp_.name}: choose",
                             [(lbl, (lambda v=val: _on_curse([v]))) for lbl, val in curse_opts],
-                            render="picker", on_cancel=lambda: _on_curse([]))
+                            render="picker", on_cancel=lambda: _on_curse([]),
+                            cancellable=False)
             return
 
         # Cast-time word choice (Command): pick the command word via the ElementPickerDialog
@@ -8641,7 +8646,8 @@ class App:
                 self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
             self._ask_actor(idx, "action", "Command: choose a word",
                             [(lbl, (lambda v=val: _on_word([v]))) for lbl, val in features.COMMAND_WORD_OPTIONS],
-                            render="picker", on_cancel=lambda: _on_word([]))
+                            render="picker", on_cancel=lambda: _on_word([]),
+                            cancellable=False)
             return
 
         # Cast-time form choice (Forcecage): Cage (20-ft barred cube — the occupant is trapped but
@@ -8662,7 +8668,8 @@ class App:
                 self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
             self._ask_actor(idx, "action", "Forcecage: choose a form",
                             [(lbl, (lambda v=val: _on_forcecage([v]))) for lbl, val in forcecage_opts],
-                            render="picker", on_cancel=lambda: _on_forcecage([]))
+                            render="picker", on_cancel=lambda: _on_forcecage([]),
+                            cancellable=False)
             return
 
         # Summon spells: pick an empty cell within range to manifest the creature, rather than
@@ -9544,7 +9551,7 @@ class App:
             del self._effect_meta[eid]
 
     def _ask_actor(self, actor_idx, kind, title, pairs, *, owner=None, render=None,
-                   parent=None, anchor=None, on_cancel=None):
+                   parent=None, anchor=None, on_cancel=None, cancellable=True):
         """Open a prompt on the bus, anchored at a token and owned by its controller.
 
         This is M1 Step 3's mechanical replacement for the two lines every call site
@@ -9560,6 +9567,9 @@ class App:
         the actor's controller, which is right for every prompt the acting creature
         answers itself, and is passed explicitly where it is not — the defender
         reactions of G3, and the DM-authoring menus, which take ``DM_PRINCIPAL_ID``.
+
+        ``cancellable`` is Envelope 4's display hint, passed through: False tells a
+        remote client not to draw Cancel. The DM console ignores it.
         """
         owner = self.roster.controller_of(actor_idx) if owner is None else owner
         return self.prompts.ask(
@@ -9572,6 +9582,7 @@ class App:
             parent=parent,
             render=render,
             anchor=self._agent_screen_pos(actor_idx) if anchor is None else anchor,
+            cancellable=cancellable,
             on_cancel=on_cancel)
 
     def _reaction_deadline(self, kind, owner, on_cancel):
@@ -17614,17 +17625,10 @@ class App:
                     net_picks.cancel_inspiring_smite(self)
                     continue
                 # Esc cancels a pending spell cast. For an anchored wall, the first
-                # Esc drops back to anchor selection; a second Esc cancels the cast.
+                # Esc drops back to anchor selection; a second Esc cancels the cast. The
+                # body is the spell arm's cancel, the one a player's remote cancel runs.
                 if event.key == pygame.K_ESCAPE and self.pending_spell_slot:
-                    if self._pending_spell_is_wall() and self.spell_anchor_cell is not None:
-                        self.spell_anchor_cell = None
-                        self._combat_log_add("Wall anchor cleared — click a new start point.")
-                    else:
-                        self.pending_spell_slot   = ""
-                        self.pending_spell_is_aoe = False
-                        self.spell_anchor_cell    = None
-                        self.spell_hover_cell     = None
-                        self._combat_log_add("Spell cast cancelled.")
+                    net_picks.cancel_spell(self)
                     continue
                 # M5d: every other armed pick cancels through its arm's own cancel, the one a
                 # player's remote cancel runs (net/picks.py). Before M5d these had no Esc.

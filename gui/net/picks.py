@@ -145,6 +145,22 @@ def cancel_summon(app) -> None:
     app._combat_log_add("Summon cancelled.")
 
 
+def cancel_spell(app) -> None:
+    """The spell's Esc body, lifted (M5e E-2). On a wall with an anchor it clears the anchor
+    and keeps the arm, so the next pick is the start point again. Otherwise it disarms.
+    Nothing is refunded: a normal cast spends at resolution, and the four casts that spend
+    before the pick (F-M5e-2) lose it, as Esc always has."""
+    if app._pending_spell_is_wall() and app.spell_anchor_cell is not None:
+        app.spell_anchor_cell = None
+        app._combat_log_add("Wall anchor cleared — click a new start point.")
+        return
+    app.pending_spell_slot   = ""
+    app.pending_spell_is_aoe = False
+    app.spell_anchor_cell    = None
+    app.spell_hover_cell     = None
+    app._combat_log_add("Spell cast cancelled.")
+
+
 def cancel_jump(app) -> None:
     app.jump_overlay_active = False
     app.jump_reachable_cells = []
@@ -173,13 +189,15 @@ class Arm:
     """One arm of the click chain.
 
     `name` is the attribute the chain tests first, `idle` the value it rests at. `title`
-    is a function so a multi-pick can count. `in_window` is the one arm armed inside a
+    is a function so a multi-pick can count. `kind` is a string, or a function of the app
+    where one arm takes more than one shape (the spell arm, M5e E-1); read it through
+    `kind_for`. `in_window` is the one arm armed inside a
     parked reaction window, which the offer's gate would otherwise wait out forever.
     `cells` and `resolve` are set only by the long jump, which is not in the chain: it
     has its own landing set and its own click handler."""
     name: str
     idle: object
-    kind: str
+    kind: str | Callable[[object], str]
     title: Callable[[object], str]
     cancel: Callable[[object], None] | None
     actor: Callable[[object], int] = _current
@@ -191,6 +209,9 @@ class Arm:
 
     def armed(self, app) -> bool:
         return getattr(app, self.name, self.idle) != self.idle
+
+    def kind_for(self, app) -> str:
+        return self.kind(app) if callable(self.kind) else self.kind
 
 
 def _t(text: str) -> Callable[[object], str]:
@@ -216,6 +237,86 @@ def _jump(app, actor: int, cell) -> bool:
         return False
     app._execute_jump(actor, cell)
     return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  The spell arm: one flag, nine shapes (F-M5e-1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+SINGLE, MULTI, AREA, WALL, CORPSE, BINDING, DOOR, DISPEL, TELEPORT = (
+    "single", "multi", "area", "wall", "corpse", "binding", "door", "dispel", "teleport")
+
+# Each shape's prompt kind. Dispel takes a creature or a spot; the chain accepts either,
+# and the picker that follows is a bus prompt (E-1).
+SHAPE_KIND = {SINGLE: TARGET, MULTI: TARGET, BINDING: TARGET, DISPEL: TARGET,
+              AREA: CELL, WALL: CELL, CORPSE: CELL, DOOR: CELL, TELEPORT: CELL}
+
+
+def _multi_target(app, sp) -> bool:
+    """`_resolve_spell_cast`'s own test for a cast that collects several clicks."""
+    return (sp.geometry == rpg.SpellGeometry.Multiple
+            or app._twinned_single_armed(sp, app._current_agent_idx()))
+
+
+def spell_shape(app) -> str:
+    """The shape the armed spell takes, tested in `resolve_pick`'s spell-branch order, so
+    the prompt names what the click will actually do."""
+    if app._pending_spell_targets_corpse():
+        return CORPSE
+    if app._pending_spell_binds_creature():
+        return BINDING
+    if app._pending_spell_opens_doors():
+        return DOOR
+    if app._pending_spell_dispels_magic():
+        return DISPEL
+    sp = app._pending_spell()
+    if app.pending_spell_is_aoe:
+        if app._pending_spell_is_wall():
+            return WALL
+        if sp is not None and getattr(sp, "teleportation_spell", False):
+            return TELEPORT
+        return AREA
+    if sp is not None and _multi_target(app, sp):
+        return MULTI
+    return SINGLE
+
+
+def _spell_kind(app) -> str:
+    return SHAPE_KIND[spell_shape(app)]
+
+
+def _spell_title(app) -> str:
+    sp = app._pending_spell()
+    name = sp.name if sp is not None else "Spell"
+    shape = spell_shape(app)
+    if shape == MULTI:
+        n = app.pending_spell_num_targets
+        k = len(app.pending_spell_targets) + 1
+        return f"{name}: choose a target ({k} of {n})" if n > 0 else f"{name}: choose a target"
+    if shape == WALL:
+        step = "start" if app.spell_anchor_cell is None else "end"
+        return f"{name}: choose the {step} point"
+    if shape == AREA:
+        centred = sp is not None and sp.geometry in (rpg.SpellGeometry.Sphere,
+                                                     rpg.SpellGeometry.Square)
+        return f"{name}: choose the center" if centred else f"{name}: choose where to aim"
+    return f"{name}: " + {
+        SINGLE: "choose a target",
+        CORPSE: "choose a body",
+        BINDING: "choose a creature to bind",
+        DOOR: "choose a door",
+        DISPEL: "choose a creature or a spot",
+        TELEPORT: "choose a destination",
+    }[shape]
+
+
+def _chromatic_title(app) -> str:
+    return f"Chromatic Orb: choose the next leap ({len(app.pending_chromatic_chain)} chosen)"
+
+
+def _summon_title(app) -> str:
+    what = app.pending_summon_monster or "the creature"
+    return f"Summon: choose where to place {what}"
 
 
 ARMS: tuple[Arm, ...] = (
@@ -273,9 +374,11 @@ ARMS: tuple[Arm, ...] = (
     Arm("_legendary_target_pick", False, TARGET, _t("Legendary action: choose a target"),
         None, actor=lambda app: app._legendary_actor),
     Arm("pending_attack_slot", "", TARGET, _attack_title, cancel_attack),
-    Arm("pending_summon_slot", "", CELL, _t("Summon: choose where"), cancel_summon),
-    Arm("pending_chromatic_active", False, TARGET, _t("Chromatic Orb: choose the next leap"), None),
-    Arm("pending_spell_slot", "", TARGET, _t("Spell: choose a target"), None),
+    Arm("pending_summon_slot", "", CELL, _summon_title, cancel_summon),
+    Arm("pending_chromatic_active", False, TARGET, _chromatic_title,
+        lambda app: app._cancel_chromatic_chain(),
+        done=lambda app: True, finish=lambda app: app._finalize_chromatic_cast()),
+    Arm("pending_spell_slot", "", _spell_kind, _spell_title, cancel_spell),
     Arm("pending_shove_slot", "", TARGET, _t("Shove: choose a creature"),
         _flag("pending_shove_slot", "", "Shove", ("pending_shove_type", ""))),
     Arm("pending_unarmed_type", "", TARGET, _t("Unarmed Strike: choose a creature"),
@@ -311,7 +414,7 @@ ARMS: tuple[Arm, ...] = (
 BY_NAME = {a.name: a for a in ARMS}
 
 # Projected to the player. The rest hold the offer back, as in M5b, and the DM resolves
-# them on the map. M5e takes the spell arms; `_legendary_target_pick` is NPC-only.
+# them on the map. `_legendary_target_pick` is NPC-only.
 WIRED = frozenset({
     # M5d.1 — weapon attacks and the picks that follow them
     "pending_attack_slot", "pending_cleave", "pending_sweep", "pending_rally",
@@ -329,6 +432,9 @@ WIRED = frozenset({
     # M5d.4 — multi-picks
     "pending_mantle_active", "pending_invoke_duplicity", "pending_move_duplicity",
     "pending_swap_duplicity",
+    # M5e.1 — the spell pipeline, and the two riders a player's own spell can arm
+    "pending_spell_slot", "pending_chromatic_active", "pending_summon_slot",
+    "pending_beguiling", "pending_bewitching_misty",
 })
 
 
@@ -373,7 +479,8 @@ def cells(app, arm: Arm, actor: int) -> list[tuple[int, int]]:
 def projection(app, arm: Arm, actor: int, owner: str) -> tuple:
     """What the prompt shows. `ensure` re-posts when this changes, and not otherwise."""
     done = arm.done is not None and arm.done(app)
-    return (arm.name, actor, owner, arm.title(app), done, tuple(cells(app, arm, actor)))
+    return (arm.name, actor, owner, arm.kind_for(app), arm.title(app), done,
+            tuple(cells(app, arm, actor)))
 
 
 def post(app, arm: Arm, actor: int, owner: str, parent):
@@ -396,7 +503,7 @@ def post(app, arm: Arm, actor: int, owner: str, parent):
     options = []
     if arm.done is not None and arm.done(app):
         options.append(Option(DONE_ID, "Done", on_choose=lambda: arm.finish(app)))
-    prompt = app.prompts.ask(actor, owner, arm.kind, arm.title(app), options,
+    prompt = app.prompts.ask(actor, owner, arm.kind_for(app), arm.title(app), options,
                              expects="cell", parent=parent, render=PICK_RENDER,
                              cells=cells(app, arm, actor), on_answer=_answer,
                              on_cancel=_cancel)

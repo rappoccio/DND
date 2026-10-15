@@ -40,6 +40,13 @@ runs. These checks pin:
   · M5e.0: a spell chosen after an unswung Attack undoes the Attack first, and cancelling
     the spell leaves Attack on offer (test_a_spell_after_an_unswung_attack_undoes_the_arm,
     test_a_cancelled_spell_after_an_unswung_attack_leaves_the_attack_open)
+  · M5e.1: each spell shape from the offer to resolution with a remote cell: one target,
+    N targets counted, an area as a cell, a wall's two picks (Cancel clears the anchor),
+    a Bonus Action teleport, a body, a binding, a door, a dispel that finds nothing;
+    Chromatic Orb's Done, a summon placed and cancelled, Mantle of Majesty, Twinned from
+    the offer, the Beguiling rider, Radiance arming nothing, and Esc agreeing with the
+    remote spell cancel
+                         (test_a_single_target_spell_picked_over_the_bus … test_esc_and_the_remote_spell_cancel_agree)
   · end to end: an attack over the socket                    (test_an_attack_over_the_wire)
 
 The scene is `test_offer.py`'s: Aria (Fighter 5) at (3,3) with Skarn, a foe, at (4,3);
@@ -431,11 +438,14 @@ def test_every_wired_arm_projects_and_cancels():
         app, kira, _ = _aria_turn()
         aria, skarn = _idx(app, "Aria"), _idx(app, "Skarn")
         app.pending_flurry_atk_idx = aria
+        if arm.name == "pending_beguiling":
+            app.pending_beguiling_bard = aria
         setattr(app, arm.name, _armed_value(app, arm, aria, skarn))
         _frame(app)
         pick = _pick(app)
         assert pick is not None, f"{arm.name}: no target prompt"
-        assert (pick.owner, pick.kind, pick.title) == (kira.id, arm.kind, arm.title(app)), (
+        assert (pick.owner, pick.kind, pick.title) == (kira.id, arm.kind_for(app),
+                                                       arm.title(app)), (
             arm.name, pick.owner, pick.kind, pick.title)
         assert app.prompts.cancel_as(pick.id, kira.id).ok
         assert not arm.armed(app), f"{arm.name}: the cancel left it armed"
@@ -445,10 +455,13 @@ def test_every_wired_arm_projects_and_cancels():
 
 
 def test_an_unwired_arm_holds_the_offer():
-    """A spell pick is M5e's. While one is armed the offer is held back, as in M5b, and no
-    target prompt is posted: the DM resolves it."""
+    """Since M5e.1 the one unwired arm is the legendary pick, which is NPC-only. While an
+    unwired arm is armed the offer is held back, as in M5b, and no target prompt is
+    posted: the DM resolves it."""
+    unwired = [a.name for a in net_picks.ARMS if a.name not in net_picks.WIRED]
+    assert unwired == ["_legendary_target_pick"], unwired
     app, kira, _ = _aria_turn()
-    app.pending_spell_slot = "action"
+    app._legendary_target_pick = True
     _frame(app)
     assert _offer(app) is None and _pick(app) is None, app.prompts.live
     print("✅ test_an_unwired_arm_holds_the_offer")
@@ -1043,6 +1056,359 @@ def test_arcane_charge_picked_over_the_bus():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  M5e.1 — the spell pipeline (E-1, E-2, E-3, E-7)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _caster(app, cls, level, spells, **subclass):
+    """Re-class Aria with `_make`, fill her spell slots (`_make` sets the maximum, not
+    what remains), give her exactly `spells`, and draw a frame so the offer is rebuilt."""
+    from test_combat_panel import _spell
+    aria = _idx(app, "Aria")
+    s = _make(app, aria, cls, level, **subclass)
+    s.restore_spell_slots()
+    app.combat.set_agent_stats(app.bm, aria, s)
+    app.combat.set_agent_spells(app.bm, aria, [_spell(app, n) for n in spells])
+    _frame(app)
+    return aria
+
+
+def _slots(app, idx, level):
+    return app.combat.get_agent_stats(app.bm, idx).spell_slots_remaining[level - 1]
+
+
+def _answer(app, who, title_part, option=0):
+    """Answer the live prompt, which must be `who`'s and name `title_part`, with its
+    `option`-th enabled option. Returns it."""
+    _frame(app)
+    live = app.prompts.live
+    assert live is not None and live.is_live, "nothing is asking anything"
+    assert title_part in live.title and live.owner == who.id, (live.title, live.owner)
+    enabled = [o for o in live.options if o.enabled]
+    assert app.prompts.submit(live.id, Response(option=enabled[option].id), who.id).ok
+    return live
+
+
+def _tap(app, who, cell):
+    pick = _pick(app)
+    assert pick is not None, app.prompts.live
+    res = app.prompts.submit(pick.id, Response(cell=cell), who.id)
+    assert res.ok, res
+    _frame(app)
+
+
+def test_a_single_target_spell_picked_over_the_bus():
+    """Fire Bolt: `spell_action` is offered enabled, the pick is a `target` named for the
+    spell, and Skarn's square casts it and spends the Action."""
+    app, kira, _ = _aria_turn()
+    _caster(app, rpg.CharacterClass.Wizard, 5, ["Fire Bolt"])
+    skarn = _idx(app, "Skarn")
+    assert any(o.id == "spell_action" and o.enabled for o in _offer(app).options)
+    _choose(app, kira, "spell_action")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("target", "Fire Bolt: choose a target"), pick
+    assert net_picks.spell_shape(app) == net_picks.SINGLE
+    new = _record(app)
+    _tap(app, kira, _pos(app, skarn))
+    assert app.pending_spell_slot == "" and app.action_used, app.pending_spell_slot
+    assert any("Fire Bolt" in line for line in new), new
+    assert _offer(app) is not None, "the offer did not come back"
+    print("✅ test_a_single_target_spell_picked_over_the_bus")
+
+
+def test_a_multi_target_spell_counts_its_picks():
+    """Magic Missile at 1st collects three darts. Each re-posted pick counts ("1 of 3", …),
+    and the third casts it, spending one 1st-level slot."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Magic Missile"])
+    skarn = _idx(app, "Skarn")
+    before = _slots(app, aria, 1)
+    _choose(app, kira, "spell_action")
+    for k in (1, 2, 3):
+        pick = _until_pick(app, kira)
+        assert (pick.kind, pick.title) == ("target", f"Magic Missile: choose a target ({k} of 3)"), \
+            pick.title
+        _tap(app, kira, _pos(app, skarn))
+    assert app.pending_spell_slot == "" and _slots(app, aria, 1) == before - 1
+    print("✅ test_a_multi_target_spell_counts_its_picks")
+
+
+def test_an_area_spell_is_a_cell_pick():
+    """Fireball: the pick is a `cell` (mutant: the spell arm's kind fixed at `target`), and
+    the tap on a square, not a creature, casts it."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Fireball"])
+    before = _slots(app, aria, 3)
+    _choose(app, kira, "spell_action")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("cell", "Fireball: choose the center"), pick
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    assert app.pending_spell_slot == "" and _slots(app, aria, 3) == before - 1
+    print("✅ test_an_area_spell_is_a_cell_pick")
+
+
+def test_a_wall_takes_two_picks_and_cancel_clears_the_anchor():
+    """Wall of Fire: start point, then end point. Kira's Cancel on the end point clears the
+    anchor and keeps the cast (mutant: the wall cancel disarming), and two more taps cast it."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 7, ["Wall of Fire"])
+    before = _slots(app, aria, 4)
+    _choose(app, kira, "spell_action")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("cell", "Wall of Fire: choose the start point"), pick
+    start = _free_cell(app, aria, 4, beyond=1)
+    _tap(app, kira, start)
+    pick = _pick(app)
+    assert pick.title == "Wall of Fire: choose the end point", pick.title
+    assert app.prompts.cancel_as(pick.id, kira.id).ok
+    assert app.pending_spell_slot and app.spell_anchor_cell is None, \
+        (app.pending_spell_slot, app.spell_anchor_cell)
+    _frame(app)
+    assert _pick(app).title == "Wall of Fire: choose the start point", _pick(app).title
+    _tap(app, kira, start)
+    _tap(app, kira, (start[0], start[1] + 2))
+    assert app.pending_spell_slot == "" and _slots(app, aria, 4) == before - 1
+    print("✅ test_a_wall_takes_two_picks_and_cancel_clears_the_anchor")
+
+
+def test_a_teleport_spell_from_the_bonus_row():
+    """Misty Step is a Bonus Action teleport: `spell_bonus` offers it, the pick is a
+    destination cell, and the tap moves Aria and spends the Bonus Action."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Misty Step"])
+    _choose(app, kira, "spell_bonus")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("cell", "Misty Step: choose a destination"), pick
+    dest = _free_cell(app, aria, 6, beyond=2)
+    _tap(app, kira, dest)
+    assert _pos(app, aria) == dest and app.bonus_used, (_pos(app, aria), app.bonus_used)
+    assert app.pending_spell_slot == ""
+    print("✅ test_a_teleport_spell_from_the_bonus_row")
+
+
+def test_a_corpse_spell_picks_a_body():
+    """Revivify picks a corpse, which `_agent_at` cannot see: the pick is a `cell`, and the
+    tap on Skarn's body, in touch range, casts it. (Animate Dead is the other corpse spell; its finish
+    raises on the DM console too, F-M5e-9, so it is not the one driven here.)"""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Cleric, 5, ["Revivify"])
+    body = _idx(app, "Skarn")
+    cond = app.combat.get_agent_conditions(app.bm, body)
+    cond.dead = True
+    app.combat.set_agent_conditions(app.bm, body, cond)
+    s = app.combat.get_agent_stats(app.bm, body)
+    s.hp_cur = 0
+    app.combat.set_agent_stats(app.bm, body, s)
+    assert app._corpse_at(rpg.Cell(*_pos(app, body))) == body
+    _choose(app, kira, "spell_action")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("cell", "Revivify: choose a body"), pick
+    assert net_picks.spell_shape(app) == net_picks.CORPSE
+    new = _record(app)
+    _tap(app, kira, _pos(app, body))
+    assert app.pending_spell_slot == "", app.pending_spell_slot
+    assert any("Revivify" in line for line in new), new
+    print("✅ test_a_corpse_spell_picks_a_body")
+
+
+def test_a_binding_spell_picks_a_creature():
+    """Planar Binding is a `target` pick routed to the control-transfer resolve."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 9, ["Planar Binding"])
+    before = _slots(app, aria, 5)
+    _choose(app, kira, "spell_action")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("target", "Planar Binding: choose a creature to bind"), pick
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    assert app.pending_spell_slot == "" and _slots(app, aria, 5) == before - 1
+    print("✅ test_a_binding_spell_picks_a_creature")
+
+
+def test_knock_picks_a_door():
+    """Knock is a `cell` pick, and the tap on a locked door unlocks it."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Knock"])
+    spot = _free_cell(app, aria, 4, beyond=1)
+    app.bm.add_door(rpg.Cell(*spot), False, True, 15, False)
+    _choose(app, kira, "spell_action")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("cell", "Knock: choose a door"), pick
+    _tap(app, kira, spot)
+    assert app.pending_spell_slot == "", app.pending_spell_slot
+    assert not app.bm.doors[app.bm.door_at(rpg.Cell(*spot))].locked, "Knock did not unlock it"
+    print("✅ test_knock_picks_a_door")
+
+
+def test_dispel_on_nothing_keeps_the_pick():
+    """Dispel Magic takes a creature or a spot, as a `target`. With no magic there it logs,
+    keeps the cast and asks again; Kira's Cancel then disarms it and spends nothing."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Dispel Magic"])
+    before = _slots(app, aria, 3)
+    _choose(app, kira, "spell_action")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("target", "Dispel Magic: choose a creature or a spot"), pick
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    again = _pick(app)
+    assert again is not None and again.id != pick.id and app.pending_spell_slot
+    assert app.prompts.cancel_as(again.id, kira.id).ok
+    assert app.pending_spell_slot == "" and _slots(app, aria, 3) == before
+    print("✅ test_dispel_on_nothing_keeps_the_pick")
+
+
+def test_chromatic_orb_done_casts_the_chain():
+    """Chromatic Orb: the element picker goes out not cancellable (E-3; its Cancel would
+    cast with a default), the primary is a `target`, then the leap chain carries Done, and
+    Done casts (mutant: Chromatic Done not casting)."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Chromatic Orb"])
+    before = _slots(app, aria, 1)
+    _choose(app, kira, "spell_action")
+    _answer(app, kira, "Chromatic Orb")                     # the slot level
+    _frame(app)
+    elem = app.prompts.live
+    assert elem.title == "Chromatic Orb: damage type" and elem.cancellable is False, \
+        (elem.title, elem.cancellable)
+    _answer(app, kira, "damage type")
+    pick = _until_pick(app, kira)
+    assert pick.title == "Chromatic Orb: choose a target", pick.title
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    chain = _pick(app)
+    assert chain is not None and chain.title == "Chromatic Orb: choose the next leap (0 chosen)", \
+        app.prompts.live
+    assert [o.id for o in chain.options] == [net_picks.DONE_ID], chain.options
+    assert app.prompts.submit(chain.id, Response(option=net_picks.DONE_ID), kira.id).ok
+    assert not app.pending_chromatic_active and app.pending_spell_slot == ""
+    assert _slots(app, aria, 1) == before - 1, "Done did not cast"
+    print("✅ test_chromatic_orb_done_casts_the_chain")
+
+
+def test_a_summon_placed_over_the_bus():
+    """Summon Beast: the form menu, then a `cell`. Kira's Cancel on the placement disarms
+    the whole summon (mutant: the cancel leaving the creature set); a second cast places the
+    beast on her tap."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Summon Beast"])
+    _choose(app, kira, "spell_action")
+    pick = _until_pick(app, kira)
+    assert pick.kind == "cell" and pick.title.startswith("Summon: choose where to place "), pick
+    assert app.prompts.cancel_as(pick.id, kira.id).ok
+    assert (app.pending_summon_slot, app.pending_summon_monster) == ("", ""), \
+        (app.pending_summon_slot, app.pending_summon_monster)
+    _frame(app)
+    n = len(app.bm.placed_agents)
+    _choose(app, kira, "spell_action")
+    _until_pick(app, kira)
+    _tap(app, kira, _free_cell(app, aria, 3, beyond=1))
+    assert app.pending_summon_slot == "" and len(app.bm.placed_agents) == n + 1
+    print("✅ test_a_summon_placed_over_the_bus")
+
+
+def test_mantle_of_majesty_from_the_offer():
+    """Glamour Bard 6: Mantle of Majesty asks the Command word, not cancellable (E-3), then
+    a Command target. The tap casts it with the Bonus Action, for no slot."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Bard, 6, ["Command"],
+                   bard_subclass=rpg.BardCollege.Glamour)
+    before = _slots(app, aria, 1)
+    # F-M5e-10: only `_activate_spell` ever sets this, and Mantle of Majesty does not go
+    # through it, so a session's first Mantle cast raises on the DM console too. Remove
+    # this line with that fix.
+    app.pending_forcecage_sealed = False
+    _choose(app, kira, "mantle_majesty")
+    _frame(app)
+    word = app.prompts.live
+    assert word.title == "Command: choose a word" and word.cancellable is False, \
+        (word.title, word.cancellable)
+    pick = _until_pick(app, kira)
+    assert pick.kind == "target" and pick.title.startswith("Command: choose a target"), pick
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    assert app.pending_spell_slot == "" and app.bonus_used and _slots(app, aria, 1) == before
+    print("✅ test_mantle_of_majesty_from_the_offer")
+
+
+def test_twinned_from_the_offer_makes_two_picks():
+    """E-7: a Metamagic toggle is offered enabled. Kira arms Twinned, and Fire Bolt then
+    asks for two targets ("1 of 2")."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Sorcerer, 5, ["Fire Bolt"])
+    s = app.combat.get_agent_stats(app.bm, aria)
+    s.metamagic_options = [rpg.MetamagicOption.Twinned]
+    app.combat.set_agent_stats(app.bm, aria, s)
+    _frame(app)
+    row = next((o for o in _offer(app).options if o.id == "metamagic_twinned"), None)
+    assert row is not None and row.enabled, row
+    _choose(app, kira, "metamagic_twinned")
+    assert app.armed_metamagic == rpg.MetamagicOption.Twinned
+    _frame(app)
+    _choose(app, kira, "spell_action")
+    pick = _until_pick(app, kira)
+    assert pick.title == "Fire Bolt: choose a target (1 of 2)", pick.title
+    print("✅ test_twinned_from_the_offer_makes_two_picks")
+
+
+def test_beguiling_rides_on_a_players_spell():
+    """A Glamour Bard's slot-fueled Command offers Beguiling Magic to Kira. Accepting arms
+    the rider, and its pick is hers, not the DM's: it is wired because her own spell arms it."""
+    app, kira, _ = _aria_turn()
+    _caster(app, rpg.CharacterClass.Bard, 6, ["Command"],
+            bard_subclass=rpg.BardCollege.Glamour)
+    skarn = _idx(app, "Skarn")
+    _choose(app, kira, "spell_action")
+    _answer(app, kira, "Command")                           # the slot level
+    _answer(app, kira, "choose a word")
+    _until_pick(app, kira)
+    _tap(app, kira, _pos(app, skarn))
+    _answer(app, kira, "Beguiling Magic after Command")     # "Use Beguiling Magic"
+    pick = _until_pick(app, kira)
+    assert (pick.owner, pick.kind, pick.title) == (
+        kira.id, "target", "Beguiling Magic: choose a creature"), pick
+    _tap(app, kira, _pos(app, skarn))
+    _answer(app, kira, "Beguiling Magic")                   # Charmed
+    assert not app.pending_beguiling and app.pending_beguiling_bard == -1
+    _frame(app)
+    assert _offer(app) is not None, app.prompts.live
+    print("✅ test_beguiling_rides_on_a_players_spell")
+
+
+def test_radiance_leaves_nothing_armed():
+    """The M5d handoff said `radiance` leaves `pending_spell_slot` armed. It does not: its
+    dispatch resolves at once through `_resolve_spell_cast_aoe`, which disarms before
+    `begin_cast`. From the offer, the Channel Divinity is spent, nothing is armed, and the
+    offer comes back."""
+    from test_cleric import _radiance
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Cleric, 3, [],
+                   cleric_subclass=rpg.ClericSubclass.LightDomain)
+    app.combat.set_agent_spells(app.bm, aria, [_radiance(3)])
+    cd = _res(app, aria, "Channel Divinity")
+    _frame(app)
+    _choose(app, kira, "radiance")
+    assert app.pending_spell_slot == "" and not app._target_pick_armed()
+    assert _res(app, aria, "Channel Divinity") == cd - 1 and app.action_used
+    _frame(app)
+    assert _offer(app) is not None, app.prompts.live
+    print("✅ test_radiance_leaves_nothing_armed")
+
+
+def test_esc_and_the_remote_spell_cancel_agree():
+    """E-2: Esc on the DM console and Kira's Cancel run the same `cancel_spell`."""
+    states = []
+    for remote in (False, True):
+        app, kira, _ = _aria_turn()
+        _caster(app, rpg.CharacterClass.Wizard, 5, ["Fireball"])
+        _choose(app, kira, "spell_action")
+        pick = _until_pick(app, kira)
+        if remote:
+            assert app.prompts.cancel_as(pick.id, kira.id).ok
+        else:
+            _esc(app)
+        states.append((app.pending_spell_slot, app.pending_spell_is_aoe, app.spell_anchor_cell,
+                       app.action_used, app.combat_log[0]))
+    assert states[0] == states[1] == ("", False, None, False, "Spell cast cancelled."), states
+    print("✅ test_esc_and_the_remote_spell_cancel_agree")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Over the wire
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1118,6 +1484,22 @@ if __name__ == "__main__":
         test_a_cancelled_summon_form_disarms()
         test_a_spell_after_an_unswung_attack_undoes_the_arm()
         test_a_cancelled_spell_after_an_unswung_attack_leaves_the_attack_open()
+        test_a_single_target_spell_picked_over_the_bus()
+        test_a_multi_target_spell_counts_its_picks()
+        test_an_area_spell_is_a_cell_pick()
+        test_a_wall_takes_two_picks_and_cancel_clears_the_anchor()
+        test_a_teleport_spell_from_the_bonus_row()
+        test_a_corpse_spell_picks_a_body()
+        test_a_binding_spell_picks_a_creature()
+        test_knock_picks_a_door()
+        test_dispel_on_nothing_keeps_the_pick()
+        test_chromatic_orb_done_casts_the_chain()
+        test_a_summon_placed_over_the_bus()
+        test_mantle_of_majesty_from_the_offer()
+        test_twinned_from_the_offer_makes_two_picks()
+        test_beguiling_rides_on_a_players_spell()
+        test_radiance_leaves_nothing_armed()
+        test_esc_and_the_remote_spell_cancel_agree()
         test_an_attack_over_the_wire()
     finally:
         _restore_cwd_logs(_saved)

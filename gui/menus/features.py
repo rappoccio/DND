@@ -351,7 +351,7 @@ def start_mantle_majesty(app, bard_idx: int):
 
     app._ask_actor(bard_idx, "action", "Command: choose a word",
                     [(lbl, (lambda v=val: _on_word([v]))) for lbl, val in COMMAND_WORD_OPTIONS],
-                    render="picker", on_cancel=lambda: _on_word([]))
+                    render="picker", on_cancel=lambda: _on_word([]), cancellable=False)
 
 
 def begin_dispel_pick(app, hit, cell, pos):
