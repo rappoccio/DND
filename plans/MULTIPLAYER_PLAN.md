@@ -17,6 +17,9 @@ that has to be agreed and frozen before M5's first line of code.
 for D-M5-1 through D-M5-9. **M5a (reactions over the wire) has landed (`2ed68bd`), and so has
 M5b's first commit, D-M5-1 `perform` (`2ade754`). D-M5-2, the action offer, is next**; its
 handoff follows "M5b, commit 1 — D-M5-1 landed".
+**2026-10-14: M5b–M5d have landed. M5e (the spell pipeline) has started.** Its Step 0 is
+frozen (user: "agreed"). M5e.0, the two bug fixes, is committed. **M5e.1 is next.** Read
+"Handoff — M5e.0 committed", just before M6.
 
 ---
 
@@ -5949,6 +5952,295 @@ posted over a parked window, and the snapshot taken or dropped at the wrong time
 
 **Rules:** unchanged. Container only, never `docker build`, stage files by name with
 `git commit --only`, never `-A`, commit only when asked, never push unasked.
+
+
+##### M5e — Step 0 *(frozen 2026-10-14, user: "agreed")*
+
+**Method.** I read the source and ran nothing. The survey covers the five S rows (`spell_action`,
+`spell_bonus`, `divine_intervention`, `mantle_majesty`, `wild_magic_bonus_cast`), plus
+`radiance`, from the dispatch in `perform` through `_start_cast_spell` (`main.py:8865`),
+`_activate_spell` (`:8544`) and `_dispatch_spell_geometry` (`:8744`), to the spell branches of
+`resolve_pick` (`:4562–4626`) and the Esc branches (`:17543–17605`). Line numbers are as of
+`44b28c8`.
+
+**What M5e inherits, ready to use.**
+- The choice half already reaches the player. The spell grid (`render="grid"`), the
+  slot-level popup, the element, curse, Command-word and Forcecage pickers, the summon-form
+  menu, the Dispel picker and the friendly-harm confirm all go through `_ask_actor`, so they
+  are owned by the caster's controller. `render` is a local hint and never reaches the wire
+  (D-M1-10), so a phone draws each of them as an ordinary option list.
+- The arms are already in `net/picks.ARMS`, in chain order, unwired: `pending_summon_slot`,
+  `pending_chromatic_active`, `pending_spell_slot`, `pending_beguiling` and
+  `pending_bewitching_misty`. The last two already have their cancels.
+- Every slot, Sorcery Point and Action for a normal cast is spent at resolution
+  (`begin_cast` → `_finish_cast` / `_consume_cast_slot`), not when the spell is armed.
+
+**Findings.**
+
+- **F-M5e-1: `pending_spell_slot` is one arm with nine shapes.** Which shape it takes depends
+  on the spell, and the shape fixes the prompt's `kind`, its title and its number of clicks:
+
+  | Shape | Set by | Kind | Clicks |
+  |---|---|---|---|
+  | single creature | Single geometry | target | 1 |
+  | N creatures | Multiple geometry, or Twinned on a Single spell | target | exactly N, with no Done (`_resolve_spell_cast` appends until N) |
+  | area | Line, Cone, Sphere, Square | cell | 1 |
+  | wall | Rectangle | cell | 2: the anchor, then the end. Esc first clears the anchor. |
+  | corpse | `revives_dead` / `animates_dead` | cell | 1 (`_corpse_at`, invisible to `_agent_at`) |
+  | binding | Planar Binding | target | 1 |
+  | door | Knock, on a door cell | cell | 1 |
+  | dispel | Dispel Magic | either | 1, then a picker |
+  | teleport | `teleportation_spell` | cell | 1 |
+
+  `Arm.kind` and `Arm.title` are fixed per arm today. The spell arm needs both computed from
+  this shape.
+- **F-M5e-2: four casts spend before the pick, and Esc does not refund them.** Psionic
+  Sorcery spends its SP at the level choice (`:8967`). Wish spends its 9th-level slot when the
+  duplicate is picked (`:8807`). Divine Intervention spends its use and sets `action_used`
+  at the pick (`:8844–8853`). Mantle of Majesty activates on the word choice
+  (`menus/features.py:329`). Esc after any of these loses the resource. This is today's behaviour
+  on the DM console, and it is not new.
+- **F-M5e-3: five choice pickers treat Cancel as "use the default" and cast anyway.** The
+  element (Chromatic Orb, Sorcerous Burst), the Vistani Curse, Command's word, Forcecage's
+  form and Mantle of Majesty's word all pass `on_cancel=lambda: _on_x([])`. On the DM console
+  that is Esc on the picker. On a phone it is a button labelled Cancel, and pressing it casts
+  the spell, which a player will not expect.
+- **F-M5e-4: the summon arm leaks, and it does not hold the offer.** This is a DM-console
+  bug, and it reaches players too.
+  1. `pending_summon_slot` is not in `_clear_pending_target_picks`, nor in
+     `_proceed_to_new_turn`. An abandoned summon stays armed into the next turn.
+     `_resolve_summon` reads `_current_agent_idx()` as the caster, so the *next* combatant's
+     map click spawns the creature, using the previous caster's `spell_idx`. That is the L36
+     class of bug.
+  2. It is not in `_TARGET_PICK_ARMS`, so `offer.gate` stays open while a summon is armed for
+     a player. They are offered their turn as if nothing were pending.
+  3. A spirit summon arms *before* its form menu. If that menu is cancelled, the arm is left
+     with `pending_summon_monster == ""`, so `resolve_pick` swallows every map click and does
+     nothing, until Esc.
+- **F-M5e-5: the D3 gap has a second shape, and it is a DM-console bug.** Suppose an Attack
+  is chosen and not yet swung, and then Cast a Spell is clicked. The `if not
+  self.action_used:` gate lets it through, and `pending_spell_slot` arms beside
+  `pending_attack_slot`. `pending_attack_slot` comes first in the chain, so the "spell" click
+  swings the weapon. D3's undo does not fire, because nothing has spent the Action when
+  `perform` returns. A player cannot reach this alone, because the offer is gated while the
+  attack pick is armed. They can reach it after a DM take-over followed by the DM's Spell click.
+  *This is unconfirmed: it was read, not run.*
+- **F-M5e-6: two pickers are DM widgets, not bus prompts, and D-M1-12 left them to M5.**
+  - Wish and Divine Intervention open `SpellSelectionDialog` (`:8570`, `:8830`), a browser over
+    389 and 80 spells, on the DM's screen. D-M1-12c already decided their wire shape: a
+    `choice` prompt with a long `options` list (about 23 KB, once per cast) and a search box
+    on the client.
+  - The Magic Circle / Hallow ward picker (`:8715`, `_element_dialog`, `multi=True`) asks for
+    a **set**. D-M1-12 deferred one decision to M5: add `expects:"choices"`, or don't.
+- **F-M5e-7: the Metamagic toggles are not in `offer.CLASS`.** They are nine `metamagic_*` ids
+  dispatched in `perform` by a loop, not by an `if action_id ==` site. So they go out disabled
+  ("Not playable remotely yet"), and a Sorcerer player cannot Twin, Quicken or Heighten.
+  Evoker L14 Overchannel is not an action id at all. It is a board context-menu toggle
+  (`menus/board.py:190`), so a player cannot reach it.
+- **F-M5e-8: Envelope 2's `you.aoe` cannot be a hover preview.** The DM sees the template
+  follow the mouse (`_draw_spell_aoe_preview`). A client sends only `auth` and `submit` (the
+  two-send tripwire), so the server never learns where a player is hovering. A player who
+  taps for Fireball sees nothing before the tap resolves.
+- **To check in M5e.1, not assumed:** the previous handoff says `radiance` "leaves
+  `pending_spell_slot` armed". Its dispatch resolves at once through
+  `_resolve_spell_cast_aoe`, which clears the slot before `begin_cast`. Find the path that
+  leaves it armed (a parked reaction window is the suspect), or strike the claim.
+
+**Decisions to freeze** *(proposals; each needs the user's yes)*:
+
+1. **E-1: the arm table.** `Arm.kind` and `Arm.title` may be functions of `app`. The spell arm
+   computes both from F-M5e-1's shape: "Fireball: choose the center", "Magic Missile: choose
+   a target (2 of 3)", "Wall of Fire: choose the start point", then "…: choose the end point".
+   A changed title re-posts the prompt, through the projection key `ensure` already uses.
+   `cells` keeps M5d's rule for every shape (explored with fog up, the whole grid with fog
+   down). The resolvers still check range, line of sight and perception. Dispel is `kind:"target"`
+   with `expects:"cell"`. The chain already takes a creature or a cell, and the picker that
+   follows is already a bus prompt.
+2. **E-2: cancels, one function per arm, run by both Esc and a remote cancel (the M5d rule).**
+   - Spell: the existing Esc body, lifted into `picks.cancel_spell`. On a wall that has an
+     anchor, it clears the anchor and keeps the arm, so a player's Cancel on "choose the end
+     point" goes back to "choose the start point".
+   - Chromatic: `_cancel_chromatic_chain`, with Done = `_finalize_chromatic_cast`.
+   - Summon: the existing Esc body, lifted into `picks.cancel_summon`.
+   - **F-M5e-2: no refunds in M5e.** A cancel is Esc, and Esc refunds nothing today. If you
+     want refunds for Psionic Sorcery, Wish, DI or Mantle of Majesty, that is a separate
+     rules fix with its own commit, under the standing rule.
+3. **E-3: the default-on-cancel pickers (F-M5e-3)** go to players with `cancellable=False`.
+   The player must choose, and can still cancel the target pick that follows. The DM console
+   is unchanged, and so is the bus, because `cancellable` is a display hint (Envelope 4,
+   2026-10-13).
+4. **E-4: two bug fixes go first, each in its own commit and each only with your OK**
+   (standing rule: no bundling).
+   - **F-M5e-4, summon:** add the summon fields to `_clear_pending_target_picks` and
+     `pending_summon_slot` to `_TARGET_PICK_ARMS`. Make a cancelled form menu disarm.
+   - **F-M5e-5, Attack → Spell:** first write the test, and confirm the bug. If it holds, then
+     in `perform`, while `_attack_unswung()` holds, choosing `spell_action`,
+     `divine_intervention` or `wild_magic_bonus_cast` first runs `net_picks.cancel_attack`
+     (the snapshot is still exact). If the player then cancels the spell grid, the Attack is
+     back on the offer, because nothing was swung.
+5. **E-5: Wish and DI** follow D-M1-12c as written. Each becomes one bus `choice` prompt
+   with `render="spell_browser"`. The DM console keeps drawing `SpellSelectionDialog` as that
+   renderer, and `app.js` gets a filter box for a long option list. Nothing on the wire changes.
+6. **E-6: the Magic Circle ward picker becomes a toggle loop of plain `choice` prompts**, not
+   `expects:"choices"`. Each type is an option marked ✓ when it is chosen, plus "Trap inside"
+   and Done, and the prompt re-posts after each toggle. The frozen vocabulary stays at four
+   members, for a site with one caller. Recorded behaviour change: the DM console draws it as
+   a popup instead of the multi-select widget.
+7. **E-7: the Metamagic toggles are classed `I`.** Arming costs nothing, and the SP go with the
+   cast. Overchannel stays DM-only in M5e, as a recorded limitation. Making it an action id
+   touches the panel golden, so it would be its own slice.
+8. **E-8: AoE aim, then confirm, for remote casters only (F-M5e-8).** A tap on an area
+   shape does not resolve. It posts a `kind:"confirm"` choice prompt (Cast here / Re-aim),
+   with `you.aoe` set to the template's cells cut to what the viewer may see. **Cast here**
+   runs `resolve_pick` on the stored cell. The DM console is unchanged. This adds no wire
+   field, because `you.aoe` is already in Envelope 2. It is the last slice, and it can be
+   dropped without touching the others.
+9. **E-9: sub-slices.** Each one ends green, with its mutants killed.
+   - **M5e.0:** E-4's two fixes, each with a failing test first.
+   - **M5e.1:** E-1, E-2, E-3 and E-7. Wire the spell, chromatic and summon arms. Flip
+     `spell_action`, `spell_bonus`, `mantle_majesty` and `wild_magic_bonus_cast` into the
+     offer, and settle `radiance`.
+   - **M5e.2:** E-5, Wish and DI. Flip `divine_intervention`.
+   - **M5e.3:** E-6, the ward toggle loop.
+   - **M5e.4:** E-8, aim and confirm.
+   - **Not in M5e:** the riders `pending_beguiling` and `pending_bewitching_misty`. They are
+     wired with M5e.1 only if they arm on a player's spell, which needs checking. Also out:
+     refunds (E-2) and Overchannel (E-7).
+10. **E-10: the oracle.** The panel and determinism goldens stay byte-identical through M5e.1.
+    E-6 moves the panel golden only if the golden draws the ward widget, which needs checking.
+    Each spell shape in F-M5e-1 is driven from the offer through to resolution with a remote cell
+    in `tests/test_picks.py`, using the C0 rig. Mutants that must die:
+    - the spell arm's kind fixed at `target`;
+    - the wall cancel disarming instead of clearing the anchor;
+    - Chromatic Done not casting;
+    - the summon cancel leaving `pending_summon_monster` set;
+    - E-3's pickers posted cancellable;
+    - the Attack → Spell undo removed;
+    - the summon missing from `_clear_pending_target_picks`;
+    - `you.aoe` sent uncut by fog (E-8).
+
+##### M5e.0 — what landed *(2026-10-14, two commits)*
+
+E-4's two fixes, each with its failing test written first and watched fail.
+
+- **F-M5e-4, the summon arm.** All three parts were confirmed before the fix.
+  - `_clear_pending_target_picks` now resets the summon fields at the turn boundary.
+  - `pending_summon_slot` is an arm in `_TARGET_PICK_ARMS`, so the offer waits on it. Its
+    companions are listed in `_TARGET_PICK_COMPANIONS`.
+  - The spirit form menu's `on_cancel` disarms.
+  - The Esc body moved into `net_picks.cancel_summon`, and the arm in `ARMS` carries it.
+    The arm is still unwired, so the DM places the summon until M5e.1.
+  - Tests: `test_a_summon_does_not_outlive_its_turn`, `test_an_armed_summon_holds_the_offer`
+    and `test_a_cancelled_summon_form_disarms`.
+- **F-M5e-5, Attack → Spell.** Confirmed: the spell armed beside the attack, which was left
+  at `('action', 1, 'action')`.
+  - **The fix, in `perform`:** while `_attack_unswung()` holds, a row in
+    `App._ARMS_A_SPELL` first runs `net_picks.cancel_attack`, from the snapshot.
+  - **Deviation from E-4's wording, and why.** E-4 named three rows: `spell_action`,
+    `divine_intervention` and `wild_magic_bonus_cast`. The set also takes `spell_bonus`
+    and `mantle_majesty`. A Bonus Action spell arms the same `pending_spell_slot`, and the
+    attack still comes first in the chain. This is safe because nothing has swung: choosing
+    Attack again afterwards costs nothing.
+  - Tests: `test_a_spell_after_an_unswung_attack_undoes_the_arm` and
+    `test_a_cancelled_spell_after_an_unswung_attack_leaves_the_attack_open`. The second
+    uses Esc, because the spell arm's remote cancel belongs to M5e.1.
+- **Mutants, all killed**, on a container `/tmp` copy, running `test_picks.py` and
+  `test_offer.py`:
+  - the summon reset dropped from the clear;
+  - the summon dropped from `_TARGET_PICK_ARMS` (caught by
+    `test_offer.test_the_pick_predicate_covers_the_clear`);
+  - the form menu without its cancel;
+  - the undo's body removed;
+  - `spell_action` dropped from `_ARMS_A_SPELL`.
+
+  No test covers the Bonus Action rows of `_ARMS_A_SPELL`.
+- **Suite:** 167 / 0 in the container. The panel and determinism goldens are unchanged. No
+  C++ changed.
+- **Recorded behaviour changes on the DM console:**
+  - an abandoned summon no longer survives the turn;
+  - Esc on a summon now also clears `pending_summon_free_cast`;
+  - choosing a spell while an Attack is chosen and unswung logs "Attack cancelled." first.
+
+##### Handoff — M5e.0 committed *(written 2026-10-14)*
+
+**State.**
+- Two commits sit on top of `44b28c8`, one per fix, as E-4 asked:
+  - "M5e.0, F-M5e-4: the summon arm";
+  - "M5e.0, F-M5e-5: a spell after an unswung Attack", which also carries this plan update.
+
+  `main` is thirteen commits ahead of `origin/main`, none pushed. Never push unasked.
+- Suite: **167 / 0** in the container (2026-10-14). The panel and determinism goldens are
+  unchanged. No C++ changed, and no image rebuild is needed.
+- `tests/test_picks.py` has 40 checks. The mutant runner is the one under "Mutant runners"
+  above, now running `test_picks.py` and `test_offer.py`.
+- Still uncommitted on purpose: `maps/TestDNDMap_terrain.json` (the **user** resets it),
+  `submit_log.jsonl`, `gui/replay_log.txt` and the untracked scratch.
+
+**Read first:** "M5e — Step 0" (frozen; E-1 through E-10 are the contract), then "M5e.0 —
+what landed".
+
+**Next: M5e.1** (E-1, E-2, E-3, E-7). In order:
+1. **The `radiance` claim.** Find the path where `radiance` leaves `pending_spell_slot`
+   armed. The suspect is a reaction window parked inside `begin_cast`. If no such path
+   exists, strike the claim from the M5d handoffs.
+2. **E-1, the arm table.**
+   - Make `Arm.kind` and `Arm.title` callables.
+   - Write one `spell_shape(app)` that maps the live spell to one of F-M5e-1's nine shapes.
+     The spell arm's kind and title come from it. The predicates it needs already exist:
+     `_pending_spell_targets_corpse`, `_binds_creature`, `_opens_doors`, `_dispels_magic`,
+     `_is_wall`, `pending_spell_is_aoe`, `pending_spell_num_targets`, `spell_anchor_cell`
+     and `teleportation_spell`.
+   - Test the shapes in the same order as `resolve_pick`'s spell branch, so the prompt
+     names what the click will actually do.
+   - Titles carry the counts ("2 of 3") and the wall's step ("start point", then "end point").
+     A changed title re-posts the prompt through the projection key.
+3. **E-2, cancels.**
+   - Lift the spell Esc body (`main.py`, the `K_ESCAPE and self.pending_spell_slot` branch)
+     into `picks.cancel_spell`. On a wall that has an anchor, it clears the anchor and keeps
+     the arm.
+   - The Chromatic arm gets cancel = `_cancel_chromatic_chain`, `done` always, and
+     `finish` = `_finalize_chromatic_cast`.
+   - The summon arm already has `cancel_summon`.
+   - Point the Esc branches at the arm cancels, as M5d did. Refund nothing (F-M5e-2).
+4. **E-3.** Post the five default-on-cancel pickers with `cancellable=False`: element,
+   Vistani Curse, Command word, Forcecage form, and Mantle of Majesty's word
+   (`menus/features.py:329`). `_ask_actor` does not take `cancellable` yet, so add it as a
+   pass-through.
+5. **E-7.** Add the nine `metamagic_*` ids to `net/offer.CLASS` as `I`. Check that
+   `test_offer`'s both-ways check against the dispatch sites accepts the loop dispatch. If it
+   does not, extend that check rather than special-casing the ids.
+6. **Wire and flip.**
+   - `picks.WIRED` gains `pending_spell_slot`, `pending_chromatic_active` and
+     `pending_summon_slot`.
+   - `offer.WIRED` gains `spell_action`, `spell_bonus`, `mantle_majesty` and
+     `wild_magic_bonus_cast`. Leave `divine_intervention` for M5e.2.
+   - Check whether `pending_beguiling` and `pending_bewitching_misty` can arm on a player's
+     own spell, and decide those two arms from that.
+   - `test_offer.py` asserts the unwired counts, so it moves with the flips.
+7. **E-10, tests.** Drive each of F-M5e-1's shapes from the offer to resolution with a
+   remote cell, using the C0 rig (`_make`, `_free_cell`). Write the eight mutants E-10 lists.
+   - Give Aria a spell list with `set_agent_spells`, as `_summon_beast` does.
+     `test_combat_panel`'s scene puts Fire Bolt and Magic Missile on Cyra.
+   - A caster needs slots, not just spells. `_make` with a full caster (Wizard 5) grants them.
+
+**Then:**
+- **M5e.2:** Wish and DI as one bus prompt with `render="spell_browser"`.
+- **M5e.3:** the ward toggle loop.
+- **M5e.4:** aim, then confirm, with `you.aoe`.
+
+**Still open:**
+- The Long Jump draws no Opportunity Attacks (C++).
+- Fix B (C++).
+- The flaky `test_menus.test_on_deck_row_deploys_its_group_on_click`.
+- Row 5, if it comes back.
+- No test covers the Bonus Action rows of `_ARMS_A_SPELL` (`spell_bonus`, `mantle_majesty`,
+  `wild_magic_bonus_cast`).
+- Out of M5e by decision: refunds (F-M5e-2) and Overchannel (E-7).
+
+**Rules:**
+- Container only. Never run `docker build`.
+- Stage files by name. Never `-A`.
+- Commit only when asked. Never push unasked.
 
 
 ---

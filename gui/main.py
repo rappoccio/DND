@@ -15466,6 +15466,14 @@ class App:
         unswung = self._attack_unswung()
         if not unswung:
             self._snapshot_attack_arm(actor)
+        elif action_id in self._ARMS_A_SPELL:
+            # F-M5e-5: a spell arms beside the attack, and the attack is first in the click
+            # chain, so the spell's click would swing the weapon. Nothing has swung, so the
+            # Attack is undone here, before the spell, from the snapshot; choosing it again
+            # later costs nothing. D3's undo below cannot catch this: the spell spends the
+            # Action only when it resolves, long after `perform` has returned.
+            net_picks.cancel_attack(self)
+            unswung = False
         self._perform_action(action_id, self._agent_screen_pos(actor) if anchor is None else anchor)
         # D3 (MULTIPLAYER_PLAN.md, M5d handoff): the Action went to something else before
         # the attack swung, so the attack is abandoned, as Cancel abandons it. Without
@@ -15474,6 +15482,11 @@ class App:
         if unswung and self.action_used and act.economy != ECONOMY_ATTACK:
             net_picks.cancel_attack(self)
         return True
+
+    # The rows that can arm `pending_spell_slot` (F-M5e-5). The Bonus Action ones are here
+    # too: the chain order that lets the attack take the spell's click is the same.
+    _ARMS_A_SPELL = frozenset({"spell_action", "spell_bonus", "divine_intervention",
+                               "mantle_majesty", "wild_magic_bonus_cast"})
 
     def _attack_unswung(self) -> bool:
         """An Attack action is chosen and nothing has swung: its sequence is seeded for the

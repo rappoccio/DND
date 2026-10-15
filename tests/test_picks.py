@@ -37,6 +37,9 @@ runs. These checks pin:
   · M5e.0: an unplaced summon is cleared at the turn boundary, holds the offer, and a
     cancelled form menu disarms it (test_a_summon_does_not_outlive_its_turn,
     test_an_armed_summon_holds_the_offer, test_a_cancelled_summon_form_disarms)
+  · M5e.0: a spell chosen after an unswung Attack undoes the Attack first, and cancelling
+    the spell leaves Attack on offer (test_a_spell_after_an_unswung_attack_undoes_the_arm,
+    test_a_cancelled_spell_after_an_unswung_attack_leaves_the_attack_open)
   · end to end: an attack over the socket                    (test_an_attack_over_the_wire)
 
 The scene is `test_offer.py`'s: Aria (Fighter 5) at (3,3) with Skarn, a foe, at (4,3);
@@ -844,6 +847,51 @@ def test_a_cancelled_summon_form_disarms():
     print("✅ test_a_cancelled_summon_form_disarms")
 
 
+def _skarn_attack_armed(app):
+    """Skarn (the DM's) with Fire Bolt and an Attack chosen and not yet swung."""
+    from test_combat_panel import _goto, _spell
+    skarn = _goto(app, "Skarn")
+    app.combat.set_agent_spells(app.bm, skarn, [_spell(app, "Fire Bolt")])
+    _frame(app)
+    assert app.perform("atk_action", DM_PRINCIPAL_ID), "Attack was refused"
+    weapon = app.prompts.live
+    if weapon is not None and weapon.is_live:
+        assert app.prompts.submit(weapon.id, Response(option=weapon.options[0].id),
+                                  DM_PRINCIPAL_ID).ok
+    _frame(app)
+    assert (app.pending_attack_slot, app.action_used) == ("action", False), _attack_fields(app)
+    return skarn
+
+
+def test_a_spell_after_an_unswung_attack_undoes_the_arm():
+    """F-M5e-5, on the DM console. Cast a Spell while an Attack is chosen and unswung used to
+    arm the spell beside the attack, and the attack is first in the chain, so the "spell"
+    click swung the weapon. Choosing the spell abandons the Attack, as Dash does (D3)."""
+    app, _, _ = _aria_turn()
+    _skarn_attack_armed(app)
+    assert app.perform("spell_action", DM_PRINCIPAL_ID), "Cast a Spell was refused"
+    _frame(app)
+    assert (app.pending_attack_slot, app.attacks_remaining, app._attack_sequence_slot) \
+        == ("", 0, ""), _attack_fields(app)
+    assert app.pending_spell_slot == "action", app.pending_spell_slot
+    print("✅ test_a_spell_after_an_unswung_attack_undoes_the_arm")
+
+
+def test_a_cancelled_spell_after_an_unswung_attack_leaves_the_attack_open():
+    """The undo restores the state from before the Attack, so cancelling the spell lands on a
+    clean turn with Attack still on offer: nothing was swung and nothing was spent."""
+    app, _, _ = _aria_turn()
+    _skarn_attack_armed(app)
+    assert app.perform("spell_action", DM_PRINCIPAL_ID)
+    _esc(app)                      # the spell arm's cancel is M5e.1's; Esc is the console's
+    _frame(app)
+    assert (app.pending_spell_slot, app.pending_attack_slot, app.attacks_remaining,
+            app.action_used) == ("", "", 0, False), _attack_fields(app)
+    atk = app._action_menu.get("atk_action")
+    assert atk is not None and atk.enabled, "Attack is gone after a cancelled spell"
+    print("✅ test_a_cancelled_spell_after_an_unswung_attack_leaves_the_attack_open")
+
+
 def test_misty_escape_picked_over_the_bus():
     """Archfey Misty Escape spends the Reaction, not the Bonus Action. A cell beyond 30 ft
     keeps the pick and asks again; a near one teleports Aria and brings the offer back."""
@@ -1068,6 +1116,8 @@ if __name__ == "__main__":
         test_a_summon_does_not_outlive_its_turn()
         test_an_armed_summon_holds_the_offer()
         test_a_cancelled_summon_form_disarms()
+        test_a_spell_after_an_unswung_attack_undoes_the_arm()
+        test_a_cancelled_spell_after_an_unswung_attack_leaves_the_attack_open()
         test_an_attack_over_the_wire()
     finally:
         _restore_cwd_logs(_saved)
