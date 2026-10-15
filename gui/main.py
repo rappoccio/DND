@@ -4713,6 +4713,15 @@ class App:
         self.pending_duplicity_remaining = 0
         self._duplicity_cd_pending       = False
         self.pending_mantle_targets      = []
+        # The summon placement (F-M5e-4). Left armed, the next combatant's click would spawn
+        # it with them as the caster, from the previous caster's spell index.
+        self.pending_summon_slot         = ""
+        self.pending_summon_idx          = 0
+        self.pending_summon_slot_level   = 0
+        self.pending_summon_monster      = ""
+        self.pending_summon_spirit       = None
+        self.pending_summon_free_cast    = False
+        self.summon_hover_cell           = None
 
     # The arms `_target_pick_armed` reads, with the idle value each rests at. Every field
     # `_clear_pending_target_picks` resets is either here or in `_TARGET_PICK_COMPANIONS`;
@@ -4735,7 +4744,7 @@ class App:
         ("pending_cleave", None), ("pending_sweep", None),
         ("pending_rally", None), ("pending_feint", None),
         ("pending_use_item", -1), ("pending_elemental_burst", -1),
-        ("pending_beguiling_bard", -1),
+        ("pending_beguiling_bard", -1), ("pending_summon_slot", ""),
         # Not reset at a turn boundary, but armed the same way: the attack, shove and
         # spell picks, and the jump overlay.
         ("pending_attack_slot", ""), ("pending_shove_slot", ""),
@@ -4748,6 +4757,8 @@ class App:
         "move_duplicity_idx", "_vitality_option_index", "pending_flurry_atk_idx",
         "pending_flurry_rider_option", "pending_bastion_sp", "pending_duplicity_remaining",
         "_duplicity_cd_pending", "pending_mantle_targets",
+        "pending_summon_idx", "pending_summon_slot_level", "pending_summon_monster",
+        "pending_summon_spirit", "pending_summon_free_cast", "summon_hover_cell",
     )
 
     def _target_pick_armed(self) -> bool:
@@ -8670,9 +8681,12 @@ class App:
             items = [(f"✨ {form}",
                       lambda b=block, n=sp_.name: self._choose_summon_form(n, b))
                      for form, block in spirit_forms.items()]
+            # The summon is armed before its form is chosen, so cancelling the form menu
+            # must disarm it, or the arm swallows every map click with no creature (F-M5e-4).
             self._ask_actor(idx, "action",
                             f"{self._agent_name(idx)}: casting {sp_.name} — choose a form",
-                            items, anchor=pygame.mouse.get_pos())
+                            items, anchor=pygame.mouse.get_pos(),
+                            on_cancel=lambda: net_picks.cancel_summon(self))
             self._combat_log_add(f"Casting {sp_.name} — choose a form.")
             return
         if monster:
@@ -17541,13 +17555,7 @@ class App:
                     continue
                 # Esc cancels a pending summon placement (no slot/action spent yet).
                 if event.key == pygame.K_ESCAPE and self.pending_summon_slot:
-                    self.pending_summon_slot       = ""
-                    self.pending_summon_idx        = 0
-                    self.pending_summon_slot_level = 0
-                    self.pending_summon_monster    = ""
-                    self.pending_summon_spirit     = None
-                    self.summon_hover_cell         = None
-                    self._combat_log_add("Summon cancelled.")
+                    net_picks.cancel_summon(self)
                     continue
                 # Esc cancels a pending Invoke Duplicity placement / move / swap (no Channel Divinity
                 # is spent until a duplicate is actually placed, so cancelling here costs nothing).

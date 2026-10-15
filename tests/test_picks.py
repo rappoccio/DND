@@ -34,6 +34,9 @@ runs. These checks pin:
     then Dash, leave no attack           (test_dash_after_an_unswung_attack_undoes_the_arm,
     test_attack_after_a_dash_is_refused, test_a_bite_after_an_unswung_attack_is_one_of_its_swings,
     test_a_player_cancels_then_dashes, test_a_dm_takeover_then_dash_leaves_no_attack)
+  · M5e.0: an unplaced summon is cleared at the turn boundary, holds the offer, and a
+    cancelled form menu disarms it (test_a_summon_does_not_outlive_its_turn,
+    test_an_armed_summon_holds_the_offer, test_a_cancelled_summon_form_disarms)
   · end to end: an attack over the socket                    (test_an_attack_over_the_wire)
 
 The scene is `test_offer.py`'s: Aria (Fighter 5) at (3,3) with Skarn, a foe, at (4,3);
@@ -781,6 +784,66 @@ def test_a_dm_takeover_then_dash_leaves_no_attack():
     print("✅ test_a_dm_takeover_then_dash_leaves_no_attack")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  M5e.0 — the summon arm (F-M5e-4) and Attack → Spell (F-M5e-5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _summon_beast(app, caster):
+    """Give `caster` Summon Beast and a 2nd-level slot, and start the cast through
+    `_activate_spell`, the menu's own entry point. That arms the summon and posts the
+    form menu, owned by the caster's controller. Returns the form prompt."""
+    from test_combat_panel import _spell
+    app.combat.set_agent_spells(app.bm, caster, [_spell(app, "Summon Beast")])
+    spells = app.combat.get_agent_spells(app.bm, caster)
+    stats = app.combat.get_agent_stats(app.bm, caster)
+    app._activate_spell("action", 0, 2, caster, spells, stats)
+    form = app.prompts.live
+    assert form is not None and form.is_live and "choose a form" in form.title, form
+    return form
+
+
+def test_a_summon_does_not_outlive_its_turn():
+    """F-M5e-4.1: an unplaced summon is a pick like any other, so the turn boundary clears
+    it. Left armed, the next combatant's click would spawn it, with them as the caster."""
+    app, kira, _ = _aria_turn()
+    aria = _idx(app, "Aria")
+    form = _summon_beast(app, aria)
+    assert app.prompts.submit(form.id, Response(option=form.options[0].id), kira.id).ok
+    assert app.pending_summon_slot == "action" and app.pending_summon_monster, \
+        (app.pending_summon_slot, app.pending_summon_monster)
+    app._advance_turn()
+    _frame(app)
+    assert (app.pending_summon_slot, app.pending_summon_monster, app.pending_summon_spirit) \
+        == ("", "", None), (app.pending_summon_slot, app.pending_summon_monster)
+    print("✅ test_a_summon_does_not_outlive_its_turn")
+
+
+def test_an_armed_summon_holds_the_offer():
+    """F-M5e-4.2: while Aria's summon waits for a cell, Kira is not offered her turn as if
+    nothing were pending. Until M5e.1 wires it, the DM places it, as for any unwired arm."""
+    app, kira, _ = _aria_turn()
+    form = _summon_beast(app, _idx(app, "Aria"))
+    assert app.prompts.submit(form.id, Response(option=form.options[0].id), kira.id).ok
+    _frame(app)
+    assert app._target_pick_armed()
+    assert _offer(app) is None, app.prompts.live
+    print("✅ test_an_armed_summon_holds_the_offer")
+
+
+def test_a_cancelled_summon_form_disarms():
+    """F-M5e-4.3: the summon arms before its form menu. Cancelling the menu used to leave it
+    armed with no creature, swallowing every map click."""
+    app, kira, _ = _aria_turn()
+    form = _summon_beast(app, _idx(app, "Aria"))
+    assert app.prompts.cancel_as(form.id, kira.id).ok
+    assert app.pending_summon_slot == "", app.pending_summon_slot
+    assert not app.resolve_pick(rpg.Cell(*_pos(app, _idx(app, "Aria")))), \
+        "a map click is still swallowed"
+    _frame(app)
+    assert _offer(app) is not None, app.prompts.live
+    print("✅ test_a_cancelled_summon_form_disarms")
+
+
 def test_misty_escape_picked_over_the_bus():
     """Archfey Misty Escape spends the Reaction, not the Bonus Action. A cell beyond 30 ft
     keeps the pick and asks again; a near one teleports Aria and brings the offer back."""
@@ -1002,6 +1065,9 @@ if __name__ == "__main__":
         test_attack_after_a_dash_is_refused()
         test_a_player_cancels_then_dashes()
         test_a_dm_takeover_then_dash_leaves_no_attack()
+        test_a_summon_does_not_outlive_its_turn()
+        test_an_armed_summon_holds_the_offer()
+        test_a_cancelled_summon_form_disarms()
         test_an_attack_over_the_wire()
     finally:
         _restore_cwd_logs(_saved)

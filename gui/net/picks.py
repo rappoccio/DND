@@ -132,6 +132,19 @@ def cancel_vitality(app) -> None:
     app._submit_reaction_skip()
 
 
+def cancel_summon(app) -> None:
+    """Nothing is spent until the creature is placed, so a cancel only disarms. It is also
+    what a cancelled form menu runs: the summon is armed before its form is chosen."""
+    app.pending_summon_slot       = ""
+    app.pending_summon_idx        = 0
+    app.pending_summon_slot_level = 0
+    app.pending_summon_monster    = ""
+    app.pending_summon_spirit     = None
+    app.pending_summon_free_cast  = False
+    app.summon_hover_cell         = None
+    app._combat_log_add("Summon cancelled.")
+
+
 def cancel_jump(app) -> None:
     app.jump_overlay_active = False
     app.jump_reachable_cells = []
@@ -260,7 +273,7 @@ ARMS: tuple[Arm, ...] = (
     Arm("_legendary_target_pick", False, TARGET, _t("Legendary action: choose a target"),
         None, actor=lambda app: app._legendary_actor),
     Arm("pending_attack_slot", "", TARGET, _attack_title, cancel_attack),
-    Arm("pending_summon_slot", "", CELL, _t("Summon: choose where"), None),
+    Arm("pending_summon_slot", "", CELL, _t("Summon: choose where"), cancel_summon),
     Arm("pending_chromatic_active", False, TARGET, _t("Chromatic Orb: choose the next leap"), None),
     Arm("pending_spell_slot", "", TARGET, _t("Spell: choose a target"), None),
     Arm("pending_shove_slot", "", TARGET, _t("Shove: choose a creature"),
