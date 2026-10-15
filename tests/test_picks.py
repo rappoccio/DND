@@ -1187,8 +1187,8 @@ def test_a_teleport_spell_from_the_bonus_row():
 
 def test_a_corpse_spell_picks_a_body():
     """Revivify picks a corpse, which `_agent_at` cannot see: the pick is a `cell`, and the
-    tap on Skarn's body, in touch range, casts it. (Animate Dead is the other corpse spell; its finish
-    raises on the DM console too, F-M5e-9, so it is not the one driven here.)"""
+    tap on Skarn's body, in touch range, casts it. Animate Dead, the other corpse spell,
+    is driven by the next check."""
     app, kira, _ = _aria_turn()
     aria = _caster(app, rpg.CharacterClass.Cleric, 5, ["Revivify"])
     body = _idx(app, "Skarn")
@@ -1208,6 +1208,32 @@ def test_a_corpse_spell_picks_a_body():
     assert app.pending_spell_slot == "", app.pending_spell_slot
     assert any("Revivify" in line for line in new), new
     print("✅ test_a_corpse_spell_picks_a_body")
+
+
+def test_animate_dead_raises_an_undead():
+    """F-M5e-9: choosing Skeleton raised `AttributeError`, because the corpse was retired by
+    assigning a read-only binding property. The corpse leaves play, an undead stands on its
+    square, and the slot is spent."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Animate Dead"])
+    skarn = _idx(app, "Skarn")
+    cond = app.combat.get_agent_conditions(app.bm, skarn)
+    cond.dead = True
+    app.combat.set_agent_conditions(app.bm, skarn, cond)
+    s = app.combat.get_agent_stats(app.bm, skarn)
+    s.hp_cur = 0
+    app.combat.set_agent_stats(app.bm, skarn, s)
+    before, n, spot = _slots(app, aria, 3), len(app.bm.placed_agents), _pos(app, skarn)
+    _choose(app, kira, "spell_action")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("cell", "Animate Dead: choose a body"), pick
+    _tap(app, kira, spot)
+    _answer(app, kira, "Animate Dead")                      # Skeleton
+    assert app.bm.placed_agents[skarn].removed_from_play, "the corpse is still on the board"
+    assert len(app.bm.placed_agents) == n + 1, "no undead was raised"
+    assert _pos(app, len(app.bm.placed_agents) - 1) == spot, "not raised on the corpse"
+    assert app.pending_spell_slot == "" and _slots(app, aria, 3) == before - 1
+    print("✅ test_animate_dead_raises_an_undead")
 
 
 def test_a_binding_spell_picks_a_creature():
@@ -1490,6 +1516,7 @@ if __name__ == "__main__":
         test_a_wall_takes_two_picks_and_cancel_clears_the_anchor()
         test_a_teleport_spell_from_the_bonus_row()
         test_a_corpse_spell_picks_a_body()
+        test_animate_dead_raises_an_undead()
         test_a_binding_spell_picks_a_creature()
         test_knock_picks_a_door()
         test_dispel_on_nothing_keeps_the_pick()

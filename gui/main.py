@@ -10489,11 +10489,11 @@ class App:
 
         # Consume the corpse — it transforms into the undead — then spawn on its (now
         # passable, §10) square. Roll the tombstone back if placement fails.
-        self.bm.placed_agents[corpse_idx].removed_from_play = True
+        self.bm.set_agent_removed_from_play(corpse_idx, True)
         # A dead body's square is passable, so a living creature may be standing on it — only
         # raise the undead if the freed square is actually clear (corpse excluded via exclude_idx).
         if not self._can_place(cell, size, exclude_idx=corpse_idx):
-            self.bm.placed_agents[corpse_idx].removed_from_play = False
+            self.bm.set_agent_removed_from_play(corpse_idx, False)
             self._combat_log_add("Animate Dead failed: the corpse's square is occupied.")
             return
         cfg = rpg.AgentConfig()
@@ -10504,7 +10504,7 @@ class App:
         cfg.start_row   = cell.row
         new_idx = self.bm.spawn_agent(cfg)
         if new_idx < 0:
-            self.bm.placed_agents[corpse_idx].removed_from_play = False
+            self.bm.set_agent_removed_from_play(corpse_idx, False)
             self._combat_log_add("Animate Dead failed: could not place the undead.")
             return
 

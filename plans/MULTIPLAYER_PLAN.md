@@ -6349,6 +6349,11 @@ E-1, E-2, E-3 and E-7, and the wiring. The `radiance` claim is struck.
   test covered it (`test_animate_dead.py` checks only flags and JSON). The fix is
   `self.bm.set_agent_removed_from_play(i, …)`, in both places. It needs its own commit,
   and your OK. Until then, the corpse test uses Revivify.
+  **Fixed (2026-10-14, user OK, its own commit).** All three writes (the retire and both
+  rollbacks) use `set_agent_removed_from_play`. `test_animate_dead_raises_an_undead` was
+  watched failing with the `AttributeError` first. It now checks the corpse leaves play,
+  a Skeleton stands on its square (the corpse's own position reads (-1, -1) once it has
+  left play) and the 3rd-level slot is spent.
 - **F-M5e-10: Mantle of Majesty's Command raises if no spell has been cast this session.**
   `pending_forcecage_sealed` is set only in `_activate_spell`. It is not in `__init__`, and
   Mantle's `_on_word` never sets it. So `_resolve_spell_cast` raises `AttributeError` on a
