@@ -21,7 +21,8 @@ handoff follows "M5b, commit 1 — D-M5-1 landed".
 frozen (user: "agreed"). M5e.0, the two bug fixes, is committed. **M5e.1 has landed
 (committed, 2026-10-14)**; it found two DM-console bugs (F-M5e-9, F-M5e-10) that want their
 own commits. Both are now fixed and committed. **M5e.2 has landed (committed,
-2026-10-14). M5e.3 is next.** Read "Handoff — M5e.2 landed", just before M6.
+2026-10-14). M5e.3 has landed (committed, 2026-10-14). M5e.4 is next.** Read "Handoff —
+M5e.3 landed", just before M6.
 
 ---
 
@@ -6518,6 +6519,78 @@ check read `app.js`), and a phone drawing 389 buttons. Both want a look in a rea
 
 **Still open:** everything in the M5e.0 handoff's list, F-M5e-11's ward half until M5e.3,
 and the gaps under "Not covered by a test" in M5e.1 and M5e.2.
+
+**Rules:**
+- Container only. Never run `docker build`.
+- Stage files by name. Never `-A`.
+- Commit only when asked. Never push unasked.
+
+
+##### M5e.3 — what landed *(2026-10-14, commit "M5e.3: the Magic Circle ward as a toggle loop")*
+
+E-6 as written: the Magic Circle / Hallow ward picker is a toggle loop of plain `choice`
+prompts. Nothing on the wire changed, and `expects` keeps its four members.
+
+- **The prompt.** `App._ask_ward_types(idx, spell_name, chosen, on_done)` posts one
+  `kind:"action"` prompt through `_ask_actor`, owned by the caster's controller, with the
+  default render (the popup). Its options are the six rows of `MAGIC_CIRCLE_TYPE_OPTIONS`
+  (five types and "↺ Reverse (trap them inside)"), each prefixed "✓ " when chosen, then
+  Done. Picking a row re-posts the prompt with that row toggled (`chosen ^ {v}`). Done is
+  labelled "Done (n chosen)", counting types only, or "Done (ward every type)" when none
+  is checked, and calls the old `_on_ward` with the sorted values, as the widget's commit
+  did. So the mask, Reverse and the empty-means-every-type rule are unchanged.
+- **Cancel abandons the cast.** The prompt has no `on_cancel`. Nothing is armed or spent
+  before the center pick, so a cancel leaves the turn as it was and the offer comes back.
+  E-6 did not say what Cancel does; this was chosen because the widget had no cancel at all
+  (Esc committed the selection), and a player's Cancel that casts would be F-M5e-3 again.
+- **F-M5e-11 is closed.** No in-combat cast opens a DM-only widget for a player any more.
+- **E-10's check.** The panel golden does not draw the ward widget (it is a cast-time
+  modal), and it is unchanged. So is the determinism golden.
+- `ElementPickerRenderer`'s docstring now names the ward's toggle loop. The multi-select
+  `ElementPickerDialog` itself stays, for Elemental Adept in the character dialog.
+- **Tests:** `tests/test_picks.py` has 65 checks, up from 62.
+  - `test_the_ward_is_a_toggle_loop_over_the_bus`: the kind, `expects`, render and owner;
+    the seven labels; no widget drawn; five picks (one taking Celestials back) each re-post;
+    the ✓ marks and "Done (2 chosen)"; Done spends nothing and posts "Magic Circle: choose
+    the center"; the tap spends the 3rd-level slot and lays a ward of Fiend | Undead,
+    trapped inside.
+  - `test_done_with_nothing_checked_wards_every_type`: all five types, kept out.
+  - `test_a_cancelled_ward_spends_nothing`: after a toggle, both Kira's Cancel and the DM's
+    Esc on the popup spend nothing, arm nothing, and bring back Cast a Spell.
+- **Mutants, all 7 killed** (`test_picks.py`): the toggle keeping its state; the toggle
+  committing at once; Done dropping the choice; no ✓ mark; the widget kept; a cancel that
+  casts; the Done count including Reverse.
+- **Suite:** 167 / 0 in the container. The goldens are unchanged. No C++ changed.
+- **Recorded behaviour changes on the DM console:**
+  - the ward is chosen from a popup at the caster's token, one toggle per click, instead of
+    the centred multi-select widget;
+  - Esc or a click outside now abandons the cast. Before, it committed what was checked and
+    went on to the center pick.
+
+##### Handoff — M5e.3 landed *(written 2026-10-14)*
+
+**State.**
+- Committed at the user's request as "M5e.3: the Magic Circle ward as a toggle loop", on
+  top of `ab240c9`. It carries `gui/main.py`, `gui/prompts.py`, `tests/test_picks.py` and
+  this plan. `main` is eighteen commits ahead of `origin/main`, none pushed. Never push
+  unasked.
+- No tracked file is modified. The untracked scratch (encounters, `replay_log.txt`,
+  `.DS_Store`, …) stays out of every commit.
+- Suite: **167 / 0** in the container (2026-10-14). No C++ changed, no image rebuild.
+
+**Read first:** "M5e — Step 0" (frozen; E-1 through E-10 are the contract), then "M5e.3 —
+what landed", including its recorded behaviour changes (Cancel on the ward now abandons
+the cast).
+
+**Next, in order:**
+1. **F-M5e-12**, still waiting for your OK: its own commit, with a failing test first.
+2. **M5e.4:** aim, then confirm, with `you.aoe` (E-8). E-10's eighth mutant (`you.aoe`
+   uncut by fog) belongs here.
+3. A manual look in a real browser: the filter box on a phone (Wish's 389 rows), and the
+   ward loop's re-post on a phone.
+
+**Still open:** everything in the M5e.0 handoff's list, and the gaps under "Not covered by
+a test" in M5e.1 and M5e.2.
 
 **Rules:**
 - Container only. Never run `docker build`.

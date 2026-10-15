@@ -55,6 +55,13 @@ runs. These checks pin:
                           test_a_cancelled_wish_spends_nothing,
                           test_divine_intervention_from_the_offer,
                           test_the_dm_console_draws_the_browser)
+  · M5e.3: the Magic Circle ward is a toggle loop of plain `choice` prompts. Each pick
+    re-posts it with that type toggled, Done arms the center pick, and the ward carries
+    exactly what was checked; Done with nothing checked wards every type; a Cancel, or
+    the DM's Esc on the popup, spends nothing
+                         (test_the_ward_is_a_toggle_loop_over_the_bus,
+                          test_done_with_nothing_checked_wards_every_type,
+                          test_a_cancelled_ward_spends_nothing)
   · end to end: an attack over the socket                    (test_an_attack_over_the_wire)
 
 The scene is `test_offer.py`'s: Aria (Fighter 5) at (3,3) with Skarn, a foe, at (4,3);
@@ -1585,6 +1592,99 @@ def test_the_dm_console_draws_the_browser():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  M5e.3 — the Magic Circle ward as a toggle loop (E-6)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_WARD_LABELS = ["Celestials", "Elementals", "Fey", "Fiends", "Undead",
+                "↺ Reverse (trap them inside)"]
+
+
+def _ward_prompt(app, kira):
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Magic Circle"])
+    _choose(app, kira, "spell_action")
+    return aria, _until_title(app, kira, "Magic Circle: choose warded types")
+
+
+def _wards(app):
+    return [(t.ward_creature_mask, t.ward_traps)
+            for t in app.bm.active_terrain_effects if t.ward_creature_mask != 0]
+
+
+def test_the_ward_is_a_toggle_loop_over_the_bus():
+    """The ward picker is a plain `choice` prompt owned by Kira, one option per type plus
+    Reverse and Done. Each pick re-posts it with that row toggled (✓), so a type can be
+    taken back. Done casts nothing yet: the center is the next pick, and the ward laid
+    there carries exactly the types left checked and the Reverse flag."""
+    app, kira, _ = _aria_turn()
+    aria, ward = _ward_prompt(app, kira)
+    assert (ward.kind, ward.expects, ward.render, ward.owner) == \
+        ("action", "choice", None, kira.id), ward
+    assert [o.label for o in ward.options] == _WARD_LABELS + ["Done (ward every type)"]
+    assert not app._element_dialog.visible, "the multi-select widget is still drawn"
+    for label in ("Fiends", "Celestials", "Undead", "✓ Celestials",
+                  "↺ Reverse (trap them inside)"):
+        _choose_label(app, kira, ward, label)
+        _frame(app)
+        nxt = app.prompts.live
+        assert nxt is not None and nxt.is_live and nxt is not ward, "the loop did not re-post"
+        ward = nxt
+    assert [o.label for o in ward.options] == \
+        ["Celestials", "Elementals", "Fey", "✓ Fiends", "✓ Undead",
+         "✓ ↺ Reverse (trap them inside)", "Done (2 chosen)"], [o.label for o in ward.options]
+    three = _slots(app, aria, 3)
+    _choose_label(app, kira, ward, "Done (2 chosen)")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("cell", "Magic Circle: choose the center"), pick
+    assert _slots(app, aria, 3) == three and not _wards(app)
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    assert app.pending_spell_slot == "" and _slots(app, aria, 3) == three - 1
+    assert _wards(app) == [(int(rpg.CreatureType.Fiend) | int(rpg.CreatureType.Undead), True)], \
+        _wards(app)
+    print("✅ test_the_ward_is_a_toggle_loop_over_the_bus")
+
+
+def test_done_with_nothing_checked_wards_every_type():
+    """Done with no type checked wards all five, kept out, as the widget's empty commit
+    did (RAW: "one or more")."""
+    app, kira, _ = _aria_turn()
+    _, ward = _ward_prompt(app, kira)
+    _choose_label(app, kira, ward, "Done (ward every type)")
+    _until_pick(app, kira)
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    every = 0
+    for t in ("Celestial", "Elemental", "Fey", "Fiend", "Undead"):
+        every |= int(getattr(rpg.CreatureType, t))
+    assert _wards(app) == [(every, False)], _wards(app)
+    print("✅ test_done_with_nothing_checked_wards_every_type")
+
+
+def test_a_cancelled_ward_spends_nothing():
+    """Kira's Cancel, after a toggle, abandons the cast: no slot, no Action, nothing armed,
+    and Cast a Spell is back on the offer. On the DM console the prompt is the popup, not
+    the multi-select widget, and Esc on it does the same."""
+    for remote in (True, False):
+        app, kira, _ = _aria_turn()
+        aria, ward = _ward_prompt(app, kira)
+        _choose_label(app, kira, ward, "Fiends")
+        _frame(app)
+        ward = app.prompts.live
+        assert app.context_menu.visible and not app._element_dialog.visible
+        three = _slots(app, aria, 3)
+        if remote:
+            assert app.prompts.cancel_as(ward.id, kira.id).ok
+        else:
+            _esc(app)
+        _frame(app)
+        assert not ward.is_live, ward.state
+        assert _slots(app, aria, 3) == three and not app.action_used
+        assert app.pending_spell_slot == "" and not _wards(app)
+        offer = _offer(app)
+        assert offer is not None and any(o.id == "spell_action" and o.enabled
+                                         for o in offer.options), offer
+    print("✅ test_a_cancelled_ward_spends_nothing")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Over the wire
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1682,6 +1782,9 @@ if __name__ == "__main__":
         test_a_cancelled_wish_spends_nothing()
         test_divine_intervention_from_the_offer()
         test_the_dm_console_draws_the_browser()
+        test_the_ward_is_a_toggle_loop_over_the_bus()
+        test_done_with_nothing_checked_wards_every_type()
+        test_a_cancelled_ward_spends_nothing()
         test_an_attack_over_the_wire()
     finally:
         _restore_cwd_logs(_saved)

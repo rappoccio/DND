@@ -260,10 +260,11 @@ METAMAGIC_NAME_BY_VALUE = {int(v): n for v, n, sp, note in METAMAGIC_OPTIONS}
 
 
 # Magic Circle / Hallow movement ward (D4): the creature types a caster may ward, plus a "Reverse"
-# toggle. Each type value is a rpg.CreatureType bit (int); the caster multi-selects any subset and
+# toggle. Each type value is a rpg.CreatureType bit (int); the caster toggles any subset and
 # optionally Reverse. The OR of the checked type bits becomes SpellAction.ward_creature_mask; the
-# Reverse sentinel sets ward_traps=True (keep the warded types INSIDE instead of out). Reused via
-# the multi-select ElementPickerDialog. RAW Magic Circle offers the five non-Aberration types.
+# Reverse sentinel sets ward_traps=True (keep the warded types INSIDE instead of out). Asked as a
+# toggle loop of plain choice prompts (App._ask_ward_types, M5e E-6). RAW Magic Circle offers the
+# five non-Aberration types.
 WARD_REVERSE_SENTINEL = 1 << 30
 MAGIC_CIRCLE_TYPE_OPTIONS = [
     ("Celestials", int(rpg.CreatureType.Celestial)),
@@ -8713,9 +8714,10 @@ class App:
             return
 
         # Magic Circle / Hallow (D4): pick the warded creature types + direction (keep-out vs
-        # trap-inside) via the multi-select picker, stash them for the SpellAction, then fall
-        # through to the normal Sphere AoE placement (click a center point). Mirrors Command's
-        # word-choice flow. reset to a clean ward each cast so a prior pick can't leak through.
+        # trap-inside) through the toggle loop (_ask_ward_types), stash them for the SpellAction,
+        # then fall through to the normal Sphere AoE placement (click a center point). Mirrors
+        # Command's word-choice flow. reset to a clean ward each cast so a prior pick can't leak
+        # through.
         self.pending_ward_mask  = 0
         self.pending_ward_traps = False
         if getattr(sp_, "creates_movement_ward", False):
@@ -8738,8 +8740,7 @@ class App:
                     f"{sp_.name}: warding {', '.join(names)} "
                     f"({'trapped inside' if traps else 'kept out'}).")
                 self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
-            self._element_dialog.show(_on_ward, MAGIC_CIRCLE_TYPE_OPTIONS, current_values=None,
-                                      multi=True, title=f"{sp_.name}: choose warded types")
+            self._ask_ward_types(idx, sp_.name, frozenset(), _on_ward)
             return
 
         # Emanation (a moves_with_caster Sphere) is always centered on the caster,
@@ -8873,6 +8874,24 @@ class App:
         self._ask_actor(idx, "action", title,
                         [(d["name"], (lambda d=d: on_pick(d))) for d in spells],
                         render=SPELL_BROWSER_RENDER)
+
+    def _ask_ward_types(self, idx, spell_name, chosen, on_done):
+        """Ask the caster's controller which creature types a Magic Circle / Hallow wards
+        (M5e E-6): a toggle loop of plain ``choice`` prompts, not a multi-select.
+
+        Each row of ``MAGIC_CIRCLE_TYPE_OPTIONS`` is an option, marked ✓ when it is in
+        ``chosen``; picking one re-posts the prompt with it toggled. Done calls ``on_done``
+        with the chosen values, sorted, as the multi-select widget's commit did. A cancel
+        abandons the cast: nothing is armed or spent before the center is placed.
+        """
+        def _toggle(v):
+            self._ask_ward_types(idx, spell_name, chosen ^ {v}, on_done)
+        n = sum(1 for v in chosen if v != WARD_REVERSE_SENTINEL)
+        pairs = [(("✓ " if val in chosen else "") + lbl, (lambda v=val: _toggle(v)))
+                 for lbl, val in MAGIC_CIRCLE_TYPE_OPTIONS]
+        pairs.append((f"Done ({n} chosen)" if n else "Done (ward every type)",
+                      lambda: on_done(sorted(chosen))))
+        self._ask_actor(idx, "action", f"{spell_name}: choose warded types", pairs)
 
     def _on_divine_intervention_pick(self, caster_idx: int, greater: bool, spell_dict: dict):
         """A spell was chosen from the DI picker. Spend the DI use, inject the spell, and free-cast

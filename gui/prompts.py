@@ -299,8 +299,9 @@ class ElementPickerRenderer:
         turns it into the cancel it actually is — the same path the popup uses;
       · it is **multi-select capable**, and this renderer only ever asks for
         ``multi=False``. A multi-select answer has no shape in Step 0.5's frozen
-        ``expects`` vocabulary (``choice`` / ``cell`` / ``agent`` / ``none``), so the one
-        multi-select call site in the game stays off the bus until that is unfrozen.
+        ``expects`` vocabulary (``choice`` / ``cell`` / ``agent`` / ``none``). The one
+        in-combat multi-select, the Magic Circle / Hallow ward, is asked as a toggle loop
+        of plain choice prompts instead (M5e E-6, ``App._ask_ward_types``).
     """
 
     def __init__(self, dialog):
