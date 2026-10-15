@@ -1331,15 +1331,12 @@ def test_a_summon_placed_over_the_bus():
 
 def test_mantle_of_majesty_from_the_offer():
     """Glamour Bard 6: Mantle of Majesty asks the Command word, not cancellable (E-3), then
-    a Command target. The tap casts it with the Bonus Action, for no slot."""
+    a Command target. The tap casts it with the Bonus Action, for no slot. This is the
+    session's first cast, which F-M5e-10 made raise."""
     app, kira, _ = _aria_turn()
     aria = _caster(app, rpg.CharacterClass.Bard, 6, ["Command"],
                    bard_subclass=rpg.BardCollege.Glamour)
     before = _slots(app, aria, 1)
-    # F-M5e-10: only `_activate_spell` ever sets this, and Mantle of Majesty does not go
-    # through it, so a session's first Mantle cast raises on the DM console too. Remove
-    # this line with that fix.
-    app.pending_forcecage_sealed = False
     _choose(app, kira, "mantle_majesty")
     _frame(app)
     word = app.prompts.live
@@ -1350,6 +1347,20 @@ def test_mantle_of_majesty_from_the_offer():
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
     assert app.pending_spell_slot == "" and app.bonus_used and _slots(app, aria, 1) == before
     print("✅ test_mantle_of_majesty_from_the_offer")
+
+
+def test_mantle_command_does_not_inherit_a_forcecage_box():
+    """F-M5e-10, the other half: Mantle of Majesty sets up its Command cast by hand, and
+    left a Box choice from an earlier Forcecage in place, so the Command went out sealed."""
+    app, kira, _ = _aria_turn()
+    _caster(app, rpg.CharacterClass.Bard, 6, ["Command"],
+            bard_subclass=rpg.BardCollege.Glamour)
+    app.pending_forcecage_sealed = True                     # an earlier Forcecage's Box
+    _choose(app, kira, "mantle_majesty")
+    _answer(app, kira, "choose a word")
+    assert app.pending_spell_slot == "bonus", app.pending_spell_slot
+    assert app.pending_forcecage_sealed is False, "the Box choice leaked into Command"
+    print("✅ test_mantle_command_does_not_inherit_a_forcecage_box")
 
 
 def test_twinned_from_the_offer_makes_two_picks():
@@ -1523,6 +1534,7 @@ if __name__ == "__main__":
         test_chromatic_orb_done_casts_the_chain()
         test_a_summon_placed_over_the_bus()
         test_mantle_of_majesty_from_the_offer()
+        test_mantle_command_does_not_inherit_a_forcecage_box()
         test_twinned_from_the_offer_makes_two_picks()
         test_beguiling_rides_on_a_players_spell()
         test_radiance_leaves_nothing_armed()

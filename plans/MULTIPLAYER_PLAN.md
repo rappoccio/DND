@@ -19,8 +19,9 @@ M5b's first commit, D-M5-1 `perform` (`2ade754`). D-M5-2, the action offer, is n
 handoff follows "M5b, commit 1 — D-M5-1 landed".
 **2026-10-14: M5b–M5d have landed. M5e (the spell pipeline) has started.** Its Step 0 is
 frozen (user: "agreed"). M5e.0, the two bug fixes, is committed. **M5e.1 has landed
-(uncommitted, 2026-10-14)**; it found two DM-console bugs (F-M5e-9, F-M5e-10) that want their
-own commits. Read "Handoff — M5e.1 landed", just before M6.
+(committed, 2026-10-14)**; it found two DM-console bugs (F-M5e-9, F-M5e-10) that want their
+own commits; both are now fixed and committed. **M5e.2 is next.** Read "Handoff — M5e.1
+landed", just before M6.
 
 ---
 
@@ -6362,6 +6363,11 @@ E-1, E-2, E-3 and E-7, and the wiring. The `radiance` claim is struck.
   initialise it in `__init__`, and reset it in Mantle's `_on_word`. It needs its own
   commit, and your OK. `test_mantle_of_majesty_from_the_offer` sets the attribute itself,
   with a comment to drop that line once the fix lands.
+  **Fixed (2026-10-14, user OK, its own commit).** `__init__` sets it to False, and Mantle's
+  `_on_word` resets it with the other spell fields. The workaround line is gone, so
+  `test_mantle_of_majesty_from_the_offer` is again a session's first cast. The new
+  `test_mantle_command_does_not_inherit_a_forcecage_box` covers the leak. Both were watched
+  failing first.
 - **F-M5e-11: two pickers still open on the DM's screen when a player casts.** Wish
   (`SpellSelectionDialog`) and the Magic Circle / Hallow ward picker (`_element_dialog`)
   are DM widgets, not bus prompts. `spell_action` is on offer now, so a player who
@@ -6384,11 +6390,12 @@ Sorcery's SP levels.
 - Suite: **167 / 0** in the container (2026-10-14). The goldens are unchanged. No C++
   changed, and no image rebuild is needed.
 
+**Update (2026-10-14).** The user asked for the commits. M5e.1 is committed, and so are
+F-M5e-9 and F-M5e-10, each in its own commit with its test written first. The suite is
+**167 / 0**, and `tests/test_picks.py` has 58 checks.
+
 **Next, in order:**
-1. **F-M5e-9 and F-M5e-10**, each in its own commit, each with a failing test first, and
-   only with the user's OK (standing rule). When F-M5e-10 lands, drop the workaround line
-   in `test_mantle_of_majesty_from_the_offer`. Once F-M5e-9 lands, Animate Dead can join
-   the corpse test.
+1. ~~F-M5e-9 and F-M5e-10~~ (done, above).
 2. **M5e.2:** Wish and DI as one bus `choice` prompt with `render="spell_browser"` (E-5).
    Then flip `divine_intervention`.
 3. **M5e.3:** the ward toggle loop (E-6).

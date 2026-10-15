@@ -342,6 +342,7 @@ def start_mantle_majesty(app, bard_idx: int):
         app.pending_spell_free_cast    = True
         app.pending_spell_command_word = word
         app.pending_spell_curse_choice = -1
+        app.pending_forcecage_sealed   = False   # an earlier Forcecage's Box must not seal this
         app.pending_chromatic_active   = False
         app.pending_chromatic_chain    = []
         word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")

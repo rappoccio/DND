@@ -960,6 +960,7 @@ class App:
         self.pending_spell_free_cast: bool = False      # Mantle of Majesty: cast Command with no slot
         self.pending_spell_command_word: int = -1       # Command word (0=Drop..4=Approach); -1 = n/a
         self.pending_spell_curse_choice: int = -1       # Vistani Curse sub-choice (see CURSE_CHOICE_SPELLS); -1 = n/a
+        self.pending_forcecage_sealed: bool = False     # Forcecage form: False = Cage, True = Box (F-M5e-10)
 
         # ── Agent config GUI state ────────────────────────────────────────
         # Combat panel first: it creates btn_show_terrain, the in-combat Show/Hide
