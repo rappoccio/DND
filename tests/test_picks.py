@@ -49,11 +49,14 @@ runs. These checks pin:
                          (test_a_single_target_spell_picked_over_the_bus … test_esc_and_the_remote_spell_cancel_agree)
   · M5e.2: Wish's and Divine Intervention's spell lists are one bus `choice` prompt each,
     drawn on the DM console by the spell browser. A player picks the duplicate, cancels
-    it for free, and casts DI; the DM's Esc on the browser cancels it, and a DM click
+    it for free, and casts DI; Greater DI lists Wish, and a cancelled Wish leaves no free
+    Wish behind (F-M5e-12); the DM's Esc on the browser cancels it, and a DM click
     answers it with the spell clicked
                          (test_wish_is_one_choice_prompt_over_the_bus,
                           test_a_cancelled_wish_spends_nothing,
                           test_divine_intervention_from_the_offer,
+                          test_greater_divine_intervention_offers_wish,
+                          test_a_cancelled_greater_di_wish_leaves_no_free_wish,
                           test_the_dm_console_draws_the_browser)
   · M5e.3: the Magic Circle ward is a toggle loop of plain `choice` prompts. Each pick
     re-posts it with that type toggled, Done arms the center pick, and the ward carries
@@ -1691,6 +1694,68 @@ def test_divine_intervention_from_the_offer():
     print("✅ test_divine_intervention_from_the_offer")
 
 
+def _greater_di_wish(app, kira):
+    """Cleric 20: Divine Intervention from the offer, then Wish from its list. Returns
+    `(aria, the Wish browser)`."""
+    aria = _caster(app, rpg.CharacterClass.Cleric, 20, ["Sacred Flame"])
+    _choose(app, kira, "divine_intervention")
+    di = _until_title(app, kira, "Divine Intervention — choose a Cleric spell")
+    _choose_label(app, kira, di, "Wish")
+    return aria, _until_title(app, kira, "Wish — duplicate a spell")
+
+
+def test_greater_divine_intervention_offers_wish():
+    """F-M5e-12, part 1: at Cleric 20 the DI list is the 80 spells plus Wish, in catalogue
+    order. Wish from it spends the DI use and the Action, opens Wish's own list, and its
+    Fireball costs neither a 9th- nor a 3rd-level slot."""
+    from main import CLERIC_DI_SPELL_NAMES
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Cleric, 20, ["Sacred Flame"])
+    _choose(app, kira, "divine_intervention")
+    di = _until_title(app, kira, "Divine Intervention — choose a Cleric spell")
+    expected = [d["name"] for d in app.all_spells
+                if (d.get("level", 0) <= 5 and d["name"] in CLERIC_DI_SPELL_NAMES)
+                or d["name"] == "Wish"]
+    assert [o.label for o in di.options] == expected and len(expected) == 81, \
+        [o.label for o in di.options][-3:]
+    nine, three = _slots(app, aria, 9), _slots(app, aria, 3)
+    _choose_label(app, kira, di, "Wish")
+    assert app.action_used and not app.combat.can_use_divine_intervention(app.bm, aria)
+    wish = _until_title(app, kira, "Wish — duplicate a spell")
+    assert len(wish.options) == 389, len(wish.options)
+    _choose_label(app, kira, wish, "Fireball")
+    _until_pick(app, kira)
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    _cast_here(app, kira)
+    assert app.pending_spell_slot == "" and not app._di_wish_free
+    assert (_slots(app, aria, 9), _slots(app, aria, 3)) == (nine, three), \
+        (_slots(app, aria, 9), _slots(app, aria, 3))
+    print("✅ test_greater_divine_intervention_offers_wish")
+
+
+def test_a_cancelled_greater_di_wish_leaves_no_free_wish():
+    """F-M5e-12, part 2: cancelling Wish's list after Greater DI keeps the DI use spent
+    (F-M5e-2 stands) but drops the free Wish, so the caster's next real Wish pays its
+    9th-level slot. The turn boundary drops it too."""
+    from test_combat_panel import _spell
+    app, kira, _ = _aria_turn()
+    aria, wish = _greater_di_wish(app, kira)
+    assert app.prompts.cancel_as(wish.id, kira.id).ok
+    _frame(app)
+    assert not app.combat.can_use_divine_intervention(app.bm, aria)
+    assert not app._di_wish_free, "the free Wish outlived its cancelled list"
+    nine = _slots(app, aria, 9)
+    fireball = next(d for d in app.all_spells if d["name"] == "Fireball")
+    app._on_wish_duplicate(aria, "action", 9, fireball)
+    assert _slots(app, aria, 9) == nine - 1, "the next real Wish was free"
+    app._clear_pending_target_picks()
+
+    app._di_wish_free = True
+    app._clear_pending_target_picks()
+    assert not app._di_wish_free, "the free Wish outlived the turn"
+    print("✅ test_a_cancelled_greater_di_wish_leaves_no_free_wish")
+
+
 def test_the_dm_console_draws_the_browser():
     """On the DM console the prompt is the tabbed dialog, listing exactly its options.
     Esc there cancels the prompt (and spends nothing); a click on a row answers it with
@@ -1921,6 +1986,8 @@ if __name__ == "__main__":
         test_wish_is_one_choice_prompt_over_the_bus()
         test_a_cancelled_wish_spends_nothing()
         test_divine_intervention_from_the_offer()
+        test_greater_divine_intervention_offers_wish()
+        test_a_cancelled_greater_di_wish_leaves_no_free_wish()
         test_the_dm_console_draws_the_browser()
         test_the_ward_is_a_toggle_loop_over_the_bus()
         test_done_with_nothing_checked_wards_every_type()

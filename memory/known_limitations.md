@@ -603,24 +603,16 @@ Requires creature summoning system.
 
 </details>
 
-### Greater Divine Intervention (L20) never offers Wish [TODO]
-F-M5e-12 in `plans/MULTIPLAYER_PLAN.md`, found by reading during M5e.2 (2026-10-14). Not run,
-and not fixed. A Cleric 20 should be able to pick Wish with Divine Intervention, with DI's 2d4
-recharge lock as the cost (the engine side, `use_divine_intervention(…, chose_wish=True)`, works
-and is tested). The GUI never lists it:
-1. `_start_divine_intervention` (`main.py`) adds "Wish" to the allowed names when `greater`
-   holds, but the list is also capped at 5th level. The cap is applied first, so Wish (9th) is
-   always filtered out. This was already true of `SpellSelectionDialog(max_level=5,
-   allow_names=…)`. M5e.2 kept the same order so that converting it to a bus prompt changed
-   nothing.
-2. If Wish were reachable, a second bug would follow. `_on_divine_intervention_pick` sets
-   `_di_wish_free` and opens Wish's spell list. Cancelling that list leaves the flag set, and
-   nothing resets it at the turn boundary. So the caster's next real Wish would cost no 9th-level
-   slot.
-
-**To fix** (in its own commit, with a failing test first): list Wish whenever `greater` holds,
-and give Wish's spell-list prompt an `on_cancel` that clears `_di_wish_free`. The DI use stays
-spent on a cancel, because nothing is refunded (F-M5e-2).
+### Greater Divine Intervention (L20) offers Wish — FIXED ✅ (2026-10-16)
+F-M5e-12 in `plans/MULTIPLAYER_PLAN.md`. Two GUI bugs, both fixed in one commit, each with a
+failing test first (`tests/test_picks.py`):
+1. The DI list capped Wish (9th) with the Cleric spells at 5th level, so a Cleric 20 never saw
+   it. `_start_divine_intervention` now caps only the Cleric spells and lists Wish when
+   `greater` holds (81 options, title "… (≤ 5th level, or Wish)").
+2. Cancelling Wish's list after Greater DI left `_di_wish_free` set, so the caster's next real
+   Wish cost no 9th-level slot. Wish's list now has an `on_cancel` that clears it, and
+   `_clear_pending_target_picks` resets it at the turn boundary. The DI use stays spent on a
+   cancel (F-M5e-2: nothing is refunded).
 
 ### Deferred — War Domain spells
 - **Crusader's Mantle**: needs ally-buff aura for +1d4 Radiant

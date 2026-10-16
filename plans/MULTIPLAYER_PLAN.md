@@ -6686,9 +6686,9 @@ sits on the caster wherever the tap lands, and a Line or Cone aim.
   left out by decision.
 
 **Next, in order:**
-1. **F-M5e-12**, still waiting for your OK: its own commit, with a failing test first.
+1. ~~F-M5e-12~~: fixed 2026-10-16, see below.
 2. A manual look in a real browser: the filter box on a phone (Wish's 389 rows), the ward
-   loop's re-post, and the `you.aoe` overlay with its confirm.
+   loop's re-post, and the `you.aoe` overlay with its confirm. The user is doing this.
 3. **M6**: reconnect, resync and restart.
 
 **Still open:** everything in the M5e.0 handoff's list. Out of M5e by decision: refunds
@@ -6698,6 +6698,41 @@ sits on the caster wherever the tap lands, and a Line or Cone aim.
 - Container only. Never run `docker build`.
 - Stage files by name. Never `-A`.
 - Commit only when asked. Never push unasked.
+
+
+##### F-M5e-12 — fixed *(2026-10-16, user OK, commit "F-M5e-12: Greater Divine Intervention offers Wish")*
+
+Both parts, each with its test written first and watched fail in the container.
+
+- **Part 1, Wish never listed.** `_start_divine_intervention` caps only the Cleric spells
+  at 5th level and lists Wish when `greater` holds. Wish comes in catalogue order, so the
+  list has 81 options at Cleric 20, and 80 below that. At 20 the title reads "… (≤ 5th
+  level, or Wish)".
+  - `test_greater_divine_intervention_offers_wish` failed first on the missing label.
+  - Now it checks the 81 labels, then follows the cast through: Wish spends the DI use and
+    the Action, its list has 389 options, and its Fireball (aimed, then confirmed) costs no
+    9th- or 3rd-level slot.
+- **Part 2, the free Wish leaked.** `_ask_spell_browser` takes `on_cancel`, and Wish's list
+  passes `_drop_di_wish_free`. Because a superseded prompt runs no callback,
+  `_clear_pending_target_picks` also resets `_di_wish_free` at the turn boundary. It is in
+  `_TARGET_PICK_COMPANIONS`.
+  - `test_a_cancelled_greater_di_wish_leaves_no_free_wish` failed first with "the free Wish
+    outlived its cancelled list", once part 1 had made Wish reachable.
+  - Now it checks that the DI use stays spent (F-M5e-2), that the next real Wish pays its
+    9th-level slot, and that the turn boundary clears the flag.
+  - The turn-boundary reset goes beyond the fix as written. It closes the same leak by its
+    other path, so it is in the same commit.
+- **Mutants, all 5 killed:**
+  - Wish still capped;
+  - Wish listed below Cleric 20 (`test_divine_intervention_from_the_offer` counts 80);
+  - no `on_cancel` on Wish's list;
+  - `_ask_spell_browser` dropping `on_cancel`;
+  - no turn reset.
+- **Suite:** 167 / 0 in the container. The goldens are unchanged. No C++ changed.
+  `tests/test_picks.py` has 71 checks.
+- `memory/known_limitations.md` marks the entry fixed.
+- **Recorded behaviour change on the DM console:** a Cleric 20's DI browser lists Wish,
+  under its own 9th-level tab, and its title names it.
 
 ---
 

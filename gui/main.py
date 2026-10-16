@@ -4732,6 +4732,7 @@ class App:
         self.pending_summon_free_cast    = False
         self.summon_hover_cell           = None
         self._aoe_aim                    = None   # M5e E-8: an unconfirmed aim
+        self._di_wish_free               = False  # F-M5e-12: an unused Greater DI Wish
 
     # The arms `_target_pick_armed` reads, with the idle value each rests at. Every field
     # `_clear_pending_target_picks` resets is either here or in `_TARGET_PICK_COMPANIONS`;
@@ -4769,7 +4770,7 @@ class App:
         "_duplicity_cd_pending", "pending_mantle_targets",
         "pending_summon_idx", "pending_summon_slot_level", "pending_summon_monster",
         "pending_summon_spirit", "pending_summon_free_cast", "summon_hover_cell",
-        "_aoe_aim",
+        "_aoe_aim", "_di_wish_free",
     )
 
     def _target_pick_armed(self) -> bool:
@@ -8592,7 +8593,10 @@ class App:
             self._ask_spell_browser(
                 idx, "Wish — duplicate a spell (≤ 8th level)",
                 [d for d in self.all_spells if d.get("level", 0) <= 8],
-                lambda d, s=s, wl=wish_slot: self._on_wish_duplicate(idx, s, wl, d))
+                lambda d, s=s, wl=wish_slot: self._on_wish_duplicate(idx, s, wl, d),
+                # Greater DI's free Wish ends with its list: left set, the caster's next
+                # real Wish would cost no slot (F-M5e-12). DI's use stays spent (F-M5e-2).
+                on_cancel=self._drop_di_wish_free)
             self._combat_log_add("Wish — choose a spell of level 8 or lower to duplicate.")
             return
 
@@ -8858,27 +8862,32 @@ class App:
             return
         stats = self.combat.get_agent_stats(self.bm, idx)
         greater = stats.class_level(rpg.CharacterClass.Cleric) >= 20
-        allow = CLERIC_DI_SPELL_NAMES | ({"Wish"} if greater else set())
-        # The level cap is applied before the names, as the dialog applied it, so Wish
-        # (9th) is never listed even at 20th level. That is F-M5e-12, kept as it was.
+        # The cap is on the Cleric spells only: Greater DI's Wish is 9th level, and capping
+        # it with them hid it at 20th level too (F-M5e-12).
         self._ask_spell_browser(
-            idx, "Divine Intervention — choose a Cleric spell (≤ 5th level)",
+            idx, "Divine Intervention — choose a Cleric spell (≤ 5th level"
+                 + (", or Wish)" if greater else ")"),
             [d for d in self.all_spells
-             if d.get("level", 0) <= 5 and d.get("name") in allow],
+             if (d.get("level", 0) <= 5 and d.get("name") in CLERIC_DI_SPELL_NAMES)
+             or (greater and d.get("name") == "Wish")],
             lambda d, i=idx, g=greater: self._on_divine_intervention_pick(i, g, d))
         self._combat_log_add("Divine Intervention — choose a Cleric spell of level 5 or lower.")
 
-    def _ask_spell_browser(self, idx, title, spells, on_pick):
+    def _drop_di_wish_free(self):
+        self._di_wish_free = False
+
+    def _ask_spell_browser(self, idx, title, spells, on_pick, on_cancel=None):
         """Ask the caster's controller for one spell out of ``spells`` (D-M1-12c, E-5).
 
         One ``choice`` prompt, an option per spell labelled with its name, in catalogue
         order. The DM console draws it as ``SpellSelectionDialog`` (tabs and a search);
         a browser draws a list with a filter box. ``on_pick`` gets the spell's dict.
         Cancelling spends nothing, because Wish and Divine Intervention pay on the pick.
+        ``on_cancel`` undoes what the caller armed before asking, if anything.
         """
         self._ask_actor(idx, "action", title,
                         [(d["name"], (lambda d=d: on_pick(d))) for d in spells],
-                        render=SPELL_BROWSER_RENDER)
+                        render=SPELL_BROWSER_RENDER, on_cancel=on_cancel)
 
     def _ask_ward_types(self, idx, spell_name, chosen, on_done):
         """Ask the caster's controller which creature types a Magic Circle / Hallow wards
