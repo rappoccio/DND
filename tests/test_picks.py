@@ -62,6 +62,13 @@ runs. These checks pin:
                          (test_the_ward_is_a_toggle_loop_over_the_bus,
                           test_done_with_nothing_checked_wards_every_type,
                           test_a_cancelled_ward_spends_nothing)
+  · M5e.4: a remote tap on an area spell aims it, and a `confirm` (Cast here / Re-aim)
+    carries the template as `you.aoe`, cut to the explored mask; a Cancel cancels the
+    cast, and a DM click takes over and casts where the DM clicked
+                         (test_an_area_tap_aims_and_asks_to_confirm,
+                          test_a_cancelled_confirm_cancels_the_cast,
+                          test_a_dm_click_during_the_confirm_casts_where_the_dm_clicked,
+                          test_the_aoe_is_cut_to_the_explored_mask)
   · end to end: an attack over the socket                    (test_an_attack_over_the_wire)
 
 The scene is `test_offer.py`'s: Aria (Fighter 5) at (3,3) with Skarn, a foe, at (4,3);
@@ -84,7 +91,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pygame
 import rpg_battle_map as rpg
 
-from net import offer as net_offer, picks as net_picks
+from net import offer as net_offer, picks as net_picks, view as net_view
 from net.roster import DM_PRINCIPAL_ID
 from prompts import Response, SPELL_BROWSER_RENDER
 
@@ -1111,6 +1118,15 @@ def _tap(app, who, cell):
     _frame(app)
 
 
+def _cast_here(app, who):
+    """Answer the area spell's confirm (M5e E-8) with Cast here. Returns the confirm."""
+    confirm = _pick(app)
+    assert confirm is not None and confirm.kind == net_picks.CONFIRM, app.prompts.live
+    assert app.prompts.submit(confirm.id, Response(option=net_picks.CAST_ID), who.id).ok
+    _frame(app)
+    return confirm
+
+
 def test_a_single_target_spell_picked_over_the_bus():
     """Fire Bolt: `spell_action` is offered enabled, the pick is a `target` named for the
     spell, and Skarn's square casts it and spends the Action."""
@@ -1149,7 +1165,7 @@ def test_a_multi_target_spell_counts_its_picks():
 
 def test_an_area_spell_is_a_cell_pick():
     """Fireball: the pick is a `cell` (mutant: the spell arm's kind fixed at `target`), and
-    the tap on a square, not a creature, casts it."""
+    the tap on a square, not a creature, aims it; Cast here casts it."""
     app, kira, _ = _aria_turn()
     aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Fireball"])
     before = _slots(app, aria, 3)
@@ -1157,8 +1173,125 @@ def test_an_area_spell_is_a_cell_pick():
     pick = _until_pick(app, kira)
     assert (pick.kind, pick.title) == ("cell", "Fireball: choose the center"), pick
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    _cast_here(app, kira)
     assert app.pending_spell_slot == "" and _slots(app, aria, 3) == before - 1
     print("✅ test_an_area_spell_is_a_cell_pick")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  M5e.4 — aim, then confirm (E-8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _fireball_aimed(app, kira, center=None):
+    """Arm Fireball for Kira and tap `center` (Skarn's square by default). Returns
+    `(aria, center, confirm)`."""
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Fireball"])
+    _choose(app, kira, "spell_action")
+    _until_pick(app, kira)
+    center = center or _pos(app, _idx(app, "Skarn"))
+    _tap(app, kira, center)
+    return aria, center, _pick(app)
+
+
+def test_an_area_tap_aims_and_asks_to_confirm():
+    """A tap on Fireball's center spends nothing and casts nothing. The same slot then
+    holds a `confirm` choice, Cast here / Re-aim, owned by Kira and parented to the offer,
+    and her view carries the template as `you.aoe`, exactly the hover preview's cells.
+    Re-aim goes back to the cell pick with no overlay; a second tap and Cast here cast
+    it once, and the overlay is gone."""
+    app, kira, wen = _aria_turn()
+    aria, center, confirm = _fireball_aimed(app, kira)
+    three = _slots(app, aria, 3)
+    assert app.pending_spell_slot and not app.action_used and _slots(app, aria, 3) == three
+    assert confirm is not None, app.prompts.live
+    assert (confirm.kind, confirm.expects, confirm.title, confirm.owner, confirm.render) == \
+        ("confirm", "choice", "Fireball: cast here?", kira.id, net_picks.PICK_RENDER), confirm
+    assert [(o.id, o.label) for o in confirm.options] == \
+        [("cast", "Cast here"), ("reaim", "Re-aim")], confirm.options
+    assert confirm.parent_id is not None and confirm.cells is None
+    sp = app._pending_spell()
+    want = sorted((c.col, c.row) for c in app._area_template(aria, sp, rpg.Cell(*center)))
+    assert center in want and len(want) > 1, want
+    assert sorted(confirm.aoe) == want, "the confirm is not the hover preview's template"
+    you = net_view.build_view(app, kira)["you"]
+    assert you["prompt_id"] == confirm.id and you["aoe"] == [list(p) for p in want], you
+    assert "aoe" not in net_view.build_view(app, wen)["you"], "the overlay reached Wen"
+    assert "aoe" not in confirm.to_wire(), "the template rode on the prompt envelope"
+
+    assert app.prompts.submit(confirm.id, Response(option=net_picks.REAIM_ID), kira.id).ok
+    _frame(app)
+    pick = _pick(app)
+    assert (pick.kind, pick.title) == ("cell", "Fireball: choose the center"), pick
+    assert "aoe" not in net_view.build_view(app, kira)["you"]
+    assert app.pending_spell_slot and _slots(app, aria, 3) == three
+
+    _tap(app, kira, center)
+    _cast_here(app, kira)
+    assert app.pending_spell_slot == "" and app.action_used and _slots(app, aria, 3) == three - 1
+    assert app._aoe_aim is None and "aoe" not in net_view.build_view(app, kira)["you"]
+    assert _offer(app) is not None, app.prompts.live
+    print("✅ test_an_area_tap_aims_and_asks_to_confirm")
+
+
+def test_a_cancelled_confirm_cancels_the_cast():
+    """Kira's Cancel on the confirm is the spell's Cancel, and so is the DM's Esc: nothing
+    is spent, nothing is armed or aimed, and Cast a Spell is back on the offer."""
+    for remote in (True, False):
+        app, kira, _ = _aria_turn()
+        aria, _, confirm = _fireball_aimed(app, kira)
+        three = _slots(app, aria, 3)
+        if remote:
+            assert app.prompts.cancel_as(confirm.id, kira.id).ok
+        else:
+            _esc(app)
+        _frame(app)
+        assert (app.pending_spell_slot, app._aoe_aim, app.action_used) == ("", None, False), \
+            (remote, app.pending_spell_slot, app._aoe_aim)
+        assert _slots(app, aria, 3) == three
+        offer = _offer(app)
+        assert offer is not None and any(o.id == "spell_action" and o.enabled
+                                         for o in offer.options), app.prompts.live
+    print("✅ test_a_cancelled_confirm_cancels_the_cast")
+
+
+def test_a_dm_click_during_the_confirm_casts_where_the_dm_clicked():
+    """Step 0.6 holds for the confirm: the DM's map click takes the turn over, the aim is
+    dropped, and the click resolves the spell at the DM's square. Kira's late Cast here
+    is `not_live`."""
+    app, kira, _ = _aria_turn()
+    aria, center, confirm = _fireball_aimed(app, kira)
+    three = _slots(app, aria, 3)
+    elsewhere = _free_cell(app, aria, 6, beyond=3)
+    assert elsewhere != center
+    seen = []
+    real = app._resolve_spell_cast_aoe
+    app._resolve_spell_cast_aoe = lambda cell: (seen.append((cell.col, cell.row)), real(cell))
+    post_click(app, cell_center(app, *elsewhere))
+    late = app.prompts.submit(confirm.id, Response(option=net_picks.CAST_ID), kira.id)
+    assert not late.ok and late.error == "not_live", late
+    assert seen == [elsewhere], seen
+    assert app.pending_spell_slot == "" and app._aoe_aim is None
+    assert _slots(app, aria, 3) == three - 1
+    print("✅ test_a_dm_click_during_the_confirm_casts_where_the_dm_clicked")
+
+
+def test_the_aoe_is_cut_to_the_explored_mask():
+    """E-8, the eighth mutant of E-10: with fog up, `you.aoe` holds only explored cells, even
+    where the template runs on into the fog. The cast itself is not cut."""
+    app, kira, _ = _aria_turn()
+    cols, rows = int(app.bm.grid_cols), int(app.bm.grid_rows)
+    center = _pos(app, _idx(app, "Skarn"))
+    explored = {(c, r) for c in range(cols) for r in range(rows) if r <= center[1]}
+    app.bm.set_explored_cells([rpg.Cell(c, r) for c, r in explored])
+    app.show_fog = True
+    assert app._fog_active()
+    aria, _, confirm = _fireball_aimed(app, kira, center)
+    sp = app._pending_spell()
+    full = {(c.col, c.row) for c in app._area_template(aria, sp, rpg.Cell(*center))}
+    assert full - explored, "the template no longer reaches into the fog"
+    aoe = net_view.build_view(app, kira)["you"]["aoe"]
+    assert aoe and {tuple(p) for p in aoe} == full & explored, aoe
+    print("✅ test_the_aoe_is_cut_to_the_explored_mask")
 
 
 def test_a_wall_takes_two_picks_and_cancel_clears_the_anchor():
@@ -1509,6 +1642,7 @@ def test_wish_is_one_choice_prompt_over_the_bus():
     assert (pick.kind, pick.title) == ("cell", "Fireball: choose the center"), pick
     assert _slots(app, aria, 9) == nine - 1, "Wish's own slot was not spent"
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    _cast_here(app, kira)
     assert app.pending_spell_slot == "" and app.action_used
     assert _slots(app, aria, 3) == three, "the duplicated Fireball spent a slot"
     print("✅ test_wish_is_one_choice_prompt_over_the_bus")
@@ -1637,6 +1771,7 @@ def test_the_ward_is_a_toggle_loop_over_the_bus():
     assert (pick.kind, pick.title) == ("cell", "Magic Circle: choose the center"), pick
     assert _slots(app, aria, 3) == three and not _wards(app)
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    _cast_here(app, kira)
     assert app.pending_spell_slot == "" and _slots(app, aria, 3) == three - 1
     assert _wards(app) == [(int(rpg.CreatureType.Fiend) | int(rpg.CreatureType.Undead), True)], \
         _wards(app)
@@ -1651,6 +1786,7 @@ def test_done_with_nothing_checked_wards_every_type():
     _choose_label(app, kira, ward, "Done (ward every type)")
     _until_pick(app, kira)
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    _cast_here(app, kira)
     every = 0
     for t in ("Celestial", "Elemental", "Fey", "Fiend", "Undead"):
         every |= int(getattr(rpg.CreatureType, t))
@@ -1763,6 +1899,10 @@ if __name__ == "__main__":
         test_a_single_target_spell_picked_over_the_bus()
         test_a_multi_target_spell_counts_its_picks()
         test_an_area_spell_is_a_cell_pick()
+        test_an_area_tap_aims_and_asks_to_confirm()
+        test_a_cancelled_confirm_cancels_the_cast()
+        test_a_dm_click_during_the_confirm_casts_where_the_dm_clicked()
+        test_the_aoe_is_cut_to_the_explored_mask()
         test_a_wall_takes_two_picks_and_cancel_clears_the_anchor()
         test_a_teleport_spell_from_the_bonus_row()
         test_a_corpse_spell_picks_a_body()

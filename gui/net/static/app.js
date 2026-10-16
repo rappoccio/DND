@@ -396,8 +396,23 @@ function drawBoard() {
   drawFog(cell, map.cols, map.rows);
   drawGrid(cell, map.cols, map.rows);
   drawReachable(cell);
+  drawAoe(cell);
   for (const agent of view.agents) drawToken(agent, cell);
   drawTargets(cell);
+}
+
+/* `you.aoe` (M5e E-8): the template an area spell would cover from where the player
+   tapped, sent with the "cast here?" confirm. Painted as sent, never computed (NN2). */
+function drawAoe(cell) {
+  const cells = view.you.aoe;
+  if (!cells) return;
+  ctx.fillStyle = "rgba(160, 80, 220, 0.30)";
+  ctx.strokeStyle = "rgba(200, 130, 255, 0.75)";
+  ctx.lineWidth = 1;
+  for (const [col, row] of cells) {
+    ctx.fillRect(col * cell, row * cell, cell, cell);
+    ctx.strokeRect(col * cell + 0.5, row * cell + 0.5, cell - 1, cell - 1);
+  }
 }
 
 /* `you.reachable` (D-M5-4): the cells the live Move prompt will accept, exactly as the

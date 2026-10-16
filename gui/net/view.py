@@ -286,6 +286,11 @@ def _you(app, roster, viewer, shown: set[int]) -> dict:
     # to the explored mask when it was built (`net/move.reachable_cells`, fix A).
     if prompt_id is not None and live.cells is not None:
         you["reachable"] = sorted([c, r] for c, r in live.cells)
+    # Envelope 2's `aoe` overlay (M5e E-8): the template a remote caster is asked to
+    # confirm, read off the prompt like `reachable` and under the same gate. It was cut to
+    # the explored mask when it was built (`net/picks.post`).
+    if prompt_id is not None and live.aoe is not None:
+        you["aoe"] = sorted([c, r] for c, r in live.aoe)
     return you
 
 

@@ -6598,6 +6598,107 @@ a test" in M5e.1 and M5e.2.
 - Commit only when asked. Never push unasked.
 
 
+
+##### M5e.4 — what landed *(2026-10-14, commit "M5e.4: aim, then confirm, for an area spell")*
+
+E-8 as written: for a remote caster, a tap on an area spell aims it, and a confirm casts
+it. No wire field was added: `you.aoe` was already in Envelope 2.
+
+- **The aim.** `net/picks.aiming(app, arm)` holds for the spell arm in its `area` shape
+  (F-M5e-1: Line, Cone, Sphere, Square). A tap there sets `app._aoe_aim = (col, row)`,
+  and nothing is spent or cast. A wall, a teleport and a door resolve on the tap, as
+  before. E-8 named only the area shape.
+- **The confirm.** While an aim is held, `picks.post` posts `_post_confirm` instead of the
+  cell pick, in the same slot (`app._pick_prompt`). So `ensure` and `take_over` treat it as
+  their own, with no change to either. It is a `kind:"confirm"`, `expects:"choice"` prompt,
+  titled "Fireball: cast here?", with options `cast` ("Cast here") and `reaim`
+  ("Re-aim"). It is owned by the controller, has the offer as parent, and uses
+  `render="remote"`, so the DM console draws nothing.
+  - **Cast here** drops the aim and runs `resolve_pick` on the held cell.
+  - **Re-aim** drops the aim, and the next frame posts the cell pick again.
+  - **Cancel** is the spell's Cancel (`cancel_spell`). A cancel by the DM is a take-over:
+    it drops the aim and leaves the spell armed for the DM's click, as for the pick.
+  - The projection key gains the aim.
+- **The template.** `App._area_template(caster, sp, center)` is the hover preview's
+  non-wall branch (`_aoe_cells`, then range and line of sight), lifted out. The preview
+  calls it, and so does `picks.template`, so what a player confirms is exactly what the DM
+  would see hovering there. `picks.template` cuts it to `cells(app, arm, actor)`, the
+  explored mask with fog up.
+- **The wire.** `Prompt` gains `aoe` (a frozenset, not on the prompt envelope), and
+  `PromptBus.ask` takes it. `net/view._you` sends it as `you.aoe` under `reachable`'s
+  gate: only with a `prompt_id` the viewer may answer.
+- **The client.** `drawAoe` paints `you.aoe` in the DM preview's purple, under the tokens.
+  It computes nothing (NN2). The confirm itself is an ordinary option list.
+- **The aim's lifetime.** It is cleared by Cast here, Re-aim, either cancel, Esc
+  (`cancel_spell`) and the turn boundary. It is in `_clear_pending_target_picks` and
+  `_TARGET_PICK_COMPANIONS`. `aim()` ignores it unless the armed spell is in the area
+  shape.
+- **Tests:** `tests/test_picks.py` has 69 checks, up from 65.
+  - `test_an_area_tap_aims_and_asks_to_confirm`: the tap spends nothing. Also checked:
+    the confirm's kind, title, owner, render, options and parent; `aoe` equals
+    `_area_template`; Kira's `you.aoe` has it and Wen's view does not; the prompt
+    envelope carries no `aoe`; Re-aim brings back the cell pick with no overlay; a
+    second tap and Cast here spend one slot; and the overlay is gone.
+  - `test_a_cancelled_confirm_cancels_the_cast`: Kira's Cancel and the DM's Esc each spend
+    nothing, arm nothing and leave no aim, and Cast a Spell is back on the offer.
+  - `test_a_dm_click_during_the_confirm_casts_where_the_dm_clicked`: the take-over leaves
+    Kira's late Cast here `not_live`. The cast lands on the DM's square, and the aim is
+    dropped.
+  - `test_the_aoe_is_cut_to_the_explored_mask`: with rows ≤ 3 explored, the template
+    reaches into the fog, and `you.aoe` is exactly its explored part.
+  - The four existing area-spell taps (Fireball, Wish's Fireball, both ward tests) now
+    answer the confirm through `_cast_here`.
+- **Mutants:** 10 of 11 killed (`test_picks.py` and `test_offer.py`):
+  - `you.aoe` uncut by fog (E-10's eighth);
+  - the tap resolving without an aim;
+  - Cast here doing nothing;
+  - Re-aim keeping the aim;
+  - the confirm's Cancel keeping the spell;
+  - the DM take-over keeping the aim;
+  - the view ungated;
+  - Esc keeping the aim;
+  - the turn boundary keeping the aim (caught by `test_offer`'s clear check);
+  - the confirm's template taken from another cell.
+
+  The survivor is the aim left out of the projection key. It is equivalent: the aim
+  changes only through the confirm's own answers, and those resolve the prompt, which
+  forces a re-post anyway. The field stays, so the key still describes what the prompt
+  shows.
+- **Suite:** 167 / 0 in the container. The panel and determinism goldens are unchanged. No
+  C++ changed, and no image rebuild is needed.
+- **Recorded behaviour changes on the DM console:** none. The DM's click on an area spell
+  still resolves at once, and the hover preview draws the same cells through
+  `_area_template`.
+
+**Not covered by a test:** `drawAoe` in a real browser (only `node --check` and the two-send
+check read `app.js`). Also untested: an area spell with `moves_with_caster`, whose template
+sits on the caster wherever the tap lands, and a Line or Cone aim.
+
+##### Handoff — M5e.4 landed *(written 2026-10-14)*
+
+**State.**
+- Committed at the user's request as "M5e.4: aim, then confirm, for an area spell". It touches `gui/main.py`,
+  `gui/net/picks.py`, `gui/net/view.py`, `gui/prompts.py`, `gui/net/static/app.js`,
+  `tests/test_picks.py` and this plan. `main` is nineteen commits ahead of
+  `origin/main`, none pushed.
+- Suite: **167 / 0** in the container (2026-10-14). No C++ changed, no image rebuild.
+- With M5e.4, every slice of E-9 has landed. M5e is complete, except for the items it
+  left out by decision.
+
+**Next, in order:**
+1. **F-M5e-12**, still waiting for your OK: its own commit, with a failing test first.
+2. A manual look in a real browser: the filter box on a phone (Wish's 389 rows), the ward
+   loop's re-post, and the `you.aoe` overlay with its confirm.
+3. **M6**: reconnect, resync and restart.
+
+**Still open:** everything in the M5e.0 handoff's list. Out of M5e by decision: refunds
+(F-M5e-2), Overchannel (E-7), and aim-and-confirm for a wall's end point.
+
+**Rules:**
+- Container only. Never run `docker build`.
+- Stage files by name. Never `-A`.
+- Commit only when asked. Never push unasked.
+
 ---
 
 ### M6 — Reconnect, resync, restart

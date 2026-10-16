@@ -803,6 +803,9 @@ class App:
         self._move_prompt         = None  # D-M5-4: the player's live Move prompt, if any (net/move.py)
         self._pick_prompt         = None  # M5d: the player's live target prompt, if any (net/picks.py)
         self._pick_key            = None  # ...and the projection it was built from
+        # M5e E-8: a remote caster's tapped center for an area spell, held until they
+        # confirm it (net/picks.py). None while nothing is aimed.
+        self._aoe_aim             = None
         # M5d: the attack-sequence fields as they were before the last `perform`, so that
         # cancelling an armed attack undoes the arm (net/picks.cancel_attack). A resolved
         # pick and the turn boundary drop it.
@@ -4728,6 +4731,7 @@ class App:
         self.pending_summon_spirit       = None
         self.pending_summon_free_cast    = False
         self.summon_hover_cell           = None
+        self._aoe_aim                    = None   # M5e E-8: an unconfirmed aim
 
     # The arms `_target_pick_armed` reads, with the idle value each rests at. Every field
     # `_clear_pending_target_picks` resets is either here or in `_TARGET_PICK_COMPANIONS`;
@@ -4765,6 +4769,7 @@ class App:
         "_duplicity_cd_pending", "pending_mantle_targets",
         "pending_summon_idx", "pending_summon_slot_level", "pending_summon_monster",
         "pending_summon_spirit", "pending_summon_free_cast", "summon_hover_cell",
+        "_aoe_aim",
     )
 
     def _target_pick_armed(self) -> bool:
@@ -11141,6 +11146,13 @@ class App:
         caster = self.bm.placed_agents[caster_idx]
         return self.bm.filter_spell_cells(cells, caster.origin, caster.size, spell, center_cell)
 
+    def _area_template(self, caster_idx: int, sp, center) -> list:
+        """The cells an area spell centred on `center` would cover, cut by its range and
+        line of sight. The hover preview draws it, and a remote caster's confirm sends it
+        as `you.aoe` (M5e E-8), so the two cannot disagree."""
+        return self._filter_spell_cells_by_range_and_los(
+            self._aoe_cells(center, sp), caster_idx, sp, center_cell=center)
+
     # FLAG: Move to C++
     def _draw_spell_aoe_preview(self, cpx: int):
         """Translucent AoE highlight while the player is aiming a non-Single spell."""
@@ -11167,9 +11179,7 @@ class App:
             cells = self.bm.prune_blocked_cells(cells, sp, caster.origin, caster.size,
                                                 self.spell_anchor_cell)
         else:
-            aoe_cells = self._aoe_cells(self.spell_hover_cell, sp)
-            # Filter by spell range and line of sight
-            cells = self._filter_spell_cells_by_range_and_los(aoe_cells, caster_idx, sp, center_cell=self.spell_hover_cell)
+            cells = self._area_template(caster_idx, sp, self.spell_hover_cell)
 
         fill_s   = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
         fill_s.fill((160, 80, 220, 60))

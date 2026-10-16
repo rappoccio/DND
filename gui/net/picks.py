@@ -15,7 +15,12 @@ for a token a player controls, `offer.ensure` posts this module's prompt as its 
     armed and the prompt is posted again on the next frame;
   · a cancel runs the arm's own cancel, which is also what Esc runs on the DM console.
     A cancel by the DM is a take-over (Step 0.6): it leaves the pick armed, so the DM's
-    click that caused it resolves the pick instead.
+    click that caused it resolves the pick instead;
+  · an area spell is aimed, then confirmed (M5e E-8). The DM sees the template follow the
+    mouse, but a client never says where it is hovering, so a tap only aims: it is held
+    in `app._aoe_aim`, and the same slot then posts a `kind:"confirm"` choice (Cast here /
+    Re-aim) whose `aoe` is the template, cut to the cells above. Cast here runs
+    `resolve_pick` on the held cell. The DM console never aims: its click still resolves.
 
 `ARMS` lists every arm the click chain knows, in the chain's order, so that the arm this
 module projects is the arm a click would resolve. `tests/test_picks.py` holds the order to
@@ -37,6 +42,8 @@ from prompts import Option
 TARGET, CELL = "target", "cell"
 PICK_RENDER = "remote"
 DONE_ID = "done"
+CONFIRM = "confirm"
+CAST_ID, REAIM_ID = "cast", "reaim"
 NOT_TAKEN = "Nothing there to pick. Choose again, or cancel."
 
 
@@ -150,6 +157,7 @@ def cancel_spell(app) -> None:
     and keeps the arm, so the next pick is the start point again. Otherwise it disarms.
     Nothing is refunded: a normal cast spends at resolution, and the four casts that spend
     before the pick (F-M5e-2) lose it, as Esc always has."""
+    app._aoe_aim = None
     if app._pending_spell_is_wall() and app.spell_anchor_cell is not None:
         app.spell_anchor_cell = None
         app._combat_log_add("Wall anchor cleared — click a new start point.")
@@ -480,15 +488,22 @@ def projection(app, arm: Arm, actor: int, owner: str) -> tuple:
     """What the prompt shows. `ensure` re-posts when this changes, and not otherwise."""
     done = arm.done is not None and arm.done(app)
     return (arm.name, actor, owner, arm.kind_for(app), arm.title(app), done,
-            tuple(cells(app, arm, actor)))
+            tuple(cells(app, arm, actor)), aim(app, arm))
 
 
 def post(app, arm: Arm, actor: int, owner: str, parent):
-    """Post the target prompt for `arm`, and remember it as the live pick prompt."""
+    """Post the target prompt for `arm`, or its confirm while an aim is held, and remember
+    it as the live pick prompt."""
+    center = aim(app, arm)
+    if center is not None:
+        return _post_confirm(app, arm, actor, owner, parent, center)
     holder: dict = {}
 
     def _answer(response):
         col, row = response.cell
+        if aiming(app, arm):
+            app._aoe_aim = (col, row)    # the next frame posts the confirm
+            return
         cell = rpg.Cell(col, row)
         taken = (arm.resolve(app, actor, cell) if arm.resolve is not None
                  else app.resolve_pick(cell))
@@ -507,6 +522,62 @@ def post(app, arm: Arm, actor: int, owner: str, parent):
                              expects="cell", parent=parent, render=PICK_RENDER,
                              cells=cells(app, arm, actor), on_answer=_answer,
                              on_cancel=_cancel)
+    holder["p"] = prompt
+    app._pick_prompt = prompt
+    return prompt
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Aim, then confirm (M5e E-8)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def aiming(app, arm: Arm) -> bool:
+    """True when a tap on this arm aims rather than resolves: the spell arm, in its area
+    shape. A wall, a teleport and a door resolve on the tap, as before."""
+    return arm.name == "pending_spell_slot" and spell_shape(app) == AREA
+
+
+def aim(app, arm: Arm) -> tuple[int, int] | None:
+    """The held aim for `arm`, or None. An aim left over from another shape is not one."""
+    return app._aoe_aim if aiming(app, arm) else None
+
+
+def template(app, arm: Arm, actor: int, center: tuple[int, int]) -> list[tuple[int, int]]:
+    """The cells the spell would cover from `center`, as the hover preview draws them, cut
+    to what the viewer may hear about (`cells`), so the overlay outlines nothing in fog."""
+    sp = app._pending_spell()
+    if sp is None:
+        return []
+    shown = set(cells(app, arm, actor))
+    return sorted(p for p in ((c.col, c.row) for c in
+                              app._area_template(actor, sp, rpg.Cell(*center)))
+                  if p in shown)
+
+
+def _post_confirm(app, arm: Arm, actor: int, owner: str, parent, center):
+    holder: dict = {}
+
+    def _cast():
+        app._aoe_aim = None
+        if arm.armed(app) and not app.resolve_pick(rpg.Cell(*center)):
+            _say(app, NOT_TAKEN)
+
+    def _reaim():
+        app._aoe_aim = None
+
+    def _cancel():
+        # As for the pick: a cancel by the DM is a take-over, and leaves the spell armed.
+        app._aoe_aim = None
+        if holder["p"].resolved_by != DM_PRINCIPAL_ID and arm.armed(app):
+            arm.cancel(app)
+
+    sp = app._pending_spell()
+    name = sp.name if sp is not None else "Spell"
+    options = [Option(CAST_ID, "Cast here", on_choose=_cast),
+               Option(REAIM_ID, "Re-aim", on_choose=_reaim)]
+    prompt = app.prompts.ask(actor, owner, CONFIRM, f"{name}: cast here?", options,
+                             parent=parent, render=PICK_RENDER,
+                             aoe=template(app, arm, actor, center), on_cancel=_cancel)
     holder["p"] = prompt
     app._pick_prompt = prompt
     return prompt
