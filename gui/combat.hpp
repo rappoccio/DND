@@ -564,6 +564,11 @@ public:
         return out;
     }
 
+    // M4b B-2: also record human-driven moves (see CombatContext::record_moves_). The GUI drains
+    // them with takeNpcVisualEvents after begin_move / submit_decision / move_agent.
+    [[nodiscard]] bool recordMoves() const noexcept { return ctx_.record_moves_; }
+    void setRecordMoves(bool on) noexcept { ctx_.record_moves_ = on; }
+
     // OnTurnStartNearby eligibility + apply (declared public for tests / GUI gating).
     // Mirrors canRiposte's 5 ft reach test plus reaction-free/alive/!incapacitated. (Sentinel is NOT a
     // turn-start reaction — it provokes an OA on Disengage; see detectProvokes / Agent::Stats::has_sentinel.)
@@ -2044,7 +2049,7 @@ private:
     // resolved, so it can animate. No-op when no hook is installed (headless / tests).
     // ── NPC visual event stream (NPC turn playback) ──────────────────────────
     void recordNpcMove(int agent_idx, const std::vector<Cell>& path) {
-        if (!ctx_.npc_recording_ || path.size() < 2) return;
+        if (!(ctx_.npc_recording_ || ctx_.record_moves_) || path.size() < 2) return;
         NpcVisualEvent e;
         e.kind = NpcVisualEvent::Move; e.agent_idx = agent_idx; e.path = path;
         ctx_.npc_visual_events_.push_back(std::move(e));

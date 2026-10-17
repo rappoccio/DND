@@ -200,6 +200,12 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "events back — token slides along Move paths, Announce text scrolls above the actor,\n"
              "Outcome flashes/HP-bar updates land in narrative order — before advancing the turn or\n"
              "opening the parked reaction menu.")
+        .def_property("record_moves",
+             &CombatEngine::recordMoves, &CombatEngine::setRecordMoves,
+             "M4b: when True, a player- or DM-driven move also records a Move event (one per\n"
+             "committed move, after any Opportunity Attack resolves), drained by\n"
+             "take_npc_visual_events. Off by\n"
+             "default; headless/RL callers leave it off. Only moves — attacks still record nothing.")
         .def("can_branches_of_tree",
              &CombatEngine::canBranchesOfTree,
              py::arg("battle_map"), py::arg("reactor"), py::arg("source"),

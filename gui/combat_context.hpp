@@ -101,6 +101,10 @@ struct CombatContext {
     // cleared when the turn completes. Every recorder is a no-op otherwise, so player-driven flows
     // and headless RL/tests never accumulate events beyond one turn (fresh turns clear the buffer).
     bool npc_recording_{false};
+    // M4b B-2: when set, recordNpcMove also records a player- or DM-driven move, so the GUI can
+    // slide it. Off by default — RL and headless callers never set it. Moves only: the other
+    // recorders stay gated on npc_recording_ alone. A GUI setting, not game state.
+    bool record_moves_{false};
     std::vector<NpcVisualEvent> npc_visual_events_;
 
     // ── Serialization (COMBAT_REFACTOR_PLAN.md R3/R5) ───────────────────────

@@ -196,10 +196,113 @@ def test_fresh_turn_clears_undrained_events():
     print("✅ test_fresh_turn_clears_undrained_events passed")
 
 
+# ── record_moves (M4b B-2): human moves record a Move too, only when switched on ──
+def _ready_walker(engine, bm, idx, walk=60):
+    """A walk budget on both sides of the split: the engine's turn and the Agent's own
+    (BattleMap::moveAgent reads the latter, which begin_turn does not seed)."""
+    s = engine.get_agent_stats(bm, idx)
+    s.speed_walk = walk
+    engine.set_agent_stats(bm, idx, s)
+    engine.begin_turn(bm, idx)
+    bm.placed_agents[idx].init_movement(walk, 0, 0, 0)
+
+
+def _origin(bm, idx):
+    o = bm.placed_agents[idx].origin
+    return (o.col, o.row)
+
+
+def _cells(path):
+    return [(c.col, c.row) for c in path]
+
+
+def test_record_moves_is_off_by_default():
+    """RL and headless callers never set it, so a player-driven walk records nothing."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    m = add_agent_to_battle(engine, bm, create_test_agent("Hero", 5, 5))
+    assert engine.record_moves is False, "record_moves must default to off"
+    _ready_walker(engine, bm, m)
+    status = engine.begin_move(bm, m, rpg.Cell(8, 5), rpg.MovementType.Walk)
+    assert status == rpg.FlowStatus.Completed
+    assert _origin(bm, m) == (8, 5)
+    assert engine.take_npc_visual_events() == [], "a human move recorded with the switch off"
+    print("✅ test_record_moves_is_off_by_default passed")
+
+
+def test_record_moves_records_a_human_walk():
+    """With the switch on, a player-driven begin_move records one Move, origin to dest."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    m = add_agent_to_battle(engine, bm, create_test_agent("Hero", 5, 5))
+    engine.record_moves = True
+    assert engine.record_moves is True
+    _ready_walker(engine, bm, m)
+    status = engine.begin_move(bm, m, rpg.Cell(8, 5), rpg.MovementType.Walk)
+    assert status == rpg.FlowStatus.Completed
+    events = engine.take_npc_visual_events()
+    assert [e.kind for e in events] == [MOVE], f"expected one Move, got {[e.kind for e in events]}"
+    path = _cells(events[0].path)
+    assert events[0].agent_idx == m
+    assert path[0] == (5, 5) and path[-1] == (8, 5), f"path {path} is not origin..dest"
+    assert engine.take_npc_visual_events() == [], "the drain must clear the buffer"
+    print("✅ test_record_moves_records_a_human_walk passed")
+
+
+def test_record_moves_records_an_oa_parked_walk_on_resume():
+    """A walk that provokes parks BEFORE it moves: advanceMove resolves every Opportunity
+    Attack first and then commits the whole route once. So the park records nothing, and
+    the resume records one Move from the origin to the destination."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    m = add_agent_to_battle(engine, bm, create_test_agent("Mover", 5, 5))
+    a = add_agent_to_battle(engine, bm, create_test_agent("Threat", 4, 5))
+    bm.set_agent_faction(m, 2)
+    bm.set_agent_faction(a, 1)
+    _arm_melee(engine, bm, a)
+    engine.record_moves = True
+    _ready_walker(engine, bm, m)
+
+    status = engine.begin_move(bm, m, rpg.Cell(8, 5), rpg.MovementType.Walk)
+    assert status == rpg.FlowStatus.AwaitingDecision, f"expected an OA park, got {status}"
+    assert engine.take_npc_visual_events() == [], "the park moved nothing, so recorded nothing"
+    resp = rpg.ReactionResponse()
+    resp.option = -1   # skip the OA; the walk resumes
+    status = engine.submit_decision(bm, resp)
+    assert status == rpg.FlowStatus.Completed
+    assert _origin(bm, m) == (8, 5)
+
+    events = engine.take_npc_visual_events()
+    assert [e.kind for e in events] == [MOVE], f"expected one Move, got {[e.kind for e in events]}"
+    path = _cells(events[0].path)
+    assert events[0].agent_idx == m
+    assert path[0] == (5, 5) and path[-1] == (8, 5), f"path {path} is not origin..dest"
+    print("✅ test_record_moves_records_an_oa_parked_walk_on_resume passed")
+
+
+def test_record_moves_records_only_moves():
+    """The switch is for routes. A player's swing still records no Announce or Outcome; the
+    GUI's own flashes carry those (B-2)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Hero", 5, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Goblin", 6, 5), hp=20)
+    bm.set_agent_faction(atk, 2)
+    bm.set_agent_faction(foe, 1)
+    _arm_melee(engine, bm, atk)
+    engine.record_moves = True
+    engine.begin_turn(bm, atk)
+    attack = rpg.Attack(atk, foe, 0)
+    attack.attack_slot = "action"
+    assert engine.begin_attack(bm, attack) == rpg.FlowStatus.Completed
+    assert engine.take_npc_visual_events() == [], "record_moves leaked into the attack recorders"
+    print("✅ test_record_moves_records_only_moves passed")
+
+
 if __name__ == "__main__":
     test_drain_starts_empty_and_clears()
     test_melee_turn_records_move_announce_outcome()
     test_aoe_save_records_saved_or_failed()
     test_player_attack_records_nothing()
     test_fresh_turn_clears_undrained_events()
+    test_record_moves_is_off_by_default()
+    test_record_moves_records_a_human_walk()
+    test_record_moves_records_an_oa_parked_walk_on_resume()
+    test_record_moves_records_only_moves()
     print("\nAll NPC visual event tests passed! 🎉")

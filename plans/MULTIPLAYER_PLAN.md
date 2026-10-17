@@ -6687,8 +6687,12 @@ sits on the caster wherever the tap lands, and a Line or Cone aim.
 
 **Next, in order:**
 1. ~~F-M5e-12~~: fixed 2026-10-16, see below.
-2. A manual look in a real browser: the filter box on a phone (Wish's 389 rows), the ward
-   loop's re-post, and the `you.aoe` overlay with its confirm. The user is doing this.
+2. A manual look in a real browser:
+   - ~~the filter box on a phone (Wish's 389 rows)~~: **confirmed working by the user,
+     2026-10-16**;
+   - ~~the ward loop's re-post~~: **confirmed working by the user, 2026-10-16**;
+   - ~~the `you.aoe` overlay with its confirm~~: **confirmed working by the user,
+     2026-10-16**.
 3. **M6**: reconnect, resync and restart.
 
 **Still open:** everything in the M5e.0 handoff's list. Out of M5e by decision: refunds
@@ -6733,6 +6737,284 @@ Both parts, each with its test written first and watched fail in the container.
 - `memory/known_limitations.md` marks the entry fixed.
 - **Recorded behaviour change on the DM console:** a Cleric 20's DI browser lists Wish,
   under its own 9th-level tab, and its title names it.
+
+
+##### Handoff — M5e complete *(written 2026-10-16)*
+
+**State.**
+- **M5e is done.** E-1 through E-10 have landed, F-M5e-12 is fixed, and the user confirmed
+  all three manual browser checks on 2026-10-16:
+  - the filter box on a phone (Wish's 389 rows);
+  - the ward loop's re-post;
+  - the `you.aoe` overlay with its confirm.
+- Last commits:
+  - `06b3b6b` "M5e.4: aim, then confirm, for an area spell";
+  - `043c2ce` "F-M5e-12: Greater Divine Intervention offers Wish".
+
+  `main` is twenty commits ahead of `origin/main`, none pushed. Never push unasked.
+- This plan update (the manual checks, and this handoff) is **uncommitted**.
+- Suite: **167 / 0** in the container (2026-10-16). The goldens are unchanged. No C++
+  changed, and no image rebuild is needed. `tests/test_picks.py` has 71 checks.
+- `maps/TestDNDMap_terrain.json` shows as modified after a suite run. The **user** resets
+  it, so never stage it. The untracked scratch stays out of every commit.
+
+**Read first:** this handoff, then "M5e.4 — what landed" and "F-M5e-12 — fixed" for the
+newest code (`net/picks.py`, the aim and confirm; `App._area_template`; `Prompt.aoe`;
+`you.aoe`).
+
+**Next: choose the next phase with the user.** Neither of these has a frozen Step 0 yet:
+- **M4b**, the event stream and the animation: Envelope 3 (`/events`, gapless `seq`),
+  and the `Move` animation as a per-viewer setting (D-M5-6b). It was deferred out of M5,
+  so tokens still jump.
+- **M6**, reconnect, resync and restart:
+  - a client that reconnects resumes from its `seq`;
+  - after a server restart, players re-join and re-claim their seats (R4);
+  - NN7, a rotating autosave at the turn boundary, and restoring from it.
+
+  M6's resume assumes Envelope 3's `seq`, so M4b probably comes first. Confirm the
+  order with the user.
+
+Whichever is chosen, follow the standing method: survey by reading only, write the
+findings and the proposed decisions as a Step 0, and get the user's "agreed" before any
+code.
+
+**After that:**
+- **M7**, hardening:
+  - DM controls: pause, kick, reveal a region, take over any token, force the turn;
+  - rate limits, join-code rotation, a session log;
+  - optional per-agent fog.
+- **M8**, real authentication. It gets its own document. Run the A1–A9 check at the end
+  of every phase.
+
+**Still open:**
+- The Long Jump draws no Opportunity Attacks (C++).
+- Fix B (C++).
+- The flaky `test_menus.test_on_deck_row_deploys_its_group_on_click`.
+- Row 5, if it comes back.
+- No test covers the Bonus Action rows of `_ARMS_A_SPELL`.
+- Out by decision: refunds (F-M5e-2), Overchannel for a player (E-7), and aim-and-confirm
+  for a wall's end point.
+
+**Rules:**
+- Container only. Never run `docker build`.
+- Stage files by name. Never `-A`.
+- Commit only when asked. Never push unasked.
+
+##### M4b — Step 0 *(frozen 2026-10-16, user: "I approve the technical decisions you made")*
+
+**Goal, in the user's words:** the board in the browser should look "as close as possible to
+the DM screen version". Four choices were put to the user on 2026-10-16, and each one went
+with the recommendation: motion **and** the token look; every move slides, on both screens;
+all flashes reach players; the toggle switches off only the slide.
+
+**Method.** I read the source and ran nothing. The survey covered the NPC playback
+(`main.py:3020–3200`, `_drive_npc_turn_if_pending` `:5087`), `_spawn_flash` and its 15 call
+sites, `_draw_one_agent`, the move commit (`:9740–9790`), the C++ recorders
+(`combat.hpp:2046–2065`, `combat_core.cpp:155`, `combat_movement.cpp:198`,
+`combat_turn.cpp:1515`), `net/link.py` `push_cycle` / `_push_views`, `net/server.py` `_send`,
+`net/view.py` and `net/static/app.js`. Line numbers are as of `043c2ce`.
+
+**Findings.**
+- **F-M4b-1: the DM screen animates automated NPC turns and nothing else.** `run_npc_turn`
+  records `NpcVisualEvent`s while `npc_recording_` is on, and `_npc_anim_start` plays them:
+  - a slide along the route at `NPC_ANIM_CELLS_PER_SEC` = 10;
+  - a typewriter bubble above the actor at 40 characters/s, then a 900 ms hold;
+  - per outcome, a flash with its HP-bar drop, then a 300 ms beat.
+
+  A killed token keeps drawing until the queue drains. Any click or key fast-forwards. The
+  turn advances in `on_done`.
+- **F-M4b-2: a human move jumps, and its route never reaches Python.**
+  `BattleMap::moveAgent` keeps `lastMovePath_` and `CombatEngine::moveAgent` hands it to
+  `recordNpcMove`, but that is gated on `npc_recording_`. `lastMovePath()` is not bound.
+  *(Corrected at M4b.0, 2026-10-16, by a probe in the container: this said an Opportunity
+  Attack splits a move into segments. It does not. `advanceMove` resolves every OA first and
+  then commits the whole route once, to `dest` or, under Sentinel, to the halt cell, so a
+  human move is always one `moveAgent` and one `Move`. The B-2 switch is still the right
+  shape: it records at the commit, wherever the commit happens.)*
+- **F-M4b-3: human flashes are Python-only.** About 15 `_spawn_flash` sites (attacks,
+  Cleave, riders, saves) cover the human-driven path. None of them is an engine event, and
+  none carries an HP value; the bar is live because the state already changed.
+- **F-M4b-4: fog rules on the DM screen.** A mover fogged at playback time skips the slide
+  and lands. A concealed actor's bubble is suppressed (`_npc_concealed_from_party`).
+- **F-M4b-5: the push drops a cycle while one is in flight** (`_send`, D-M4e-4). That is
+  right for a snapshot and wrong for a stream: an event frame dropped this way is a gap.
+- **F-M4b-6: the browser token is a ringed circle**, while `_draw_one_agent` draws:
+  - a team-coloured square (`faction_color`);
+  - sprite art, or the name's first letter when the sprite is a one-letter placeholder;
+  - grey when unconscious;
+  - a red hatch on a corpse.
+
+  `view.agents[].sprite` already carries the basename, and nothing serves the file.
+- **F-M4b-7: `view.seq` is always 0.** No `events` frame exists, and the whole log rides in
+  every view (`net/view.py:115`).
+
+**Proposed decisions.**
+
+1. **B-1: one global stream, projected per viewer.** `net/events.py` holds
+   `EventStream`, the S3 seam: an append-only list of global events with a global index
+   that never leaves the process. At each push cycle, every viewer's new global events are
+   filtered by B-4 and appended to that **principal's** projected stream, which assigns
+   that principal's gapless `seq`. Each socket keeps its own sent cursor into it. Envelope 3
+   is unchanged: `move`, `announce`, `outcome` and `turn`.
+2. **B-2: the sources, all pushed into the stream on the frame thread.**
+   - NPC turns: what `take_npc_visual_events()` returns, appended where
+     `_drive_npc_turn_if_pending` already drains it.
+   - Human moves (F-M4b-2), a **C++ change**: a `record_moves` switch on `CombatEngine`,
+     off by default, so RL and headless runs are untouched. While it is on, `recordNpcMove`
+     records outside NPC turns too: one `move` per committed move, recorded after any
+     Opportunity Attack resolves (see the F-M4b-2 correction). The GUI turns it on at start-up and drains the buffer after
+     `begin_move`, `submit_decision` and `move_agent`, the same way it drains after
+     `run_npc_turn`. No RNG draw changes, so the determinism golden must stay byte-identical.
+   - Flashes (F-M4b-3): `_spawn_flash` appends an `outcome` with `hp_after: -1`, which
+     means "no timed HP drop". `_npc_anim_apply_outcome` calls `_spawn_flash` too, so it
+     must not append again: NPC outcomes come only from the engine's buffer.
+   - Turn changes: `turn` at the boundary `push_cycle` already detects.
+   - `log` is **not** a kind in M4b. The log stays in the view as it is (F-M4b-7);
+     filtering it is separate work.
+3. **B-3: delivery that never loses an event (F-M4b-5).** A cycle sends
+   `[events?, view, prompt?]`. The `events` frame carries everything from the socket's
+   sent cursor onward, and the net loop advances that cursor only after a successful
+   send, publishing it in the `LiveViewer` snapshot the frame tick already reads. A dropped
+   cycle therefore re-sends on the next one rather than leaving a hole. Events are not
+   coalesced: if there are new ones, a cycle carries them. `view.seq` becomes the
+   principal's cursor. Each principal keeps a 512-event ring for `GET /events?since=`; a
+   `since` older than the ring answers with a fresh `view`, which is the resync contract
+   M6 builds on.
+4. **B-4: the filter, the same gates `_agents` uses, and drop rather than redact.**
+   - An event whose agent, or whose `target` for an `announce`, is not in that viewer's
+     `shown` set at projection time is dropped.
+   - A `move` path is cut to its longest suffix of explored cells ending at the
+     destination, so a slide never draws an unexplored corridor. If the destination is
+     hidden, the event is dropped. If the cut leaves fewer than 2 cells, the event becomes
+     a jump.
+   - `hp_after` follows the band rule: an integer for (a)/(b) agents, a band for enemies.
+   - Flash text is sent word for word ("Hit (7)" is damage dealt, which the table sees
+     anyway).
+   - A concealed actor's `announce` is dropped, as on the DM screen.
+5. **B-5: the client plays exactly what the DM screen plays.** `app.js` copies the four
+   timing constants and the draw order, and adds a `requestAnimationFrame` loop that runs
+   only while a playback is active. When an `events` frame arrives, the client keeps the
+   positions, HP and alive state from its current view for every agent the events name,
+   and draws those until the queue drains. A view that arrives mid-playback is stored, but
+   those agents keep their held state until playback ends, so a token never jumps and then
+   slides. A tap on the board fast-forwards that viewer only. The DM's pace never waits for
+   a browser.
+6. **B-6: every move slides on the DM screen too** (the user's choice). A human move's
+   `move` events start an `_npc_anim` playback with `on_done=None`. The move is already
+   committed and the menus are already open, so the slide only changes what is drawn and
+   defers nothing. A click on the board fast-forwards it, as it does an NPC turn today.
+7. **B-7: one "Animate moves" toggle per viewer, on by default; it switches off only the
+   slide** (the user's choice). With it off, a `move` lands at once, while bubbles,
+   flashes and HP timing still play.
+   - Browser: a checkbox in the session header, kept in `localStorage` and never sent.
+   - DM console: an "Animate: ON/OFF" button under "Fog: ON", in session-only state, read
+     by `_advance_npc_playback`.
+
+   That button moves the panel golden if the golden draws that column, which needs checking.
+8. **B-8: the browser token matches `_draw_one_agent`**:
+   - a team-coloured square: the same RGB as `faction_color`, sent as CSS by the client;
+   - the sprite art, or the first letter under the one-letter placeholder rule;
+   - grey when unconscious, and a red hatch on a corpse.
+
+   It keeps the name label and the band, because a player has no hover. The sprite is
+   served by `GET /sprite/<basename>`, behind the same authentication as `/map.png`. It
+   answers only for a basename some agent in **that viewer's** view carries; any other
+   name gets 404, so the route can't be used to list the bestiary. It is cacheable, with an
+   ETag.
+9. **B-9: sub-slices.** Each one ends green, with its mutants killed.
+   - **M4b.0:** the C++ `record_moves` switch and its binding, with a failing test first.
+     This is the only rebuild.
+   - **M4b.1:** `EventStream`, the projection and the filter (B-1, B-4), unit-tested with
+     no socket.
+   - **M4b.2:** the delivery (B-3): `events` frames, the cursor and `/events?since=`.
+   - **M4b.3:** the playback in the browser (B-5) and the toggle (B-7).
+   - **M4b.4:** human-move slides on the DM screen (B-6).
+   - **M4b.5:** the token look (B-8) and `/sprite`.
+10. **B-10: the oracle.**
+    - The determinism golden stays byte-identical.
+    - The event projection gets a byte-level test of its own, the way `build_view` did.
+    - Mutants that must die:
+      - a global index leaking into `seq`;
+      - a gap after a dropped send;
+      - a hidden agent's `move` or `announce` sent;
+      - a path left uncut through unexplored cells;
+      - an enemy's `hp_after` sent as an integer;
+      - a flash appended twice for an NPC outcome;
+      - `/sprite` serving a basename outside the viewer's view;
+      - `record_moves` on by default.
+    - Manual browser checks, owed to the user: an NPC turn played on a phone beside the DM
+      screen; a player's own move sliding; the toggle off; the token look.
+
+##### M4b.0 — what landed *(2026-10-16, uncommitted)*
+
+- `CombatContext::record_moves_`, off by default and not serialized. `recordNpcMove`
+  records when `npc_recording_ || record_moves_`. The other recorders are untouched.
+- `CombatEngine::recordMoves` / `setRecordMoves`, bound as the `record_moves` property.
+- `tests/test_npc_visual_events.py` gains 4 checks, written first and seen failing
+  (`AttributeError: … no attribute 'record_moves'`):
+  - the switch defaults off, and a human walk records nothing;
+  - with it on, a human walk records one Move, origin to destination;
+  - a walk parked at an OA records nothing at the park and one whole Move on resume;
+  - the switch does not open the attack recorders.
+- Suite **167 / 0** in the container. The goldens are unchanged. Nothing in Python uses the
+  switch yet: M4b.1 adds the stream and M4b.4 turns the switch on.
+- The probe that corrected F-M4b-2 ran in the container.
+
+##### Handoff — M4b.0 committed *(written 2026-10-17)*
+
+**State.**
+- **M4b has started.** Its Step 0 is frozen (user: "I approve the technical decisions you
+  made", 2026-10-16), with the user's four look choices as B-5 to B-8. **M4b.0 is
+  committed** in "M4b.0: record_moves, so a human move records its route", which also
+  carries the M5e-complete handoff and this Step 0.
+- `main` is 1 commit ahead of `origin/main` (M4b.0). The twenty M5 commits before it were pushed by the user. Never push unasked.
+- Suite: **167 / 0** in the container. The goldens are unchanged.
+- **C++ changed in M4b.0, and the installed `.so` is rebuilt.** No image rebuild is needed.
+  M4b.1 to M4b.5 are planned as Python and JS only.
+- `maps/TestDNDMap_terrain.json` shows as modified after a suite run. The **user** resets
+  it, so never stage it. The untracked scratch stays out of every commit.
+
+**Read first:** this handoff, then "M4b — Step 0" (B-1 to B-10), including the F-M4b-2
+correction: a human move commits once, after any Opportunity Attack resolves, so it is
+one `Move`.
+
+**Next: M4b.1, the stream and the filter (B-1, B-4), unit-tested with no socket.**
+- `gui/net/events.py`:
+  - `EventStream`: global, append-only, with an internal index that never leaves the
+    process;
+  - a per-principal projection that assigns a gapless `seq` and keeps a 512-event ring;
+  - per-socket sent cursors for M4b.2.
+- The filter uses the same gates `net/view.py` `_agents` uses: the `shown` set;
+  `announce` dropped when its target is not shown or its actor is concealed; a `move`
+  path cut to its longest explored suffix ending at the destination (dropped if the
+  destination is hidden, a jump if fewer than 2 cells are left); `hp_after` as a band for
+  enemies; flash text word for word.
+- The wire kinds are `move`, `announce`, `outcome` and `turn`, spelled as strings. There is
+  no `log` kind in M4b.
+- The byte-level test goes in the style of the `build_view` oracle, and the B-10 mutants
+  that belong to this slice must die.
+- The sources (B-2) are wired in M4b.1 or M4b.4, whichever is cleaner:
+  - NPC events where `_drive_npc_turn_if_pending` already drains them;
+  - `_spawn_flash` appending an `outcome` with `hp_after: -1`, but **not** when
+    `_npc_anim_apply_outcome` is the caller (no double flash);
+  - `turn` at `push_cycle`'s boundary.
+- **Watch for the B-2 / M4b.4 trap.** Once `record_moves` is on, the human-move drain
+  after `submit_decision` must not steal a parked NPC turn's events. While an NPC turn is
+  parked for a reaction, those events belong to `_resume_npc_turn` → `run_npc_turn`'s
+  drain. The engine exposes no "NPC turn active" flag, so key the drain on Python's own
+  state (`_reaction_finish` coming from `_resume_npc_turn`), or add a binding.
+
+**Then:** M4b.2 delivery, M4b.3 the browser playback and toggle, M4b.4 human-move slides
+on the DM screen, M4b.5 the token look and `/sprite`. Manual browser checks are owed at
+the end (B-10).
+
+**After M4b:** M6, then M7, then M8, as in the M5e-complete handoff. The "still open"
+list there is unchanged.
+
+**Rules:**
+- Container only. Never run `docker build`.
+- Stage files by name. Never `-A`.
+- Commit only when asked. Never push unasked.
 
 ---
 
