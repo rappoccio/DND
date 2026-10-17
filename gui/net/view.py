@@ -42,7 +42,7 @@ import os
 
 import rpg_battle_map as rpg
 
-from net import mapimg
+from net import events as net_events, mapimg
 from net.roster import (Action, PC_FACTION, PROTOCOL_VERSION, Principal,
                         PromptTarget, TokenTarget)
 
@@ -142,13 +142,52 @@ def _agents(app, roster, viewer, is_dm: bool) -> tuple[list[dict], set[int]]:
     out: list[dict] = []
     shown: set[int] = set()
     for i, pt in enumerate(bm_agents(app)):
-        if pt.removed_from_play:
-            continue
-        if not is_dm and (app._agent_fogged(i, pt) or app._npc_concealed_from_party(i, pt)):
+        if not _drawn(app, i, pt, is_dm):
             continue
         out.append(_agent(app, roster, viewer, i, pt, is_dm))
         shown.add(i)
     return out, shown
+
+
+def _drawn(app, idx: int, pt, is_dm: bool) -> bool:
+    """The three gates above, in one place, because ``sight`` must apply exactly these."""
+    if pt.removed_from_play:
+        return False
+    return is_dm or not (app._agent_fogged(idx, pt) or app._npc_concealed_from_party(idx, pt))
+
+
+def sight(app, viewer: Principal) -> net_events.Sight:
+    """What ``viewer`` can see right now, as the event filter needs it (M4b B-4).
+
+    The same entitlement checks and the same ``_drawn`` gates ``build_view`` applies, so an
+    event can never name a creature this viewer's own ``view`` leaves out. It walks the
+    board without building agent records: the push cycle calls it only when a principal
+    has new events to filter.
+
+    Raises ``PermissionError`` for an unseated viewer, as ``build_view`` does.
+    """
+    roster = app.roster
+    if not roster.authorize(viewer, Action.VIEW_SESSION):
+        raise PermissionError("viewer is not seated")
+    is_dm = roster.authorize(viewer, Action.VIEW_DM_CHANNEL)
+    hide_map = bool(app._fog_active()) and not is_dm
+
+    shown, party, sizes = set(), set(), {}
+    for i, pt in enumerate(bm_agents(app)):
+        if not _drawn(app, i, pt, is_dm):
+            continue
+        shown.add(i)
+        sizes[i] = int(pt.size)
+        if pt.faction == PC_FACTION:
+            party.add(i)
+    vitals = {i for i in shown
+              if roster.authorize(viewer, Action.VIEW_TOKEN_VITALS, TokenTarget(i))}
+    hp_max = {i: int(app.combat.get_agent_stats(app.bm, i).hp_max) for i in shown - vitals}
+    explored = (frozenset((c.col, c.row) for c in app.bm.explored_cells())
+                if hide_map else frozenset())
+    return net_events.Sight(shown=frozenset(shown), hide_map=hide_map, explored=explored,
+                            party=frozenset(party), sizes=sizes,
+                            vitals=frozenset(vitals), hp_max=hp_max)
 
 
 def bm_agents(app):
@@ -232,11 +271,8 @@ def _band(stats, cond) -> str:
     a creature's maximum over a few rounds of damage, which is the stat block arriving
     slowly.
     """
-    if cond.dead or cond.unconscious or stats.hp_cur <= 0:
-        return "Down"
-    if stats.hp_cur * 2 <= stats.hp_max:
-        return "Bloodied"
-    return "Healthy"
+    return net_events.band(int(stats.hp_cur), int(stats.hp_max),
+                           down=bool(cond.dead or cond.unconscious))
 
 
 def _conditions(cond, visible_only: bool = False) -> list[str]:

@@ -72,6 +72,7 @@ from atomic_io import atomic_write_json
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
 from net.mapimg import MapImageCache
 from net.commands import CommandQueue
+from net.events import EventStream, outcome as net_outcome
 from net.submit import SubmitLog
 from net import link as net_link
 # `perform` (D-M5-1) asks `authorize()` for a verb, and reaches it qualified as
@@ -993,6 +994,10 @@ class App:
         self._net         = None    # PlayerServer, or None when aiohttp is absent (D1)
         self._net_push_ms = 0       # pygame ticks at the last push cycle (D-M4-2's 250 ms)
         self._net_turn    = None    # last (combat_active, round, turn) — the boundary test
+        # M4b's global event stream (seam S3, `net.events`). Like the image cache it exists
+        # with or without a transport: the sources append on the frame tick whether anyone
+        # is listening or not, and a stream nobody projects holds nothing.
+        self.events       = EventStream()
         # The net thread → frame tick handoff (M4c, D-M4c-1). Exists with or without a
         # transport for the same reason the image cache does: it is the seam, not the
         # server. `GET /state` is its first caller; D-M4-3's `_pump_net()` in the blocking
@@ -2963,12 +2968,21 @@ class App:
         self._status_msg = msg
         self._status_msg_until = pygame.time.get_ticks() + int(secs * 1000)
 
-    def _spawn_flash(self, agent_idx, text: str, color, secs: float = 1.5):
+    def _spawn_flash(self, agent_idx, text: str, color, secs: float = 1.5,
+                     stream: bool = True):
         """Spawn a short-lived floating text flash above an agent's token (e.g.
         "Hit (12)" / "Miss" / "Saved" / "Failed"). Session-only visual state; drawn
-        each frame by _draw_floating_texts until it expires."""
+        each frame by _draw_floating_texts until it expires.
+
+        It is also an `outcome` on the event stream (M4b B-2), with `hp_after: -1`: the
+        human-driven path has already changed the state, so there is no timed drop to
+        play. NPC playback passes `stream=False`, because its outcomes reached the stream
+        from the engine's own buffer and a second copy is a double flash."""
         if agent_idx is None or agent_idx < 0:
             return
+        if stream:
+            self.events.append(net_outcome(agent_idx, text, good=color != FLASH_BAD,
+                                           crit=color == FLASH_CRIT))
         # Stagger multiple flashes on the same agent (e.g. multiattack) so they
         # rise from different heights rather than overlapping.
         rise = sum(20 for f in self._floating_texts if f["agent_idx"] == agent_idx)
@@ -3139,7 +3153,8 @@ class App:
         """One-shot side effects of an Outcome event: the floating flash and the synced
         HP-bar override. (A killed token keeps drawing until the playback drains — see
         draw_dead — so the killing-blow flash isn't orphaned over an empty square.)"""
-        self._spawn_flash(ev.agent_idx, ev.text, FLASH_GOOD if ev.good else FLASH_BAD)
+        self._spawn_flash(ev.agent_idx, ev.text, FLASH_GOOD if ev.good else FLASH_BAD,
+                          stream=False)   # already on the stream, from the engine's buffer
         if ev.hp_after >= 0:
             self._npc_anim["hp"][ev.agent_idx] = ev.hp_after
 
@@ -5113,6 +5128,7 @@ class App:
             if detection_msg:
                 self._combat_log_add(detection_msg)
         events = self.combat.take_npc_visual_events()
+        self.events.extend_npc(events)   # M4b B-2: the players' copy of what plays below
         if status == rpg.FlowStatus.AwaitingDecision and self.combat.pending_decision().active:
             # The NPC attempted an action; a human gets a reaction/counter window. When it closes,
             # re-arm the driver so run_npc_turn resumes next frame (one step per frame, still watchable).

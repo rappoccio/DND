@@ -7016,6 +7016,91 @@ list there is unchanged.
 - Stage files by name. Never `-A`.
 - Commit only when asked. Never push unasked.
 
+##### M4b.1 — what landed *(2026-10-17, commit "M4b.1: the event stream and its fog filter")*
+
+- **`gui/net/events.py`** (new; imports neither pygame nor the extension):
+  - `EventStream`: the global list, its position internal. It is trimmed to the slowest
+    projection's position, so a stream nobody projects holds nothing.
+  - `Projection`: one per principal, opened at the head (a newcomer starts from a
+    `view`). It has a gapless `seq`, a `RING_SIZE` = 512 ring, `since()` / `frame()`
+    raising `Resync` outside the ring or ahead of it, and per-socket `attach` / `ack` /
+    `detach` / `socket_frame`. Only `ack` advances a cursor, and never backwards or past
+    the stream.
+  - `visible(ev, sight)`: the B-4 filter. `Sight` is a frozen dataclass of everything it
+    reads. `project()` takes a `Sight` or a callable, so a cycle with nothing new never
+    walks the board.
+  - Constructors: `from_npc`, `outcome`, `turn`. `band()` is the one band function, and
+    `net/view._band` now calls it.
+- **`net/view.py`**: `_drawn()` holds `_agents`' three gates, and `sight(app, viewer)` uses
+  the same gates and the same `authorize` calls, so the filter and the view can't disagree.
+- **Sources wired (B-2), two of four:**
+  - `_drive_npc_turn_if_pending` appends the drained NPC events;
+  - `_spawn_flash` appends an `outcome` (`hp_after` -1). It takes `stream=False` from
+    `_npc_anim_apply_outcome`, so an NPC outcome is not appended twice.
+  - `turn` moves to M4b.2, with `push_cycle`, which returns early with no transport. Human
+    moves stay in M4b.4, with the B-2 trap.
+- **`tests/test_events.py`** (new, registered beside `test_gameview.py`), 17 checks: 12
+  with a hand-built `Sight`, 5 on the `test_gameview` scene (byte-level for the hidden
+  creature, `sight` against `build_view`, and the two sources).
+- **Mutants, all killed** (10), run on a container-local copy with a passing no-change
+  control:
+  - a global index into `seq`, as holes and as the starting value;
+  - a hidden agent's `move` / `announce`, and a hidden `announce` target;
+  - an uncut path;
+  - an enemy's `hp_after` as an integer;
+  - a double NPC flash;
+  - a cursor advanced by building a frame rather than by `ack` (the gap after a dropped
+    send);
+  - `sight` without the view's gates;
+  - the NPC drain not streamed.
+- Suite **168 / 0** in the container. The goldens are unchanged. No C++ changed.
+
+**Decisions this slice made that Step 0 did not spell out:**
+- **`NpcVisualEvent.kind` is a plain `int`** across the binding (`combat_types.hpp:814`),
+  not the enum. `events._NPC_KINDS` maps `0|1|2` to strings, and a test pins that table
+  against the whole `NpcVisualEvent.Kind` enum, so a new C++ member fails the suite.
+- **`outcome` HP fields are omitted rather than `-1`.** `hp_after` rides only for a
+  `vitals` agent, and `band` only for anyone else, and only when the engine gave a value.
+  A GUI flash sends neither, so "no field" is the client's one test for "leave the bar
+  alone". This amends Envelope 3's `hp_after: -1`.
+- **`outcome` carries `crit: true`** when the DM screen draws gold (`FLASH_CRIT`). `good`
+  alone would turn a critical hit green on the player's screen.
+- **`announce.target` is `null`** where the engine says -1 (an area, or nobody).
+- **The DM principal is unfiltered**, as in `_agents`. The concealed-actor drop is the
+  concealment gate in `shown`, so it applies to players only.
+- **A party token's path is never cut**, as `_agent_fogged` never fogs one. A path cell
+  counts as seen if any cell of the footprint at that origin is explored, which is the
+  same rule.
+- **Visibility is read at projection time**, which is the push cycle after the turn has
+  resolved. That is the moment the DM screen's playback reads it too.
+
+##### Handoff — M4b.1 landed *(written 2026-10-17)*
+
+**State.** M4b.1 is committed in "M4b.1: the event stream and its fog filter":
+- new: `gui/net/events.py` and `tests/test_events.py`;
+- changed: `gui/net/view.py`, `gui/main.py` and `tests/run_all_tests.py`;
+- this plan.
+
+Suite 168 / 0, goldens unchanged. `.claude/mutants_m4b1.py` is the mutant harness. It is
+untracked scratch, and it is not to be staged.
+
+**Next: M4b.2, delivery (B-3).**
+- `push_cycle`:
+  - append `turn` at the boundary it already detects;
+  - `project()` once per connected principal;
+  - send `[events?, view, prompt?]` per socket, with `view.seq` = the principal's cursor;
+  - `attach` a socket when it first appears, `detach` it when it goes.
+- The net loop publishes each socket's sent cursor in the `LiveViewer` snapshot after a
+  successful send. The frame tick `ack`s from it.
+- `GET /events?since=` reads the ring and answers `Resync` with a fresh `view`.
+- **A principal with no socket keeps being projected** (user's decision, 2026-10-17:
+  "Keep updating their stream"). Every *seated* principal is projected each cycle, not
+  only the connected ones, so a reconnect within the 512-event ring resumes from its
+  `seq` (M6). The cost is one `sight()` board walk per principal, only on a cycle with new
+  events. `forget` runs when the seat goes away (kick or revoke), never on a disconnect.
+  This means `project()` is driven from the roster's seated principals, not from
+  `live_viewers()`.
+
 ---
 
 ### M6 — Reconnect, resync, restart

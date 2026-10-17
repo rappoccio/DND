@@ -93,6 +93,11 @@ test_scripts = [
     # not break a feature, it quietly hands a player the enemy they cannot see.
     "test_gameview.py",
 
+    # The event projection (MULTIPLAYER_PLAN.md M4b.1, seam S3) — the same filter applied
+    # to what HAPPENED rather than to where things are, with the same byte-level checks:
+    # an event about a creature in the fog is a hidden token arriving by another route.
+    "test_events.py",
+
     # The masked page image (MULTIPLAYER_PLAN.md M4, D-M4-1) — `GET /map.png`. Kept with
     # the oracles for the same reason as the view: it is the one place the map crosses the
     # wire as ART, so a regression here undoes D-M3-5's filtering in a form no field-level
