@@ -2155,6 +2155,17 @@ class App:
             print(f"Warning: could not write {os.path.basename(self._session_path)}: {e}")
 
     # ── Save / load callbacks called by the file browser ─────────────────────
+    @staticmethod
+    def _sidecar_base(agents_path: str) -> tuple[str, str]:
+        """(dir, base) for an agents file: '<dir>/<base>_agents.json', or
+        '<dir>/<base>.json' for a plain name. Every sidecar is '<dir>/<base>_<kind>.json'."""
+        fn = os.path.basename(agents_path)
+        if fn.endswith("_agents.json"):
+            base = fn[:-len("_agents.json")]
+        else:
+            base = os.path.splitext(fn)[0]
+        return os.path.dirname(agents_path), base
+
     def _set_encounter_base(self, agents_path: str):
         """Point all per-encounter sidecar files at the same base name as the chosen
         agents file, so one map PNG can host many encounters.
@@ -2164,12 +2175,7 @@ class App:
         '<base>_effects.json' and '<base>_lighting.json'.
         """
         self._save_path = agents_path
-        d  = os.path.dirname(agents_path)
-        fn = os.path.basename(agents_path)
-        if fn.endswith("_agents.json"):
-            base = fn[:-len("_agents.json")]
-        else:
-            base = os.path.splitext(fn)[0]
+        d, base = self._sidecar_base(agents_path)
         self._terrain_path  = os.path.join(d, base + "_terrain.json")
         self._effects_path  = os.path.join(d, base + "_effects.json")
         self._lighting_path = os.path.join(d, base + "_lighting.json")
@@ -2498,8 +2504,26 @@ class App:
         # The terrain editor works on the fit-scale map_surf (its regions are stored in
         # fit-scale px) and zooms/pans with a view of its own, so hand it fit scale.
         self._reset_zoom()
+        # The editor edits self._ladders in place; snapshot it so the close can pair the
+        # ladders placed / removed this session with their other ends (_pair_ladders).
+        self._ladders_at_open = [self._ladder_key(lad) for lad in self._ladders]
         self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm,
                                  ladders=self._ladders, door_links=self._door_links)
+
+    def _close_terrain_editor(self):
+        """Esc in the terrain editor: take its edits, save them, give new / removed
+        ladders their other ends, and re-apply terrain to the engine."""
+        self._terrain_regions = self.terrain_editor.terrain_regions
+        self._ladders = self.terrain_editor.ladders
+        self._door_links = self.terrain_editor.door_links
+        self._save_terrain()
+        self._pair_ladders(getattr(self, "_ladders_at_open", []))
+        self._apply_terrain_to_battle_map()
+        self.terrain_editor.close()
+        # Recalculate reach and attack overlays if an agent is selected
+        if self.selected_idx >= 0:
+            self._update_reach()
+            self._update_attack_overlay()
 
     def _toggle_show_terrain(self):
         self.show_terrain = not self.show_terrain
@@ -5338,6 +5362,81 @@ class App:
         carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
         if self._switch_to_page(page, drop_cell=local, carry=carry):
             self._flash_status(f"Climbed to floor {Z}: {page.id}")
+
+    @staticmethod
+    def _ladder_key(lad) -> tuple:
+        """Hashable identity of a ladder record: its cells and its global target."""
+        return (tuple((int(c[0]), int(c[1])) for c in lad["cells"]),
+                tuple(int(v) for v in lad["target"]))
+
+    def _page_terrain_path(self, page: MapPage) -> str:
+        """The ``_terrain.json`` a dungeon page loads, resolved like _switch_to_page does."""
+        enc = page.encounter_base
+        if not os.path.isabs(enc):
+            enc = os.path.join(self._dungeon_dir(), enc)
+        d, base = self._sidecar_base(enc)
+        return os.path.join(d, base + "_terrain.json")
+
+    def _pair_ladders(self, before):
+        """Give every ladder the terrain editor added this session a return ladder on the
+        page it leads to, and take the return ladder away with any it removed.
+
+        ``before`` is the list of _ladder_key()s at editor open. A ladder's other end lives
+        in another page's _terrain.json (a different floor, never the page on screen), so
+        it is edited on disk; the page reads it the next time it is switched to. The return
+        ladder stands on the landing cell and targets this ladder's own global cell. A
+        landing cell that already holds a ladder is left alone, and a removal only deletes
+        a return ladder that still points back here. Without a dungeon there is no other
+        page, so nothing is paired."""
+        if self.dungeon is None or self.dungeon_page is None:
+            return
+        here = self.dungeon_page
+        after = [self._ladder_key(lad) for lad in self._ladders]
+        added = [k for k in after if k not in before]
+        removed = [k for k in before if k not in after]
+        notes = []
+        for key, adding in [(k, True) for k in added] + [(k, False) for k in removed]:
+            cells, target = key
+            page = self.dungeon.page_at_global(*target)
+            local = page.global_to_local(*target) if page is not None else None
+            if local is None or page.id == here.id:
+                if adding:
+                    notes.append(f"no map at {list(target)}; ladder is one-way")
+                continue
+            back = list(here.local_to_global(*cells[0]))
+            path = self._page_terrain_path(page)
+            try:
+                with open(path) as f:
+                    doc = json.load(f)
+            except FileNotFoundError:
+                doc = {"regions": [], "walls_enabled": True}
+            except (OSError, json.JSONDecodeError) as e:
+                notes.append(f"could not read {os.path.basename(path)}: {e}")
+                continue
+            ladders = doc.setdefault("ladders", [])
+            on_landing = [i for i, lad in enumerate(ladders)
+                          if any(int(c[0]) == local[0] and int(c[1]) == local[1]
+                                 for c in lad.get("cells", []))]
+            if adding:
+                if on_landing:
+                    notes.append(f"'{page.id}' already has a ladder at {list(local)}")
+                    continue
+                ladders.append({"cells": [list(local)], "target": back})
+                notes.append(f"return ladder on '{page.id}' at {list(local)}")
+            else:
+                mine = [i for i in on_landing
+                        if [int(v) for v in ladders[i].get("target", [])] == back]
+                if not mine:
+                    continue
+                for i in reversed(mine):
+                    ladders.pop(i)
+                notes.append(f"removed return ladder on '{page.id}'")
+            try:
+                atomic_write_json(path, doc)
+            except OSError as e:
+                notes.append(f"could not write {os.path.basename(path)}: {e}")
+        if notes:
+            self._flash_status("Ladders: " + "; ".join(notes))
 
     def _door_by_id(self, door_id: int):
         """The rpg.Door with ``id == door_id`` on the active map, or None."""
@@ -17491,16 +17590,7 @@ class App:
                 self.terrain_editor.handle(event)
                 # Handle close/save for terrain editor
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    self._terrain_regions = self.terrain_editor.terrain_regions
-                    self._ladders = self.terrain_editor.ladders
-                    self._door_links = self.terrain_editor.door_links
-                    self._save_terrain()
-                    self._apply_terrain_to_battle_map()
-                    self.terrain_editor.close()
-                    # Recalculate reach and attack overlays if an agent is selected
-                    if self.selected_idx >= 0:
-                        self._update_reach()
-                        self._update_attack_overlay()
+                    self._close_terrain_editor()
                 continue
 
             # ── Lighting editor gets priority when open ──────────────────
