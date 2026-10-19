@@ -3,7 +3,7 @@
 A ``view`` says where everything *is*; this says how it got there. The DM screen plays an
 automated turn as a slide, a typewriter bubble and a flash per outcome, and Envelope 3 is
 that playback on the wire. M4b.1 is this module: the stream, the projection and the filter.
-Delivery (M4b.2) and the browser playback (M4b.3) read it.
+Delivery (M4b.2, ``net.link`` and ``net.server``) and the browser playback (M4b.3) read it.
 
 **One global stream, projected per principal (B-1).** Everything the session does is
 appended once, to a global list whose position never leaves the process. A principal's
@@ -251,17 +251,24 @@ class Projection:
                 "seq": self.seq, "events": events}
 
     # ── Sockets ─────────────────────────────────────────────────────────────
-    def attach(self, socket_id: str) -> int:
+    def attach(self, socket_id: str, at: int | None = None) -> int:
         """Start a socket at the current cursor: it is about to be sent a ``view`` at this
-        ``seq``, which already shows everything before it."""
-        self._sent[socket_id] = self.seq
-        return self.seq
+        ``seq``, which already shows everything before it.
+
+        ``at`` starts it further back instead: the ``seq`` of a view the socket already
+        holds, such as its connect-time one (M4b.2). Clamped to the stream, and a value
+        that has fallen off the ring makes the next frame a ``Resync``."""
+        self._sent[socket_id] = self.seq if at is None else max(0, min(int(at), self.seq))
+        return self._sent[socket_id]
 
     def detach(self, socket_id: str) -> None:
         self._sent.pop(socket_id, None)
 
     def sent(self, socket_id: str) -> int | None:
         return self._sent.get(socket_id)
+
+    def sockets(self) -> tuple[str, ...]:
+        return tuple(self._sent)
 
     def ack(self, socket_id: str, seq: int) -> None:
         """The net loop sent ``socket_id`` everything up to ``seq``. Never moves a cursor
@@ -334,6 +341,22 @@ class EventStream:
     def forget(self, principal_id: str) -> None:
         self._views.pop(principal_id, None)
         self._trim()
+
+    def retain(self, principal_ids) -> None:
+        """Forget every projection whose principal is not in ``principal_ids``: the seat
+        went away (M4b.2). A disconnect is not this; a seated principal keeps its stream."""
+        keep = set(principal_ids)
+        for pid in [p for p in self._views if p not in keep]:
+            self.forget(pid)
+
+    def detach_gone(self, socket_ids) -> None:
+        """Detach every socket not in ``socket_ids``, the connections that still exist.
+        That is every connection, in flight or not: a socket mid-send keeps its cursor."""
+        live = set(socket_ids)
+        for p in self._views.values():
+            for sid in p.sockets():
+                if sid not in live:
+                    p.detach(sid)
 
     def _trim(self) -> None:
         """Drop the global events every projection has already filtered."""

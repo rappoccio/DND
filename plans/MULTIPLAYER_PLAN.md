@@ -7101,6 +7101,127 @@ untracked scratch, and it is not to be staged.
   This means `project()` is driven from the roster's seated principals, not from
   `live_viewers()`.
 
+##### M4b.2 — what landed *(2026-10-17, commit "M4b.2: event delivery, the sent cursor and /events")*
+
+- **`net/link.py`, the frame-tick half:**
+  - `push_cycle` appends `turn(round, turn_idx, agent)` at the boundary it already
+    detects, before anyone is projected, so it lands after the turn's own moves and
+    flashes. It is not appended on the first cycle (`_net_turn` is `None`), whose boundary
+    is only the server starting.
+  - `_project_seated` projects **every seated principal** each cycle, connected or not
+    (the user's decision). `retain` forgets a stream only when its seat goes, and
+    `detach_gone` drops a socket's cursor only when the connection is gone.
+  - `_push_views`: the first cycle a socket appears, its cursor is attached; after that it
+    moves only by `ack(viewer.sent_seq)`.
+  - `build_live(app, viewer, socket_id=None)` sends `[events?, view, prompt?]`.
+    `view.seq` is the principal's `seq`, so the `events` frame and the view end at the
+    same number. A cursor that fell off the ring is re-attached at the head, with no
+    `events` frame, and the view is the resync.
+  - `view_at_seq` is `GET /state`'s builder, so `/state` carries the `seq` too.
+  - `events_since` is `GET /events?since=`'s answer.
+- **`net/server.py`, the net-loop half:**
+  - `_LiveConn.sent_seq` is set in `_send` only after every frame of a cycle went out.
+    `LiveViewer` carries it to the frame tick.
+  - `live_ids()` publishes every connection id, **including one mid-send**.
+    `live_viewers()` still leaves that one out (D-M4e-4), and detaching on absence from it
+    would lose the events the next cycle has to re-send.
+  - `_contiguous` holds the client's one invariant: an `events` frame always starts at the
+    `seq` this socket was last sent. A prefix the socket already holds is cut, which
+    happens when two cycles were built from the same cursor and both went out. A frame
+    that would leave a gap, or that comes before any view, is dropped, and the view in the
+    same cycle resyncs.
+  - `GET /events?since=` is authenticated like `/state` and answered on the frame tick
+    through the command queue. It answers in one of three ways: an `events` frame; an
+    `events` frame with an empty list when nothing is new; or a `view` when `since` is
+    negative, ahead of the stream, or older than the ring. A missing or non-integer
+    `since` is `400 protocol`. A server built without the handler answers every `since`
+    with a view, which is always a correct answer.
+- **`net/events.py`:** `Projection.attach(socket_id, at=None)`, `sockets()`,
+  `EventStream.retain()` and `detach_gone()`.
+- **Tests.** `tests/test_event_delivery.py` is new, with 12 checks, registered after
+  `test_events.py`:
+  - nine checks on the frame-tick half against a stand-in transport;
+  - two on the net-loop half, on a server that is built but never started;
+  - one end-to-end check over a real socket and the real route.
+
+  `test_live.test_no_route_is_a_prefix` now lists `/events` in the pinned route table.
+- **Mutants: all 16 killed**, plus a passing no-change control (`.claude/mutants_m4b2.py`,
+  untracked scratch):
+  - the B-10 gap, both ways: `sent_seq` published on a failed send, and the tick acking
+    what it built;
+  - `view.seq` not the principal's;
+  - only connected principals projected;
+  - a stream outliving its seat;
+  - a socket mid-send detached, and `live_ids` dropping in-flight connections;
+  - no `turn`, and a `turn` at startup;
+  - a resent prefix not cut, a gap let through, and events sent before the first view;
+  - a `since` outside the ring patched instead of resynced;
+  - an attach that ignores the held view;
+  - a ring overflow not re-attached;
+  - the snapshot dropping `sent_seq`.
+
+  `turn` at startup survived the first pass. The test opened no stream before the
+  `None` boundary, so the event was trimmed either way. The test now opens the streams
+  first.
+- Suite **169 / 0** in the container. The goldens are unchanged. No C++ changed. The client
+  (`app.js`) is untouched: it ignores an `events` frame until M4b.3.
+
+**Decisions this slice made that the handoff did not spell out:**
+- **A new socket's cursor starts at the view it already holds, not at the head.** The
+  end-to-end test found this. The connect-time resync usually lands before the first
+  push cycle sees the socket. Attaching at the head then silently skipped whatever
+  happened in between. So `attach` takes the published `sent_seq` when there is one.
+- **The net loop enforces contiguity (`_contiguous`), not only the cursor.** The ack
+  crosses the seam a cycle late, so two cycles can be built from one cursor. The client
+  contract M4b.3 relies on is simple: `since` always equals the client's `seq`, and a
+  `view` sets that `seq`.
+- **`/state` carries the principal's `seq`**, so a client can `GET /state` and then
+  `GET /events?since=` from it. `POST /join`'s `server_seq` stays 0, because that answer
+  does not wait for the frame tick.
+
+**Found, not fixed (pre-existing, outside this slice):** `_push_views` builds with the
+`Principal` captured at connect time. A DM rename replaces the roster's `Principal`
+(`dataclasses.replace`), so `authorize` sees `seated != principal`, `build_view` raises
+`PermissionError`, and that socket silently gets no more pushes until it reconnects. The
+fix is probably to build with the principal `verify_credential` returns each cycle. It
+needs its own failing test first. It is logged in `memory/known_limitations.md`.
+
+##### Handoff — M4b.2 landed *(written 2026-10-17)*
+
+**State.**
+- M4b.2 is **committed** in "M4b.2: event delivery, the sent cursor and /events":
+  - changed: `gui/net/events.py`, `gui/net/link.py`, `gui/net/server.py`,
+    `tests/run_all_tests.py`, `tests/test_live.py`, `memory/known_limitations.md` and
+    this plan;
+  - new: `tests/test_event_delivery.py`.
+- `main` is 3 commits ahead of `origin/main` (M4b.0, M4b.1 and M4b.2). Never push unasked.
+- Suite **169 / 0** in the container, and the goldens are unchanged.
+- Leave these alone:
+  - `maps/TestDNDMap_terrain.json`, which a suite run modifies;
+  - `.claude/mutants_m4b1.py` and `.claude/mutants_m4b2.py`, which are untracked
+    scratch.
+
+**Read first:** this handoff, then "M4b.2 — what landed".
+
+**Next: M4b.3, the browser playback (B-5) and the toggle (B-7).**
+- `app.js` handles `t: "events"`:
+  - Apply a frame only when `since` equals the client's `seq`. The server guarantees this,
+    so anything else is a bug: drop the frame and fetch `GET /events?since=`.
+  - A `view` sets the client's `seq`.
+  - While a playback runs, hold the named agents' position, HP and alive state from
+    the previous view (B-5). A tap fast-forwards.
+- It copies the four DM-screen timing constants and the draw order.
+- The "Animate moves" checkbox goes in `localStorage`. It switches off only the slide.
+
+**After that:** M4b.4 (human-move slides on the DM screen, with the B-2 trap), M4b.5 (the
+token look and `/sprite`), the manual browser checks, then M6, M7 and M8. The "still
+open" list is unchanged, plus the rename finding above.
+
+**Rules:**
+- Container only. Never run `docker build`.
+- Stage files by name. Never `-A`.
+- Commit only when asked. Never push unasked.
+
 ---
 
 ### M6 — Reconnect, resync, restart

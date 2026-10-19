@@ -4,7 +4,8 @@ One `aiohttp` application on an asyncio loop of its own, on a thread of its own,
 the pygame process. The skeleton — the thread, the single middleware point A9 requires,
 and `GET /map.png` — landed in M4; `POST /join` and `GET /state` (M4c) added two routes,
 one pre-auth exemption and one shared queue; `WS /live`, `GET /` and the two files beside
-it are M4e's, and with them the route table the plan wrote down is complete.
+it are M4e's, and with them the route table the plan wrote down is complete. M4b.2 adds
+`GET /events?since=` (Envelope 3), answered on the frame tick like `GET /state`.
 
 **The socket is the one route that authenticates itself.** A browser cannot put a header on
 a WebSocket handshake (A3), so `GET /live` is pre-auth in the middleware and validates its
@@ -261,10 +262,15 @@ class LiveViewer:
 
     The credential rides because A5's revocation check has to keep running on a connection
     that is one request an hour long, and `push_cycle` is the only tick that happens.
+
+    `sent_seq` is the `view.seq` of the last send that succeeded, or ``None`` before one
+    has (M4b.2, B-3). The frame tick `ack`s the socket's event cursor from it, which is
+    the only way that cursor moves.
     """
     id: str
     principal: object
     credential: str
+    sent_seq: int | None = None
 
 
 @dataclasses.dataclass
@@ -281,6 +287,7 @@ class _LiveConn:
     principal: object
     credential: str
     in_flight: bool = False
+    sent_seq: int | None = None
     send_lock: asyncio.Lock = dataclasses.field(default_factory=asyncio.Lock)
     tasks: set = dataclasses.field(default_factory=set)
 
@@ -305,6 +312,7 @@ class _LiveConnections:
     def __init__(self) -> None:
         self._conns: dict[str, _LiveConn] = {}
         self._snapshot: tuple[LiveViewer, ...] = ()
+        self._ids: frozenset[str] = frozenset()
         self.connected = 0          # cumulative; the suite reads it, the routes never do
 
     # ── The net loop's half ─────────────────────────────────────────────────
@@ -328,15 +336,26 @@ class _LiveConnections:
         return tuple(self._conns.values())
 
     def republish(self) -> None:
-        """Rebuild the published tuple. One store of one immutable object."""
-        self._snapshot = tuple(LiveViewer(c.id, c.principal, c.credential)
+        """Rebuild the published tuple, and the id set. One store of one immutable object
+        each.
+
+        The id set names every connection, in flight or not (M4b.2). The frame tick
+        detaches an event cursor only for an id missing from it: a socket mid-send is still
+        connected, and its cursor is what lets the next cycle re-send what it may be losing.
+        """
+        self._snapshot = tuple(LiveViewer(c.id, c.principal, c.credential, c.sent_seq)
                                for c in self._conns.values() if not c.in_flight)
+        self._ids = frozenset(self._conns)
 
     # ── The pygame thread's half: one attribute read ─────────────────────────
 
     @property
     def snapshot(self) -> tuple[LiveViewer, ...]:
         return self._snapshot
+
+    @property
+    def ids(self) -> frozenset[str]:
+        return self._ids
 
 
 # ── The server ──────────────────────────────────────────────────────────────
@@ -350,7 +369,7 @@ class PlayerServer:
     """
 
     def __init__(self, roster, map_images, commands, build_view, *,
-                 submits=None, handle_submit=None, build_live=None,
+                 submits=None, handle_submit=None, build_live=None, events_since=None,
                  host: str = PLAYER_HOST, port: int = PLAYER_PORT) -> None:
         """`commands` and `build_view` are the seam, and both are handed in (D-M4c-1).
 
@@ -371,6 +390,11 @@ class PlayerServer:
         self._submits = submits
         self._handle_submit = handle_submit
         self._build_live = build_live or (lambda app, viewer: [build_view(app, viewer)])
+        # M4b.2, handed in the same way: `GET /events?since=`'s answer, built on the frame
+        # tick because the event stream lives there. Without one, every `since` gets a
+        # fresh view, which is the resync answer and therefore always a correct one.
+        self._events_since = events_since or (lambda app, viewer, since:
+                                              build_view(app, viewer))
         self._joins = _JoinLimiter()
         self._live_conns = _LiveConnections()
         self._host = host
@@ -471,6 +495,7 @@ class PlayerServer:
         app.router.add_get("/map.png", self._map_png)
         app.router.add_post("/join", self._join)
         app.router.add_get("/state", self._state)
+        app.router.add_get("/events", self._events)
         app.router.add_get("/live", self._live)
         # `stop()` stops the loop and then runs `runner.cleanup()`, which fires this.
         # Without it a player's browser holds a half-open socket to a process that has gone.
@@ -616,8 +641,8 @@ class PlayerServer:
             # exists so ownership can be (Step 0.4). A seated player owning zero tokens is
             # a spectator, which is legal and is what `false` means.
             "seated": bool(roster.controlled_by(principal.id)),
-            # 0 until `EventStream` (seam S3) exists. D-M3-1 froze the caller as the
-            # supplier of `seq`, and M4c has nothing to supply.
+            # Still 0 since M4b.2. The stream lives on the frame tick (NN1) and this answer
+            # does not wait for one; the client's `seq` comes from its first `view`.
             "server_seq": 0,
         }, headers={"Cache-Control": "no-store"})
 
@@ -706,6 +731,41 @@ class PlayerServer:
         # A view is per-viewer live state that changes every tick. The conditional-request
         # machinery `GET /map.png` earned is exactly wrong here, where nothing repeats.
         return web.json_response(view, headers={"Cache-Control": "no-store"})
+
+    # ── GET /events?since= (Envelope 3, M4b.2 / B-3) ────────────────────────
+
+    async def _events(self, request):
+        """The caller's events after ``since``, or a fresh `view` when the ring cannot say.
+
+        Answered on the frame tick, as `GET /state` is: the stream is pygame-thread state,
+        and this thread is handed frames, never the stream (NN1). The two answers differ
+        by `t`. An `events` frame continues from ``since``, and a `view` replaces the board
+        and restarts at its `seq` (the M6 resync contract).
+
+        A ``since`` that is not an integer is `400 protocol`, the closed set's answer for a
+        malformed request. A well-formed one that is merely out of range is a `view`, so
+        the route says nothing about how far the stream has run past it.
+        """
+        if not self._authorize(request, Action.VIEW_SESSION):
+            return web.Response(status=403, text="forbidden")
+        try:
+            since = int(request.query["since"])
+        except (KeyError, ValueError):
+            return web.Response(status=400, text="protocol")
+        viewer = request["principal"]
+        answer = self._events_since
+
+        try:
+            frame = await asyncio.wait_for(
+                self._commands.submit(lambda app: answer(app, viewer, since)),
+                STATE_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            return web.Response(status=503, text="timeout",
+                                headers={"Retry-After": "1"})
+        except PermissionError:
+            self.denials += 1
+            return web.Response(status=403, text="forbidden")
+        return web.json_response(frame, headers={"Cache-Control": "no-store"})
 
     # ── The client's three files (D-M4e-1) ──────────────────────────────────
 
@@ -925,20 +985,32 @@ class PlayerServer:
         Since M5a a cycle is a list of frames — the view, then the prompt this viewer may
         answer — sent back to back under the socket's lock, so an ack cannot land between
         a view and the prompt it names.
+
+        **Since M4b.2 a dropped cycle is not a lost event (F-M4b-5).** The `events` frame
+        at the front of a cycle runs from the socket's cursor, and that cursor moves only
+        when this publishes `sent_seq`, after every frame went out. A dropped or failed
+        send publishes nothing, so the next cycle carries the same events again.
+        `_contiguous` then holds the client's one invariant: an `events` frame always
+        starts at the `seq` this socket was last sent.
         """
         if conn.in_flight:
             return
         conn.in_flight = True
         self._live_conns.republish()
+        frames = _contiguous(frames, conn.sent_seq)
+        sent = None
         try:
             async with conn.send_lock:
                 for frame in frames:
                     await conn.ws.send_json(frame)
+            sent = _view_seq(frames)
         except Exception:
             # A client that went away mid-send. `_live`'s own `finally` unregisters it; this
             # only declines to take the loop down on its behalf.
             pass
         finally:
+            if sent is not None:
+                conn.sent_seq = sent
             conn.in_flight = False
             self._live_conns.republish()
 
@@ -969,6 +1041,12 @@ class PlayerServer:
         listed, and costs one 250 ms cycle its own resync has already covered.
         """
         return self._live_conns.snapshot
+
+    def live_ids(self) -> frozenset:
+        """Every connection the net loop holds, in flight or not (M4b.2). One attribute
+        read, like `live_viewers()`. The frame tick detaches the event cursor of a socket
+        missing from it, and of no other."""
+        return self._live_conns.ids
 
     def push_views(self, views: dict) -> None:
         """Hand the frame tick's freshly-built views to the net loop. **Schedule only** (F5).
@@ -1005,6 +1083,39 @@ class PlayerServer:
             loop.call_soon_threadsafe(self._close_one, conn_id, code)
         except RuntimeError:
             pass
+
+
+def _contiguous(frames: list, sent_seq: int | None) -> list:
+    """``frames`` with its `events` frame made to start at ``sent_seq`` (M4b.2, B-3).
+
+    Two cycles can be built from the same cursor and sent one after the other: the second
+    was built before the first one's ack crossed back. Its events up to ``sent_seq`` were
+    already delivered, so they are cut, and an `events` frame left with nothing is
+    dropped. A frame that starts *past* ``sent_seq``, or a socket that has not yet been
+    sent a view, would be a gap on the client. That frame is dropped too, and the `view`
+    in the same cycle is the resync. So a client only ever sees `since` equal to its seq.
+    """
+    out = []
+    for frame in frames:
+        if frame.get("t") == "events":
+            since = frame["since"]
+            if sent_seq is None or since > sent_seq:
+                continue
+            if since < sent_seq:
+                events = [e for e in frame["events"] if e["seq"] > sent_seq]
+                if not events:
+                    continue
+                frame = {**frame, "since": sent_seq, "events": events}
+        out.append(frame)
+    return out
+
+
+def _view_seq(frames: list) -> int | None:
+    """The `seq` of the `view` in a cycle: what the client holds once the cycle lands."""
+    for frame in frames:
+        if frame.get("t") == "view" and "seq" in frame:
+            return int(frame["seq"])
+    return None
 
 
 def _submit_frame(msg) -> dict | None:

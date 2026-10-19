@@ -20,6 +20,16 @@ metadata:
 
 ## Architecture / Infrastructure
 
+### A renamed player's socket stops receiving pushes [TODO] (found 2026-10-17, M4b.2)
+**Symptom:** after the DM renames a seated player, that player's browser keeps its socket
+open but gets no more `view` or `events` frames until it reconnects. **Cause:**
+`net/link.py` `_push_views` builds with the `Principal` captured at connect time
+(`LiveViewer.principal`). `rename_principal` replaces the roster's record
+(`dataclasses.replace`), so `authorize` sees `seated != principal`, `build_view` raises
+`PermissionError`, and the cycle skips that socket silently. This predates M4b.2. **Likely
+fix:** build with the principal `verify_credential` returns each cycle. It needs its own
+failing test first and its own commit.
+
 ### Render gate for the Invisible condition [TODO]
 **Status:** The render-suppression chokepoint now EXISTS (built for Summoning): `_draw_one_agent`
 returns early on `pt.removed_from_play`, and `_draw_agents` skips it for selection/highlight. What

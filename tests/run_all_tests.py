@@ -97,6 +97,9 @@ test_scripts = [
     # to what HAPPENED rather than to where things are, with the same byte-level checks:
     # an event about a creature in the fog is a hidden token arriving by another route.
     "test_events.py",
+    # ...and its delivery (M4b.2, B-3): the sent cursor, `events` frames and
+    # `GET /events?since=`. A dropped send must re-send, never leave a gap.
+    "test_event_delivery.py",
 
     # The masked page image (MULTIPLAYER_PLAN.md M4, D-M4-1) — `GET /map.png`. Kept with
     # the oracles for the same reason as the view: it is the one place the map crosses the

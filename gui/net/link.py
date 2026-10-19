@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import pygame
 
-from net import commands, submit as net_submit, view as net_view
+from net import commands, events as net_events, submit as net_submit, view as net_view
+from net.roster import PROTOCOL_VERSION
 
 
 def start_player_server(app) -> None:
@@ -44,10 +45,11 @@ def start_player_server(app) -> None:
         print(f"[net] player server unavailable: {exc}")
         return
     server = PlayerServer(app.roster, app.map_images,
-                          app._net_commands, net_view.build_view,
+                          app._net_commands, view_at_seq,
                           submits=app._net_submits,
                           handle_submit=net_submit.handle_submit,
-                          build_live=build_live)
+                          build_live=build_live,
+                          events_since=events_since)
     try:
         server.start()
     except Exception as exc:                       # a taken 6081 is the realistic one
@@ -96,10 +98,35 @@ def pump_submits(app, budget: int = commands.DEFAULT_BUDGET) -> int:
     return done
 
 
-def build_live(app, viewer) -> list[dict]:
-    """What one socket is sent per cycle: its `view`, then its prompt if it has one.
+def _projection(app, viewer) -> net_events.Projection:
+    """``viewer``'s event stream, filtered up to now (M4b.1's ``project``).
 
-    The prompt goes out **only when `you.prompt_id` names it**, and that id has already
+    Every ``seq`` that leaves the process is read after this, so a view never carries a
+    ``seq`` older than the state it shows. Without it, the events after that ``seq`` would
+    replay, on the client, moves the view already shows as done.
+    """
+    return app.events.project(viewer.id, lambda: net_view.sight(app, viewer))
+
+
+def view_at_seq(app, viewer) -> dict:
+    """``GET /state``'s answer: the view, at this principal's ``seq`` (B-3)."""
+    return net_view.build_view(app, viewer, _projection(app, viewer).seq)
+
+
+def build_live(app, viewer, socket_id: str | None = None) -> list[dict]:
+    """What one socket is sent per cycle: its events, its `view`, then its prompt.
+
+    **Events (M4b.2, B-3).** With a ``socket_id``, the `events` frame carries everything
+    from that socket's cursor, which only ``ack`` advances. A send that was dropped is
+    therefore sent again, whole, on the next cycle. A cursor that fell off the 512-event
+    ring is re-attached at the head, and the `view` in the same cycle is the resync. With
+    no ``socket_id``, as for the connect-time resync, there is no `events` frame: a
+    newcomer starts from a view.
+
+    `view.seq` is the principal's ``seq``, so the view and the `events` frame end at the
+    same number.
+
+    **The prompt** goes out **only when `you.prompt_id` names it**, and that id has already
     passed the `ANSWER_PROMPT` gate in `net.view._you` (D-M3-6). So the prompt body goes
     out behind the same check as its id, and a prompt the viewer may not answer is never
     sent, not even greyed out (F-M5-6). It is re-sent on every cycle while live. A client
@@ -108,14 +135,44 @@ def build_live(app, viewer) -> list[dict]:
     Built fresh on every call, so what crosses the seam is owned by the net thread
     (`CommandQueue` rule 3).
     """
-    view = net_view.build_view(app, viewer)
-    frames = [view]
+    projection = _projection(app, viewer)
+    frames = []
+    if socket_id is not None:
+        try:
+            events = projection.socket_frame(socket_id)
+        except net_events.Resync:
+            projection.attach(socket_id)
+            events = None
+        if events is not None:
+            frames.append(events)
+    view = net_view.build_view(app, viewer, projection.seq)
+    frames.append(view)
     prompt_id = view["you"]["prompt_id"]
     if prompt_id is not None:
         prompt = app.prompts.get(prompt_id)
         if prompt is not None and prompt.is_live:
             frames.append(prompt.to_wire(seq=view["seq"]))
     return frames
+
+
+def events_since(app, viewer, since: int) -> dict:
+    """`GET /events?since=`'s answer (B-3): an `events` frame from the ring, or a `view`.
+
+    A ``since`` the ring cannot answer (older than its 512 events, ahead of the stream, or
+    negative) gets a fresh `view` at the current ``seq`` instead. That is the resync
+    contract M6 builds on: the client replaces its board and carries on from `view.seq`.
+    Nothing new is an `events` frame with an empty list, so the answer's kind says only
+    whether to resync.
+    """
+    projection = _projection(app, viewer)
+    try:
+        frame = projection.frame(since)
+    except net_events.Resync:
+        return net_view.build_view(app, viewer, projection.seq)
+    if frame is None:
+        frame = {"v": PROTOCOL_VERSION, "t": "events", "since": int(since),
+                 "seq": projection.seq, "events": []}
+    return frame
 
 
 def push_cycle(app) -> None:
@@ -130,6 +187,10 @@ def push_cycle(app) -> None:
     party-scoped and published for whoever asks, and one `view` per connected socket, which
     is per-viewer and can only be built here. Called after `_refresh_fog` on purpose, so the
     mask published here is the one that frame draws.
+
+    Since M4b.2 the boundary is also an event: `turn`, appended before anyone is projected,
+    so it lands after the moves and flashes of the turn that just ended. Not on the first
+    cycle, whose "boundary" is only the server starting.
     """
     if app._net is None:
         return
@@ -138,12 +199,45 @@ def push_cycle(app) -> None:
     boundary = turn != app._net_turn
     if not boundary and (now - app._net_push_ms) < net_view.PUSH_INTERVAL_MS:
         return
+    if boundary and app._net_turn is not None:
+        app.events.append(net_events.turn(app.round_num, app.turn_idx, _turn_agent(app)))
     app._net_turn = turn
     app._net_push_ms = now
     # publish() decides whether the new snapshot actually replaces the published one: the
     # image key lags 3 s, but only while the lag is nothing worse than extra fog (D-M4-1).
     app.map_images.publish(net_view.page_image(app), boundary=boundary)
+    _project_seated(app)
     _push_views(app)
+
+
+def _turn_agent(app) -> int | None:
+    """Whose turn it is, as an agent index, or ``None`` out of combat.
+
+    The same reading as `net.view._combat`'s ``turn_agent``, before the filter: `visible`
+    nulls it for a viewer who cannot see that creature."""
+    if app.combat_active and 0 <= app.turn_idx < len(app.initiative_order):
+        return int(app.initiative_order[app.turn_idx].agent_idx)
+    return None
+
+
+def _project_seated(app) -> None:
+    """Project every **seated** principal's stream, connected or not (M4b.2).
+
+    The user's decision, 2026-10-17: "Keep updating their stream". A player whose phone
+    dropped off the wifi keeps a ``seq`` that moves, so a reconnect within the 512-event
+    ring resumes from it (M6) instead of starting over from a view. The cost is one
+    ``sight()`` board walk per principal, and only on a cycle with new events.
+
+    A stream goes only when its seat does (``retain``), never on a disconnect. A socket's
+    cursor goes when the socket does, and "the socket" means every connection the net loop
+    still holds, including one mid-send: ``live_viewers()`` leaves that one out, and
+    detaching it there would lose the events its next cycle has to re-send.
+    """
+    seated = app.roster.principals
+    app.events.retain(p.id for p in seated)
+    for principal in seated:
+        _projection(app, principal)
+    app.events.detach_gone(app._net.live_ids())
 
 
 def _push_views(app) -> None:
@@ -154,7 +248,9 @@ def _push_views(app) -> None:
     seated principal — which is the arithmetic D-M4c-1 rejected for `GET /state` ("builds N
     views per cycle whether or not anyone is listening"), correct here for the reason that
     rejection turned on: a socket *is* a listener. With nobody connected this is one
-    attribute read per frame and no projection at all.
+    attribute read per frame and no view built at all. (The event streams are projected
+    regardless, in `_project_seated`, and that costs a board walk only when there is
+    something new.)
 
     Two sockets held by the same principal get two views rather than one shared object,
     because the thing being sent is per-connection state on the far side and `CommandQueue`'s
@@ -166,6 +262,14 @@ def _push_views(app) -> None:
     waiting for the player to reconnect. `verify_credential` is a signature, an expiry, the
     revoked set and a dict lookup — cheap enough to pay 4 times a second per player, and the
     roster is the one object both threads are allowed to read.
+
+    **The cursor (M4b.2, B-3).** A socket's projection cursor is attached the first cycle
+    the socket appears. If the net loop has already sent it a view (the connect-time
+    resync usually lands first), the cursor starts at that view's `seq`, so what happened
+    since plays. Otherwise it starts at the head, and this cycle's `view` shows the past.
+    From then on it moves only by ``ack``, to the ``sent_seq`` the net loop published after a
+    send that succeeded. A send that failed or was dropped published nothing, so the next
+    cycle's `events` frame starts from the same place.
     """
     viewers = app._net.live_viewers()
     if not viewers:
@@ -175,8 +279,13 @@ def _push_views(app) -> None:
         if app.roster.verify_credential(viewer.credential) is None:
             app._net.drop_viewer(viewer.id)
             continue
+        projection = app.events.projection(viewer.principal.id)
+        if projection.sent(viewer.id) is None:
+            projection.attach(viewer.id, viewer.sent_seq)
+        elif viewer.sent_seq is not None:
+            projection.ack(viewer.id, viewer.sent_seq)
         try:
-            views[viewer.id] = build_live(app, viewer.principal)
+            views[viewer.id] = build_live(app, viewer.principal, viewer.id)
         except PermissionError:
             # A seat that went away between the snapshot and this build. The check above
             # catches it properly on the next cycle; this frame simply has nothing to send.

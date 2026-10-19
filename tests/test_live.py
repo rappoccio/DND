@@ -304,7 +304,9 @@ def test_no_route_is_a_prefix():
         assert kinds == {"PlainResource"}, \
             f"the router holds {sorted(kinds)} — a prefix resource is a whole subtree"
         assert sorted(r.canonical for r in router.resources()) == [
-            "/", "/app.css", "/app.js", "/join", "/live", "/map.png", "/state"], \
+            # `/events` is M4b.2's (B-3), authenticated like `/state`.
+            "/", "/app.css", "/app.js", "/events", "/join", "/live", "/map.png",
+            "/state"], \
             f"the route table changed: {sorted(r.canonical for r in router.resources())}"
         print("✅ test_no_route_is_a_prefix")
 
