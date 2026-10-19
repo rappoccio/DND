@@ -61,6 +61,10 @@ test_scripts = [
     # M2a and which a structural golden can never see.
     "test_gui_headless_smoke.py",
 
+    # Map scale on Set Grid… ("1 square = X ft"): drives the real GridSpanDialog and
+    # App._on_grid_span, and checks a 10/15/20-ft square is split into 5-ft cells.
+    "test_grid_scale.py",
+
     # Session roster + token ownership (MULTIPLAYER_PLAN.md M0) — principals, the
     # single authorize() chokepoint, and the `controller` round-trip through a save
     # that renumbers the agent list. Kept with the oracles because it guards a

@@ -13671,14 +13671,17 @@ class App:
             return
 
         self._pending_grid_box = (x0, y0, w, h)
-        self._grid_span_dialog.show(self._on_grid_span)
+        last_ft = int((self._manual_grid or {}).get("square_ft", 5))
+        self._grid_span_dialog.show(self._on_grid_span, square_ft=last_ft)
 
     def _on_grid_span(self, result):
-        """Callback from GridSpanDialog: result is (cols, rows) spanned, or None.
+        """Callback from GridSpanDialog: result is (cols, rows, square_ft), or None.
 
-        Divides the sampled box by the spanned cell count to get a square cell size,
-        then rebuilds the grid. Replaces auto-detection, so wall auto-detect is forced
-        off and old (now-misindexed) terrain regions are dropped.
+        Divides the sampled box by the spanned square count to get the drawn square's
+        size, then by the map scale (square_ft / 5) to get the engine cell, which is
+        always 5 ft: a 10-ft-per-square map gets 2×2 cells per drawn square. Then rebuilds
+        the grid. Replaces auto-detection, so wall auto-detect is forced off and old
+        (now-misindexed) terrain regions are dropped.
         """
         box = self._pending_grid_box
         self._pending_grid_box = None
@@ -13686,9 +13689,11 @@ class App:
             self._combat_log_add("Grid sample cancelled.")
             return
 
-        cols_spanned, rows_spanned = result
+        cols_spanned, rows_spanned, square_ft = result
         x0, y0, w, h = box
-        cell_px  = int(round((w / cols_spanned + h / rows_spanned) / 2.0))  # square
+        square_px = (w / cols_spanned + h / rows_spanned) / 2.0           # drawn square
+        per_side  = square_ft // 5                                        # cells per side
+        cell_px   = int(round(square_px / per_side))                      # 5-ft cell
         anchor_x = int(round(x0))
         anchor_y = int(round(y0))
         if cell_px <= 0:
@@ -13700,14 +13705,25 @@ class App:
             self._combat_log_add(f"Grid sample failed: {e}")
             return
 
-        self._manual_grid = {"cell_px": cell_px, "anchor": [anchor_x, anchor_y]}
+        self._manual_grid = {"cell_px": cell_px, "anchor": [anchor_x, anchor_y],
+                             "square_ft": square_ft}
         self._terrain_regions = []
         self._walls_enabled = False
         self.btn_toggle_walls.text = "Walls: OFF"
         self._build_overlay()
         self._save_terrain()
+        scale = f" (1 square = {square_ft} ft → {per_side}×{per_side} cells)" if per_side > 1 else ""
         self._combat_log_add(
-            f"Manual grid set: {self.bm.grid_cols}×{self.bm.grid_rows} cells, {cell_px}px/cell.")
+            f"Manual grid set: {self.bm.grid_cols}×{self.bm.grid_rows} cells, "
+            f"{cell_px}px/cell{scale}.")
+        # The engine's cell size is a whole pixel count, so a drawn square that doesn't
+        # divide evenly (e.g. 50px at 15 ft → 16.67px) leaves the grid drifting off the
+        # drawn lines across the map. Say how far, so the DM can re-sample if it matters.
+        drift = abs(cell_px * per_side - square_px) / per_side * self.bm.grid_cols
+        if drift >= cell_px / 4:
+            self._combat_log_add(
+                f"Grid note: {square_px:.1f}px ÷ {per_side} isn't a whole pixel; the grid "
+                f"drifts ~{drift:.0f}px off the drawn lines across the map.")
 
     def _toggle_walls(self):
         """Turn auto-detected walls/obstacles on or off.

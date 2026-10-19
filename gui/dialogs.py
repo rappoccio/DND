@@ -1286,9 +1286,13 @@ class GridSpanDialog:
 
     Lets the user drag any rectangle — a single tile or a wider patch — then divide
     the box by the spanned cell count to recover a precise per-cell size (a 5-cell
-    drag cuts per-tile drag error 5×). Defaults to 1×1 (a single tile). Calls back
-    with (cols, rows) on OK, or None on cancel/escape.
+    drag cuts per-tile drag error 5×). Defaults to 1×1 (a single tile).
+
+    Also asks the map's scale, "1 square = X ft". The engine's cell is always 5 ft, so a
+    map drawn at 10 ft per square gets each drawn square split into 2×2 engine cells.
+    Calls back with (cols, rows, square_ft) on OK, or None on cancel/escape.
     """
+    SCALES = (5, 10, 15, 20)   # feet per drawn square; each must be a multiple of 5
     PAD   = 14
     HDR_H = 34
     ROW_H = 34
@@ -1304,21 +1308,32 @@ class GridSpanDialog:
         self._rows = None
         self._ok_rect = None
         self._cancel_rect = None
+        self._square_ft = 5
+        self._scale_rects = []     # [(rect, feet)] for the scale chips, laid out in show()
         self._frames_since_show = 0
 
-    def show(self, callback):
+    def show(self, callback, square_ft=5):
         self.visible = True
         self._callback = callback
         self._frames_since_show = 0
+        self._square_ft = square_ft if square_ft in self.SCALES else 5
         screen_w, screen_h = pygame.display.get_surface().get_size()
-        dlg_w = 300
-        dlg_h = self.HDR_H + self.ROW_H * 2 + self.BTN_H + self.PAD * 4
+        dlg_w = 320
+        dlg_h = self.HDR_H + self.ROW_H * 3 + self.BTN_H + self.PAD * 4
         self.rect = pygame.Rect((screen_w - dlg_w) // 2, (screen_h - dlg_h) // 2, dlg_w, dlg_h)
         fld_w = 130
         fx = self.rect.right - self.PAD - fld_w
         y0 = self.rect.y + self.HDR_H + self.PAD
         self._cols = IntStepper(pygame.Rect(fx, y0, fld_w, self.ROW_H - 6), 1, 1, 500, self.font_md)
         self._rows = IntStepper(pygame.Rect(fx, y0 + self.ROW_H, fld_w, self.ROW_H - 6), 1, 1, 500, self.font_md)
+        chip_w, gap = 36, 4
+        cx = self.rect.right - self.PAD - (chip_w * len(self.SCALES) + gap * (len(self.SCALES) - 1))
+        self._scale_rects = [
+            (pygame.Rect(cx + i * (chip_w + gap), y0 + self.ROW_H * 2, chip_w, self.ROW_H - 6), ft)
+            for i, ft in enumerate(self.SCALES)]
+
+    def _result(self):
+        return (self._cols.value, self._rows.value, self._square_ft)
 
     def _dismiss(self, result):
         cb = self._callback
@@ -1338,13 +1353,16 @@ class GridSpanDialog:
         self._rows.handle(event)
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN:
-                self._dismiss((self._cols.value, self._rows.value))
+                self._dismiss(self._result())
             elif event.key == pygame.K_ESCAPE:
                 self._dismiss(None)
             return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self._ok_rect and self._ok_rect.collidepoint(*event.pos):
-                self._dismiss((self._cols.value, self._rows.value))
+            chip = next((ft for r, ft in self._scale_rects if r.collidepoint(*event.pos)), None)
+            if chip is not None:
+                self._square_ft = chip
+            elif self._ok_rect and self._ok_rect.collidepoint(*event.pos):
+                self._dismiss(self._result())
             elif self._cancel_rect and self._cancel_rect.collidepoint(*event.pos):
                 self._dismiss(None)
             elif not self.rect.collidepoint(*event.pos):
@@ -1362,7 +1380,7 @@ class GridSpanDialog:
         pygame.draw.rect(surf, (28, 28, 44), self.rect, border_radius=8)
         pygame.draw.rect(surf, (110, 90, 170), self.rect, width=2, border_radius=8)
 
-        hdr = self.font_md.render("Cells in sampled box", True, (220, 220, 235))
+        hdr = self.font_md.render("Squares in sampled box", True, (220, 220, 235))
         surf.blit(hdr, (self.rect.x + self.PAD, self.rect.y + 8))
 
         y0 = self.rect.y + self.HDR_H + self.PAD
@@ -1370,8 +1388,16 @@ class GridSpanDialog:
         surf.blit(cl, (self.rect.x + self.PAD, y0 + 6))
         rl = self.font_md.render("Rows tall", True, (210, 210, 225))
         surf.blit(rl, (self.rect.x + self.PAD, y0 + self.ROW_H + 6))
+        sl = self.font_md.render("1 square (ft)", True, (210, 210, 225))
+        surf.blit(sl, (self.rect.x + self.PAD, y0 + self.ROW_H * 2 + 6))
         self._cols.draw(surf)
         self._rows.draw(surf)
+        for r, ft in self._scale_rects:
+            on = ft == self._square_ft
+            pygame.draw.rect(surf, (70, 60, 130) if on else (45, 45, 62), r, border_radius=4)
+            pygame.draw.rect(surf, (150, 130, 220) if on else (80, 80, 100), r, 1, border_radius=4)
+            t = self.font_md.render(str(ft), True, (235, 235, 245) if on else (180, 180, 195))
+            surf.blit(t, t.get_rect(center=r.center))
 
         bw, bh = 96, self.BTN_H
         by = self.rect.bottom - self.PAD - bh
