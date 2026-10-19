@@ -14254,13 +14254,16 @@ class App:
         c_end, r_end), or None if the grid isn't analyzed yet. Shared by the multiplier and
         terrain-type appliers so both map pixels to cells identically."""
         import bisect
-        s = self.map_scale
+        # Regions are stored in fit-scale px (the terrain editor works at fit scale), so
+        # divide by the fit scale, not the zoomed map_scale — a terrain load while zoomed
+        # would otherwise paint the wrong cells.
+        s = self.base_map_scale
         raw_v = self.bm.v_line_positions
         raw_h = self.bm.h_line_positions
         if not raw_v or not raw_h:
             return None
 
-        # Convert pixel coords (scaled) to original image coords
+        # Convert pixel coords (fit-scale) to original image coords
         ix, iy = px / s, py / s
         iw, ih = pw / s, ph / s
 
@@ -15094,6 +15097,7 @@ class App:
             return
 
         # Draw permanent terrain (walls, chasms, difficult terrain)
+        zoom = self.map_scale / self.base_map_scale
         for region in self._terrain_regions:
             # Skip concentration-based terrain for now (draw separately below)
             if "cells" in region or region.get("source", {}).get("requires_concentration"):
@@ -15103,10 +15107,12 @@ class App:
             if "x" not in region or "y" not in region:
                 continue
 
-            x = int(region.get("x", 0))
-            y = int(region.get("y", 0))
-            w = int(region.get("width", 0))
-            h = int(region.get("height", 0))
+            # Regions are stored in fit-scale px; scale them by the user zoom so they
+            # track the map (which is re-rendered at base × zoom).
+            x = int(region.get("x", 0) * zoom)
+            y = int(region.get("y", 0) * zoom)
+            w = int(region.get("width", 0) * zoom)
+            h = int(region.get("height", 0) * zoom)
             terrain_type = region.get("type", "Difficult Terrain")
 
             if terrain_type == "Wall":

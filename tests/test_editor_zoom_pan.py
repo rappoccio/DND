@@ -215,8 +215,56 @@ def test_the_lighting_editor_lets_zoom_and_pan_through():
     print("✅ test_the_lighting_editor_lets_zoom_and_pan_through passed")
 
 
+def _wall_region_on(app, col, row):
+    """A one-cell Wall region over (col, row), in fit-scale px as the editor stores it."""
+    s = app.base_map_scale
+    v, h = app.bm.v_line_positions, app.bm.h_line_positions
+    return {"type": "Wall", "x": v[col] * s, "y": h[row] * s,
+            "width": (v[col + 1] - v[col]) * s, "height": (h[row + 1] - h[row]) * s,
+            "multiplier": 0.0}
+
+
+def test_painted_terrain_follows_the_main_map_zoom():
+    """Outside the editor, a painted wall stayed at its fit-scale spot when the map zoomed."""
+    app = App(MAP_PATH, seed=SEED)
+    app.show_terrain = True
+    col, row = 3, 3
+    app._terrain_regions = [_wall_region_on(app, col, row)]
+    app._zoom_by(2.0, center=(0, 0))
+    app.pan_x -= 23
+    app.pan_y -= 17
+    cpx = int(app.bm.cell_pixel_size * app.map_scale)
+    app.screen.fill((255, 255, 255))
+    app._draw_concentration_terrain(cpx)
+    sx, sy = app._cell_to_screen(col, row)
+    centre = (sx + cpx // 2, sy + cpx // 2)
+    assert app.screen.get_at(centre)[:3] == (0, 0, 0), \
+        f"the wall is not drawn on its cell at 2x zoom: {centre} is {app.screen.get_at(centre)}"
+    # One cell further on is clear — the wall grew with the zoom, but no further.
+    nxt = (sx + cpx + cpx // 2, sy + cpx // 2)
+    assert app.screen.get_at(nxt)[:3] == (255, 255, 255), \
+        f"the wall spills past its cell at 2x zoom: {nxt} is {app.screen.get_at(nxt)}"
+    print("✅ test_painted_terrain_follows_the_main_map_zoom passed")
+
+
+def test_applying_terrain_while_zoomed_blocks_the_right_cells():
+    """Regions → cells divided by the zoomed scale, so a terrain load while zoomed
+    painted the wrong cells into the engine."""
+    app = App(MAP_PATH, seed=SEED)
+    col, row = 4, 2
+    app._terrain_regions = [_wall_region_on(app, col, row)]
+    app._zoom_by(2.0)
+    app._apply_terrain_to_battle_map()
+    walls = {(c, r) for c in range(app.bm.grid_cols) for r in range(app.bm.grid_rows)
+             if app.bm.get_terrain_type(rpg.Cell(c, r)) == rpg.TerrainType.Wall}
+    assert walls == {(col, row)}, f"zoomed apply painted {sorted(walls)}, not {(col, row)}"
+    print("✅ test_applying_terrain_while_zoomed_blocks_the_right_cells passed")
+
+
 def main():
-    tests = [test_zoom_keeps_the_point_under_the_cursor,
+    tests = [test_painted_terrain_follows_the_main_map_zoom,
+             test_applying_terrain_while_zoomed_blocks_the_right_cells,
+             test_zoom_keeps_the_point_under_the_cursor,
              test_a_zoomed_drag_stores_the_same_region_as_a_fit_drag,
              test_a_zoomed_door_click_lands_on_the_cell_under_the_pointer,
              test_a_press_over_the_panel_does_nothing,
