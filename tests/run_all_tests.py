@@ -90,6 +90,7 @@ test_scripts = [
     # who found this had a map he could not light, and a base level that reaches only
     # the file looks identical to one that works until the encounter is reloaded.
     "test_lighting_editor.py",
+    "test_editor_zoom_pan.py",
 
     # The GameView projection (MULTIPLAYER_PLAN.md M3, seam S1) — the per-viewer read
     # filter, and the only thing a remote client is ever sent. Kept with the oracles

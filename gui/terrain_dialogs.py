@@ -355,6 +355,20 @@ class TerrainEditorDialog:
             "Wall": rpg.TerrainType.Wall,
             "Chasm": rpg.TerrainType.Chasm,
         }
+        # Editor view. Everything the editor stores (selection, regions) stays in
+        # map-surface px; the view only changes where that surface lands on screen:
+        # screen = map * view_zoom + view_pan. ``_viewport`` is the screen rect the map
+        # may occupy (left of the config panel), refreshed every draw.
+        self.view_zoom = 1.0
+        self.view_pan = [0, 0]
+        self._pan_drag = None   # last mouse pos while middle-button panning
+        self._viewport = None
+        self._canvas = None     # map-space scratch surface the editor draws onto
+
+    ZOOM_MIN = 0.5
+    ZOOM_MAX = 6.0
+    ZOOM_STEP = 1.15
+    PAN_STEP = 30
 
     def open(self, map_surf, terrain_regions, bm=None, ladders=None, door_links=None):
         """Open the terrain editor with existing terrain data.
@@ -371,6 +385,90 @@ class TerrainEditorDialog:
         self.bm = bm
         self.ladders = ladders if ladders is not None else []
         self.door_links = door_links if door_links is not None else {}
+        self.reset_view()
+
+    # ── View (zoom / pan) ────────────────────────────────────────────────
+    def reset_view(self):
+        self.view_zoom = 1.0
+        self.view_pan = [0, 0]
+        self._pan_drag = None
+
+    def _to_map(self, pos):
+        """Screen px -> map-surface px under the current view."""
+        z = self.view_zoom
+        return (int((pos[0] - self.view_pan[0]) / z),
+                int((pos[1] - self.view_pan[1]) / z))
+
+    def _to_screen(self, pos):
+        """Map-surface px -> screen px under the current view."""
+        z = self.view_zoom
+        return (int(round(pos[0] * z + self.view_pan[0])),
+                int(round(pos[1] * z + self.view_pan[1])))
+
+    def zoom_by(self, factor, center=None):
+        """Scale the view by ``factor``, keeping the map point under ``center``
+        (screen px; default the viewport centre) fixed on screen."""
+        new_zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, self.view_zoom * factor))
+        if abs(new_zoom - self.view_zoom) < 1e-9:
+            return
+        if center is None:
+            center = self._viewport.center if self._viewport else (0, 0)
+        f = new_zoom / self.view_zoom
+        cx, cy = center
+        self.view_pan[0] = int(round(cx - (cx - self.view_pan[0]) * f))
+        self.view_pan[1] = int(round(cy - (cy - self.view_pan[1]) * f))
+        self.view_zoom = new_zoom
+
+    def _handle_view(self, event):
+        """Zoom / pan input, the same gestures as the main map: wheel pans (Shift for
+        horizontal), Ctrl/Cmd+wheel zooms at the cursor, middle-drag and the arrow keys
+        pan, +/- zoom (keypad always; the main keys only outside Door mode, where they
+        set the lock DC), 0 resets. Returns True when the event was consumed."""
+        if event.type == pygame.MOUSEWHEEL:
+            mods = pygame.key.get_mods()
+            if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
+                if event.y:
+                    f = self.ZOOM_STEP if event.y > 0 else 1.0 / self.ZOOM_STEP
+                    self.zoom_by(f, center=pygame.mouse.get_pos())
+                return True
+            dx, dy = event.x, event.y
+            if mods & pygame.KMOD_SHIFT and dx == 0:
+                dx, dy = dy, 0
+            self.view_pan[0] += dx * self.PAN_STEP
+            self.view_pan[1] += dy * self.PAN_STEP
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
+            return True   # legacy wheel buttons; MOUSEWHEEL above does the work
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
+            self._pan_drag = event.pos
+            return True
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 2:
+            self._pan_drag = None
+            return True
+        if event.type == pygame.MOUSEMOTION and self._pan_drag is not None:
+            self.view_pan[0] += event.pos[0] - self._pan_drag[0]
+            self.view_pan[1] += event.pos[1] - self._pan_drag[1]
+            self._pan_drag = event.pos
+            return True
+        if event.type == pygame.KEYDOWN:
+            k = event.key
+            arrows = {pygame.K_UP: (0, 1), pygame.K_DOWN: (0, -1),
+                      pygame.K_LEFT: (1, 0), pygame.K_RIGHT: (-1, 0)}
+            if k in arrows:
+                self.view_pan[0] += arrows[k][0] * self.PAN_STEP
+                self.view_pan[1] += arrows[k][1] * self.PAN_STEP
+                return True
+            door = self.selected_type == "Door"
+            if k == pygame.K_KP_PLUS or (k in (pygame.K_PLUS, pygame.K_EQUALS) and not door):
+                self.zoom_by(self.ZOOM_STEP)
+                return True
+            if k == pygame.K_KP_MINUS or (k == pygame.K_MINUS and not door):
+                self.zoom_by(1.0 / self.ZOOM_STEP)
+                return True
+            if k in (pygame.K_0, pygame.K_KP0):
+                self.reset_view()
+                return True
+        return False
 
     def close(self):
         """Close the terrain editor."""
@@ -380,46 +478,57 @@ class TerrainEditorDialog:
         """Handle mouse/keyboard events."""
         if not self.active:
             return
+        if self._handle_view(event):
+            return
+
+        pos = None
+        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+            # A press over the config panel is not a press on the map, however the map
+            # is zoomed or panned underneath it.
+            if (event.type == pygame.MOUSEBUTTONDOWN and self._viewport is not None
+                    and not self._viewport.collidepoint(event.pos)):
+                return
+            pos = self._to_map(event.pos)
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1 and self.selected_type == "Ladder":
                 # A ladder is a single-cell portal: click places one (target auto-filled
                 # to the same global X,Y one floor up/down); clicking an existing one
                 # removes it (toggle, like a single-cell door).
-                cell = self._pos_to_cell(event.pos)
+                cell = self._pos_to_cell(pos)
                 if cell is not None:
                     self._place_ladder(cell)
                 return
             if event.button == 1 and self.selected_type == "Door":
                 # A door spans 1..4 cells: press starts the span, drag sizes it, release
                 # places it. (A press-and-release on one cell is the single-cell toggle.)
-                self.door_drag_start = self._pos_to_cell(event.pos)
+                self.door_drag_start = self._pos_to_cell(pos)
                 self.door_drag_end = self.door_drag_start
                 self.selection_start = None
                 self.selection_rect = None
                 return
             if event.button == 1:  # Left click
                 # Check if clicking on existing region
-                clicked_idx = self._get_region_at_pos(event.pos)
+                clicked_idx = self._get_region_at_pos(pos)
                 if clicked_idx >= 0:
                     self.selected_region_idx = clicked_idx
                     self.selection_start = None
                     self.selection_rect = None
                 else:
                     # Start new terrain selection
-                    self.selection_start = event.pos
+                    self.selection_start = pos
                     self.selection_rect = None
             elif event.button == 3:  # Right click to deselect
                 self.selected_region_idx = -1
 
         elif event.type == pygame.MOUSEMOTION:
             if self.selected_type == "Door" and self.door_drag_start is not None:
-                end = self._pos_to_cell(event.pos)
+                end = self._pos_to_cell(pos)
                 if end is not None:
                     self.door_drag_end = end
             elif self.selection_start and self.selected_region_idx < 0:
                 x0, y0 = self.selection_start
-                x1, y1 = event.pos
+                x1, y1 = pos
                 self.selection_rect = pygame.Rect(
                     min(x0, x1), min(y0, y1),
                     abs(x1 - x0), abs(y1 - y0)
@@ -427,7 +536,7 @@ class TerrainEditorDialog:
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1 and self.selected_type == "Door" and self.door_drag_start is not None:
-                end = self._pos_to_cell(event.pos) or self.door_drag_end or self.door_drag_start
+                end = self._pos_to_cell(pos) or self.door_drag_end or self.door_drag_start
                 self._place_door_span(self.door_drag_start, end)
                 self.door_drag_start = None
                 self.door_drag_end = None
@@ -501,11 +610,11 @@ class TerrainEditorDialog:
         return -1
 
     def _pos_to_cell(self, pos):
-        """Convert an editor screen position to a grid Cell (or None).
+        """Convert an editor map position to a grid Cell (or None).
 
-        The editor blits the map at (0,0) with no scale, so screen px == image px and
-        the BattleMap grid-line positions map directly (same assumption the terrain
-        selection snapping makes)."""
+        ``pos`` is in map-surface px (``handle`` has already undone the view), and the
+        BattleMap grid-line positions map directly onto those (same assumption the
+        terrain selection snapping makes)."""
         import bisect
         if not self.bm or not self.bm.v_line_positions or not self.bm.h_line_positions:
             return None
@@ -707,13 +816,50 @@ class TerrainEditorDialog:
         }
         self.terrain_regions.append(region)
 
+    def _blit_view(self, screen, canvas):
+        """Blit the visible part of ``canvas`` into the viewport at the current zoom.
+
+        Only the visible sub-rect is scaled, so the cost is bounded by the viewport
+        size however far in the view is zoomed. The viewport is cleared first: the
+        app's own map is drawn underneath at its own pan, and must not show through
+        where the editor's map has been panned away."""
+        vp = self._viewport
+        screen.fill(COL_BG, vp)
+        z = self.view_zoom
+        px, py = self.view_pan
+        cw, ch = canvas.get_size()
+        x0 = max(0, math.floor((vp.left - px) / z))
+        y0 = max(0, math.floor((vp.top - py) / z))
+        x1 = min(cw, math.ceil((vp.right - px) / z))
+        y1 = min(ch, math.ceil((vp.bottom - py) / z))
+        if x1 <= x0 or y1 <= y0:
+            return
+        src = canvas.subsurface(pygame.Rect(x0, y0, x1 - x0, y1 - y0))
+        dest = self._to_screen((x0, y0))
+        if z != 1.0:
+            end = self._to_screen((x1, y1))
+            src = pygame.transform.smoothscale(src, (max(1, end[0] - dest[0]),
+                                                     max(1, end[1] - dest[1])))
+        prev_clip = screen.get_clip()
+        screen.set_clip(vp)
+        screen.blit(src, dest)
+        screen.set_clip(prev_clip)
+
     def draw(self, screen):
         """Draw the terrain editor UI."""
         if not self.active or not self.map_surf:
             return
 
-        # Draw map and overlays
-        screen.blit(self.map_surf, (0, 0))
+        # The map and everything on it is drawn in map-surface px onto ``canvas``,
+        # then the visible part is scaled into the viewport (_blit_view); the HUD
+        # text below goes straight to the screen, unzoomed.
+        self._viewport = pygame.Rect(0, 0, max(1, screen.get_width() - PANEL_W),
+                                     screen.get_height())
+        surf_size = self.map_surf.get_size()
+        if self._canvas is None or self._canvas.get_size() != surf_size:
+            self._canvas = pygame.Surface(surf_size, 0, 32)
+        canvas = self._canvas
+        canvas.blit(self.map_surf, (0, 0))
 
         # Draw terrain overlays
         for i, region in enumerate(self.terrain_regions):
@@ -736,11 +882,11 @@ class TerrainEditorDialog:
                 color = (139, 90, 43, 128)       # brown, 50% transparent
             s = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
             s.fill(color)
-            screen.blit(s, (rect.x, rect.y))
+            canvas.blit(s, (rect.x, rect.y))
 
             # Highlight selected region with border
             if i == self.selected_region_idx:
-                pygame.draw.rect(screen, (255, 255, 0), rect, 3)
+                pygame.draw.rect(canvas, (255, 255, 0), rect, 3)
 
         # Draw doors (source of truth is BattleMap.doors; editor mutates bm directly)
         if self.bm:
@@ -756,7 +902,7 @@ class TerrainEditorDialog:
                 min_row, max_row = min(rows), max(rows)
                 if min_col < len(v) and min_row < len(h):
                     linked = door_link_key(door.cells) in self.door_links
-                    draw_door_glyph(screen, v[min_col], h[min_row], size, door, self.font_sm,
+                    draw_door_glyph(canvas, v[min_col], h[min_row], size, door, self.font_sm,
                                     w=(max_col - min_col + 1) * size,
                                     h=(max_row - min_row + 1) * size, linked=linked)
             # Draw ladders (Python-only cell objects; editor mutates self.ladders).
@@ -768,7 +914,7 @@ class TerrainEditorDialog:
                 if c < len(v) and r < len(h):
                     tz = lad.get("target", [0, 0, 0])[2]
                     z_here = int(getattr(self.bm, "z_level", 0) or 0)
-                    draw_ladder_glyph(screen, v[c], h[r], size,
+                    draw_ladder_glyph(canvas, v[c], h[r], size,
                                       going_up=(tz > z_here), font_sm=self.font_sm)
             # Preview the in-progress door span while dragging.
             if self.door_drag_start is not None and self.door_drag_end is not None:
@@ -777,16 +923,18 @@ class TerrainEditorDialog:
                     if v and h and c < len(v) and r < len(h):
                         prev = pygame.Surface((size, size), pygame.SRCALPHA)
                         prev.fill((210, 180, 90, 110))
-                        screen.blit(prev, (v[c], h[r]))
-                        pygame.draw.rect(screen, (210, 180, 90),
+                        canvas.blit(prev, (v[c], h[r]))
+                        pygame.draw.rect(canvas, (210, 180, 90),
                                          pygame.Rect(v[c], h[r], size, size), 2)
 
         # Draw current selection preview
         if self.selection_rect:
             s = pygame.Surface((self.selection_rect.w, self.selection_rect.h), pygame.SRCALPHA)
             s.fill((200, 200, 200, 80))
-            screen.blit(s, (self.selection_rect.x, self.selection_rect.y))
-            pygame.draw.rect(screen, (200, 200, 200), self.selection_rect, 2)
+            canvas.blit(s, (self.selection_rect.x, self.selection_rect.y))
+            pygame.draw.rect(canvas, (200, 200, 200), self.selection_rect, 2)
+
+        self._blit_view(screen, canvas)
 
         # Draw type selector UI
         sel_texts = [
@@ -846,6 +994,8 @@ class TerrainEditorDialog:
             inst_texts = [
                 "Click terrain to select, [ESC] Save & Close, [Ctrl+Z] Undo",
             ]
+        inst_texts.append(f"Zoom {self.view_zoom:.2f}x: Ctrl/Cmd+wheel or +/-, [0] reset"
+                          " | Pan: wheel, Shift+wheel, arrows, middle-drag")
         y_inst = screen.get_height() - 25 - len(inst_texts) * 20
         for text in inst_texts:
             inst = self.font_sm.render(text, True, (180, 180, 180))

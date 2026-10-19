@@ -1215,6 +1215,40 @@ class App:
         self.pan_x = int(cx * (1.0 - f) + self.pan_x * f)
         self.pan_y = int(cy * (1.0 - f) + self.pan_y * f)
 
+    def _handle_map_view_event(self, event):
+        """Zoom / pan the map from ``event`` alone, for a modal that draws over the live
+        map (the lighting editor) while the regular map handlers are shut off: wheel
+        pans (Shift for horizontal), Ctrl/Cmd+wheel zooms at the cursor, arrows pan,
+        +/- zoom, 0 resets. Returns True when the event was consumed."""
+        if hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
+            mods = pygame.key.get_mods()
+            if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
+                if event.y:
+                    f = self.ZOOM_STEP if event.y > 0 else 1.0 / self.ZOOM_STEP
+                    self._zoom_by(f, center=pygame.mouse.get_pos())
+            elif mods & pygame.KMOD_SHIFT:
+                self.pan_x += (event.x or event.y) * 30
+            else:
+                self.pan_x += event.x * 30
+                self.pan_y += event.y * 30
+            return True
+        if event.type == pygame.KEYDOWN:
+            pans = {pygame.K_UP: (0, 30), pygame.K_DOWN: (0, -30),
+                    pygame.K_LEFT: (30, 0), pygame.K_RIGHT: (-30, 0)}
+            if event.key in pans:
+                self.pan_x += pans[event.key][0]
+                self.pan_y += pans[event.key][1]
+            elif event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+                self._zoom_by(self.ZOOM_STEP)
+            elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                self._zoom_by(1.0 / self.ZOOM_STEP)
+            elif event.key in (pygame.K_0, pygame.K_KP0):
+                self._reset_zoom()
+            else:
+                return False
+            return True
+        return False
+
     def _zoom_by(self, factor, center=None):
         """Multiply the current zoom by ``factor`` (wheel notch / keypress)."""
         self._apply_zoom(self.view_zoom * factor, center=center)
@@ -2461,8 +2495,8 @@ class App:
 
 
     def _open_terrain_editor(self):
-        # These full-map editors blit map_surf at (0,0) and map clicks via native
-        # image pixels, so return to fit scale first (zoom would misalign them).
+        # The terrain editor works on the fit-scale map_surf (its regions are stored in
+        # fit-scale px) and zooms/pans with a view of its own, so hand it fit scale.
         self._reset_zoom()
         self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm,
                                  ladders=self._ladders, door_links=self._door_links)
@@ -2557,7 +2591,7 @@ class App:
             except:
                 light_sources = []
                 default_light = rpg.VisibilityLevel.Clear
-        self._reset_zoom()   # editor maps clicks via native px; fit scale first
+        self._reset_zoom()   # open on the whole map; the editor can zoom from there
         self.lighting_editor.open(self.map_surf, self.bm, self, light_sources, default_light)
 
     def _open_load_lighting_browser(self):
@@ -14384,11 +14418,13 @@ class App:
         if not self.bm or not self.map_rect:
             return
 
-        cpx = self.bm.cell_pixel_size
         cols = self.bm.grid_cols
         rows = self.bm.grid_rows
-        h_lines = self.bm.h_line_positions
-        v_lines = self.bm.v_line_positions
+        # Grid lines in displayed-map px (the overlay surface is map_rect-sized, so it
+        # follows the zoom as well as the pan).
+        scale = self.map_scale
+        h_lines = [int(y * scale) for y in self.bm.h_line_positions]
+        v_lines = [int(x * scale) for x in self.bm.v_line_positions]
 
         # Create a surface for the lighting overlay
         lighting_surf = pygame.Surface((self.map_rect.width, self.map_rect.height), pygame.SRCALPHA)
@@ -14441,9 +14477,10 @@ class App:
         panned_rect.y += self.pan_y
         self.screen.blit(lighting_surf, panned_rect)
 
-        # Draw markers for light sources (golden circles)
-        h_lines = self.bm.h_line_positions
-        v_lines = self.bm.v_line_positions
+        # Draw markers for light sources (golden circles), in screen px. Old-format
+        # sources carry native image px, so they are looked up against the raw lines.
+        raw_h = self.bm.h_line_positions
+        raw_v = self.bm.v_line_positions
 
         for light_src in self.lighting_editor.light_sources:
             # Handle both old format (x, y pixel coords) and new format (col, row grid coords)
@@ -14457,21 +14494,21 @@ class App:
                 # Find grid cell containing this pixel
                 grid_c = -1
                 grid_r = -1
-                for c in range(len(v_lines) - 1):
-                    if px >= v_lines[c] and px < v_lines[c + 1]:
+                for c in range(len(raw_v) - 1):
+                    if px >= raw_v[c] and px < raw_v[c + 1]:
                         grid_c = c
                         break
-                for r in range(len(h_lines) - 1):
-                    if py >= h_lines[r] and py < h_lines[r + 1]:
+                for r in range(len(raw_h) - 1):
+                    if py >= raw_h[r] and py < raw_h[r + 1]:
                         grid_r = r
                         break
 
-            if grid_c >= 0 and grid_r >= 0:
+            if 0 <= grid_c < len(raw_v) - 1 and 0 <= grid_r < len(raw_h) - 1:
                 # Draw a circle marker at the light source center
-                cell_x = v_lines[grid_c]
-                cell_y = h_lines[grid_r]
-                cell_w = v_lines[grid_c + 1] - v_lines[grid_c]
-                cell_h = h_lines[grid_r + 1] - h_lines[grid_r]
+                cell_x, cell_y = self._cell_to_screen(grid_c, grid_r)
+                end_x, end_y = self._cell_to_screen(grid_c + 1, grid_r + 1)
+                cell_w = end_x - cell_x
+                cell_h = end_y - cell_y
                 center_x = cell_x + cell_w // 2
                 center_y = cell_y + cell_h // 2
                 radius = max(6, cell_w // 6)
@@ -17461,8 +17498,11 @@ class App:
                 continue
 
             # ── Lighting editor gets priority when open ──────────────────
+            # It draws over the live map, so what it does not consume may still
+            # zoom / pan that map (the modal guard above shuts the usual handlers off).
             if self.lighting_editor.active:
-                self.lighting_editor.handle(event)
+                if not self.lighting_editor.handle(event):
+                    self._handle_map_view_event(event)
                 continue
 
             # ── Cast-time element picker is a top modal: consume events while open ──

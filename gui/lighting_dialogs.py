@@ -87,8 +87,9 @@ class LightingEditorDialog:
                         self._handle_button(name)
                         return True
 
-                # If placing a light, record the position
-                if self.placing_light:
+                # If placing a light, record the position. Not over the config panel:
+                # a zoomed map extends under it, out of sight.
+                if self.placing_light and not (self.app and event.pos[0] >= self.app._panel_x()):
                     cell = self.app._screen_to_cell(event.pos[0], event.pos[1]) if self.app else None
                     if cell and cell.col >= 0 and cell.row >= 0:
                         # Store grid coordinates directly (col, row) instead of pixel coords
@@ -193,6 +194,9 @@ class LightingEditorDialog:
             toggle_text = "ON" if self.show_overlay else "OFF"
             text = self.font_sm.render(f"Lighting Overlay: {toggle_text} (Press T to toggle)", True, toggle_color)
             screen.blit(text, (240, 85))
+            text = self.font_sm.render("Zoom: Ctrl/Cmd+wheel or +/-, [0] reset | "
+                                       "Pan: wheel, Shift+wheel, arrows", True, (180, 180, 180))
+            screen.blit(text, (240, 105))
 
             # Draw list of light sources
             y = 130
