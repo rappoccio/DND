@@ -507,6 +507,9 @@ EscapeNetResult CombatEngine::escapeNet(BattleMap& bm, int actor_idx, int target
         const PlacedAgent& tpa = agents[static_cast<std::size_t>(target_idx)];
         if (footprintDistance(apa.origin, apa.agent->getSize(),
                               tpa.origin, tpa.agent->getSize()) * 5 > 5) return res;
+        // ...and able to reach it: an edge wall can stand between two adjacent creatures.
+        if (!bm.hasLineOfSight(apa.origin, apa.agent->getSize(),
+                               tpa.origin, tpa.agent->getSize())) return res;
     }
 
     // DC 10 Strength (Athletics) check. Skill proficiency is not modeled, so this is d20 + STR mod —

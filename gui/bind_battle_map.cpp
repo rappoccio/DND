@@ -72,6 +72,25 @@ void bindBattleMap(py::module_& m) {
         })
         .def("is_blocked", &BattleMap::isBlocked,
              py::arg("origin"), py::arg("agent_size"), py::arg("movement_type") = MovementType::Walk)
+        // Edge walls (walls on the grid line between two cells)
+        .def("set_edge_wall", [](BattleMap& bm, Cell c, EdgeSide side, bool on){ bm.setEdgeWall({c, side}, on); },
+             py::arg("cell"), py::arg("side"), py::arg("on") = true,
+             "Set or clear the static wall on the east or south edge of a cell.")
+        .def("is_edge_wall", [](const BattleMap& bm, Cell c, EdgeSide side){ return bm.edgeBlocked({c, side}); },
+             py::arg("cell"), py::arg("side"),
+             "True when the edge blocks now: an edge door's state on its edges, else the static wall.")
+        .def_property_readonly("edge_walls", &BattleMap::edgeWalls,
+             "Static edge walls as a list of Edge (doors not included).")
+        .def("clear_edge_walls", &BattleMap::clearEdgeWalls,
+             "Remove every static edge wall. Edge doors keep their edges.")
+        .def("edge_between", &BattleMap::edgeBetween, py::arg("a"), py::arg("b"),
+             "True when an edge wall separates two orthogonally adjacent cells.")
+        .def("step_crosses_wall", &BattleMap::stepCrossesWall,
+             py::arg("from_cell"), py::arg("to_cell"), py::arg("size") = 1,
+             "True when one step of a size×size footprint crosses an edge wall.")
+        .def_property_readonly("has_edge_walls", &BattleMap::hasEdgeWalls)
+        .def_property_readonly("last_move_path", &BattleMap::lastMovePath,
+             "Route of the most recent successful walk/swim/burrow move (origin..dest, inclusive).")
         .def("agent_occupancy", &BattleMap::agentOccupancy,
              py::arg("origin"), py::arg("size"), py::arg("mover_idx"),
              "Agent-footprint passability of the size×size cell at `origin` for mover_idx:\n"
@@ -101,6 +120,14 @@ void bindBattleMap(py::module_& m) {
              py::arg("cell"), py::arg("open") = false, py::arg("locked") = false,
              py::arg("lock_dc") = 15, py::arg("arcane_lock") = false, py::arg("break_dc") = 15,
              "Create a single-cell door; returns its unique id and syncs the cell's terrain.")
+        .def("add_edge_door", &BattleMap::addEdgeDoor,
+             py::arg("edges"), py::arg("open") = false, py::arg("locked") = false,
+             py::arg("lock_dc") = 15, py::arg("arcane_lock") = false, py::arg("break_dc") = 15,
+             "Create a door on 1..4 wall edges; returns its id. Closed, its edges block.\n"
+             "Any edge door already on one of the edges is replaced.")
+        .def("door_at_edge", [](const BattleMap& bm, Cell c, EdgeSide side){ return bm.doorAtEdge({c, side}); },
+             py::arg("cell"), py::arg("side"),
+             "Index into doors for the edge door on this edge, or -1 if none.")
         .def("remove_door", &BattleMap::removeDoor, py::arg("id"),
              "Remove a door by id; restores all of its cells to Standard terrain.")
         .def("open_door", &BattleMap::openDoor, py::arg("id"),

@@ -79,12 +79,28 @@ void bindTypes(py::module_& m) {
                  + ")->("
                  + std::to_string(w.b.col) + "," + std::to_string(w.b.row) + ")>"; });
 
+    // ── Edge (a wall on the grid line between two cells) ────────────────────
+    py::enum_<EdgeSide>(m, "EdgeSide")
+        .value("East",  EdgeSide::East)
+        .value("South", EdgeSide::South);
+    py::class_<Edge>(m, "Edge")
+        .def(py::init<>())
+        .def(py::init([](Cell c, EdgeSide s){ return Edge{c, s}; }), py::arg("cell"), py::arg("side"))
+        .def_readwrite("cell", &Edge::cell)
+        .def_readwrite("side", &Edge::side)
+        .def(py::self == py::self)
+        .def("__repr__", [](const Edge& e){
+            return "<Edge (" + std::to_string(e.cell.col) + "," + std::to_string(e.cell.row) + ") "
+                 + (e.side == EdgeSide::East ? "E" : "S") + ">"; });
+
     // ── Door ────────────────────────────────────────────────────────────────
     py::class_<Door>(m, "Door")
         .def(py::init<>())
         .def_readwrite("id",          &Door::id)
         .def_readwrite("cells",       &Door::cells,
              "The doorway cells this door occupies (1..4). Source of truth for placement.")
+        .def_readwrite("edges",       &Door::edges,
+             "Edge door: the wall edges it spans (1..4). Empty for a cell door.")
         .def_property_readonly("cell", &Door::anchor,
              "Anchor cell (the first occupied cell). Back-compat single-cell accessor.")
         .def_readwrite("open",        &Door::open)

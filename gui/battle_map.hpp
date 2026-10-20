@@ -44,6 +44,18 @@ struct Wall {
     bool operator==(const Wall&) const noexcept = default;
 };
 
+// ── Wall edge: the east or south side of a cell ───────────────────────────
+// An edge wall lies on the grid line between two cells instead of filling one.
+// (c, r, East) is the line between (c, r) and (c+1, r); (c, r, South) is the
+// line between (c, r) and (c, r+1). Every interior edge has exactly one name.
+enum class EdgeSide : std::uint8_t { East, South };
+
+struct Edge {
+    Cell     cell;
+    EdgeSide side{EdgeSide::East};
+    bool operator==(const Edge&) const noexcept = default;
+};
+
 // ── Door occupying one or more doorway cells ───────────────────────────────
 // A door is one or more CELLS, not an edge. A wide door (double door, portcullis,
 // gate) spans up to 4 contiguous cells that open/close/lock as a single object.
@@ -53,6 +65,10 @@ struct Wall {
 struct Door {
     int  id{-1};
     std::vector<Cell> cells;   // doorway cells (1..4) — source of truth for placement
+    // Edge door (drawn maps, where the door sits on the wall line): the wall edges it
+    // spans (1..4) instead of cells. A door has cells or edges, never both. Closed, its
+    // edges block; open, they pass, whatever the detected wall underneath says.
+    std::vector<Edge> edges;
     bool open{false};
     bool locked{false};
     int  lock_dc{15};
@@ -70,7 +86,8 @@ struct Door {
     // Anchor cell (first occupied cell): the glyph/label anchor and the value the
     // single-cell convenience API reports. Empty door → {-1,-1}.
     [[nodiscard]] Cell anchor() const noexcept {
-        return cells.empty() ? Cell{-1, -1} : cells.front();
+        if (!cells.empty()) return cells.front();
+        return edges.empty() ? Cell{-1, -1} : edges.front().cell;
     }
 };
 
@@ -405,11 +422,31 @@ public:
     // Discard every auto-detected wall/obstacle so the map is fully passable
     // except where explicit terrain regions say otherwise. Lets the GUI offer a
     // "turn off auto-detection" toggle when the detector mis-reads a map.
-    void clearWalls() noexcept { walls_.clear(); disallowed_.clear(); }
+    void clearWalls() noexcept { walls_.clear(); disallowed_.clear(); clearEdgeWalls(); }
 
     [[nodiscard]] const std::vector<Wall>& walls()           const noexcept { return walls_; }
     [[nodiscard]] const CellSet&           disallowedCells() const noexcept { return disallowed_; }
     [[nodiscard]] bool isBlocked(Cell origin, int agentSize, MovementType mt = MovementType::Walk) const noexcept;
+
+    // ── Edge walls (walls on the grid line between two cells) ─────────────
+    // Static edge walls come from detection or the DM; edge doors override them on
+    // their own edges. Edges block movement (every type but Burrow and teleport),
+    // line of sight, and so melee reach. An empty map skips every edge test.
+    void setEdgeWall(Edge e, bool on) noexcept;
+    // Remove every static edge wall. Edge doors keep their edges.
+    void clearEdgeWalls() noexcept;
+    // Static edge walls, in row-major order (doors not included).
+    [[nodiscard]] std::vector<Edge> edgeWalls() const;
+    // True when the edge blocks right now: a door's state on a door edge, else the static wall.
+    [[nodiscard]] bool edgeBlocked(Edge e) const noexcept;
+    // True when an edge wall separates two orthogonal neighbours. False for any other pair.
+    [[nodiscard]] bool edgeBetween(Cell a, Cell b) const noexcept;
+    // True when moving a size-`size` footprint one step from `from` to `to` crosses an edge
+    // wall. A diagonal step is open when either L-shaped route around the corner is clear.
+    [[nodiscard]] bool stepCrossesWall(Cell from, Cell to, int size) const noexcept;
+    // True when an edge wall runs through the inside of the footprint at `origin`.
+    [[nodiscard]] bool footprintSplit(Cell origin, int size) const noexcept;
+    [[nodiscard]] bool hasEdgeWalls() const noexcept { return edgesActive_; }
 
     // Occupancy of the footprint a `size`-token would cover with top-left `origin`,
     // for a mover identified by `mover_idx` (its own footprint never counts). Other
@@ -649,6 +686,11 @@ public:
     // (no stacking). A wide door is one logical object: it opens/closes/locks as a unit.
     int addDoor(const std::vector<Cell>& cells, bool open = false, bool locked = false,
                 int lock_dc = 15, bool arcane_lock = false, int break_dc = 15);
+    // Edge door: spans 1..4 wall edges. Any door already on one of the edges is replaced.
+    int addEdgeDoor(const std::vector<Edge>& edges, bool open = false, bool locked = false,
+                    int lock_dc = 15, bool arcane_lock = false, int break_dc = 15);
+    // Index into doors_ for the edge door on this edge, or -1.
+    [[nodiscard]] int doorAtEdge(Edge e) const noexcept;
     // Single-cell convenience overload (delegates to the multi-cell form).
     int addDoor(Cell c, bool open = false, bool locked = false,
                 int lock_dc = 15, bool arcane_lock = false, int break_dc = 15);
@@ -891,6 +933,12 @@ private:
     std::vector<int>   hLines_, vLines_;
     std::vector<Wall>  walls_;
     CellSet            disallowed_;
+    // cols × rows edge bits per cell (see kEdge* in battle_map.cpp): static wall, door-owned
+    // and door-closed, for the cell's east and south edges. Sized lazily; empty = no edges.
+    std::vector<std::uint8_t> edgeMask_;
+    bool                      edgesActive_{false};   // any edge bit has ever been set
+    [[nodiscard]] std::uint8_t edgeBits(Cell c) const noexcept;
+    void ensureEdgeMask();
     std::vector<double>     terrainMult_;     // cols × rows static movement multipliers (default 1.0)
     std::vector<TerrainType> terrainType_;    // cols × rows terrain types (default Standard)
     std::vector<Door>        doors_;          // lockable doorway cells

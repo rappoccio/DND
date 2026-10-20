@@ -1166,6 +1166,18 @@ class App:
                 pygame.draw.line(self.overlay, wall_color,
                                  (wx, ay), (wx, ay + cpx), 4)
 
+        # Blocking edge walls (DUNGEON_LEVELS_PLAN Phase 2A), on the exact grid lines.
+        for e in getattr(bm, "edge_walls", ()):
+            c, rw = e.cell.col, e.cell.row
+            if c + 1 >= len(vlines) or rw + 1 >= len(hlines):
+                continue
+            if e.side == rpg.EdgeSide.East:
+                x = vlines[c + 1]
+                pygame.draw.line(self.overlay, wall_color, (x, hlines[rw]), (x, hlines[rw + 1]), 4)
+            else:
+                y = hlines[rw + 1]
+                pygame.draw.line(self.overlay, wall_color, (vlines[c], y), (vlines[c + 1], y), 4)
+
     # ─────────────────────────────────────────────────────────────────────
     #  Zoom (Ctrl/Cmd + wheel, +/- keys, 0 to reset)
     # ─────────────────────────────────────────────────────────────────────
@@ -6510,6 +6522,8 @@ class App:
                 continue
             if self._footprint_dist_ft(atk, t) > reach:
                 continue
+            if not self._can_reach_through(atk, t):
+                continue
             out.append(t)
         return out
 
@@ -8076,7 +8090,8 @@ class App:
         for i in range(len(self.bm.placed_agents)):
             if not self.combat.get_agent_conditions(self.bm, i).netted:
                 continue
-            if i == actor_idx or 0 <= self._footprint_dist_ft(actor_idx, i) <= 5:
+            if i == actor_idx or (0 <= self._footprint_dist_ft(actor_idx, i) <= 5
+                                  and self._can_reach_through(actor_idx, i)):
                 out.append(i)
         return out
 
@@ -10531,6 +10546,16 @@ class App:
             return -1
         s = agents[a_idx]; o = agents[b_idx]
         return rpg.footprint_distance(s.origin, s.size, o.origin, o.size) * 5
+
+    def _can_reach_through(self, a_idx: int, b_idx: int) -> bool:
+        """True when nothing solid stands between two creatures: the engine's line of sight,
+        which an edge wall on a drawn map blocks even between adjacent cells. Pair it with
+        _footprint_dist_ft for anything that physically reaches the other creature."""
+        agents = self.bm.placed_agents
+        if not (0 <= a_idx < len(agents) and 0 <= b_idx < len(agents)):
+            return False
+        s = agents[a_idx]; o = agents[b_idx]
+        return self.bm.has_line_of_sight(s.origin, s.size, o.origin, o.size)
 
     def _chromatic_last_hop(self) -> int:
         """The creature the next leap would spring from (primary, or the last chained hop)."""

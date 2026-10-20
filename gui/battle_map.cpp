@@ -140,6 +140,12 @@ void BattleMap::analyzeGrid()
     // Reset fog-of-war explored mask (all fogged) for the new grid dimensions.
     explored_.assign(static_cast<std::size_t>(rows_ * cols_), 0);
 
+    // Edge walls are cells' sides, so a new grid drops them; edge doors re-apply on it.
+    edgeMask_.clear();
+    edgesActive_ = false;
+    for (std::size_t i = 0; i < doors_.size(); ++i)
+        if (!doors_[i].edges.empty()) syncDoorTerrain(static_cast<int>(i));
+
     bmlog("[BattleMap] Grid {}×{}, ~{}px/cell\n", cols_, rows_, cellPx_);
 }
 
@@ -182,6 +188,11 @@ void BattleMap::setUniformGrid(int cellPx, int anchorX, int anchorY)
     explored_.assign(n, 0);  // fog-of-war: all fogged on a fresh grid
 
     clearWalls();
+    // Edge walls are cells' sides, so a new grid drops them; edge doors re-apply on it.
+    edgeMask_.clear();
+    edgesActive_ = false;
+    for (std::size_t i = 0; i < doors_.size(); ++i)
+        if (!doors_[i].edges.empty()) syncDoorTerrain(static_cast<int>(i));
 
     bmlog("[BattleMap] Manual grid {}×{}, {}px/cell (phase {},{})\n",
                  cols_, rows_, cellPx_, px, py);
@@ -359,6 +370,115 @@ bool BattleMap::isBlocked(Cell origin, int size, MovementType mt) const noexcept
             if (!isPassable) return true;
         }
     }
+    // A creature can't stand across an edge wall (burrowers go through walls anyway).
+    if (edgesActive_ && size > 1 && mt != MovementType::Burrow && footprintSplit(origin, size)) return true;
+    return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Edge walls
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-cell bits in edgeMask_. "Wall" is the static edge wall (detection / DM);
+// "Door" marks an edge owned by an edge door, and "Shut" is that door's closed state.
+// A door-owned edge blocks exactly when shut, whatever the static bit says.
+namespace {
+constexpr std::uint8_t kWallE = 1, kWallS = 2, kDoorE = 4, kDoorS = 8, kShutE = 16, kShutS = 32;
+constexpr std::uint8_t wallBit(EdgeSide s) noexcept { return s == EdgeSide::East ? kWallE : kWallS; }
+constexpr std::uint8_t doorBit(EdgeSide s) noexcept { return s == EdgeSide::East ? kDoorE : kDoorS; }
+constexpr std::uint8_t shutBit(EdgeSide s) noexcept { return s == EdgeSide::East ? kShutE : kShutS; }
+}
+
+void BattleMap::ensureEdgeMask()
+{
+    const auto n = static_cast<std::size_t>(rows_ * cols_);
+    if (edgeMask_.size() != n) edgeMask_.assign(n, 0);
+}
+
+std::uint8_t BattleMap::edgeBits(Cell c) const noexcept
+{
+    if (c.col < 0 || c.row < 0 || c.col >= cols_ || c.row >= rows_) return 0;
+    const auto i = static_cast<std::size_t>(c.row * cols_ + c.col);
+    return i < edgeMask_.size() ? edgeMask_[i] : std::uint8_t{0};
+}
+
+void BattleMap::setEdgeWall(Edge e, bool on) noexcept
+{
+    if (e.cell.col < 0 || e.cell.row < 0 || e.cell.col >= cols_ || e.cell.row >= rows_) return;
+    ensureEdgeMask();
+    auto& b = edgeMask_[static_cast<std::size_t>(e.cell.row * cols_ + e.cell.col)];
+    if (on) { b = static_cast<std::uint8_t>(b | wallBit(e.side)); edgesActive_ = true; }
+    else      b = static_cast<std::uint8_t>(b & ~wallBit(e.side));
+}
+
+void BattleMap::clearEdgeWalls() noexcept
+{
+    bool any = false;
+    for (auto& b : edgeMask_) {
+        b = static_cast<std::uint8_t>(b & ~(kWallE | kWallS));
+        any = any || b != 0;
+    }
+    edgesActive_ = any;
+}
+
+std::vector<Edge> BattleMap::edgeWalls() const
+{
+    std::vector<Edge> out;
+    for (int r = 0; r < rows_; ++r)
+        for (int c = 0; c < cols_; ++c) {
+            const std::uint8_t b = edgeBits({c, r});
+            if (b & kWallE) out.push_back({{c, r}, EdgeSide::East});
+            if (b & kWallS) out.push_back({{c, r}, EdgeSide::South});
+        }
+    return out;
+}
+
+bool BattleMap::edgeBlocked(Edge e) const noexcept
+{
+    const std::uint8_t b = edgeBits(e.cell);
+    if (b & doorBit(e.side)) return (b & shutBit(e.side)) != 0;
+    return (b & wallBit(e.side)) != 0;
+}
+
+bool BattleMap::edgeBetween(Cell a, Cell b) const noexcept
+{
+    if (!edgesActive_) return false;
+    const int dc = b.col - a.col, dr = b.row - a.row;
+    if (dr == 0 && dc ==  1) return edgeBlocked({a, EdgeSide::East});
+    if (dr == 0 && dc == -1) return edgeBlocked({b, EdgeSide::East});
+    if (dc == 0 && dr ==  1) return edgeBlocked({a, EdgeSide::South});
+    if (dc == 0 && dr == -1) return edgeBlocked({b, EdgeSide::South});
+    return false;
+}
+
+bool BattleMap::stepCrossesWall(Cell from, Cell to, int size) const noexcept
+{
+    if (!edgesActive_) return false;
+    const int dc = to.col - from.col, dr = to.row - from.row;
+    if ((dc == 0 && dr == 0) || std::abs(dc) > 1 || std::abs(dr) > 1) return false;
+    for (int fc = from.col; fc < from.col + size; ++fc)
+        for (int fr = from.row; fr < from.row + size; ++fr) {
+            const Cell f{fc, fr}, g{fc + dc, fr + dr};
+            if (dc == 0 || dr == 0) {
+                if (edgeBetween(f, g)) return true;
+                continue;
+            }
+            // Diagonal: through the corner, open when either L route round it is clear.
+            const Cell viaCol{fc + dc, fr}, viaRow{fc, fr + dr};
+            const bool colRoute = edgeBetween(f, viaCol) || edgeBetween(viaCol, g);
+            const bool rowRoute = edgeBetween(f, viaRow) || edgeBetween(viaRow, g);
+            if (colRoute && rowRoute) return true;
+        }
+    return false;
+}
+
+bool BattleMap::footprintSplit(Cell origin, int size) const noexcept
+{
+    if (!edgesActive_ || size <= 1) return false;
+    for (int c = origin.col; c < origin.col + size; ++c)
+        for (int r = origin.row; r < origin.row + size; ++r) {
+            if (c + 1 < origin.col + size && edgeBlocked({{c, r}, EdgeSide::East}))  return true;
+            if (r + 1 < origin.row + size && edgeBlocked({{c, r}, EdgeSide::South})) return true;
+        }
     return false;
 }
 
@@ -504,6 +624,7 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
 
                 if (!inBounds(next, pa.agent->getSize())) continue;
                 if (isBlocked(next, pa.agent->getSize(), type)) continue;
+                if (edgesActive_ && type != MovementType::Burrow && stepCrossesWall(cell, next, pa.agent->getSize())) continue;
                 // Enemy footprints block the path; allies may be passed through (but not stopped on,
                 // which is enforced by the destination check below).
                 if (agentOccupancy(next, pa.agent->getSize(), idx) == 2) continue;
@@ -630,11 +751,15 @@ bool BattleMap::jumpAgent(int idx, Cell newOrigin, bool is_running) noexcept
     int steps = std::max(std::abs(newOrigin.col - oc), std::abs(newOrigin.row - orow));
     if (steps == 0)
         return false;
+    Cell prevStep = pa.origin;
     for (int i = 1; i <= steps; ++i) {
         Cell step{ oc   + (newOrigin.col - oc)   * i / steps,
                    orow + (newOrigin.row - orow) * i / steps };
         if (isBlocked(step, agent_size, MovementType::Jump))
             return false;  // a wall blocks the leap
+        if (stepCrossesWall(prevStep, step, agent_size))
+            return false;  // so does an edge wall
+        prevStep = step;
     }
 
     // Commit: jumping spends walk budget; move directly to the landing cell.
@@ -698,7 +823,7 @@ int BattleMap::forceMoveAgent(int idx, Cell push_from, int push_ft, bool pull, i
             break;
 
         // Check if blocked (use Walk movement type — can't push through walls)
-        if (isBlocked(next, agent_size, MovementType::Walk))
+        if (isBlocked(next, agent_size, MovementType::Walk) || stepCrossesWall(pa.origin, next, agent_size))
             break;
 
         // Move to next cell
@@ -713,7 +838,8 @@ int BattleMap::forceMoveAgent(int idx, Cell push_from, int push_ft, bool pull, i
         for (int i = 0; i < max_cells; ++i) {
             if (adjacentToPuller(pa.origin)) break;   // a reel ends adjacent to the puller
             Cell next{pa.origin.col + dir_col, pa.origin.row};
-            if (!inBounds(next, agent_size) || isBlocked(next, agent_size, MovementType::Walk))
+            if (!inBounds(next, agent_size) || isBlocked(next, agent_size, MovementType::Walk)
+                    || stepCrossesWall(pa.origin, next, agent_size))
                 break;
             pa.origin = next;
             pa.agent->setPosition(next.col, next.row);
@@ -724,7 +850,8 @@ int BattleMap::forceMoveAgent(int idx, Cell push_from, int push_ft, bool pull, i
             for (int i = 0; i < max_cells; ++i) {
                 if (adjacentToPuller(pa.origin)) break;   // a reel ends adjacent to the puller
                 Cell next{pa.origin.col, pa.origin.row + dir_row};
-                if (!inBounds(next, agent_size) || isBlocked(next, agent_size, MovementType::Walk))
+                if (!inBounds(next, agent_size) || isBlocked(next, agent_size, MovementType::Walk)
+                        || stepCrossesWall(pa.origin, next, agent_size))
                     break;
                 pa.origin = next;
                 pa.agent->setPosition(next.col, next.row);
@@ -909,6 +1036,7 @@ CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
 
                 if (!inBounds(next, tokenSize))  continue;
                 if (isBlocked(next, tokenSize, type))  continue;
+                if (edgesActive_ && type != MovementType::Burrow && stepCrossesWall(cell, next, tokenSize))  continue;
                 // Enemy footprints block the path entirely; allies may be passed through.
                 if (agentOccupancy(next, tokenSize, mover_idx) == 2)  continue;
                 // Magic Circle / Hallow ward boundary (same rule as moveAgent) so the reachable
@@ -1285,12 +1413,61 @@ bool BattleMap::hasLineOfSight(Cell from, int fromSize,
         return true;
     };
 
+    // Edge walls: the exact segment between the two cell centres, tested against every
+    // grid line it crosses (doubled coordinates, so centres are odd and lines even).
+    // A crossing between two corners is blocked by that edge. A crossing exactly on a
+    // corner uses the movement rule: blocked only when both L routes round it are walled.
+    // Edges with both sides inside one footprint never block (a token can't block itself).
+    auto inFoot = [&](Cell c, Cell o, int sz) {
+        return c.col >= o.col && c.col < o.col + sz && c.row >= o.row && c.row < o.row + sz;
+    };
+    auto blockedEdge = [&](Cell a, Cell b) {
+        if ((inFoot(a, from, fromSize) && inFoot(b, from, fromSize)) ||
+            (inFoot(a, to, toSize) && inFoot(b, to, toSize))) return false;
+        return edgeBetween(a, b);
+    };
+    auto floorDiv = [](long long n, long long d) {
+        long long q = n / d;
+        if ((n % d != 0) && ((n < 0) != (d < 0))) --q;
+        return q;
+    };
+    auto edges1x1 = [&](int fc, int fr, int tc, int tr) -> bool {
+        const long long X0 = 2 * fc + 1, Y0 = 2 * fr + 1, X1 = 2 * tc + 1, Y1 = 2 * tr + 1;
+        const long long dX = X1 - X0, dY = Y1 - Y0;
+        const int sx = (dX > 0) - (dX < 0), sy = (dY > 0) - (dY < 0);
+        auto cornerBlocked = [&](long long gx, long long gy) {
+            const Cell a{static_cast<int>(gx) - (sx > 0 ? 1 : 0), static_cast<int>(gy) - (sy > 0 ? 1 : 0)};
+            const Cell b{a.col + sx, a.row + sy};
+            const Cell viaCol{a.col + sx, a.row}, viaRow{a.col, a.row + sy};
+            return (blockedEdge(a, viaCol) || blockedEdge(viaCol, b)) &&
+                   (blockedEdge(a, viaRow) || blockedEdge(viaRow, b));
+        };
+        // Vertical grid lines x = X (even), strictly between the endpoints.
+        for (long long X = X0 + sx; sx != 0 && (X1 - X) * sx > 0; X += 2 * sx) {
+            const long long num = Y0 * dX + (X - X0) * dY;          // = Y * dX at the crossing
+            if (num % dX == 0 && (num / dX) % 2 == 0) {
+                if (cornerBlocked(X / 2, (num / dX) / 2)) return false;
+                continue;
+            }
+            const int r = static_cast<int>(floorDiv(num, 2 * dX));
+            if (blockedEdge({static_cast<int>(X / 2) - 1, r}, {static_cast<int>(X / 2), r})) return false;
+        }
+        // Horizontal grid lines y = Y (even). Corners were handled above.
+        for (long long Y = Y0 + sy; sy != 0 && (Y1 - Y) * sy > 0; Y += 2 * sy) {
+            const long long num = X0 * dY + (Y - Y0) * dX;          // = X * dY at the crossing
+            if (num % dY == 0 && (num / dY) % 2 == 0) continue;
+            const int c = static_cast<int>(floorDiv(num, 2 * dY));
+            if (blockedEdge({c, static_cast<int>(Y / 2) - 1}, {c, static_cast<int>(Y / 2)})) return false;
+        }
+        return true;
+    };
+
     // Any cell in from-footprint that can see any cell in to-footprint.
     for (int fc = from.col; fc < from.col + fromSize; ++fc)
         for (int fr = from.row; fr < from.row + fromSize; ++fr)
             for (int tc = to.col; tc < to.col + toSize; ++tc)
                 for (int tr = to.row; tr < to.row + toSize; ++tr)
-                    if (los1x1(fc, fr, tc, tr))
+                    if (los1x1(fc, fr, tc, tr) && (!edgesActive_ || edges1x1(fc, fr, tc, tr)))
                         return true;
     return false;
 }
@@ -1617,6 +1794,16 @@ int BattleMap::doorAt(Cell c) const noexcept {
 void BattleMap::syncDoorTerrain(int idx) noexcept {
     if (idx < 0 || idx >= static_cast<int>(doors_.size())) return;
     const Door& d = doors_[static_cast<std::size_t>(idx)];
+    // Edge door: own each edge, and shut it while the door is closed.
+    for (const Edge& e : d.edges) {
+        if (e.cell.col < 0 || e.cell.row < 0 || e.cell.col >= cols_ || e.cell.row >= rows_) continue;
+        ensureEdgeMask();
+        auto& b = edgeMask_[static_cast<std::size_t>(e.cell.row * cols_ + e.cell.col)];
+        b = static_cast<std::uint8_t>(b | doorBit(e.side));
+        if (d.open) b = static_cast<std::uint8_t>(b & ~shutBit(e.side));
+        else        b = static_cast<std::uint8_t>(b | shutBit(e.side));
+        edgesActive_ = true;
+    }
     for (const Cell& c : d.cells) {
         if (d.open) {
             setTerrainType(c, TerrainType::Standard);
@@ -1654,6 +1841,39 @@ int BattleMap::addDoor(const std::vector<Cell>& cells, bool open, bool locked,
     return d.id;
 }
 
+int BattleMap::addEdgeDoor(const std::vector<Edge>& edges, bool open, bool locked,
+                           int lock_dc, bool arcane_lock, int break_dc) {
+    // Replace any edge door already on one of these edges rather than stacking.
+    std::vector<int> to_remove;
+    for (const Edge& e : edges) {
+        int existing = doorAtEdge(e);
+        if (existing < 0) continue;
+        int rid = doors_[static_cast<std::size_t>(existing)].id;
+        if (std::find(to_remove.begin(), to_remove.end(), rid) == to_remove.end())
+            to_remove.push_back(rid);
+    }
+    for (int rid : to_remove) removeDoor(rid);
+
+    Door d;
+    d.id          = nextDoorId_++;
+    d.edges       = edges;
+    d.open        = open;
+    d.locked      = locked;
+    d.lock_dc     = lock_dc;
+    d.break_dc    = break_dc;
+    d.arcane_lock = arcane_lock;
+    doors_.push_back(d);
+    syncDoorTerrain(static_cast<int>(doors_.size()) - 1);
+    return d.id;
+}
+
+int BattleMap::doorAtEdge(Edge e) const noexcept {
+    for (std::size_t i = 0; i < doors_.size(); ++i)
+        for (const Edge& de : doors_[i].edges)
+            if (de == e) return static_cast<int>(i);
+    return -1;
+}
+
 int BattleMap::addDoor(Cell c, bool open, bool locked, int lock_dc, bool arcane_lock,
                        int break_dc) {
     return addDoor(std::vector<Cell>{c}, open, locked, lock_dc, arcane_lock, break_dc);
@@ -1666,6 +1886,13 @@ void BattleMap::removeDoor(int id) noexcept {
             for (const Cell& c : doors_[i].cells) {
                 setTerrainType(c, TerrainType::Standard);
                 disallowed_.erase(c);
+            }
+            // An edge door's edges fall back to whatever static wall lies under them.
+            for (const Edge& e : doors_[i].edges) {
+                if (e.cell.col < 0 || e.cell.row < 0 || e.cell.col >= cols_ || e.cell.row >= rows_) continue;
+                if (edgeMask_.empty()) break;
+                auto& b = edgeMask_[static_cast<std::size_t>(e.cell.row * cols_ + e.cell.col)];
+                b = static_cast<std::uint8_t>(b & ~(doorBit(e.side) | shutBit(e.side)));
             }
             doors_.erase(doors_.begin() + static_cast<std::ptrdiff_t>(i));
             return;

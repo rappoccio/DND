@@ -1918,11 +1918,8 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         const int rangeFt = (wp.type == WeaponType::Melee) ? wp.reach_ft : wp.normal_range_ft;
         return std::max(1, rangeFt / 5);
     };
-    auto isRanged = [&](int w) -> bool {
-        return bm.getAgentWeapons(agent_idx)[static_cast<std::size_t>(std::clamp(w, 0, 2))].type
-               != WeaponType::Melee;
-    };
-    // Can the agent, standing at cell `from`, attack `t` with weapon slot `w` (in reach + LoS if ranged)?
+    // Can the agent, standing at cell `from`, attack `t` with weapon slot `w` (in reach + LoS)?
+    // Melee needs LoS too, as in canAttack: an edge wall can stand between two adjacent creatures.
     auto canAttackFrom = [&](Cell from, int t, int w) -> bool {
         const auto& pa = bm.placedAgents();
         const int  ms = pa[static_cast<std::size_t>(agent_idx)].agent->getSize();
@@ -1930,7 +1927,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         const int  ts = pa[static_cast<std::size_t>(t)].agent->getSize();
         const int  d  = footprintDistance(from, ms, tg, ts);
         if (d < 1 || d > reachCellsFor(w)) return false;
-        if (isRanged(w) && !bm.hasLineOfSight(from, ms, tg, ts)) return false;
+        if (!bm.hasLineOfSight(from, ms, tg, ts)) return false;
         return true;
     };
     auto inReachOf = [&](int t, int w) -> bool {

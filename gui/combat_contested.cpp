@@ -73,6 +73,12 @@ ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
         result.log_message = "Target is not adjacent (within 5 feet).";
         return result;
     }
+    // Adjacent is not enough on a drawn map: an edge wall can stand between the two.
+    if (!bm.hasLineOfSight(attacker.origin, attacker.agent->getSize(),
+                           target.origin, target.agent->getSize())) {
+        result.log_message = "A wall is in the way.";
+        return result;
+    }
 
     // Roll attacker Athletics: d20 + STR mod + proficiency (assume all shoves are proficient)
     int attacker_str_mod = (attacker.agent->getStats().str - 10) / 2;
@@ -327,6 +333,12 @@ GrappleResult CombatEngine::executeGrapple(BattleMap& bm, const GrappleAction& a
     int distance_cells = std::max(dx, dy);  // Chebyshev distance
     if (distance_cells > 1) {
         result.log_message = "Target is not adjacent (within 5 feet).";
+        return result;
+    }
+    // Adjacent is not enough on a drawn map: an edge wall can stand between the two.
+    if (!bm.hasLineOfSight(attacker.origin, attacker.agent->getSize(),
+                           target.origin, target.agent->getSize())) {
+        result.log_message = "A wall is in the way.";
         return result;
     }
 
