@@ -365,6 +365,16 @@ class TerrainEditorDialog:
         self._viewport = None
         self._canvas = None     # map-space scratch surface the editor draws onto
         self.on_regions_changed = None
+        # Edge tool (Dungeon levels 2B step 3). ``edge_overrides`` is the app's live
+        # {"add": [[c, r, "E"|"S"], ...], "remove": [...]}, mutated in place like
+        # ``ladders``; the engine only reads it in Drawn detection, so the tool is off
+        # (``edges_enabled`` False) otherwise. ``edge_drag`` is (button, start, end) in
+        # map px while a drag is held: left runs along a grid line, right box-erases.
+        self.edge_overrides = {"add": [], "remove": []}
+        self.edges_enabled = False
+        self.on_edges_changed = None
+        self.edge_drag = None
+        self._edge_undo = []
 
     ZOOM_MIN = 0.5
     ZOOM_MAX = 6.0
@@ -372,7 +382,8 @@ class TerrainEditorDialog:
     PAN_STEP = 30
 
     def open(self, map_surf, terrain_regions, bm=None, ladders=None, door_links=None,
-             on_regions_changed=None):
+             on_regions_changed=None, edge_overrides=None, edges_enabled=False,
+             on_edges_changed=None):
         """Open the terrain editor with existing terrain data.
 
         ``ladders`` is the app's live ladder list (Python-only cell objects); the editor
@@ -380,9 +391,16 @@ class TerrainEditorDialog:
         ``door_links`` is the app's live door-link table (key -> [X,Y,Z]), mutated the
         same way for cross-map door staples. ``on_regions_changed(regions)`` is called after
         every edit to the region list, so the app can re-detect walls under Floor regions
-        while the editor is open."""
+        while the editor is open. ``edge_overrides`` is the app's live override dict
+        for the Edge tool, edited in place; ``on_edges_changed()`` is called after each
+        edit so the app can re-detect."""
         self.active = True
         self.on_regions_changed = on_regions_changed
+        self.edge_overrides = edge_overrides if edge_overrides is not None else {"add": [], "remove": []}
+        self.edges_enabled = edges_enabled
+        self.on_edges_changed = on_edges_changed
+        self.edge_drag = None
+        self._edge_undo = []
         self.map_surf = map_surf
         self.terrain_regions = [r.copy() for r in terrain_regions] if terrain_regions else []
         self.selection_start = None
@@ -500,6 +518,10 @@ class TerrainEditorDialog:
             pos = self._to_map(event.pos)
 
         if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.selected_type == "Edge" and event.button in (1, 3):
+                if self.edges_enabled and self.bm:
+                    self.edge_drag = (event.button, pos, pos)
+                return
             if event.button == 1 and self.selected_type == "Ladder":
                 # A ladder is a single-cell portal: click places one (target auto-filled
                 # to the same global X,Y one floor up/down); clicking an existing one
@@ -531,7 +553,9 @@ class TerrainEditorDialog:
                 self.selected_region_idx = -1
 
         elif event.type == pygame.MOUSEMOTION:
-            if self.selected_type == "Door" and self.door_drag_start is not None:
+            if self.edge_drag is not None:
+                self.edge_drag = (self.edge_drag[0], self.edge_drag[1], pos)
+            elif self.selected_type == "Door" and self.door_drag_start is not None:
                 end = self._pos_to_cell(pos)
                 if end is not None:
                     self.door_drag_end = end
@@ -544,6 +568,10 @@ class TerrainEditorDialog:
                 )
 
         elif event.type == pygame.MOUSEBUTTONUP:
+            if self.edge_drag is not None and event.button == self.edge_drag[0]:
+                self.edge_drag = (self.edge_drag[0], self.edge_drag[1], pos)
+                self._finish_edge_drag()
+                return
             if event.button == 1 and self.selected_type == "Door" and self.door_drag_start is not None:
                 end = self._pos_to_cell(pos) or self.door_drag_end or self.door_drag_start
                 self._place_door_span(self.door_drag_start, end)
@@ -572,6 +600,8 @@ class TerrainEditorDialog:
                 self.selected_type = "Ladder"
             elif event.key == pygame.K_7:
                 self.selected_type = "Floor"
+            elif event.key == pygame.K_8:
+                self.selected_type = "Edge"
             elif event.key == pygame.K_u and self.selected_type == "Ladder":
                 self.ladder_up = not self.ladder_up
             elif event.key == pygame.K_l and self.selected_type == "Door":
@@ -606,6 +636,9 @@ class TerrainEditorDialog:
                 if self.selected_type == "Difficult Terrain":
                     self.terrain_regions[self.selected_region_idx]["multiplier"] = self.difficulty_mult
                 self._regions_changed()
+            elif event.key == pygame.K_z and event.mod & pygame.KMOD_CTRL \
+                    and self.selected_type == "Edge":
+                self._undo_edges()
             elif event.key == pygame.K_z and event.mod & pygame.KMOD_CTRL:
                 # Undo last region
                 if self.terrain_regions:
@@ -741,6 +774,165 @@ class TerrainEditorDialog:
         dz = 1 if self.ladder_up else -1
         self.ladders.append({"cells": [(col, row)],
                              "target": [ox + col, oy + row, z + dz]})
+
+    # ── Edge tool ────────────────────────────────────────────────────────
+    # An edge is keyed (c, r, "E"|"S"): the east or south side of cell (c, r), as in the
+    # terrain file's edge_overrides. Edges on the map's border are never keys: the map
+    # edge blocks already.
+
+    def _edge_ok(self, c, r, s):
+        cols, rows = self.bm.grid_cols, self.bm.grid_rows
+        if s == "E":
+            return 0 <= c < cols - 1 and 0 <= r < rows
+        return 0 <= c < cols and 0 <= r < rows - 1
+
+    def _nearest_vertex(self, pos):
+        """(i, j): the grid-line crossing nearest ``pos`` (map px)."""
+        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        i = min(range(len(v)), key=lambda k: abs(v[k] - pos[0]))
+        j = min(range(len(h)), key=lambda k: abs(h[k] - pos[1]))
+        return i, j
+
+    def _edge_run(self, start, end):
+        """The edges along one grid line, from the crossing nearest ``start`` to the one
+        nearest ``end``, ordered from the start. The line is the drag's dominant axis."""
+        (i0, j0), (i1, j1) = self._nearest_vertex(start), self._nearest_vertex(end)
+        if abs(i1 - i0) >= abs(j1 - j0):
+            step = 1 if i1 >= i0 else -1
+            keys = [(i if step > 0 else i - 1, j0 - 1, "S") for i in range(i0, i1, step)]
+        else:
+            step = 1 if j1 >= j0 else -1
+            keys = [(i0 - 1, j if step > 0 else j - 1, "E") for j in range(j0, j1, step)]
+        return [k for k in keys if self._edge_ok(*k)]
+
+    def _nearest_edge(self, pos):
+        """The edge of the cell under ``pos`` whose grid line is closest, or None."""
+        cell = self._pos_to_cell(pos)
+        if cell is None:
+            return None
+        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        c, r = cell.col, cell.row
+        x, y = pos
+        sides = [(x - v[c], (c - 1, r, "E")), (v[c + 1] - x, (c, r, "E")),
+                 (y - h[r], (c, r - 1, "S")), (h[r + 1] - y, (c, r, "S"))]
+        for _d, key in sorted(sides, key=lambda t: t[0]):
+            if self._edge_ok(*key):
+                return key
+        return None
+
+    def _edges_in_box(self, rect):
+        """Every edge whose midpoint lies in ``rect`` (map px, edges inclusive)."""
+        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        inside = lambda x, y: rect.left <= x <= rect.right and rect.top <= y <= rect.bottom
+        keys = []
+        for c in range(self.bm.grid_cols):
+            for r in range(self.bm.grid_rows):
+                if inside(v[c + 1], (h[r] + h[r + 1]) / 2) and self._edge_ok(c, r, "E"):
+                    keys.append((c, r, "E"))
+                if inside((v[c] + v[c + 1]) / 2, h[r + 1]) and self._edge_ok(c, r, "S"):
+                    keys.append((c, r, "S"))
+        return keys
+
+    def _is_edge_wall(self, key):
+        c, r, s = key
+        side = rpg.EdgeSide.East if s == "E" else rpg.EdgeSide.South
+        return self.bm.is_edge_wall(rpg.Cell(c, r), side)
+
+    def _set_edges(self, keys, on):
+        """Record ``keys`` as added (``on``) or removed in the overrides, keeping the two
+        lists disjoint, and let the app re-detect. Removing first drops the keys from
+        "add" and re-detects; only what is still a wall then goes into "remove", so
+        un-drawing a hand-added edge, or a box over open floor, records nothing."""
+        if not keys:
+            return
+        ov = self.edge_overrides
+        add = [tuple(e) for e in ov.get("add", [])]
+        rem = [tuple(e) for e in ov.get("remove", [])]
+        keys = list(dict.fromkeys(keys))
+        keyset = set(keys)
+        snapshot = {"add": [list(e) for e in add], "remove": [list(e) for e in rem]}
+        if on:
+            new_rem = [e for e in rem if e not in keyset]
+            new_add = add + [k for k in keys if k not in set(add)]
+        else:
+            new_add = [e for e in add if e not in keyset]
+            new_rem = rem
+            if new_add != add:
+                ov["add"] = [list(e) for e in new_add]
+                self._edges_changed()
+            new_rem = rem + [k for k in keys if k not in set(rem) and self._is_edge_wall(k)]
+        if new_add == add and new_rem == rem:
+            return
+        self._edge_undo.append(snapshot)
+        ov["add"] = [list(e) for e in new_add]
+        ov["remove"] = [list(e) for e in new_rem]
+        if new_rem != rem or on:
+            self._edges_changed()
+
+    def _edges_changed(self):
+        if self.on_edges_changed:
+            self.on_edges_changed()
+
+    def _undo_edges(self):
+        if not self._edge_undo:
+            return
+        prev = self._edge_undo.pop()
+        self.edge_overrides["add"] = prev["add"]
+        self.edge_overrides["remove"] = prev["remove"]
+        self._edges_changed()
+
+    def _edge_drag_preview(self):
+        """(keys, on) the held drag would write: a run, a single edge, or a box."""
+        button, start, end = self.edge_drag
+        if button == 3:
+            box = self._edges_in_box(self._drag_rect(start, end))
+            return [k for k in box if self._is_edge_wall(k)], False
+        run = self._edge_run(start, end)
+        if not run:
+            e = self._nearest_edge(start)
+            run = [e] if e else []
+        return run, (not self._is_edge_wall(run[0])) if run else True
+
+    @staticmethod
+    def _drag_rect(a, b):
+        return pygame.Rect(min(a[0], b[0]), min(a[1], b[1]), abs(b[0] - a[0]), abs(b[1] - a[1]))
+
+    def _finish_edge_drag(self):
+        """Release: a left drag adds the run, or removes it when its first edge is
+        already a wall; a left click toggles the nearest edge; a right drag erases the
+        box."""
+        keys, on = self._edge_drag_preview()
+        self.edge_drag = None
+        self._set_edges(keys, on)
+
+    def _edge_segment(self, key):
+        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        c, r, s = key
+        if s == "E":
+            return (v[c + 1], h[r]), (v[c + 1], h[r + 1])
+        return (v[c], h[r + 1]), (v[c + 1], h[r + 1])
+
+    def _draw_edge_tool(self, canvas):
+        """Hand-added edges in orange; the held drag's run (yellow to add, white to
+        remove) or erase box."""
+        if not self.bm or not self.bm.v_line_positions or not self.bm.h_line_positions:
+            return
+        for e in self.edge_overrides.get("add", []):
+            key = (int(e[0]), int(e[1]), e[2])
+            if self._edge_ok(*key) and self._is_edge_wall(key):
+                pygame.draw.line(canvas, (255, 150, 40), *self._edge_segment(key), 3)
+        if self.edge_drag is None:
+            return
+        keys, on = self._edge_drag_preview()
+        if self.edge_drag[0] == 3:
+            rect = self._drag_rect(self.edge_drag[1], self.edge_drag[2])
+            s = pygame.Surface((max(1, rect.w), max(1, rect.h)), pygame.SRCALPHA)
+            s.fill((230, 80, 80, 60))
+            canvas.blit(s, rect.topleft)
+            pygame.draw.rect(canvas, (230, 80, 80), rect, 2)
+        colour = (255, 230, 60) if on else (245, 245, 245)
+        for key in keys:
+            pygame.draw.line(canvas, colour, *self._edge_segment(key), 5)
 
     def _apply_terrain_to_selection(self):
         """Convert screen rect to grid cells and add terrain region, snapped to grid."""
@@ -899,6 +1091,8 @@ class TerrainEditorDialog:
         canvas = self._canvas
         canvas.blit(self.map_surf, (0, 0))
         self._draw_detected(canvas)
+        if self.selected_type == "Edge":
+            self._draw_edge_tool(canvas)
 
         # Draw terrain overlays
         for i, region in enumerate(self.terrain_regions):
@@ -987,7 +1181,8 @@ class TerrainEditorDialog:
             f"[4] Difficult Terrain (brown)",
             f"[5] Door (click a cell)",
             f"[6] Ladder (click a cell)",
-            f"[7] Floor (clears detected walls)"
+            f"[7] Floor (clears detected walls)",
+            f"[8] Edge (drag along a grid line)"
         ]
         y = 10
         for text in sel_texts:
@@ -998,7 +1193,7 @@ class TerrainEditorDialog:
         # Current type highlight
         current_idx = {"Wall": 0, "Chasm": 1, "Water": 2,
                        "Difficult Terrain": 3, "Door": 4, "Ladder": 5,
-                       "Floor": 6}.get(self.selected_type, 3)
+                       "Floor": 6, "Edge": 7}.get(self.selected_type, 3)
         pygame.draw.rect(screen, (255, 255, 100), pygame.Rect(8, 8 + current_idx*18, 175, 16), 2)
 
         if self.selected_type == "Ladder":
@@ -1028,6 +1223,17 @@ class TerrainEditorDialog:
                 "Floor: drag a box to clear the detected wall cells and edges inside it",
                 True, (140, 220, 160))
             screen.blit(fl, (10, y + 10))
+        elif self.selected_type == "Edge":
+            if self.edges_enabled:
+                lines = [("Edge: drag along a grid line to add a run (or remove it, if it starts "
+                          "on a wall); click toggles one edge", (255, 200, 120)),
+                         ("Right-drag a box to erase every edge in it  |  [Ctrl+Z] undo an edge edit",
+                          (170, 170, 170))]
+            else:
+                lines = [("Edge: needs Walls ON and the Drawn detector "
+                          "(Terrain… → Wall Detection…)", (230, 140, 140))]
+            for k, (text, colour) in enumerate(lines):
+                screen.blit(self.font_sm.render(text, True, colour), (10, y + 10 + 18 * k))
         else:
             # Difficulty multiplier indicator
             diff_text = f"Difficulty: {'[H]alved (0.5)' if self.difficulty_mult == 0.5 else '[Q]uartered (0.25)'}"

@@ -480,6 +480,109 @@ def test_editor_floor_box_previews_and_saves():
     print("✅ test_editor_floor_box_previews_and_saves passed")
 
 
+
+# ── The terrain editor's Edge tool ───────────────────────────────────────────
+def _edge_editor(tmp, doc=None, gap=False):
+    app, terrain = _app(tmp, doc if doc is not None else {"detection": DETECTION}, gap=gap)
+    app._open_terrain_editor()
+    ed = app.terrain_editor
+    ed.selected_type = "Edge"
+    return app, terrain, ed
+
+
+def _drag(ed, a, b, button=1):
+    """Press at ``a``, move to ``b``, release (map px = screen px at zoom 1)."""
+    ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=a, button=button))
+    ed.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=b, rel=(0, 0), buttons=(1, 0, 0)))
+    ed.handle(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=b, button=button))
+
+
+def _vx(i, j):
+    """Grid crossing (i, j) in px, nudged off it as a hand would be."""
+    return (i * CELL + 3, j * CELL - 2)
+
+
+def test_edge_run_closes_a_leak_and_saves():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, terrain, ed = _edge_editor(tmp, gap=True)
+        assert _blocked(app.bm) & INSIDE, "the gap lets the flood in"
+        _drag(ed, _vx(X0, 3), _vx(X0, 4))
+        assert app._edge_overrides == {"add": [[X0 - 1, 3, "E"]], "remove": []}
+        assert not (_blocked(app.bm) & INSIDE), "re-detected while the editor is open"
+        app._close_terrain_editor()
+        with open(terrain) as f:
+            assert json.load(f)["edge_overrides"] == {"add": [[X0 - 1, 3, "E"]], "remove": []}
+        app._load_terrain(terrain)
+        assert not (_blocked(app.bm) & INSIDE)
+    print("✅ test_edge_run_closes_a_leak_and_saves passed")
+
+
+def test_edge_run_from_a_wall_removes_it():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, _, ed = _edge_editor(tmp)
+        # Right to left along the top wall: the run starts on a wall, so it removes.
+        _drag(ed, _vx(X0 + 2, Y0), _vx(X0, Y0))
+        assert app._edge_overrides["add"] == []
+        assert sorted(map(tuple, app._edge_overrides["remove"])) == \
+            [(X0, Y0 - 1, "S"), (X0 + 1, Y0 - 1, "S")]
+        assert (X0, Y0 - 1, S) not in _edges(app.bm) and (X0 + 2, Y0 - 1, S) in _edges(app.bm)
+        assert _blocked(app.bm) & INSIDE, "the opened wall lets the flood in"
+    print("✅ test_edge_run_from_a_wall_removes_it passed")
+
+
+def test_edge_click_toggles_one_edge():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, terrain, ed = _edge_editor(tmp)
+        p = (4 * CELL + CELL // 2, 3 * CELL + CELL - 3)       # near (4,3)'s south side
+        _drag(ed, p, p)
+        assert (4, 3, S) in _edges(app.bm)
+        assert app._edge_overrides["add"] == [[4, 3, "S"]]
+        _drag(ed, p, p)
+        assert (4, 3, S) not in _edges(app.bm)
+        assert app._edge_overrides == {"add": [], "remove": []}, "nothing left to record"
+        app._close_terrain_editor()
+        assert app._edge_overrides is None
+        with open(terrain) as f:
+            assert "edge_overrides" not in json.load(f)
+    print("✅ test_edge_click_toggles_one_edge passed")
+
+
+def test_edge_box_erase_and_undo():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, _, ed = _edge_editor(tmp)
+        before = _edges(app.bm)
+        # A box round the west wall's middle two edges and a stretch of open floor.
+        _drag(ed, (X0 * CELL - 10, 3 * CELL + 5), (X0 * CELL + 3 * CELL, 5 * CELL - 5), button=3)
+        assert sorted(map(tuple, app._edge_overrides["remove"])) == \
+            [(X0 - 1, 3, "E"), (X0 - 1, 4, "E")], "only edges that were walls are recorded"
+        assert (X0 - 1, 3, E) not in _edges(app.bm) and (X0 - 1, 2, E) in _edges(app.bm)
+        ed.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_z, mod=pygame.KMOD_CTRL,
+                                     unicode=""))
+        assert _edges(app.bm) == before and app._edge_overrides["remove"] == []
+    print("✅ test_edge_box_erase_and_undo passed")
+
+
+def test_edge_tool_is_off_outside_drawn_detection():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, terrain, ed = _edge_editor(tmp, {})
+        assert not ed.edges_enabled
+        _drag(ed, _vx(X0, 3), _vx(X0, 5))
+        assert app._edge_overrides == {"add": [], "remove": []}
+        app._close_terrain_editor()
+        with open(terrain) as f:
+            assert "edge_overrides" not in json.load(f)
+    print("✅ test_edge_tool_is_off_outside_drawn_detection passed")
+
+
+def test_floor_keeps_a_hand_added_edge():
+    with tempfile.TemporaryDirectory() as tmp:
+        det = dict(DETECTION, outside_seeds=[])
+        app, _ = _app(tmp, {"detection": det, "regions": [_floor(4, 3, 5, 3)],
+                            "edge_overrides": {"add": [[4, 3, "E"]], "remove": []}})
+        assert (4, 3, E) in _edges(app.bm), "Floor clears detected edges, not drawn ones"
+    print("✅ test_floor_keeps_a_hand_added_edge passed")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

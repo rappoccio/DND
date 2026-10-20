@@ -2,7 +2,7 @@
 
 **Status 2026-10-19: Step 0.1, 0.3 and 0.6 agreed. Phase 1 done, committed `16a0d88`. O1
 decided (b): C1 amended, edge walls block. 0.4 and 0.5 approved. Phase 2A done 2026-10-19
-(committed `65a0698`). Phase 2B under way (engine half done, uncommitted); 0.2 gates Phase 3.**
+(committed `65a0698`). Phase 2B under way (steps 1–2 committed `b6fa70f`, step 3 the edge tool committed); 0.2 gates Phase 3.**
 
 The goal: take a published multi-level dungeon, drawn as a set of PNGs, and make it one
 traversable dungeon. Every level sits on its own floor of the shared global (X, Y, Z) grid,
@@ -366,6 +366,17 @@ outside seed (green dot). OK saves the block (not if it was never switched to Dr
 Cancel restores. The terrain editor now shows the detected cells and edges, and **[7] Floor**
 drags a box that clears them, previewed live. The panel's "Walls:" count includes edge walls.
 `tests/test_drawn_wall_detection.py` 22 tests, suite 175/0. Next: step 3, the edge tool.
+
+**Progress 2026-10-20: step 3, the edge tool, done (committed).** Terrain editor **[8] Edge**,
+only with Walls ON and the Drawn detector (otherwise the hint says so and drags do nothing).
+Left-drag snaps to the grid crossings and runs along the dominant axis: it adds the run, or
+removes it when its first edge is already a wall; a click toggles the nearest edge. Right-drag
+box-erases every wall edge whose midpoint is in the box. Ctrl+Z undoes edge edits. Each edit
+writes `edge_overrides` (lists kept disjoint; a removal is recorded only for an edge that is
+still a wall once it is out of `add`) and re-detects live; hand-added edges draw orange.
+Decided while building: **Floor keeps a hand-added edge** (it clears what was detected, not
+what was drawn). Empty overrides are dropped on close, so the file stays clean.
+`tests/test_drawn_wall_detection.py` 28 tests. Next: step 4, the edge-door tool.
 
 - **A dark-fraction mode** in the C++ detector: a cell is a wall when at least
   `dark_fraction` of its pixels are darker than `dark_level`. It sits alongside the mean

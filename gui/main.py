@@ -2538,16 +2538,30 @@ class App:
         # The editor edits self._ladders in place; snapshot it so the close can pair the
         # ladders placed / removed this session with their other ends (_pair_ladders).
         self._ladders_at_open = [self._ladder_key(lad) for lad in self._ladders]
+        # The Edge tool edits the overrides in place and re-detects after each edit.
+        if self._edge_overrides is None:
+            self._edge_overrides = {"add": [], "remove": []}
+        self._edges_at_open = json.dumps(self._edge_overrides, sort_keys=True)
+        drawn = self._walls_enabled and (self._detection or {}).get("mode") == "dark_fraction"
         self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm,
                                  ladders=self._ladders, door_links=self._door_links,
-                                 on_regions_changed=self._preview_floor_regions)
+                                 on_regions_changed=self._preview_floor_regions,
+                                 edge_overrides=self._edge_overrides, edges_enabled=drawn,
+                                 on_edges_changed=lambda: self._redetect_walls(
+                                     self.terrain_editor.terrain_regions))
 
     def _close_terrain_editor(self):
         """Esc in the terrain editor: take its edits, save them, give new / removed
         ladders their other ends, and re-apply terrain to the engine."""
         floors_before = [r for r in self._terrain_regions if r.get("type") == "Floor"]
         self._terrain_regions = self.terrain_editor.terrain_regions
-        if [r for r in self._terrain_regions if r.get("type") == "Floor"] != floors_before:
+        edges_changed = json.dumps(self._edge_overrides, sort_keys=True) != \
+            getattr(self, "_edges_at_open", None)
+        if self._edge_overrides is not None and not (self._edge_overrides.get("add")
+                                                     or self._edge_overrides.get("remove")):
+            self._edge_overrides = None
+        if edges_changed or \
+                [r for r in self._terrain_regions if r.get("type") == "Floor"] != floors_before:
             self._redetect_walls()
             self._build_overlay()
         self._ladders = self.terrain_editor.ladders
@@ -13964,7 +13978,8 @@ class App:
         also clear an edge wall with Floor on both sides, and one between a Floor cell and a
         wall cell: that edge only repeats the wall cell, so a cleared staircase isn't left
         fenced in by its own rim. They run after detection and the outside flood, so a
-        hand-cleared cell stays open across reload and re-detect."""
+        hand-cleared cell stays open across reload and re-detect. An edge the DM added
+        with the Edge tool is kept: Floor clears what was detected, not what was drawn."""
         floor = set()
         for region in self._terrain_regions if regions is None else regions:
             if region.get("type") != "Floor":
@@ -13982,12 +13997,17 @@ class App:
         for col, row in floor:
             self.bm.allow_cell(rpg.Cell(col, row))
         walls = {(c.col, c.row) for c in self.bm.disallowed_cells}
+        added = set()
+        if (self._detection or {}).get("mode") == "dark_fraction":
+            added = {(int(e[0]), int(e[1]), e[2])
+                     for e in (self._edge_overrides or {}).get("add", [])}
         for col, row in floor:
             for nb, cell, side in (((col + 1, row), (col, row), rpg.EdgeSide.East),
                                    ((col, row + 1), (col, row), rpg.EdgeSide.South),
                                    ((col - 1, row), (col - 1, row), rpg.EdgeSide.East),
                                    ((col, row - 1), (col, row - 1), rpg.EdgeSide.South)):
-                if nb in floor or nb in walls:
+                key = (cell[0], cell[1], "E" if side == rpg.EdgeSide.East else "S")
+                if (nb in floor or nb in walls) and key not in added:
                     self.bm.set_edge_wall(rpg.Cell(*cell), side, False)
 
     def _preview_floor_regions(self, regions):
