@@ -204,8 +204,8 @@ def test_existing_work_is_not_overwritten():
         own = dict(DETECTION, dark_fraction=0.5, outside_seeds=[[9, 7]])
         f1 = {"regions": [], "walls_enabled": True, "manual_grid": GRID, "detection": own}
         app = _dungeon(tmp, _f0_edited(), f1)
+        _go(app, "f1")                       # leaving f0 saves it: snapshot after that
         f0_before = _read(tmp, "f0")
-        _go(app, "f1")
         f1_before = _read(tmp, "f1")
         app._open_terrain_editor()
         assert app._edges_carried_from == ["f0"]
