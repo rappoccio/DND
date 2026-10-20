@@ -2,7 +2,7 @@
 
 **Status 2026-10-19: Step 0.1, 0.3 and 0.6 agreed. Phase 1 done, committed `16a0d88`. O1
 decided (b): C1 amended, edge walls block. 0.4 and 0.5 approved. Phase 2A done 2026-10-19
-(committed `65a0698`). Phase 2B under way (steps 1–2 committed `b6fa70f`, step 3 the edge tool `0636dfd`, step 4 the edge-door tool done, uncommitted); 0.2 gates Phase 3.**
+(committed `65a0698`). Phase 2B under way (steps 1–2 committed `b6fa70f`, step 3 the edge tool `0636dfd`, step 4 the edge-door tool `5421165`); 0.2 gates Phase 3.**
 
 The goal: take a published multi-level dungeon, drawn as a set of PNGs, and make it one
 traversable dungeon. Every level sits on its own floor of the shared global (X, Y, Z) grid,
@@ -378,7 +378,7 @@ Decided while building: **Floor keeps a hand-added edge** (it clears what was de
 what was drawn). Empty overrides are dropped on close, so the file stays clean.
 `tests/test_drawn_wall_detection.py` 28 tests. Next: step 4, the edge-door tool.
 
-**Progress 2026-10-20: step 4, the edge-door tool, done (uncommitted).** With the Edge tool's
+**Progress 2026-10-20: step 4, the edge-door tool, done (committed `5421165`).** With the Edge tool's
 conditions (Walls ON, Drawn detector), **[5] Door** places doors on grid lines: a click
 toggles a one-edge door on the nearest edge, a drag along a line places a wide one (max 4
 edges), and a click on an old cell door still removes it. Otherwise Door mode places cell
