@@ -95,6 +95,8 @@ test_scripts = [
     "test_floor_align.py",
     # Edge walls block movement, sight and reach (DUNGEON_LEVELS_PLAN.md Phase 2A).
     "test_edge_walls.py",
+    # Wall detection for drawn maps: dark fraction, edges, outside flood, Floor (Phase 2B).
+    "test_drawn_wall_detection.py",
 
     # The GameView projection (MULTIPLAYER_PLAN.md M3, seam S1) — the per-viewer read
     # filter, and the only thing a remote client is ever sent. Kept with the oracles

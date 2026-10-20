@@ -70,6 +70,8 @@ void bindBattleMap(py::module_& m) {
         .def_property_readonly("disallowed_cells", [](const BattleMap& bm){
             return cellSetToVec(bm.disallowedCells());
         })
+        .def("allow_cell", &BattleMap::allowCell, py::arg("cell"),
+             "Remove a cell from the detected wall set (the Floor brush). Painted terrain is untouched.")
         .def("is_blocked", &BattleMap::isBlocked,
              py::arg("origin"), py::arg("agent_size"), py::arg("movement_type") = MovementType::Walk)
         // Edge walls (walls on the grid line between two cells)

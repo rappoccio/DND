@@ -50,6 +50,9 @@ struct Wall {
 // line between (c, r) and (c, r+1). Every interior edge has exactly one name.
 enum class EdgeSide : std::uint8_t { East, South };
 
+// Wall detector: Mean is the original whole-cell mean test; DarkFraction is for drawn maps.
+enum class DetectionMode : std::uint8_t { Mean, DarkFraction };
+
 struct Edge {
     Cell     cell;
     EdgeSide side{EdgeSide::East};
@@ -426,6 +429,8 @@ public:
 
     [[nodiscard]] const std::vector<Wall>& walls()           const noexcept { return walls_; }
     [[nodiscard]] const CellSet&           disallowedCells() const noexcept { return disallowed_; }
+    // Remove one cell from the detected set (the Floor brush). Painted terrain is untouched.
+    void allowCell(Cell c) noexcept { disallowed_.erase(Cell{c.col, c.row}); }
     [[nodiscard]] bool isBlocked(Cell origin, int agentSize, MovementType mt = MovementType::Walk) const noexcept;
 
     // ── Edge walls (walls on the grid line between two cells) ─────────────
@@ -901,12 +906,33 @@ public:
         // Flood-fill to find additional unreachable areas beyond dark cells.
         bool   floodFill  = true;
         Cell   floodSeed  = {1, 1};   // should be a clearly passable cell
+
+        // Drawn-map mode (DarkFraction). Mean is today's detector and the default, so
+        // none of the fields below are read unless mode is switched.
+        //   cells: a cell is a wall when >= darkFraction of its pixels (no inset) have
+        //          grey < darkLevel;
+        //   edges: a grid-line segment is an edge wall when >= edgeFraction of the
+        //          ±edgeHalfwidthPx band along it has grey < darkLevel;
+        //   edgeAdd / edgeRemove: the DM's edge overrides, applied after edge detection;
+        //   flood: from each outsideSeeds cell, 4-connected, stopping at wall cells and
+        //          static edge walls; every cell reached is blocked. No seeds, no flood.
+        DetectionMode     mode          = DetectionMode::Mean;
+        int               darkLevel     = 100;
+        double            darkFraction  = 0.6;
+        bool              edgeWalls     = true;
+        double            edgeFraction  = 0.3;
+        int               edgeHalfwidthPx = 4;
+        std::vector<Cell> outsideSeeds;
+        std::vector<Edge> edgeAdd;
+        std::vector<Edge> edgeRemove;
     } params;
 
 private:
     // detectGridLines and classifyWalls take cv::Mat — they live entirely
     // in battle_map.cpp as static free functions to keep OpenCV out of this header.
     void floodFillPassable();
+    // DarkFraction mode's flood from params.outsideSeeds (see DetectionParams).
+    void floodOutside();
 
     // Reconcile doors_[idx]'s cell TerrainType with its open state (see .cpp).
     void syncDoorTerrain(int idx) noexcept;

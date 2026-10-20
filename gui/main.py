@@ -55,7 +55,7 @@ from helpers import (
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
     compute_summon_loadout,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog, WallDetectionDialog
 from dialogs_conditions import ConditionsDialog
 from menus import board, dm, features, panel, reactions, riders
 from weapon_dialog import WeaponDialog
@@ -596,6 +596,7 @@ class App:
 
         # Asks how many cells a sampled grid box spanned (manual-grid precision).
         self._grid_span_dialog = GridSpanDialog(self.font_sm, self.font_md)
+        self._wall_detect_dialog = WallDetectionDialog(self.font_sm, self.font_md)
         self._pending_grid_box = None   # (x0, y0, w, h) in image px, awaiting span input
 
         # Team/faction picker (opened from an agent's right-click menu → "Set Teams…").
@@ -630,6 +631,8 @@ class App:
         self._door_links = {}
         self._painted_terrain_cells = []  # cells set to Wall/Chasm/Water by _apply_terrain_to_battle_map
         self._walls_enabled = True   # auto-detected walls active? (toggle persists in terrain JSON)
+        self._detection = None       # the page's "detection" block (drawn-map mode); None = today's detector
+        self._edge_overrides = None  # {"add": [[c, r, "E"|"S"], ...], "remove": [...]} or None
 
         # Manual grid (sample-a-tile) state. When _manual_grid is set the detected grid
         # has been replaced by a uniform one; persisted in the terrain JSON.
@@ -1165,6 +1168,16 @@ class App:
                 wx = max(ax, bx)
                 pygame.draw.line(self.overlay, wall_color,
                                  (wx, ay), (wx, ay + cpx), 4)
+
+        # Outside seeds, while the Wall Detection dialog is open.
+        if getattr(self, "_wall_detect_dialog", None) is not None and self._wall_detect_dialog.visible:
+            for c, rw in self._wall_detect_dialog.settings.get("outside_seeds", []):
+                if 0 <= c < len(vlines) - 1 and 0 <= rw < len(hlines) - 1:
+                    cx = (vlines[c] + vlines[c + 1]) // 2
+                    cy = (hlines[rw] + hlines[rw + 1]) // 2
+                    rad = max(3, (vlines[c + 1] - vlines[c]) // 3)
+                    pygame.draw.circle(self.overlay, (40, 220, 120, 255), (cx, cy), rad)
+                    pygame.draw.circle(self.overlay, (10, 60, 30, 255), (cx, cy), rad, 2)
 
         # Blocking edge walls (DUNGEON_LEVELS_PLAN Phase 2A), on the exact grid lines.
         for e in getattr(bm, "edge_walls", ()):
@@ -2526,12 +2539,17 @@ class App:
         # ladders placed / removed this session with their other ends (_pair_ladders).
         self._ladders_at_open = [self._ladder_key(lad) for lad in self._ladders]
         self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm,
-                                 ladders=self._ladders, door_links=self._door_links)
+                                 ladders=self._ladders, door_links=self._door_links,
+                                 on_regions_changed=self._preview_floor_regions)
 
     def _close_terrain_editor(self):
         """Esc in the terrain editor: take its edits, save them, give new / removed
         ladders their other ends, and re-apply terrain to the engine."""
+        floors_before = [r for r in self._terrain_regions if r.get("type") == "Floor"]
         self._terrain_regions = self.terrain_editor.terrain_regions
+        if [r for r in self._terrain_regions if r.get("type") == "Floor"] != floors_before:
+            self._redetect_walls()
+            self._build_overlay()
         self._ladders = self.terrain_editor.ladders
         self._door_links = self.terrain_editor.door_links
         self._save_terrain()
@@ -13636,6 +13654,8 @@ class App:
         # must match the generator's choice rather than re-deriving "room 0". None ⇒ none.
         self._staging_cells = None
         self._walls_enabled = True
+        self._detection = None
+        self._edge_overrides = None
         self._manual_grid = None
         self.bm.reset_terrain_multipliers()
         # Doors live in BattleMap.doors. Clear any from the previous encounter; saved
@@ -13665,6 +13685,8 @@ class App:
                     except Exception:
                         self._manual_grid = None
                 self._walls_enabled = bool(data.get("walls_enabled", True))
+                self._detection = data.get("detection")
+                self._edge_overrides = data.get("edge_overrides")
             except Exception:
                 pass
         elif os.path.exists(path):
@@ -13687,6 +13709,8 @@ class App:
                 self._terrain_rooms = data.get("rooms", [])
                 self._staging_cells = data.get("staging_cells")  # None if absent
                 self._walls_enabled = bool(data.get("walls_enabled", True))
+                self._detection = data.get("detection")
+                self._edge_overrides = data.get("edge_overrides")
                 doors_data = data.get("doors", [])
                 self._ladders = self._normalize_ladders(data.get("ladders", []))
                 explored_data = data.get("explored")  # None if absent → stays fully fogged
@@ -13700,11 +13724,7 @@ class App:
         # Honour the walls preference: ON re-detects from a clean slate; OFF drops every
         # auto-detected obstacle so a map the detector mis-read isn't blocked. (On first
         # load detect_walls already ran in __init__; clear+detect reproduces that result.)
-        if self._walls_enabled:
-            self.bm.clear_walls()
-            self.bm.detect_walls()
-        else:
-            self.bm.clear_walls()
+        self._redetect_walls()
 
         # Re-apply saved doors last so a closed door's Wall terrain survives wall detection.
         # New saves store a "cells" list (multi-cell wide doors); fall back to the legacy
@@ -13793,6 +13813,11 @@ class App:
         ]
         if self._manual_grid:
             data["manual_grid"] = self._manual_grid
+        # Written only once the DM has set them, so an untouched page's file is unchanged.
+        if self._detection:
+            data["detection"] = self._detection
+        if self._edge_overrides and (self._edge_overrides.get("add") or self._edge_overrides.get("remove")):
+            data["edge_overrides"] = self._edge_overrides
         # Walk-order rooms from the terrain carver — the link between the terrain
         # floor plan and the encounter floor plan (Generate Dungeon populates these
         # exact rooms). Persisted so the linkage survives save/reload; previously only
@@ -13879,8 +13904,15 @@ class App:
         self._terrain_regions = []
         self._walls_enabled = False
         self.btn_toggle_walls.text = "Walls: OFF"
+        # Seeds and edge overrides name cells, so they don't survive a new grid.
+        dropped = bool((self._detection or {}).get("outside_seeds")) or bool(self._edge_overrides)
+        if self._detection:
+            self._detection["outside_seeds"] = []
+        self._edge_overrides = None
         self._build_overlay()
         self._save_terrain()
+        if dropped:
+            self._flash_status("New grid: outside seeds and edge overrides cleared.")
         scale = f" (1 square = {square_ft} ft → {per_side}×{per_side} cells)" if per_side > 1 else ""
         self._combat_log_add(
             f"Manual grid set: {self.bm.grid_cols}×{self.bm.grid_rows} cells, "
@@ -13894,6 +13926,129 @@ class App:
                 f"Grid note: {square_px:.1f}px ÷ {per_side} isn't a whole pixel; the grid "
                 f"drifts ~{drift:.0f}px off the drawn lines across the map.")
 
+    def _apply_detection_params(self):
+        """Point the engine's detector at this page's settings. Without a "detection"
+        block, or with mode "mean", it is today's detector exactly; the drawn-map fields,
+        the outside seeds and the edge overrides are then not read."""
+        p = self.bm.params
+        det = self._detection or {}
+        if det.get("mode") != "dark_fraction":
+            p.mode = rpg.DetectionMode.Mean
+            p.outside_seeds, p.edge_add, p.edge_remove = [], [], []
+            return
+        p.mode = rpg.DetectionMode.DarkFraction
+        p.dark_level = int(det.get("dark_level", 100))
+        p.dark_fraction = float(det.get("dark_fraction", 0.6))
+        p.edge_walls = bool(det.get("edge_walls", True))
+        p.edge_fraction = float(det.get("edge_fraction", 0.3))
+        p.edge_halfwidth_px = int(det.get("edge_halfwidth_px", 4))
+        p.outside_seeds = [rpg.Cell(int(c[0]), int(c[1])) for c in det.get("outside_seeds", [])]
+        ov = self._edge_overrides or {}
+        p.edge_add = self._parse_edges(ov.get("add", []))
+        p.edge_remove = self._parse_edges(ov.get("remove", []))
+
+    @staticmethod
+    def _parse_edges(raw):
+        """[[c, r, "E"|"S"], ...] from the terrain file → rpg.Edge list; skips bad entries."""
+        out = []
+        for e in raw or []:
+            try:
+                side = {"E": rpg.EdgeSide.East, "S": rpg.EdgeSide.South}[e[2]]
+                out.append(rpg.Edge(rpg.Cell(int(e[0]), int(e[1])), side))
+            except (KeyError, IndexError, TypeError, ValueError):
+                continue
+        return out
+
+    def _apply_floor_regions(self, regions=None):
+        """Floor regions (the Floor brush) reopen the detected wall cells under them. They
+        also clear an edge wall with Floor on both sides, and one between a Floor cell and a
+        wall cell: that edge only repeats the wall cell, so a cleared staircase isn't left
+        fenced in by its own rim. They run after detection and the outside flood, so a
+        hand-cleared cell stays open across reload and re-detect."""
+        floor = set()
+        for region in self._terrain_regions if regions is None else regions:
+            if region.get("type") != "Floor":
+                continue
+            if region.get("width", 0) <= 0 or region.get("height", 0) <= 0:
+                continue
+            rng = self._pixel_rect_to_cells(region.get("x", 0), region.get("y", 0),
+                                            region["width"], region["height"])
+            if rng is None:
+                continue
+            c0, r0, c1, r1 = rng
+            floor.update((c, r) for c in range(c0, c1 + 1) for r in range(r0, r1 + 1))
+        if not floor:
+            return
+        for col, row in floor:
+            self.bm.allow_cell(rpg.Cell(col, row))
+        walls = {(c.col, c.row) for c in self.bm.disallowed_cells}
+        for col, row in floor:
+            for nb, cell, side in (((col + 1, row), (col, row), rpg.EdgeSide.East),
+                                   ((col, row + 1), (col, row), rpg.EdgeSide.South),
+                                   ((col - 1, row), (col - 1, row), rpg.EdgeSide.East),
+                                   ((col, row - 1), (col, row - 1), rpg.EdgeSide.South)):
+                if nb in floor or nb in walls:
+                    self.bm.set_edge_wall(rpg.Cell(*cell), side, False)
+
+    def _preview_floor_regions(self, regions):
+        """Terrain editor callback: re-detect with the editor's (unsaved) regions, so a
+        Floor box shows its effect while the editor is still open."""
+        if any(r.get("type") == "Floor" for r in regions) or \
+                any(r.get("type") == "Floor" for r in self._terrain_regions):
+            self._redetect_walls(regions)
+
+    def _redetect_walls(self, regions=None):
+        """Re-run wall detection from a clean slate, in the terrain file's order: dark
+        cells, edge walls, edge overrides, the outside flood (all in the engine), then
+        Floor regions. Painted Wall/Chasm/Water terrain and doors are separate and kept.
+        With walls off, every detected wall goes and the settings are kept unapplied."""
+        self.bm.clear_walls()
+        if not self._walls_enabled:
+            return
+        self._apply_detection_params()
+        self.bm.detect_walls()
+        self._apply_floor_regions(regions)
+
+    def _open_wall_detection(self):
+        """Terrain… → Wall Detection… (offered while Walls is ON). Every change in the
+        dialog re-detects and redraws at once; Cancel puts the page's settings back."""
+        original = dict(self._detection) if self._detection else None
+        if original is not None:
+            original["outside_seeds"] = [list(c) for c in original.get("outside_seeds", [])]
+
+        def on_change(settings):
+            self._detection = settings
+            self._redetect_walls()
+            self._build_overlay()
+
+        def on_map_click(pos):
+            if pos[0] >= self._panel_x():
+                return
+            cell = self._screen_to_cell(*pos)
+            if cell is not None:
+                self._wall_detect_dialog.toggle_seed(cell.col, cell.row)
+
+        def on_close(settings):
+            if settings is None:
+                self._detection = original
+            elif original is None and settings.get("mode") != "dark_fraction":
+                self._detection = None      # nothing was switched on: the file stays as it was
+            else:
+                self._detection = settings
+            self._redetect_walls()
+            self._build_overlay()
+            if settings is not None:
+                self._save_terrain()
+                self._combat_log_add(
+                    f"Wall detection saved ({len(self.bm.disallowed_cells)} blocked cells, "
+                    f"{len(self.bm.edge_walls)} wall edges).")
+            if self.selected_idx >= 0:
+                self._update_reach()
+
+        self._wall_detect_dialog.show(self._detection, on_change, on_map_click, on_close,
+                                      self._panel_rect())
+        self._build_overlay()       # seed markers
+
     def _toggle_walls(self):
         """Turn auto-detected walls/obstacles on or off.
 
@@ -13903,11 +14058,7 @@ class App:
         persisted in the terrain JSON so it survives a reload.
         """
         self._walls_enabled = not self._walls_enabled
-        if self._walls_enabled:
-            self.bm.clear_walls()   # start clean so detection doesn't accumulate
-            self.bm.detect_walls()
-        else:
-            self.bm.clear_walls()
+        self._redetect_walls()
         self.btn_toggle_walls.text = "Walls: ON" if self._walls_enabled else "Walls: OFF"
         self._build_overlay()       # redraw blocked/wall cells
         self._save_terrain()        # persist the preference
@@ -17356,7 +17507,7 @@ class App:
         text(f"Grid: {self.bm.grid_cols}×{self.bm.grid_rows}  "
              f"cell={self.bm.cell_pixel_size}px  zoom={getattr(self, 'view_zoom', 1.0)*100:.0f}%",
              lx, info_y)
-        text(f"Walls: {len(self.bm.walls)}   Blocked: {len(self.bm.disallowed_cells)}",
+        text(f"Walls: {len(self.bm.walls) + len(self.bm.edge_walls)}   Blocked: {len(self.bm.disallowed_cells)}",
              lx, info_y + 18)
         text(f"Agents placed: {len(self.bm.placed_agents)}", lx, info_y + 36)
 
@@ -17452,6 +17603,7 @@ class App:
                 self.weapons_dialog.active or self.conditions_dialog.active or
                 self.file_browser.active or self.terrain_placement_dialog.active or
                 self.terrain_editor.active or self.lighting_editor.active or
+                self._wall_detect_dialog.visible or
                 self.weapon_selection_dialog.visible or
                 self.armor_selection_dialog.visible or
                 self.spell_selection_dialog.visible or
@@ -17625,6 +17777,12 @@ class App:
                 elif event.key == pygame.K_v:
                     mx, my = pygame.mouse.get_pos()
                     self._paste_agent(self._screen_to_cell(mx, my))
+
+            # ── Wall Detection dialog: docked over the panel, the map stays live ──
+            if self._wall_detect_dialog.visible:
+                if not self._wall_detect_dialog.handle(event):
+                    self._handle_map_view_event(event)
+                continue
 
             # ── Terrain editor gets first pick when open ──────────────────
             if self.terrain_editor.active:
@@ -18443,6 +18601,7 @@ class App:
             self._draw_xp_total()                           # running party-XP scoreboard (bottom-right)
             self.terrain_editor.draw(self.screen)          # modal — always on top
             self.lighting_editor.draw(self.screen)         # modal — always on top
+            self._wall_detect_dialog.draw(self.screen)     # docked over the panel
             self.terrain_placement_dialog.draw(self.screen)  # modal — always on top
             self.file_browser.draw(self.screen)     # modal — always on top
             self.stats_dialog.draw(self.screen)    # modal — always on top

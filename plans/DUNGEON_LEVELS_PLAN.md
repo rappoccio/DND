@@ -2,7 +2,7 @@
 
 **Status 2026-10-19: Step 0.1, 0.3 and 0.6 agreed. Phase 1 done, committed `16a0d88`. O1
 decided (b): C1 amended, edge walls block. 0.4 and 0.5 approved. Phase 2A done 2026-10-19
-(uncommitted). Phase 2B next; 0.2 gates Phase 3.**
+(committed `65a0698`). Phase 2B under way (engine half done, uncommitted); 0.2 gates Phase 3.**
 
 The goal: take a published multi-level dungeon, drawn as a set of PNGs, and make it one
 traversable dungeon. Every level sits on its own floor of the shared global (X, Y, Z) grid,
@@ -89,9 +89,10 @@ now. 0.2 must close before Phase 3 starts; 0.4 and 0.5 must close before Phase 2
 - **C3: Today's detection stays the default.** The new detection mode is opt-in per page.
   A page with no `detection` block detects exactly as it does now, so
   `test_determinism.py` stays byte-identical.
-- **C4: One square size per dungeon.** The global grid counts cells, so every page in a
-  dungeon must have the same `square_ft`. A page that differs gets a warning when it is
-  added or re-gridded. It is not rescaled.
+- ~~**C4: One square size per dungeon.**~~ **Dropped 2026-10-19 (user):** every page is in
+  5-ft engine cells whatever its `square_ft`, so pages at different scales share the global
+  grid. (Was: every page in a dungeon must have the same `square_ft`. A page that differs gets a warning when it is
+  added or re-gridded. It is not rescaled.)
 - **C5: Pairing stays as committed.** Paired ladders (`493375a`) keep their rules. A custom
   ladder exit (Phase 4) pairs through the same `_pair_ladders` path.
 - **C6: The dungeon generator is untouched.** Its pages, ladders and regions are not
@@ -333,6 +334,39 @@ edge overrides UI (Phase 2B); half-height walls or edges that block sight but no
 **Goal:** a drawn map's walls block, with a first pass from detection and the misses fixed
 by hand.
 
+**Progress 2026-10-19 (uncommitted): the engine half and the file are done.** Dark-fraction
+cells, edge detection into the Phase 2A edge mask, the outside flood, the `detection` block,
+`edge_overrides` and Floor regions are applied on load, Walls toggle and editor close
+(`App._redetect_walls`); Set Grid… clears seeds and overrides. `rpg.DetectionMode`,
+`BattleMap.allow_cell`. 15 tests in `tests/test_drawn_wall_detection.py`, suite 175/0.
+One addition to the schema's C++ side: `DetectionParams` also carries `edgeAdd` /
+`edgeRemove`, so the outside flood sees the DM's overrides (an added edge closes a leak).
+The flood reads static edge walls only, never door state, so it doesn't depend on whether
+doors are placed yet. Still to do: the UI (Floor brush, detection controls and seed click,
+grid-line edge tool, edge-door tool and saving edge doors), and the Catacombs leak.
+
+**Decisions 2026-10-20 (user), after probing Ravenloft at 10 ft (16 px cells, 2×2 per square):**
+- Detection is a first pass; the DM fixes the rest by hand. At 16 px cells the per-cell edge
+  test also marks one-cell "ticks" where a wall crosses a grid line at right angles (they can
+  close a 10-ft corridor), and decorations (pews, stairs, pillars) block. A stub-pruning rule
+  was prototyped (it removes the ticks with no new leak on Main Floor) but **not adopted**:
+  the hand tools have to handle decorations anyway.
+- So the edge tool works by **drag**, not click: drag along a grid line adds or removes a run
+  of edges, and a box-erase removes every edge inside it.
+- **The Floor brush also clears a border edge whose far cell is a wall cell.** Such an edge
+  only duplicates the wall cell, so clearing it opens nothing new, and a cleared staircase
+  isn't left fenced in by its own rim.
+- Build order: detection controls + seed click, Floor brush, edge tool, edge-door tool.
+
+**Progress 2026-10-20 (uncommitted): steps 1 and 2 done.** Terrain… → **Wall Detection…**
+(only while Walls is ON) opens a dialog docked over the panel: detector Mean / Drawn, edge
+walls on/off, dark level, cell and edge fractions (as %), band half-width, seed count and
+Clear. Every change re-detects and redraws; in Drawn mode a click on the map toggles an
+outside seed (green dot). OK saves the block (not if it was never switched to Drawn);
+Cancel restores. The terrain editor now shows the detected cells and edges, and **[7] Floor**
+drags a box that clears them, previewed live. The panel's "Walls:" count includes edge walls.
+`tests/test_drawn_wall_detection.py` 22 tests, suite 175/0. Next: step 3, the edge tool.
+
 - **A dark-fraction mode** in the C++ detector: a cell is a wall when at least
   `dark_fraction` of its pixels are darker than `dark_level`. It sits alongside the mean
   test, and the mean test stays the default (C3). This needs a rebuild.
@@ -354,9 +388,16 @@ Floor-brushed cells stay open across save, reload and re-detect. A page with no
 `detection` block detects exactly as before (C3). `test_determinism.py` stays byte-identical.
 
 **User decisions on the 0.5 findings, 2026-10-19:**
-- **Cells stay at the printed scale, 1 square = 10 ft.** No half-cells.
-- **Grids stay integer.** The user rescales pages by hand so each page's square is a whole
-  number of pixels. No fractional `cell_px`.
+- ~~**Cells stay at the printed scale, 1 square = 10 ft.** No half-cells.~~ **Superseded
+  2026-10-19 (user, option A):** the engine cell stays 5 ft, because every distance in the
+  engine (movement, reach, ranges, areas, pushes, light, footprints) is hard-coded at 5 ft
+  per cell. The scale is per page and configurable: Set Grid…'s `square_ft` (5, 10, 15 or
+  20) makes each printed square 1×1, 2×2, 3×3 or 4×4 engine cells. Ravenloft is 10 ft, so
+  2×2. Walls lie on edges (O1 = b), so the cells inside a printed square cost no room
+  space; the lines through the middle of a square carry no stroke and detect nothing.
+- **Grids stay integer.** The user rescales pages by hand so each engine cell is a whole
+  number of pixels: a printed square must divide by `square_ft / 5` (a 10-ft square is an
+  even number of px). No fractional `cell_px`.
 - **The flood seed goes outside**, on the paper, and blocks what it reaches. The flood
   stops at detected walls.
 - **No inset** in the new mode.

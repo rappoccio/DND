@@ -279,6 +279,38 @@ static void detectEdgeWalls(const cv::Mat& gray,
     bmlog("[BattleMap] {} edge walls detected\n", walls.size());
 }
 
+// DarkFraction mode: a cell is a wall when at least `fraction` of its pixels are dark.
+// No inset: on drawn maps the wall stroke sits on the grid line, at the cell's rim.
+static void detectDarkFractionCells(const cv::Mat& dark,
+                                      int rows, int cols,
+                                      const std::vector<int>& hLines,
+                                      const std::vector<int>& vLines,
+                                      double fraction,
+                                      CellSet& blocked)
+{
+    int count = 0;
+    for (int r = 0; r < rows; ++r)
+        for (int c = 0; c < cols; ++c) {
+            const cv::Rect roi = cv::Rect(vLines[c], hLines[r], vLines[c+1] - vLines[c],
+                                          hLines[r+1] - hLines[r]) & cv::Rect(0, 0, dark.cols, dark.rows);
+            if (roi.area() <= 0) continue;
+            const double f = cv::countNonZero(dark(roi)) / static_cast<double>(roi.area());
+            if (f >= fraction) { blocked.insert({c, r}); ++count; }
+        }
+    bmlog("[BattleMap] {} dark-fraction wall cells (fraction={})\n", count, fraction);
+}
+
+// Fraction of dark pixels in a band of half-width `hw` around a grid line: a horizontal
+// line at y = `pos` spanning x in [s0, s1), or a vertical one at x = `pos` spanning y.
+static double darkBandFraction(const cv::Mat& dark, int pos, bool horiz, int s0, int s1, int hw)
+{
+    const cv::Rect band = horiz ? cv::Rect(s0, pos - hw, s1 - s0, 2 * hw + 1)
+                                : cv::Rect(pos - hw, s0, 2 * hw + 1, s1 - s0);
+    const cv::Rect roi = band & cv::Rect(0, 0, dark.cols, dark.rows);
+    if (roi.area() <= 0) return 0.0;
+    return cv::countNonZero(dark(roi)) / static_cast<double>(roi.area());
+}
+
 void BattleMap::floodFillPassable()
 {
     auto wallKey = [](Cell a, Cell b) -> std::size_t {
@@ -320,6 +352,35 @@ void BattleMap::detectWalls()
     cv::Mat img = cv::imread(mapImagePath_.string());
     cv::Mat gray;
     cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
+
+    if (params.mode == DetectionMode::DarkFraction) {
+        // Drawn maps, in the order the terrain file relies on: dark cells, edge walls,
+        // the DM's edge overrides, then the outside flood (which sees all of them).
+        cv::Mat dark = gray < params.darkLevel;   // 255 where grey < darkLevel
+        detectDarkFractionCells(dark, rows_, cols_, hLines_, vLines_,
+                                params.darkFraction, disallowed_);
+        if (params.edgeWalls) {
+            const int hw = std::max(0, params.edgeHalfwidthPx);
+            int n = 0;
+            for (int r = 0; r < rows_; ++r)
+                for (int c = 0; c < cols_; ++c) {
+                    if (c + 1 < cols_ && darkBandFraction(dark, vLines_[c+1], false, hLines_[r],
+                                                          hLines_[r+1], hw) >= params.edgeFraction) {
+                        setEdgeWall({{c, r}, EdgeSide::East}, true); ++n;
+                    }
+                    if (r + 1 < rows_ && darkBandFraction(dark, hLines_[r+1], true, vLines_[c],
+                                                          vLines_[c+1], hw) >= params.edgeFraction) {
+                        setEdgeWall({{c, r}, EdgeSide::South}, true); ++n;
+                    }
+                }
+            bmlog("[BattleMap] {} edge walls detected (fraction={}, ±{}px)\n",
+                  n, params.edgeFraction, hw);
+        }
+        for (const Edge& e : params.edgeAdd)    setEdgeWall(e, true);
+        for (const Edge& e : params.edgeRemove) setEdgeWall(e, false);
+        floodOutside();
+        return;
+    }
 
     // Primary: any cell whose interior is darker than the threshold is a wall/obstacle.
     // Results go directly into disallowed_ so they block token placement.
@@ -386,6 +447,38 @@ constexpr std::uint8_t kWallE = 1, kWallS = 2, kDoorE = 4, kDoorS = 8, kShutE = 
 constexpr std::uint8_t wallBit(EdgeSide s) noexcept { return s == EdgeSide::East ? kWallE : kWallS; }
 constexpr std::uint8_t doorBit(EdgeSide s) noexcept { return s == EdgeSide::East ? kDoorE : kDoorS; }
 constexpr std::uint8_t shutBit(EdgeSide s) noexcept { return s == EdgeSide::East ? kShutE : kShutS; }
+}
+
+void BattleMap::floodOutside()
+{
+    if (params.outsideSeeds.empty()) return;
+    auto inBounds = [&](Cell c){ return c.col>=0&&c.row>=0&&c.col<cols_&&c.row<rows_; };
+    // The flood reads the static walls only, so an open door can't let it into a room
+    // and the result doesn't depend on whether doors are placed yet.
+    auto staticWall = [&](Cell a, Cell b) {
+        if (b.col < a.col || b.row < a.row) std::swap(a, b);
+        const std::uint8_t bits = edgeBits(a);
+        return b.col > a.col ? (bits & kWallE) != 0 : (bits & kWallS) != 0;
+    };
+    CellSet reached;
+    std::queue<Cell> q;
+    for (Cell s : params.outsideSeeds) {
+        s = Cell{s.col, s.row};
+        if (!inBounds(s) || disallowed_.contains(s) || reached.contains(s)) continue;
+        reached.insert(s); q.push(s);
+    }
+    const std::array<Cell,4> dirs{{{0,-1},{0,1},{-1,0},{1,0}}};
+    while (!q.empty()) {
+        const Cell cur = q.front(); q.pop();
+        for (auto& d : dirs) {
+            const Cell nb{cur.col+d.col, cur.row+d.row};
+            if (!inBounds(nb) || reached.contains(nb) || disallowed_.contains(nb)) continue;
+            if (edgesActive_ && staticWall(cur, nb)) continue;
+            reached.insert(nb); q.push(nb);
+        }
+    }
+    for (const Cell& c : reached) disallowed_.insert(c);
+    bmlog("[BattleMap] outside flood blocked {} cells\n", reached.size());
 }
 
 void BattleMap::ensureEdgeMask()

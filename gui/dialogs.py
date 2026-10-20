@@ -1411,6 +1411,229 @@ class GridSpanDialog:
         surf.blit(ct, ct.get_rect(center=self._cancel_rect.center))
 
 
+class WallDetectionDialog:
+    """Wall-detection settings for the current page (DUNGEON_LEVELS_PLAN.md Phase 2B).
+
+    Docks over the right panel so the map stays in view: every change calls
+    ``on_change(settings)`` and the app re-detects and redraws at once. In drawn-map mode a
+    click on the map calls ``on_map_click(pos)``, which toggles an outside seed there;
+    wheel and pan events it doesn't use go back to the app (``handle`` returns False).
+    OK calls ``on_close(settings)``, Cancel / Esc ``on_close(None)``.
+
+    ``settings`` is the terrain file's "detection" block: mode, dark_level,
+    dark_fraction, edge_walls, edge_fraction, edge_halfwidth_px, outside_seeds.
+    """
+    DEFAULTS = {"mode": "dark_fraction", "dark_level": 100, "dark_fraction": 0.6,
+                "edge_walls": True, "edge_fraction": 0.3, "edge_halfwidth_px": 4,
+                "outside_seeds": []}
+    PAD   = 12
+    HDR_H = 30
+    ROW_H = 32
+    BTN_H = 30
+    W     = 300
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self.settings = None
+        self._on_change = self._on_map_click = self._on_close = None
+        self._steppers = {}
+        self._chips = []          # [(rect, key, value)]
+        self._ok_rect = self._cancel_rect = self._clear_rect = None
+        self._frames_since_show = 0
+
+    # Stepper rows: (key, label, lo, hi, scale). Fractions are shown as whole percents.
+    STEPPERS = (("dark_level",        "Dark below (grey)", 0, 255, 1),
+                ("dark_fraction",     "Wall cell at (%)",  1, 100, 100),
+                ("edge_fraction",     "Wall edge at (%)",  1, 100, 100),
+                ("edge_halfwidth_px", "Edge band (± px)",  0, 16,  1))
+
+    def show(self, settings, on_change, on_map_click, on_close, panel_rect):
+        """``settings`` is the page's current block, or None for today's detector."""
+        self.visible = True
+        self._frames_since_show = 0
+        self._on_change, self._on_map_click, self._on_close = on_change, on_map_click, on_close
+        base = dict(self.DEFAULTS)
+        if settings:
+            base.update(settings)
+        else:
+            base["mode"] = "mean"
+        base["outside_seeds"] = [list(c) for c in base.get("outside_seeds", [])]
+        self.settings = base
+        x = panel_rect.x + max(0, (panel_rect.w - self.W) // 2)
+        rows = 2 + len(self.STEPPERS) + 1
+        h = self.HDR_H + self.PAD * 3 + self.ROW_H * rows + self.BTN_H + 40
+        self.rect = pygame.Rect(x, panel_rect.y + 40, self.W, h)
+        fld_w = 120
+        fx = self.rect.right - self.PAD - fld_w
+        y = self.rect.y + self.HDR_H + self.PAD
+        self._chips = []
+        for key, opts in (("mode", (("mean", "Mean"), ("dark_fraction", "Drawn"))),
+                          ("edge_walls", ((True, "On"), (False, "Off")))):
+            cw = (fld_w - 4) // 2
+            for i, (val, _lbl) in enumerate(opts):
+                self._chips.append((pygame.Rect(fx + i * (cw + 4), y, cw, self.ROW_H - 6), key, val))
+            y += self.ROW_H
+        self._steppers = {}
+        for key, _lbl, lo, hi, scale in self.STEPPERS:
+            v = int(round(float(base[key]) * scale))
+            self._steppers[key] = (IntStepper(pygame.Rect(fx, y, fld_w, self.ROW_H - 6), v, lo, hi,
+                                              self.font_md), scale, y)
+            y += self.ROW_H
+        self._seed_y = y
+        self._clear_rect = pygame.Rect(fx, y, fld_w, self.ROW_H - 6)
+
+    def _chip_labels(self):
+        return {("mode", "mean"): "Mean", ("mode", "dark_fraction"): "Drawn",
+                ("edge_walls", True): "On", ("edge_walls", False): "Off"}
+
+    def _read_steppers(self):
+        changed = False
+        for key, (st, scale, _y) in self._steppers.items():
+            v = st.value / scale if scale != 1 else int(st.value)
+            if v != self.settings[key]:
+                self.settings[key] = v
+                changed = True
+        return changed
+
+    def _changed(self):
+        if self._on_change:
+            self._on_change(dict(self.settings))
+
+    def _dismiss(self, ok):
+        cb = self._on_close
+        self._read_steppers()
+        self.visible = False
+        self._on_close = self._on_change = self._on_map_click = None
+        if cb:
+            cb(dict(self.settings) if ok else None)
+
+    def toggle_seed(self, col, row):
+        """Add an outside seed at (col, row), or remove the one already there."""
+        seeds = self.settings["outside_seeds"]
+        if [col, row] in seeds:
+            seeds.remove([col, row])
+        else:
+            seeds.append([col, row])
+        self._changed()
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+        if event.type == pygame.KEYDOWN:
+            if any(st._active for st, _s, _y in self._steppers.values()):
+                for st, _s, _y in self._steppers.values():
+                    st.handle(event)
+                if self._read_steppers():
+                    self._changed()
+                return True
+            if event.key == pygame.K_RETURN:
+                self._dismiss(True)
+                return True
+            if event.key == pygame.K_ESCAPE:
+                self._dismiss(False)
+                return True
+            return False            # arrows / +/- reach the map's pan and zoom
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if not self.rect.collidepoint(*event.pos):
+                if self.settings["mode"] == "dark_fraction" and self._on_map_click:
+                    self._on_map_click(event.pos)
+                    return True
+                return False
+            for st, _s, _y in self._steppers.values():
+                st.handle(event)
+            if self._read_steppers():
+                self._changed()
+                return True
+            chip = next(((k, v) for r, k, v in self._chips if r.collidepoint(*event.pos)), None)
+            if chip is not None:
+                if self.settings[chip[0]] != chip[1]:
+                    self.settings[chip[0]] = chip[1]
+                    self._changed()
+            elif self._clear_rect and self._clear_rect.collidepoint(*event.pos):
+                if self.settings["outside_seeds"]:
+                    self.settings["outside_seeds"] = []
+                    self._changed()
+            elif self._ok_rect and self._ok_rect.collidepoint(*event.pos):
+                self._dismiss(True)
+            elif self._cancel_rect and self._cancel_rect.collidepoint(*event.pos):
+                self._dismiss(False)
+            return True
+        if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP) and \
+                self.rect.collidepoint(*event.pos) and event.button in (1, 3):
+            return True
+        return False
+
+    def draw(self, surf):
+        if not self.visible or not self.rect:
+            return
+        self._frames_since_show += 1
+        pygame.draw.rect(surf, (28, 28, 44), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (110, 90, 170), self.rect, width=2, border_radius=8)
+        hdr = self.font_md.render("Wall Detection", True, (220, 220, 235))
+        surf.blit(hdr, (self.rect.x + self.PAD, self.rect.y + 7))
+        drawn = self.settings["mode"] == "dark_fraction"
+        lab_on, lab_off = (210, 210, 225), (120, 120, 135)
+        x = self.rect.x + self.PAD
+        y = self.rect.y + self.HDR_H + self.PAD
+        for i, text in enumerate(("Detector", "Edge walls")):
+            col = lab_on if (i == 0 or drawn) else lab_off
+            surf.blit(self.font_md.render(text, True, col), (x, y + i * self.ROW_H + 5))
+        names = self._chip_labels()
+        for r, key, val in self._chips:
+            on = self.settings[key] == val
+            live = key == "mode" or drawn
+            pygame.draw.rect(surf, (70, 60, 130) if on and live else (45, 45, 62), r, border_radius=4)
+            pygame.draw.rect(surf, (150, 130, 220) if on and live else (80, 80, 100), r, 1, border_radius=4)
+            t = self.font_md.render(names[(key, val)], True,
+                                    (235, 235, 245) if live else (120, 120, 135))
+            surf.blit(t, t.get_rect(center=r.center))
+        for key, lbl, *_ in self.STEPPERS:
+            st, _scale, sy = self._steppers[key]
+            surf.blit(self.font_md.render(lbl, True, lab_on if drawn else lab_off), (x, sy + 5))
+            st.draw(surf)
+        n = len(self.settings["outside_seeds"])
+        surf.blit(self.font_md.render(f"Outside seeds: {n}", True, lab_on if drawn else lab_off),
+                  (x, self._seed_y + 5))
+        pygame.draw.rect(surf, (60, 50, 50), self._clear_rect, border_radius=4)
+        ct = self.font_md.render("Clear seeds", True, (220, 210, 210))
+        surf.blit(ct, ct.get_rect(center=self._clear_rect.center))
+        hint = ("Click the map outside the building to add or remove a seed."
+                if drawn else "Mean: the original detector. Drawn: for maps drawn with thin walls.")
+        hy = self._seed_y + self.ROW_H + 2
+        for line in _wrap_words(hint, self.font_sm, self.rect.w - 2 * self.PAD):
+            surf.blit(self.font_sm.render(line, True, (170, 170, 185)), (x, hy))
+            hy += self.font_sm.get_linesize()
+        bw, bh = 96, self.BTN_H
+        by = self.rect.bottom - self.PAD - bh
+        self._ok_rect     = pygame.Rect(self.rect.right - self.PAD - bw, by, bw, bh)
+        self._cancel_rect = pygame.Rect(self.rect.x + self.PAD, by, bw, bh)
+        pygame.draw.rect(surf, (35, 90, 45), self._ok_rect, border_radius=6)
+        pygame.draw.rect(surf, (90, 45, 45), self._cancel_rect, border_radius=6)
+        for r, t in ((self._ok_rect, "OK"), (self._cancel_rect, "Cancel")):
+            ts = self.font_md.render(t, True, (225, 225, 225))
+            surf.blit(ts, ts.get_rect(center=r.center))
+
+
+def _wrap_words(text, font, width):
+    lines, cur = [], ""
+    for w in text.split():
+        trial = (cur + " " + w).strip()
+        if cur and font.size(trial)[0] > width:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = trial
+    if cur:
+        lines.append(cur)
+    return lines
+
+
 class TeamPickerDialog:
     """Modal team/faction assignment. Lists every placed agent with a coloured team
     chip; clicking a row cycles its team (neutral → red → blue → …). Commits the

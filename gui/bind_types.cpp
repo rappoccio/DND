@@ -83,6 +83,9 @@ void bindTypes(py::module_& m) {
     py::enum_<EdgeSide>(m, "EdgeSide")
         .value("East",  EdgeSide::East)
         .value("South", EdgeSide::South);
+    py::enum_<DetectionMode>(m, "DetectionMode")
+        .value("Mean",         DetectionMode::Mean)
+        .value("DarkFraction", DetectionMode::DarkFraction);
     py::class_<Edge>(m, "Edge")
         .def(py::init<>())
         .def(py::init([](Cell c, EdgeSide s){ return Edge{c, s}; }), py::arg("cell"), py::arg("side"))
@@ -2397,7 +2400,18 @@ void bindTypes(py::module_& m) {
         .def_readwrite("detect_edge_walls",    &BattleMap::DetectionParams::detectEdgeWalls)
         .def_readwrite("wall_min_px",          &BattleMap::DetectionParams::wallMinPx)
         .def_readwrite("flood_fill",           &BattleMap::DetectionParams::floodFill)
-        .def_readwrite("flood_seed",           &BattleMap::DetectionParams::floodSeed);
+        .def_readwrite("flood_seed",           &BattleMap::DetectionParams::floodSeed)
+        // Drawn-map mode; read only when mode == DetectionMode.DarkFraction. List fields
+        // copy: assign a whole list (p.outside_seeds = [...]), don't append in place.
+        .def_readwrite("mode",                 &BattleMap::DetectionParams::mode)
+        .def_readwrite("dark_level",           &BattleMap::DetectionParams::darkLevel)
+        .def_readwrite("dark_fraction",        &BattleMap::DetectionParams::darkFraction)
+        .def_readwrite("edge_walls",           &BattleMap::DetectionParams::edgeWalls)
+        .def_readwrite("edge_fraction",        &BattleMap::DetectionParams::edgeFraction)
+        .def_readwrite("edge_halfwidth_px",    &BattleMap::DetectionParams::edgeHalfwidthPx)
+        .def_readwrite("outside_seeds",        &BattleMap::DetectionParams::outsideSeeds)
+        .def_readwrite("edge_add",             &BattleMap::DetectionParams::edgeAdd)
+        .def_readwrite("edge_remove",          &BattleMap::DetectionParams::edgeRemove);
 
     // ── TerrainType enum ────────────────────────────────────────────────────
     py::enum_<TerrainType>(m, "TerrainType")

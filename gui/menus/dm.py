@@ -60,6 +60,8 @@ def show_terrain_menu(app):
         ("Hide" if app.show_terrain else "Show", app._toggle_show_terrain),
         ("Clear",     app._clear_terrain),
     ]
+    if app._walls_enabled:
+        items.insert(4, ("Wall Detection…", app._open_wall_detection))
     app._ask_dm("action", "Terrain", items,
                  anchor=(app.btn_terrain.rect.x, app.btn_terrain.rect.y))
 

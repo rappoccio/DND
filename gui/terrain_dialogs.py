@@ -364,20 +364,25 @@ class TerrainEditorDialog:
         self._pan_drag = None   # last mouse pos while middle-button panning
         self._viewport = None
         self._canvas = None     # map-space scratch surface the editor draws onto
+        self.on_regions_changed = None
 
     ZOOM_MIN = 0.5
     ZOOM_MAX = 6.0
     ZOOM_STEP = 1.15
     PAN_STEP = 30
 
-    def open(self, map_surf, terrain_regions, bm=None, ladders=None, door_links=None):
+    def open(self, map_surf, terrain_regions, bm=None, ladders=None, door_links=None,
+             on_regions_changed=None):
         """Open the terrain editor with existing terrain data.
 
         ``ladders`` is the app's live ladder list (Python-only cell objects); the editor
         mutates it in place, so the caller sees placements/removals without a copy-back.
         ``door_links`` is the app's live door-link table (key -> [X,Y,Z]), mutated the
-        same way for cross-map door staples."""
+        same way for cross-map door staples. ``on_regions_changed(regions)`` is called after
+        every edit to the region list, so the app can re-detect walls under Floor regions
+        while the editor is open."""
         self.active = True
+        self.on_regions_changed = on_regions_changed
         self.map_surf = map_surf
         self.terrain_regions = [r.copy() for r in terrain_regions] if terrain_regions else []
         self.selection_start = None
@@ -474,6 +479,10 @@ class TerrainEditorDialog:
         """Close the terrain editor."""
         self.active = False
 
+    def _regions_changed(self):
+        if self.on_regions_changed:
+            self.on_regions_changed(self.terrain_regions)
+
     def handle(self, event):
         """Handle mouse/keyboard events."""
         if not self.active:
@@ -545,6 +554,7 @@ class TerrainEditorDialog:
                 self._apply_terrain_to_selection()
                 self.selection_start = None
                 self.selection_rect = None
+                self._regions_changed()
 
         # Keyboard shortcuts
         if event.type == pygame.KEYDOWN:
@@ -560,6 +570,8 @@ class TerrainEditorDialog:
                 self.selected_type = "Door"
             elif event.key == pygame.K_6:
                 self.selected_type = "Ladder"
+            elif event.key == pygame.K_7:
+                self.selected_type = "Floor"
             elif event.key == pygame.K_u and self.selected_type == "Ladder":
                 self.ladder_up = not self.ladder_up
             elif event.key == pygame.K_l and self.selected_type == "Door":
@@ -587,15 +599,18 @@ class TerrainEditorDialog:
                 if self.selected_region_idx >= 0:
                     self.terrain_regions.pop(self.selected_region_idx)
                     self.selected_region_idx = -1
+                    self._regions_changed()
             elif event.key == pygame.K_c and self.selected_region_idx >= 0:
                 # Change type of selected region to current selected_type
                 self.terrain_regions[self.selected_region_idx]["type"] = self.selected_type
                 if self.selected_type == "Difficult Terrain":
                     self.terrain_regions[self.selected_region_idx]["multiplier"] = self.difficulty_mult
+                self._regions_changed()
             elif event.key == pygame.K_z and event.mod & pygame.KMOD_CTRL:
                 # Undo last region
                 if self.terrain_regions:
                     self.terrain_regions.pop()
+                    self._regions_changed()
                 self.selected_region_idx = -1
 
     def _get_region_at_pos(self, pos):
@@ -816,6 +831,29 @@ class TerrainEditorDialog:
         }
         self.terrain_regions.append(region)
 
+    def _draw_detected(self, canvas):
+        """The detector's result, as on the main map: blocked cells shaded, edge walls red."""
+        if not self.bm:
+            return
+        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        if not v or not h:
+            return
+        shade = pygame.Surface(canvas.get_size(), pygame.SRCALPHA)
+        for cell in self.bm.disallowed_cells:
+            c, r = cell.col, cell.row
+            if c + 1 < len(v) and r + 1 < len(h):
+                shade.fill(COL_BLOCKED, pygame.Rect(v[c], h[r], v[c + 1] - v[c], h[r + 1] - h[r]))
+        canvas.blit(shade, (0, 0))
+        red = (200, 60, 60)
+        for e in self.bm.edge_walls:
+            c, r = e.cell.col, e.cell.row
+            if c + 1 >= len(v) or r + 1 >= len(h):
+                continue
+            if e.side == rpg.EdgeSide.East:
+                pygame.draw.line(canvas, red, (v[c + 1], h[r]), (v[c + 1], h[r + 1]), 3)
+            else:
+                pygame.draw.line(canvas, red, (v[c], h[r + 1]), (v[c + 1], h[r + 1]), 3)
+
     def _blit_view(self, screen, canvas):
         """Blit the visible part of ``canvas`` into the viewport at the current zoom.
 
@@ -860,6 +898,7 @@ class TerrainEditorDialog:
             self._canvas = pygame.Surface(surf_size, 0, 32)
         canvas = self._canvas
         canvas.blit(self.map_surf, (0, 0))
+        self._draw_detected(canvas)
 
         # Draw terrain overlays
         for i, region in enumerate(self.terrain_regions):
@@ -878,6 +917,8 @@ class TerrainEditorDialog:
                 color = (128, 128, 128, 255)     # opaque grey
             elif region["type"] == "Water":
                 color = (50, 100, 230, 128)      # blue, 50% transparent
+            elif region["type"] == "Floor":
+                color = (60, 200, 110, 70)       # green wash: detected walls cleared here
             else:  # Difficult Terrain
                 color = (139, 90, 43, 128)       # brown, 50% transparent
             s = pygame.Surface((rect.w, rect.h), pygame.SRCALPHA)
@@ -885,6 +926,8 @@ class TerrainEditorDialog:
             canvas.blit(s, (rect.x, rect.y))
 
             # Highlight selected region with border
+            if region["type"] == "Floor":
+                pygame.draw.rect(canvas, (60, 200, 110), rect, 2)
             if i == self.selected_region_idx:
                 pygame.draw.rect(canvas, (255, 255, 0), rect, 3)
 
@@ -943,7 +986,8 @@ class TerrainEditorDialog:
             f"[3] Water (blue)",
             f"[4] Difficult Terrain (brown)",
             f"[5] Door (click a cell)",
-            f"[6] Ladder (click a cell)"
+            f"[6] Ladder (click a cell)",
+            f"[7] Floor (clears detected walls)"
         ]
         y = 10
         for text in sel_texts:
@@ -953,7 +997,8 @@ class TerrainEditorDialog:
 
         # Current type highlight
         current_idx = {"Wall": 0, "Chasm": 1, "Water": 2,
-                       "Difficult Terrain": 3, "Door": 4, "Ladder": 5}.get(self.selected_type, 3)
+                       "Difficult Terrain": 3, "Door": 4, "Ladder": 5,
+                       "Floor": 6}.get(self.selected_type, 3)
         pygame.draw.rect(screen, (255, 255, 100), pygame.Rect(8, 8 + current_idx*18, 175, 16), 2)
 
         if self.selected_type == "Ladder":
@@ -978,6 +1023,11 @@ class TerrainEditorDialog:
                 "(click toggles; drag for a wide door, max 4)",
                 True, (170, 170, 170))
             screen.blit(keys_surf, (10, y + 28))
+        elif self.selected_type == "Floor":
+            fl = self.font_sm.render(
+                "Floor: drag a box to clear the detected wall cells and edges inside it",
+                True, (140, 220, 160))
+            screen.blit(fl, (10, y + 10))
         else:
             # Difficulty multiplier indicator
             diff_text = f"Difficulty: {'[H]alved (0.5)' if self.difficulty_mult == 0.5 else '[Q]uartered (0.25)'}"
