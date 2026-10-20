@@ -92,6 +92,7 @@ test_scripts = [
     "test_lighting_editor.py",
     "test_editor_zoom_pan.py",
     "test_ladder_pairing.py",
+    "test_floor_align.py",
 
     # The GameView projection (MULTIPLAYER_PLAN.md M3, seam S1) — the per-viewer read
     # filter, and the only thing a remote client is ever sent. Kept with the oracles

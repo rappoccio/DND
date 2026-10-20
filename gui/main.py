@@ -64,6 +64,7 @@ from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog
 from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
 from dungeon import Dungeon, MapPage, dungeon_path_for
+from floor_overlay import FloorAlign
 from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
 # S1: every save that a crash could tear goes through this (MULTIPLAYER_PLAN.md).
 from atomic_io import atomic_write_json
@@ -687,6 +688,9 @@ class App:
         #   {"left"/"right"/"up"/"down"/"floor_up"/"floor_down": pygame.Rect}
         # The block is docked in the right-side config panel (not over the map).
         self._dungeon_nav_rects: dict = {}
+        # Align Floor (DUNGEON_LEVELS_PLAN.md Phase 1): ghost the floor below/above and
+        # nudge this page's origin onto it.
+        self.floor_align = FloorAlign()
         # Vertical scroll of the setup/config panel (pixels; 0 = top). The panel can
         # grow taller than the window (esp. with the Floor-nav block), so it scrolls.
         self.panel_scroll     = 0
@@ -2288,6 +2292,8 @@ class App:
         if self.combat_active and not force:
             self._flash_status("Finish combat before changing maps.")
             return False
+        if self.floor_align.active:
+            self.floor_align.finish(self, keep=False)   # the nudge belonged to the page we leave
 
         already_here = (self.dungeon_page is not None and page.id == self.dungeon_page.id)
 
@@ -5368,6 +5374,11 @@ class App:
         """Hashable identity of a ladder record: its cells and its global target."""
         return (tuple((int(c[0]), int(c[1])) for c in lad["cells"]),
                 tuple(int(v) for v in lad["target"]))
+
+    def _page_png_path(self, page: MapPage) -> str:
+        """A dungeon page's PNG, resolved like _switch_to_page does."""
+        png = page.png
+        return png if (not png or os.path.isabs(png)) else os.path.join(self._dungeon_dir(), png)
 
     def _page_terrain_path(self, page: MapPage) -> str:
         """The ``_terrain.json`` a dungeon page loads, resolved like _switch_to_page does."""
@@ -17458,6 +17469,11 @@ class App:
                         self._page_step(nav_hit)
                     continue
 
+            # ── Align Floor: arrows nudge the page, Tab flips floors, Enter/Esc end ──
+            if (self.floor_align.active and map_input_allowed
+                    and self.floor_align.handle_key(self, event)):
+                continue
+
             # ── Grid sample mode: drag one tile to define a uniform grid ──────
             # Intercepts left-click drags on the map before any agent/placement
             # handling. Panel clicks (e.g. cancelling via the button) fall through.
@@ -18389,6 +18405,7 @@ class App:
             self.screen.fill(COL_BG)
             self._draw_map()
             self._draw_fog_overlay()            # fog of war: grey never-seen cells (above map, below agents)
+            self.floor_align.draw(self)         # Align Floor: the other floor's ghost pages
             self._draw_agents()
             self._draw_floating_texts()                     # transient outcome flashes above tokens
             self._draw_npc_announcement()                   # NPC playback: typewriter action text

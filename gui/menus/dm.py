@@ -94,6 +94,7 @@ def show_dungeon_menu(app):
         items = [
             ("Pages / Overview…", app._dungeon_pages_overview),
             ("Add Page…",         app._dungeon_add_page_browser),
+            ("Align Floor",       lambda: app.floor_align.start(app)),
             ("Save Dungeon",      app._dungeon_save),
             ("Open Dungeon…",     app._dungeon_open_browser),
             ("Close Dungeon",     app._dungeon_close),
