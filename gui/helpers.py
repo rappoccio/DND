@@ -8,6 +8,34 @@ import rpg_battle_map as rpg
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Grid edges (terrain file form; no pygame dependency)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def edge_key(e):
+    """(c, r, "E"|"S") for an rpg.Edge, the terrain file's edge form."""
+    return (int(e.cell.col), int(e.cell.row), "E" if e.side == rpg.EdgeSide.East else "S")
+
+
+def edge_from_key(key):
+    """rpg.Edge for a (c, r, "E"|"S") key."""
+    c, r, s = key
+    return rpg.Edge(rpg.Cell(int(c), int(r)),
+                    rpg.EdgeSide.East if s == "E" else rpg.EdgeSide.South)
+
+
+def door_touch_cells(door):
+    """The cells a creature acts on ``door`` from: a cell door's own cells, or both
+    cells either side of each of an edge door's edges."""
+    if door.cells:
+        return list(door.cells)
+    out = []
+    for e in door.edges:
+        c, r, s = edge_key(e)
+        out += [rpg.Cell(c, r), rpg.Cell(c + 1, r) if s == "E" else rpg.Cell(c, r + 1)]
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Placement rules (shared by the GUI and unit tests; no pygame dependency)
 # ─────────────────────────────────────────────────────────────────────────────
 

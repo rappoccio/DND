@@ -632,7 +632,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // (the GUI casts Knock at the door cell). A mundane lock is removed; an Arcane Lock is
     // suppressed (not removed); then the door opens. Reported via result.log/messages.
     if (sp.opens_doors) {
-        int didx = bm.doorAt(Cell{action.aoe_col, action.aoe_row});
+        const Cell at{action.aoe_col, action.aoe_row};
+        int didx = bm.doorAt(at);
+        // An edge door (drawn maps) is aimed at from a cell beside it: the first edge
+        // door on the cell's east, south, west or north side, in that order.
+        const Edge sides[] = {{at, EdgeSide::East}, {at, EdgeSide::South},
+                              {Cell{at.col - 1, at.row}, EdgeSide::East},
+                              {Cell{at.col, at.row - 1}, EdgeSide::South}};
+        for (const Edge& e : sides) {
+            if (didx >= 0) break;
+            didx = bm.doorAtEdge(e);
+        }
         if (didx >= 0) {
             const Door& d = bm.doors()[static_cast<std::size_t>(didx)];
             bool was_arcane = d.arcane_lock;

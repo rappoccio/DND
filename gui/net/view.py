@@ -42,6 +42,8 @@ import os
 
 import rpg_battle_map as rpg
 
+from helpers import door_touch_cells, edge_key
+
 from net import events as net_events, mapimg
 from net.roster import (Action, PC_FACTION, PROTOCOL_VERSION, Principal,
                         PromptTarget, TokenTarget)
@@ -509,11 +511,14 @@ def _terrain(app, is_dm: bool, hide_map: bool, explored) -> dict:
     for d in app.bm.doors:
         dc = [[c.col, c.row] for c in d.cells]
         # "Any cell seen" reveals the door: a doorway is one feature, and a party that has
-        # stood in half of it has seen it.
-        if not any(_visible(explored, hide_map, c, r) for c, r in dc):
+        # stood in half of it has seen it. An edge door is seen from either side.
+        seen = dc or [[c.col, c.row] for c in door_touch_cells(d)]
+        if not any(_visible(explored, hide_map, c, r) for c, r in seen):
             continue
         rec = {"id": d.id, "cells": dc, "open": bool(d.open),
                "locked": bool(d.locked), "broken": bool(d.broken)}
+        if d.edges:
+            rec["edges"] = [list(edge_key(e)) for e in d.edges]
         if is_dm:
             rec.update(lock_dc=d.lock_dc, break_dc=d.break_dc,
                        arcane_lock=bool(d.arcane_lock),

@@ -2,7 +2,7 @@
 
 **Status 2026-10-19: Step 0.1, 0.3 and 0.6 agreed. Phase 1 done, committed `16a0d88`. O1
 decided (b): C1 amended, edge walls block. 0.4 and 0.5 approved. Phase 2A done 2026-10-19
-(committed `65a0698`). Phase 2B under way (steps 1–2 committed `b6fa70f`, step 3 the edge tool committed); 0.2 gates Phase 3.**
+(committed `65a0698`). Phase 2B under way (steps 1–2 committed `b6fa70f`, step 3 the edge tool `0636dfd`, step 4 the edge-door tool done, uncommitted); 0.2 gates Phase 3.**
 
 The goal: take a published multi-level dungeon, drawn as a set of PNGs, and make it one
 traversable dungeon. Every level sits on its own floor of the shared global (X, Y, Z) grid,
@@ -377,6 +377,23 @@ still a wall once it is out of `add`) and re-detects live; hand-added edges draw
 Decided while building: **Floor keeps a hand-added edge** (it clears what was detected, not
 what was drawn). Empty overrides are dropped on close, so the file stays clean.
 `tests/test_drawn_wall_detection.py` 28 tests. Next: step 4, the edge-door tool.
+
+**Progress 2026-10-20: step 4, the edge-door tool, done (uncommitted).** With the Edge tool's
+conditions (Walls ON, Drawn detector), **[5] Door** places doors on grid lines: a click
+toggles a one-edge door on the nearest edge, a drag along a line places a wide one (max 4
+edges), and a click on an old cell door still removes it. Otherwise Door mode places cell
+doors as before. `_terrain.json` stores an edge door with `edges` (`[c, r, "E"|"S"]`) in
+place of `cells`/`cell`; edge doors never carry a cross-map link (they can't sit on the page
+border). Drawn as a bar a third of a cell thick on the grid line, in the editor and on the
+map. A map click within 0.35 of a cell side picks the edge door there (`App._door_index_at`);
+the door menu needs the actor standing in a cell either side of the line. **Knock**: the
+engine now also finds an edge door from a cell beside it (east, south, west, north, in that
+order; the GUI aims at a cell where the chosen door comes first), so a remote tap works too
+(C++ change, rebuilt). The player view sends `edges` on the door record; the web client
+doesn't draw doors yet. Pure edge helpers (`edge_key`, `edge_from_key`, `door_touch_cells`)
+live in `helpers.py`. `tests/test_drawn_wall_detection.py` 33 tests, `test_picks.py` gains
+an edge-door Knock; suite 175/0, determinism golden unchanged. Next: step 5, per-page
+Ravenloft cleanup.
 
 - **A dark-fraction mode** in the C++ detector: a cell is a wall when at least
   `dark_fraction` of its pixels are darker than `dark_level`. It sits alongside the mean

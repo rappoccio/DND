@@ -53,14 +53,15 @@ from helpers import (
     _item_to_dict, _dict_to_item,
     _condition_to_dict, _dict_to_condition,
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
-    compute_summon_loadout,
+    compute_summon_loadout, edge_key, edge_from_key, door_touch_cells,
 )
 from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog, WallDetectionDialog
 from dialogs_conditions import ConditionsDialog
 from menus import board, dm, features, panel, reactions, riders
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
-from terrain_dialogs import TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph, draw_ladder_glyph, door_link_key
+from terrain_dialogs import (TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph,
+                             draw_ladder_glyph, door_link_key, edge_door_rect)
 from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
 from dungeon import Dungeon, MapPage, dungeon_path_for
@@ -4705,10 +4706,10 @@ class App:
                 # Planar Binding: click a living creature to bind to the caster's
                 # team on a failed Charisma save (control transfer, no damage).
                 self._resolve_planar_binding(hit)
-            elif self._pending_spell_opens_doors() and self.bm.door_at(cell) >= 0:
+            elif self._pending_spell_opens_doors() and self._door_index_at(cell, anchor) >= 0:
                 # Knock targets a doorway cell (no creature). Route through the
                 # cell path so the engine reads aoe_col/aoe_row for the door.
-                self._resolve_spell_cast_aoe(cell)
+                self._resolve_spell_cast_aoe(self._knock_cell(self._door_index_at(cell, anchor), cell))
             elif self._pending_spell_dispels_magic():
                 # Dispel Magic: open a picker for the ongoing spells at the clicked
                 # creature and/or cell (buff vs debuff, or one of several AoEs) — the
@@ -5503,7 +5504,56 @@ class App:
     def _door_link_at(self, door):
         """The global ``[X, Y, Z]`` cross-map target for ``door`` (an rpg.Door), or None
         for an ordinary in-map door. Looked up by the door's cell footprint."""
+        if not door.cells:
+            return None   # an edge door is never on the page border, so never a staple
         return self._door_links.get(door_link_key(door.cells))
+
+    # How close to a grid line (as a fraction of the cell) a click must land to pick
+    # the edge door on it.
+    EDGE_DOOR_PICK = 0.35
+
+    def _knock_cell(self, di, cell):
+        """The cell to aim Knock at so the engine finds door ``di``: ``cell`` for a cell
+        door, else a cell beside the edge door from which it is the first one found."""
+        door = self.bm.doors[di]
+        if not door.edges:
+            return cell
+        for c in [cell] + door_touch_cells(door):
+            if self._door_index_at(c) == di:
+                return c
+        return cell
+
+    def _door_index_at(self, cell, pos=None):
+        """Index into bm.doors for the door a click at screen ``pos`` in ``cell`` means:
+        a door on the cell, else an edge door on the cell side nearest the click, if
+        the click is within EDGE_DOOR_PICK of that side. -1 when there is none.
+
+        With no ``pos`` (a remote pick), the first edge door on the cell's east, south,
+        west or north side, which is the door the engine's Knock finds from that cell."""
+        di = self.bm.door_at(cell)
+        if di >= 0:
+            return di
+        c, r = cell.col, cell.row
+        if pos is None:
+            for ec, er, side in ((c, r, rpg.EdgeSide.East), (c, r, rpg.EdgeSide.South),
+                                 (c - 1, r, rpg.EdgeSide.East), (c, r - 1, rpg.EdgeSide.South)):
+                di = self.bm.door_at_edge(rpg.Cell(ec, er), side)
+                if di >= 0:
+                    return di
+            return -1
+        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        if c + 1 >= len(v) or r + 1 >= len(h):
+            return -1
+        ix = (pos[0] - self.pan_x) / self.map_scale
+        iy = (pos[1] - self.pan_y) / self.map_scale
+        w, ht = v[c + 1] - v[c], h[r + 1] - h[r]
+        sides = [((ix - v[c]) / w, (c - 1, r, "E")), ((v[c + 1] - ix) / w, (c, r, "E")),
+                 ((iy - h[r]) / ht, (c, r - 1, "S")), ((h[r + 1] - iy) / ht, (c, r, "S"))]
+        d, (ec, er, s) = min(sides, key=lambda t: t[0])
+        if d > self.EDGE_DOOR_PICK or ec < 0 or er < 0:
+            return -1
+        return self.bm.door_at_edge(rpg.Cell(ec, er),
+                                    rpg.EdgeSide.East if s == "E" else rpg.EdgeSide.South)
 
     def _use_door_link(self, door_id: int, actor_idx: int):
         """Step through a linked door to the abutting page, carrying the acting (or
@@ -13746,6 +13796,16 @@ class App:
         for d in doors_data:
             try:
                 raw = d.get("cells")
+                if d.get("edges"):
+                    did = self.bm.add_edge_door([edge_from_key(e) for e in d["edges"]],
+                                                bool(d.get("open", False)),
+                                                bool(d.get("locked", False)),
+                                                int(d.get("lock_dc", 15)),
+                                                bool(d.get("arcane_lock", False)),
+                                                int(d.get("break_dc", 15)))
+                    if bool(d.get("broken", False)):
+                        self.bm.break_door(did)
+                    continue
                 if raw:
                     cells = [rpg.Cell(int(c[0]), int(c[1])) for c in raw]
                 else:
@@ -13810,13 +13870,16 @@ class App:
         data = {"regions": self._terrain_regions, "walls_enabled": self._walls_enabled}
         # Doors (source of truth is BattleMap.doors). "cells" carries every doorway cell
         # so wide (multi-cell) doors round-trip; "cell" is kept for backward readability.
+        # An edge door (drawn maps) carries "edges", [c, r, "E"|"S"] each, in place of
+        # "cells" and "cell".
         data["doors"] = [
-            {"cells": [[c.col, c.row] for c in d.cells],
-             "cell": [d.cell.col, d.cell.row], "open": d.open,
-             "locked": d.locked, "lock_dc": d.lock_dc, "arcane_lock": d.arcane_lock,
-             "break_dc": d.break_dc, "broken": d.broken,
-             # Cross-map staple target in GLOBAL (X,Y,Z); null for an ordinary in-map door.
-             "link_target": self._door_links.get(door_link_key(d.cells))}
+            dict(({"edges": [list(edge_key(e)) for e in d.edges]} if d.edges else
+                  {"cells": [[c.col, c.row] for c in d.cells],
+                   "cell": [d.cell.col, d.cell.row]}),
+                 open=d.open, locked=d.locked, lock_dc=d.lock_dc,
+                 arcane_lock=d.arcane_lock, break_dc=d.break_dc, broken=d.broken,
+                 # Cross-map staple target in GLOBAL (X,Y,Z); null for an ordinary in-map door.
+                 link_target=self._door_link_at(d))
             for d in self.bm.doors
         ]
         # Ladders (vertical portals) — Python-only cell objects; target is GLOBAL (X,Y,Z).
@@ -15454,6 +15517,11 @@ class App:
         Doors are always drawn (independent of the terrain-visibility toggle): they are
         interactive objects, and a closed door is not part of the painted terrain regions."""
         for door in self.bm.doors:
+            if door.edges:
+                # An edge door is a bar on its grid line.
+                x, y, w, h = edge_door_rect(door, self._cell_to_screen, cpx)
+                draw_door_glyph(self.screen, x, y, cpx, door, self.font_sm, w=w, h=h)
+                continue
             # A wide door is drawn as one elongated slab over its full bounding rect
             # (the cells are contiguous along a single axis), not a glyph per cell.
             cols = [c.col for c in door.cells]
@@ -18173,7 +18241,7 @@ class App:
                         if net_picks.is_pick_prompt(self, self.prompts.live):
                             net_offer.take_over(self)
                         if not self.resolve_pick(cell, event.pos):
-                            if hit < 0 and self.bm.door_at(cell) >= 0:
+                            if hit < 0 and self._door_index_at(cell, event.pos) >= 0:
                                 # No pending action and an empty door cell: offer door interaction.
                                 dm.show_door_menu(self, cell, event.pos)
                             elif hit < 0 and self._ladder_at(cell) >= 0:
@@ -18199,7 +18267,7 @@ class App:
                     else:
                         # Normal mode: door interaction, drag any agent, or deselect.
                         # But disable dragging if jump overlay is active (use jump instead)
-                        if hit < 0 and self.bm.door_at(cell) >= 0:
+                        if hit < 0 and self._door_index_at(cell, event.pos) >= 0:
                             dm.show_door_menu(self, cell, event.pos)
                         elif hit < 0 and self._ladder_at(cell) >= 0:
                             dm.show_ladder_menu(self, cell, event.pos)

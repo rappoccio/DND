@@ -1415,6 +1415,24 @@ def test_knock_picks_a_door():
     print("✅ test_knock_picks_a_door")
 
 
+def test_knock_picks_an_edge_door():
+    """A tap on a cell beside a locked edge door (a remote tap: no click position) aims
+    Knock at it, and the engine finds the same door from that cell."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Knock"])
+    spot = _free_cell(app, aria, 4, beyond=1)
+    c, r = spot if spot[0] + 1 < app.bm.grid_cols else (spot[0] - 1, spot[1])
+    app.bm.add_edge_door([rpg.Edge(rpg.Cell(c, r), rpg.EdgeSide.East)], False, True, 15, False)
+    _choose(app, kira, "spell_action")
+    pick = _until_pick(app, kira)
+    assert (pick.kind, pick.title) == ("cell", "Knock: choose a door"), pick
+    _tap(app, kira, spot)
+    assert app.pending_spell_slot == "", app.pending_spell_slot
+    door = app.bm.doors[app.bm.door_at_edge(rpg.Cell(c, r), rpg.EdgeSide.East)]
+    assert not door.locked and door.open, "Knock did not open the edge door"
+    print("✅ test_knock_picks_an_edge_door")
+
+
 def test_dispel_on_nothing_keeps_the_pick():
     """Dispel Magic takes a creature or a spot, as a `target`. With no magic there it logs,
     keeps the cast and asks again; Kira's Cancel then disarms it and spends nothing."""
@@ -1974,6 +1992,7 @@ if __name__ == "__main__":
         test_animate_dead_raises_an_undead()
         test_a_binding_spell_picks_a_creature()
         test_knock_picks_a_door()
+        test_knock_picks_an_edge_door()
         test_dispel_on_nothing_keeps_the_pick()
         test_chromatic_orb_done_casts_the_chain()
         test_a_summon_placed_over_the_bus()

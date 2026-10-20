@@ -7,6 +7,7 @@ import pygame
 import rpg_battle_map as rpg
 from constants import *
 from widgets import Button
+from helpers import edge_key, edge_from_key
 
 
 def door_link_key(cells):
@@ -23,6 +24,21 @@ def door_link_key(cells):
         else:
             out.append((int(c[0]), int(c[1])))
     return tuple(sorted(out))
+
+
+def edge_door_rect(door, cell_xy, size):
+    """(x, y, w, h) of an edge door's slab: a bar a third of a cell thick, centred on
+    its grid line and as long as its edges. ``cell_xy(col, row)`` gives a cell's
+    top-left in the target's px, ``size`` the cell size there."""
+    keys = [edge_key(e) for e in door.edges]
+    t = max(4, size // 3)
+    c0, r0 = min(k[0] for k in keys), min(k[1] for k in keys)
+    n = len(keys)
+    if keys[0][2] == "E":
+        x, y = cell_xy(c0 + 1, r0)
+        return x - t // 2, y, t, n * size
+    x, y = cell_xy(c0, r0 + 1)
+    return x, y - t // 2, n * size, t
 
 
 def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None, linked=False):
@@ -73,8 +89,9 @@ def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None, link
         midx = slab.x + slab.w // 2
         pygame.draw.line(screen, (70, 45, 20), (midx, slab.y), (midx, slab.y + slab.h), 1)
         knob_r = max(2, short // 14)
-        pygame.draw.circle(screen, (210, 180, 60),
-                           (slab.x + slab.w - knob_r * 3, slab.y + slab.h // 2), knob_r)
+        # A slab too narrow for an off-centre knob (an edge door's bar) centres it.
+        kx = slab.x + slab.w - knob_r * 3 if slab.w >= knob_r * 6 else slab.centerx
+        pygame.draw.circle(screen, (210, 180, 60), (kx, slab.y + slab.h // 2), knob_r)
 
     if door.locked or door.arcane_lock:
         lock_col = (180, 80, 220) if door.arcane_lock else (230, 200, 60)
@@ -375,6 +392,9 @@ class TerrainEditorDialog:
         self.on_edges_changed = None
         self.edge_drag = None
         self._edge_undo = []
+        # Edge doors (2B step 4): with edges enabled, Door mode places doors on grid
+        # lines. ``door_edge_drag`` is (start, end) in map px while the button is held.
+        self.door_edge_drag = None
 
     ZOOM_MIN = 0.5
     ZOOM_MAX = 6.0
@@ -401,6 +421,7 @@ class TerrainEditorDialog:
         self.on_edges_changed = on_edges_changed
         self.edge_drag = None
         self._edge_undo = []
+        self.door_edge_drag = None
         self.map_surf = map_surf
         self.terrain_regions = [r.copy() for r in terrain_regions] if terrain_regions else []
         self.selection_start = None
@@ -530,6 +551,9 @@ class TerrainEditorDialog:
                 if cell is not None:
                     self._place_ladder(cell)
                 return
+            if event.button == 1 and self.selected_type == "Door" and self._edge_doors():
+                self.door_edge_drag = (pos, pos)
+                return
             if event.button == 1 and self.selected_type == "Door":
                 # A door spans 1..4 cells: press starts the span, drag sizes it, release
                 # places it. (A press-and-release on one cell is the single-cell toggle.)
@@ -555,6 +579,8 @@ class TerrainEditorDialog:
         elif event.type == pygame.MOUSEMOTION:
             if self.edge_drag is not None:
                 self.edge_drag = (self.edge_drag[0], self.edge_drag[1], pos)
+            elif self.door_edge_drag is not None:
+                self.door_edge_drag = (self.door_edge_drag[0], pos)
             elif self.selected_type == "Door" and self.door_drag_start is not None:
                 end = self._pos_to_cell(pos)
                 if end is not None:
@@ -571,6 +597,10 @@ class TerrainEditorDialog:
             if self.edge_drag is not None and event.button == self.edge_drag[0]:
                 self.edge_drag = (self.edge_drag[0], self.edge_drag[1], pos)
                 self._finish_edge_drag()
+                return
+            if event.button == 1 and self.door_edge_drag is not None:
+                self._place_edge_door(self.door_edge_drag[0], pos)
+                self.door_edge_drag = None
                 return
             if event.button == 1 and self.selected_type == "Door" and self.door_drag_start is not None:
                 end = self._pos_to_cell(pos) or self.door_drag_end or self.door_drag_start
@@ -934,6 +964,42 @@ class TerrainEditorDialog:
         for key in keys:
             pygame.draw.line(canvas, colour, *self._edge_segment(key), 5)
 
+    # ── Edge doors ───────────────────────────────────────────────────────
+    def _edge_doors(self):
+        """True when Door mode places doors on grid lines (the Edge tool's conditions)."""
+        return bool(self.edges_enabled and self.bm and self.bm.v_line_positions
+                    and self.bm.h_line_positions)
+
+    def _door_edge_keys(self, start, end):
+        """The edges a door dragged from ``start`` to ``end`` spans: the run along the
+        grid line, or the nearest edge for a click, at most MAX_DOOR_WIDTH long."""
+        keys = self._edge_run(start, end)
+        if not keys:
+            e = self._nearest_edge(start)
+            keys = [e] if e else []
+        return keys[:self.MAX_DOOR_WIDTH]
+
+    def _place_edge_door(self, start, end):
+        """Place an edge door from the current lock settings. A click (or one-edge
+        drag) on an existing edge door removes it; a click on a cell door removes that,
+        so old cell doors can still be cleared on a drawn map."""
+        keys = self._door_edge_keys(start, end)
+        if not keys:
+            return
+        if len(keys) == 1:
+            di = self.bm.door_at_edge(rpg.Cell(keys[0][0], keys[0][1]),
+                                      rpg.EdgeSide.East if keys[0][2] == "E" else rpg.EdgeSide.South)
+            if di < 0:
+                cell = self._pos_to_cell(start)
+                di = self.bm.door_at(cell) if cell is not None else -1
+                if di >= 0:
+                    self.door_links.pop(door_link_key(self.bm.doors[di].cells), None)
+            if di >= 0:
+                self.bm.remove_door(self.bm.doors[di].id)
+                return
+        self.bm.add_edge_door([edge_from_key(k) for k in keys], False, self.door_locked,
+                              self.door_lock_dc, self.door_arcane, self.door_break_dc)
+
     def _apply_terrain_to_selection(self):
         """Convert screen rect to grid cells and add terrain region, snapped to grid."""
         if not self.selection_rect or not self.map_surf:
@@ -1131,6 +1197,10 @@ class TerrainEditorDialog:
             h = self.bm.h_line_positions
             size = self.bm.cell_pixel_size
             for door in self.bm.doors:
+                if door.edges and v and h:
+                    x, y, w, hh = edge_door_rect(door, lambda c, r: (v[c], h[r]), size)
+                    draw_door_glyph(canvas, x, y, size, door, self.font_sm, w=w, h=hh)
+                    continue
                 cols = [c.col for c in door.cells]
                 rows = [c.row for c in door.cells]
                 if not cols or not v or not h:
@@ -1154,6 +1224,9 @@ class TerrainEditorDialog:
                     draw_ladder_glyph(canvas, v[c], h[r], size,
                                       going_up=(tz > z_here), font_sm=self.font_sm)
             # Preview the in-progress door span while dragging.
+            if self.door_edge_drag is not None:
+                for key in self._door_edge_keys(*self.door_edge_drag):
+                    pygame.draw.line(canvas, (210, 180, 90), *self._edge_segment(key), 7)
             if self.door_drag_start is not None and self.door_drag_end is not None:
                 for cell in self._door_span_cells(self.door_drag_start, self.door_drag_end):
                     c, r = cell.col, cell.row
@@ -1179,7 +1252,7 @@ class TerrainEditorDialog:
             f"[2] Chasm (grey)",
             f"[3] Water (blue)",
             f"[4] Difficult Terrain (brown)",
-            f"[5] Door (click a cell)",
+            "[5] Door (click a grid line)" if self._edge_doors() else "[5] Door (click a cell)",
             f"[6] Ladder (click a cell)",
             f"[7] Floor (clears detected walls)",
             f"[8] Edge (drag along a grid line)"
@@ -1213,10 +1286,13 @@ class TerrainEditorDialog:
                          f"  break DC {self.door_break_dc}{link_str}")
             door_surf = self.font_sm.render(door_text, True, (220, 200, 120))
             screen.blit(door_surf, (10, y + 10))
-            keys_surf = self.font_sm.render(
-                "[L] lock  [A] arcane  [K] link  [+/-] lock DC  [ [ / ] ] break DC  "
-                "(click toggles; drag for a wide door, max 4)",
-                True, (170, 170, 170))
+            if self._edge_doors():
+                hint = ("[L] lock  [A] arcane  [+/-] lock DC  [ [ / ] ] break DC  "
+                        "(click a grid line toggles; drag along it for a wide door, max 4)")
+            else:
+                hint = ("[L] lock  [A] arcane  [K] link  [+/-] lock DC  [ [ / ] ] break DC  "
+                        "(click toggles; drag for a wide door, max 4)")
+            keys_surf = self.font_sm.render(hint, True, (170, 170, 170))
             screen.blit(keys_surf, (10, y + 28))
         elif self.selected_type == "Floor":
             fl = self.font_sm.render(

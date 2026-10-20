@@ -583,6 +583,108 @@ def test_floor_keeps_a_hand_added_edge():
     print("✅ test_floor_keeps_a_hand_added_edge passed")
 
 
+# ── Edge doors (Door mode on a drawn page) ───────────────────────────────────
+def _door_editor(tmp, doc=None):
+    app, terrain, ed = _edge_editor(tmp, doc)
+    ed.selected_type = "Door"
+    return app, terrain, ed
+
+
+def test_edge_door_drag_places_a_wide_door_that_round_trips():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, terrain, ed = _door_editor(tmp)
+        _drag(ed, _vx(X0, 3), _vx(X0, 5))                 # down the west wall, two edges
+        assert len(app.bm.doors) == 1
+        d = app.bm.doors[0]
+        assert list(d.cells) == [] and {(e.cell.col, e.cell.row, e.side) for e in d.edges} == \
+            {(X0 - 1, 3, E), (X0 - 1, 4, E)}
+        assert app.bm.edge_between(C(X0 - 1, 3), C(X0, 3)), "closed, it blocks"
+        app.bm.lock_door(d.id, 17)
+        app.bm.unlock_door(d.id)
+        assert app.bm.open_door(d.id)
+        app._close_terrain_editor()
+        with open(terrain) as f:
+            rec = json.load(f)["doors"][0]
+        assert rec["edges"] == [[X0 - 1, 3, "E"], [X0 - 1, 4, "E"]]
+        assert "cells" not in rec and "cell" not in rec and rec["link_target"] is None
+        assert rec["open"] and not rec["locked"] and rec["lock_dc"] == 17
+        app._load_terrain(terrain)
+        d = app.bm.doors[0]
+        assert len(app.bm.doors) == 1 and len(d.edges) == 2 and d.open and d.lock_dc == 17
+        assert not app.bm.edge_between(C(X0 - 1, 3), C(X0, 3)), "open, it passes the wall"
+        assert app.bm.edge_between(C(X0 - 1, 2), C(X0, 2)), "the wall beside it still blocks"
+    print("✅ test_edge_door_drag_places_a_wide_door_that_round_trips passed")
+
+
+def test_edge_door_click_toggles_and_a_drag_stops_at_four():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, _, ed = _door_editor(tmp)
+        p = (4 * CELL + CELL // 2, 3 * CELL + CELL - 3)   # near (4,3)'s south side
+        _drag(ed, p, p)
+        assert [(e.cell.col, e.cell.row, e.side) for e in app.bm.doors[0].edges] == [(4, 3, S)]
+        _drag(ed, p, p)
+        assert len(app.bm.doors) == 0, "a click on the door removes it"
+        _drag(ed, _vx(0, 4), _vx(9, 4))                    # nine edges along a grid line
+        assert len(app.bm.doors[0].edges) == ed.MAX_DOOR_WIDTH
+        app.bm.add_door([C(1, 1)])                          # an old cell door is still clearable
+        _drag(ed, (CELL + CELL // 2, CELL + 4), (CELL + CELL // 2, CELL + 4))
+        assert all(d.edges for d in app.bm.doors)
+    print("✅ test_edge_door_click_toggles_and_a_drag_stops_at_four passed")
+
+
+def test_door_mode_places_cell_doors_outside_drawn_detection():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, _, ed = _door_editor(tmp, {})
+        _drag(ed, (4 * CELL + 5, 3 * CELL + 5), (4 * CELL + 5, 3 * CELL + 5))
+        assert [(c.col, c.row) for c in app.bm.doors[0].cells] == [(4, 3)]
+    print("✅ test_door_mode_places_cell_doors_outside_drawn_detection passed")
+
+
+def test_a_map_click_near_the_line_finds_an_edge_door():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, _ = _app(tmp, {"detection": DETECTION})
+        app.bm.add_edge_door([rpg.Edge(C(4, 3), E)])
+        x, y = app._cell_to_screen(4, 3)
+        cpx = int(CELL * app.map_scale)
+        near = (x + cpx - 2, y + cpx // 2)
+        assert app._door_index_at(C(4, 3), near) == 0
+        assert app._door_index_at(C(5, 3), (x + cpx + 2, y + cpx // 2)) == 0, "from either side"
+        assert app._door_index_at(C(4, 3), (x + cpx // 2, y + cpx // 2)) == -1, "not mid-cell"
+        assert app._door_index_at(C(5, 3)) == 0 and app._door_index_at(C(6, 3)) == -1
+        # The DM's menu needs the actor standing beside the line.
+        from menus import dm
+        seen = {}
+        app._ask_actor = lambda *a, **kw: seen.setdefault("opts", a[3])
+        cfg = rpg.AgentConfig()
+        cfg.name, cfg.start_col, cfg.start_row, cfg.size = "Kira", 6, 3, 1
+        app.combat.add_agent_config(app.bm, cfg)
+        app.combat.apply_agent_configs(app.bm)
+        idx = len(app.bm.placed_agents) - 1
+        app.combat_active = True
+        app._current_agent_idx = lambda: idx
+        logs = []
+        app._combat_log_add = lambda *a, **k: logs.append(a)
+        dm.show_door_menu(app, C(4, 3), near)
+        assert "opts" not in seen and logs, "two cells off the line is out of reach"
+        app.bm.set_agent_position(idx, C(5, 3))
+        dm.show_door_menu(app, C(4, 3), near)
+        assert [label for label, _fn in seen["opts"]][0] == "Open door"
+        app._draw_doors(cpx)                                # draws as a bar, no crash
+    print("✅ test_a_map_click_near_the_line_finds_an_edge_door passed")
+
+
+def test_editor_draws_edge_doors_and_the_drag_preview():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, _, ed = _door_editor(tmp)
+        app.bm.add_edge_door([rpg.Edge(C(4, 3), S)])
+        ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=_vx(X0, 3), button=1))
+        ed.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=_vx(X0, 5), rel=(0, 0),
+                                     buttons=(1, 0, 0)))
+        ed.draw(app.screen)
+        assert ed._door_edge_keys(*ed.door_edge_drag) == [(X0 - 1, 3, "E"), (X0 - 1, 4, "E")]
+    print("✅ test_editor_draws_edge_doors_and_the_drag_preview passed")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

@@ -16,6 +16,7 @@ the board opens, not a panel button.
 """
 
 import rpg_battle_map as rpg
+from helpers import door_touch_cells
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -111,7 +112,7 @@ def show_door_menu(app, cell, pos):
 
     During combat the acting creature must be adjacent; out of combat the DM acts
     freely (pick-lock uses the currently selected agent)."""
-    di = app.bm.door_at(cell)
+    di = app._door_index_at(cell, pos)
     if di < 0:
         return
     door = app.bm.doors[di]
@@ -121,8 +122,15 @@ def show_door_menu(app, cell, pos):
         if actor < 0:
             return
         agent = app.bm.placed_agents[actor]
-        # A wide door is reachable from any of its cells, not just the clicked one.
-        if not any(app._cell_adjacent_to_agent(agent, c) for c in door.cells):
+        # A wide door is reachable from any of its cells, not just the clicked one; an
+        # edge door from standing in a cell either side of it.
+        if door.edges:
+            o, n = agent.origin, agent.size
+            near = any(o.col <= c.col < o.col + n and o.row <= c.row < o.row + n
+                       for c in door_touch_cells(door))
+        else:
+            near = any(app._cell_adjacent_to_agent(agent, c) for c in door.cells)
+        if not near:
             app._combat_log_add("Move adjacent to the door to interact with it.")
             return
 
