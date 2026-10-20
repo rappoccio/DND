@@ -63,6 +63,9 @@ def show_terrain_menu(app):
     ]
     if app._walls_enabled:
         items.insert(4, ("Wall Detection…", app._open_wall_detection))
+    if app._manual_grid:
+        # Re-render the map so its drawn squares are whole pixels (gui/grid_rescale.py).
+        items.insert(-1, ("Rescale Image to Grid…", app._rescale_image_to_grid))
     app._ask_dm("action", "Terrain", items,
                  anchor=(app.btn_terrain.rect.x, app.btn_terrain.rect.y))
 

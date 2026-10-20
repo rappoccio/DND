@@ -99,6 +99,8 @@ test_scripts = [
     "test_drawn_wall_detection.py",
     # A new floor starts from the nearest edited floor's edges; disagreements are yellow.
     "test_floor_edge_carry.py",
+    # tools/rescale_to_grid.py: page images re-rendered so drawn squares are whole px.
+    "test_rescale_to_grid.py",
 
     # The GameView projection (MULTIPLAYER_PLAN.md M3, seam S1) — the per-viewer read
     # filter, and the only thing a remote client is ever sent. Kept with the oracles

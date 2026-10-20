@@ -65,6 +65,7 @@ from terrain_dialogs import (TemporaryTerrainPlacementDialog, TerrainEditorDialo
 from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
 from dungeon import Dungeon, MapPage, dungeon_path_for
+import grid_rescale
 from floor_overlay import FloorAlign
 from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
 # S1: every save that a crash could tear goes through this (MULTIPLAYER_PLAN.md).
@@ -14029,6 +14030,70 @@ class App:
             self._combat_log_add(
                 f"Grid note: {square_px:.1f}px ÷ {per_side} isn't a whole pixel; the grid "
                 f"drifts ~{drift:.0f}px off the drawn lines across the map.")
+
+    # ── Terrain… → Rescale Image to Grid… ──────────────────────────────────
+    def _rescale_image_to_grid(self):
+        """Measure the drawn squares against the manual grid and offer to re-render the
+        map image so they are whole pixels (see gui/grid_rescale.py). The cell size stays
+        an integer; the image changes instead, and every cell keeps its index."""
+        if self.combat_active:
+            self._flash_status("Finish combat before rescaling the map.")
+            return
+        if not self._manual_grid:
+            self._flash_status("Rescale needs a manual grid: Set Grid… first.")
+            return
+        # The image and terrain are rewritten from disk and reloaded: save what's live.
+        self._save_agents()
+        self._save_terrain()
+        try:
+            p = grid_rescale.plan(self._map_path, self._terrain_path)
+        except Exception as e:                      # noqa: BLE001 — report, keep the map
+            self._flash_status(f"Couldn't measure the grid: {e}")
+            return
+        if "skip" in p:
+            self._flash_status(f"Rescale: {p['skip']}.")
+            return
+        (px, py), (dx, dy) = p["period"], p["drift"]
+        measured = (f"Squares {px:.2f}×{py:.2f}px (want {p['nominal']}): "
+                    f"grid drifts {dx:.0f}×{dy:.0f}px across the map")
+        self._combat_log_add(measured + ".")
+        if not p["needed"]:
+            self._flash_status(measured + " — already fits.")
+            return
+        sx, sy = p["scale"]
+        self._ask_dm("action", measured, [
+            (f"Rescale image ×{sx:.4f} × {sy:.4f}", lambda: self._apply_rescale(p)),
+            ("Cancel", lambda: None),
+        ], anchor=(self.btn_terrain.rect.x, self.btn_terrain.rect.y))
+
+    def _apply_rescale(self, p):
+        """Rewrite the image + terrain (backups in pre_rescale/), then reload the page."""
+        backup_dir = os.path.join(os.path.dirname(os.path.abspath(p["png"])), "pre_rescale")
+        page = self.dungeon_page if self.dungeon is not None else None
+        try:
+            if page is not None and self._dungeon_manifest_path:
+                grid_rescale._backup(self._dungeon_manifest_path, backup_dir)
+            r = grid_rescale.apply(p, backup_dir)
+        except Exception as e:                      # noqa: BLE001
+            self._flash_status(f"Rescale failed: {e}")
+            return
+        if page is not None:
+            page.cols, page.rows = r["cols"], r["rows"]
+            if self._dungeon_manifest_path:
+                self.dungeon.save(self._dungeon_manifest_path)
+            self.dungeon_page = None                # don't write the old scene back
+            self._switch_to_page(page, force=True)
+        else:
+            self._load_map_png(self._map_path)
+            self._load_terrain()
+            self._load_lighting()
+            self._load_spell_effects()
+            self._load_agents()
+            self._mark_fog_dirty()
+        self._build_overlay()
+        src = os.path.basename(r["source"])
+        self._flash_status(f"Rescaled from {src} to {r['size'][0]}×{r['size'][1]} "
+                           f"({r['cols']}×{r['rows']} cells). Old files in pre_rescale/.")
 
     def _apply_detection_params(self):
         """Point the engine's detector at this page's settings. Without a "detection"
