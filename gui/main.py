@@ -634,6 +634,12 @@ class App:
         self._walls_enabled = True   # auto-detected walls active? (toggle persists in terrain JSON)
         self._detection = None       # the page's "detection" block (drawn-map mode); None = today's detector
         self._edge_overrides = None  # {"add": [[c, r, "E"|"S"], ...], "remove": [...]} or None
+        # Edges carried from another floor (_maybe_carry_edges): the ones where that floor
+        # and this image's detection disagree, drawn blue in the terrain editor until the
+        # DM decides them. ``_edges_carried_from`` names the source pages; once set, the
+        # carry never runs again for this page (until Set Grid renumbers the cells).
+        self._edge_review = None     # [[c, r, "E"|"S"], ...] or None
+        self._edges_carried_from = None
 
         # Manual grid (sample-a-tile) state. When _manual_grid is set the detected grid
         # has been replaced by a uniform one; persisted in the terrain JSON.
@@ -647,10 +653,7 @@ class App:
         # on the command line) so many encounters can reuse the same map. The initial
         # base name is derived from the map for backward compatibility; Save/Load can
         # re-point it anywhere via _set_encounter_base().
-        default_agents = os.path.join(
-            self._map_dir,
-            os.path.splitext(os.path.basename(map_path))[0] + "_agents.json"
-        )
+        default_agents = standalone_encounter_base(map_path)
         # Multiplayer session roster (MULTIPLAYER_PLAN.md M0): principals, the join code
         # and the one authorize() chokepoint. Built empty first so _set_encounter_base
         # can re-point it — that call then loads this encounter's session file.
@@ -2540,27 +2543,39 @@ class App:
         # ladders placed / removed this session with their other ends (_pair_ladders).
         self._ladders_at_open = [self._ladder_key(lad) for lad in self._ladders]
         # The Edge tool edits the overrides in place and re-detects after each edit.
+        # First visit to a floor of a dungeon: start from the nearest edited floor's edges
+        # and flag where this image disagrees (blue). Saves the page if it carried.
+        self._maybe_carry_edges()
         if self._edge_overrides is None:
             self._edge_overrides = {"add": [], "remove": []}
-        self._edges_at_open = json.dumps(self._edge_overrides, sort_keys=True)
+        if self._edge_review is None:
+            self._edge_review = []
+        self._edges_at_open = json.dumps([self._edge_overrides, self._edge_review],
+                                         sort_keys=True)
+        # After the snapshot, so a list saved before the pruning rule is re-saved pruned.
+        self._prune_edge_review()
         drawn = self._walls_enabled and (self._detection or {}).get("mode") == "dark_fraction"
         self.terrain_editor.open(self.map_surf, self._terrain_regions, self.bm,
                                  ladders=self._ladders, door_links=self._door_links,
                                  on_regions_changed=self._preview_floor_regions,
                                  edge_overrides=self._edge_overrides, edges_enabled=drawn,
                                  on_edges_changed=lambda: self._redetect_walls(
-                                     self.terrain_editor.terrain_regions))
+                                     self.terrain_editor.terrain_regions),
+                                 edge_review=self._edge_review,
+                                 edge_review_source=", ".join(self._edges_carried_from or []))
 
     def _close_terrain_editor(self):
         """Esc in the terrain editor: take its edits, save them, give new / removed
         ladders their other ends, and re-apply terrain to the engine."""
         floors_before = [r for r in self._terrain_regions if r.get("type") == "Floor"]
         self._terrain_regions = self.terrain_editor.terrain_regions
-        edges_changed = json.dumps(self._edge_overrides, sort_keys=True) != \
-            getattr(self, "_edges_at_open", None)
+        edges_changed = json.dumps([self._edge_overrides, self._edge_review],
+                                   sort_keys=True) != getattr(self, "_edges_at_open", None)
         if self._edge_overrides is not None and not (self._edge_overrides.get("add")
                                                      or self._edge_overrides.get("remove")):
             self._edge_overrides = None
+        if not self._edge_review:
+            self._edge_review = None
         if edges_changed or \
                 [r for r in self._terrain_regions if r.get("type") == "Floor"] != floors_before:
             self._redetect_walls()
@@ -13720,6 +13735,8 @@ class App:
         self._walls_enabled = True
         self._detection = None
         self._edge_overrides = None
+        self._edge_review = None
+        self._edges_carried_from = None
         self._manual_grid = None
         self.bm.reset_terrain_multipliers()
         # Doors live in BattleMap.doors. Clear any from the previous encounter; saved
@@ -13751,6 +13768,8 @@ class App:
                 self._walls_enabled = bool(data.get("walls_enabled", True))
                 self._detection = data.get("detection")
                 self._edge_overrides = data.get("edge_overrides")
+                self._edge_review = data.get("edge_review")
+                self._edges_carried_from = data.get("edges_carried_from")
             except Exception:
                 pass
         elif os.path.exists(path):
@@ -13775,6 +13794,8 @@ class App:
                 self._walls_enabled = bool(data.get("walls_enabled", True))
                 self._detection = data.get("detection")
                 self._edge_overrides = data.get("edge_overrides")
+                self._edge_review = data.get("edge_review")
+                self._edges_carried_from = data.get("edges_carried_from")
                 doors_data = data.get("doors", [])
                 self._ladders = self._normalize_ladders(data.get("ladders", []))
                 explored_data = data.get("explored")  # None if absent → stays fully fogged
@@ -13895,6 +13916,10 @@ class App:
             data["detection"] = self._detection
         if self._edge_overrides and (self._edge_overrides.get("add") or self._edge_overrides.get("remove")):
             data["edge_overrides"] = self._edge_overrides
+        if self._edge_review:
+            data["edge_review"] = self._edge_review
+        if self._edges_carried_from:
+            data["edges_carried_from"] = self._edges_carried_from
         # Walk-order rooms from the terrain carver — the link between the terrain
         # floor plan and the encounter floor plan (Generate Dungeon populates these
         # exact rooms). Persisted so the linkage survives save/reload; previously only
@@ -13986,6 +14011,8 @@ class App:
         if self._detection:
             self._detection["outside_seeds"] = []
         self._edge_overrides = None
+        self._edge_review = None
+        self._edges_carried_from = None   # the cells were renumbered: carry again next time
         self._build_overlay()
         self._save_terrain()
         if dropped:
@@ -14007,8 +14034,13 @@ class App:
         """Point the engine's detector at this page's settings. Without a "detection"
         block, or with mode "mean", it is today's detector exactly; the drawn-map fields,
         the outside seeds and the edge overrides are then not read."""
-        p = self.bm.params
-        det = self._detection or {}
+        self._fill_detection_params(self.bm.params, self._detection, self._edge_overrides)
+
+    @classmethod
+    def _fill_detection_params(cls, p, detection, edge_overrides):
+        """Write a terrain file's "detection" and "edge_overrides" into engine params
+        ``p``. Shared by the live page and the reference floor of _maybe_carry_edges."""
+        det = detection or {}
         if det.get("mode") != "dark_fraction":
             p.mode = rpg.DetectionMode.Mean
             p.outside_seeds, p.edge_add, p.edge_remove = [], [], []
@@ -14020,9 +14052,171 @@ class App:
         p.edge_fraction = float(det.get("edge_fraction", 0.3))
         p.edge_halfwidth_px = int(det.get("edge_halfwidth_px", 4))
         p.outside_seeds = [rpg.Cell(int(c[0]), int(c[1])) for c in det.get("outside_seeds", [])]
+        ov = edge_overrides or {}
+        p.edge_add = cls._parse_edges(ov.get("add", []))
+        p.edge_remove = cls._parse_edges(ov.get("remove", []))
+
+    # ── Carrying edges between floors ─────────────────────────────────────
+    # The floors of one dungeon are drawn in the same style and sit on one global grid,
+    # so a floor's outer walls and shafts mostly stack on the floor next to it. The first
+    # time the terrain editor opens on a floor, it starts from the nearest edited floor's
+    # final edges and marks the edges where this image's own detection disagrees.
+
+    @staticmethod
+    def _edge_set(bm):
+        """The engine's static edge walls as {(c, r, "E"|"S")}."""
+        return {(e.cell.col, e.cell.row, "E" if e.side == rpg.EdgeSide.East else "S")
+                for e in bm.edge_walls}
+
+    @staticmethod
+    def _edge_in_grid(key, cols, rows):
+        c, r, s = key
+        if s == "E":
+            return 0 <= c < cols - 1 and 0 <= r < rows
+        return 0 <= c < cols and 0 <= r < rows - 1
+
+    @staticmethod
+    def _carry_ready(data):
+        """True when a page's terrain file has what carrying needs: a manual grid,
+        walls on, the Drawn detector and some edge edits of its own."""
+        ov = data.get("edge_overrides") or {}
+        return bool(data.get("manual_grid") and data.get("walls_enabled", True)
+                    and (data.get("detection") or {}).get("mode") == "dark_fraction"
+                    and (ov.get("add") or ov.get("remove")))
+
+    def _carry_reference_pages(self, page):
+        """[(page, terrain data)] for the nearest edited floor toward the entry floor:
+        the pages on it that overlap ``page`` on the global grid and are _carry_ready.
+        Floors with nothing edited are skipped; the entry floor itself has no reference."""
+        entry = self.dungeon.entry_page() if self.dungeon else None
+        if entry is None or page.z == entry.z:
+            return []
+        step = 1 if entry.z > page.z else -1
+        z = page.z
+        while z != entry.z:
+            z += step
+            found = []
+            for p in self.dungeon.pages:
+                if p.z != z or p.id == page.id:
+                    continue
+                if p.cols and page.cols and p.rows and page.rows and not (
+                        p.gx < page.gx + page.cols and page.gx < p.gx + p.cols
+                        and p.gy < page.gy + page.rows and page.gy < p.gy + p.rows):
+                    continue
+                try:
+                    with open(self._page_terrain_path(p)) as f:
+                        data = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                if self._carry_ready(data):
+                    found.append((p, data))
+            if found:
+                return found
+        return []
+
+    def _page_final_edges(self, page, data):
+        """A page's final edge walls (detection + its overrides) in GLOBAL (X, Y),
+        computed on a throwaway engine map of its own image so the live map is untouched.
+        Floor regions are not applied (they only clear detected edges)."""
+        png = page.png if os.path.isabs(page.png) else os.path.join(self._dungeon_dir(), page.png)
+        ref = rpg.BattleMap(png)
+        mg = data["manual_grid"]
+        ref.set_uniform_grid(int(mg["cell_px"]), int(mg["anchor"][0]), int(mg["anchor"][1]))
+        self._fill_detection_params(ref.params, data.get("detection"),
+                                    data.get("edge_overrides"))
+        ref.detect_walls()
+        return {(c + page.gx, r + page.gy, s) for (c, r, s) in self._edge_set(ref)}
+
+    def _prune_edge_review(self):
+        """Drop review edges with a blocked cell on BOTH sides (inside a thick wall, or
+        outside the building): whether they are walls changes no movement or sight, so
+        they aren't worth the DM's time. Their overrides are kept as carried."""
+        if not self._edge_review:
+            return
+        blocked = {(c.col, c.row) for c in self.bm.disallowed_cells}
+
+        def matters(e):
+            c, r, s = int(e[0]), int(e[1]), e[2]
+            other = (c + 1, r) if s == "E" else (c, r + 1)
+            return not ((c, r) in blocked and other in blocked)
+
+        self._edge_review[:] = [e for e in self._edge_review if matters(e)]
+
+    def _maybe_carry_edges(self):
+        """On a dungeon floor's first terrain edit, start from the nearest edited floor's
+        edges (see _carry_reference_pages), moved through the page origins.
+
+        The page keeps its own grid and runs its own detection; the carried edges become
+        its edge overrides (added where detection missed them, removed where detection
+        found an edge the reference floor doesn't have), and those disagreements become
+        the blue review list. Runs once per page: ``edges_carried_from`` is saved.
+
+        It never overwrites work already on the page: a page with edge edits of its own
+        is skipped, and a page's own detection settings and Walls choice are kept. Only a
+        page with no detection block at all borrows the reference's. The reference
+        floors are only read. Before the first write the page's terrain file is copied to
+        ``<file>.before_carry``."""
+        page = self.dungeon_page
+        if self.dungeon is None or page is None or self._edges_carried_from:
+            return
         ov = self._edge_overrides or {}
-        p.edge_add = self._parse_edges(ov.get("add", []))
-        p.edge_remove = self._parse_edges(ov.get("remove", []))
+        if ov.get("add") or ov.get("remove"):
+            return                          # this floor already has edits of its own
+        if not self._manual_grid:
+            return                          # cells aren't fixed until Set Grid
+        refs = self._carry_reference_pages(page)
+        if not refs:
+            return
+        carried_global = set()
+        for p, data in refs:
+            try:
+                carried_global |= self._page_final_edges(p, data)
+            except Exception as e:          # noqa: BLE001 — a bad reference must not block editing
+                self._flash_status(f"Couldn't read floor '{p.id}' edges: {e}")
+                return
+        cols, rows = self.bm.grid_cols, self.bm.grid_rows
+        carried = {(X - page.gx, Y - page.gy, s) for (X, Y, s) in carried_global}
+        carried = {k for k in carried if self._edge_in_grid(k, cols, rows)}
+
+        # This floor needs Walls ON and the Drawn detector for edges. A floor that has
+        # chosen otherwise keeps its choice (no carry); one with no detection block yet
+        # borrows the reference's settings, its outside seeds moved through the origins.
+        own = self._detection is not None
+        if own and (not self._walls_enabled or self._detection.get("mode") != "dark_fraction"):
+            self._flash_status("Edges not carried: this floor's own settings aren't Walls ON "
+                               "+ Drawn (Terrain… → Wall Detection…).")
+            return
+        if not own:
+            p0, data0 = refs[0]
+            det = json.loads(json.dumps(data0["detection"]))
+            seeds = [[c + p0.gx - page.gx, r + p0.gy - page.gy]
+                     for c, r in det.get("outside_seeds", [])]
+            det["outside_seeds"] = [s for s in seeds if 0 <= s[0] < cols and 0 <= s[1] < rows]
+            self._detection = det
+            self._walls_enabled = True
+            self.btn_toggle_walls.text = "Walls: ON"
+
+        if os.path.exists(self._terrain_path):
+            try:
+                shutil.copyfile(self._terrain_path, self._terrain_path + ".before_carry")
+            except OSError:
+                pass
+        self._edge_overrides = {"add": [], "remove": []}
+        self._redetect_walls()
+        detected = {k for k in self._edge_set(self.bm) if self._edge_in_grid(k, cols, rows)}
+        add = sorted(carried - detected)
+        remove = sorted(detected - carried)
+        self._edge_overrides = {"add": [list(k) for k in add],
+                                "remove": [list(k) for k in remove]}
+        self._edge_review = [list(k) for k in sorted(set(add) | set(remove))]
+        self._edges_carried_from = [p.id for p, _ in refs]
+        self._redetect_walls()
+        self._prune_edge_review()
+        self._build_overlay()
+        self._save_terrain()
+        self._flash_status(
+            f"Edges from {', '.join(self._edges_carried_from)}: {len(carried)} carried, "
+            f"{len(self._edge_review)} differ from this image (blue).")
 
     @staticmethod
     def _parse_edges(raw):
@@ -18722,8 +18916,89 @@ class App:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+STANDALONE_SUBDIR = "standalone"
+
+
+def standalone_encounter_base(png_path: str) -> str:
+    """The agents path a PNG opened on its own reads and writes its encounter under.
+
+    Normally ``<dir>/<stem>_agents.json`` (and so ``<stem>_terrain.json`` etc.). But a
+    dungeon page in the same folder may already own that base for a DIFFERENT image —
+    e.g. Castle Ravenloft's main floor uses ``main_floor_ravenloft_agents.json`` with
+    ``main_floor_ravenloft_32px.png``. Opening ``main_floor_ravenloft.png`` directly
+    would then load and overwrite that page's grid and edge walls on a drawing of
+    another size, so every cell index lands in the wrong place.
+
+    In that case the PNG gets its own sidecars in ``<dir>/standalone/`` instead, and
+    the dungeon's files are left alone. A PNG that IS the page's image keeps sharing
+    them, since its grid matches.
+    """
+    map_dir = os.path.dirname(os.path.abspath(png_path))
+    stem = os.path.splitext(os.path.basename(png_path))[0]
+    default = os.path.join(map_dir, stem + "_agents.json")
+    me = os.path.realpath(png_path)
+    try:
+        names = os.listdir(map_dir)
+    except OSError:
+        return default
+    for fn in sorted(names):
+        if not fn.endswith(".dungeon.json"):
+            continue
+        manifest = os.path.join(map_dir, fn)
+        try:
+            dungeon = Dungeon.load(manifest)
+        except Exception:                        # noqa: BLE001 — a bad manifest owns nothing
+            continue
+        for page in dungeon.pages:
+            def _res(p):
+                return p if (not p or os.path.isabs(p)) else os.path.join(map_dir, p)
+            if not page.encounter_base or not page.png:
+                continue
+            if os.path.abspath(_res(page.encounter_base)) != default:
+                continue
+            if os.path.realpath(_res(page.png)) == me:
+                return default                   # same image: sharing is correct
+            alt_dir = os.path.join(map_dir, STANDALONE_SUBDIR)
+            os.makedirs(alt_dir, exist_ok=True)
+            print(f"[*] {os.path.basename(png_path)}: '{stem}_*' files belong to dungeon "
+                  f"page '{page.id}' ({page.png}) in {fn}; using "
+                  f"{STANDALONE_SUBDIR}/{stem}_* for this image instead.")
+            return os.path.join(alt_dir, stem + "_agents.json")
+    return default
+
+
+def resolve_start_path(path: str):
+    """Work out what to open from the command-line argument.
+
+    ``path`` is either a map image or a ``.dungeon.json`` manifest. Returns
+    ``(png_path, manifest_path)``: for an image, ``(path, None)``; for a manifest, the
+    entry page's PNG (resolved against the manifest's folder) and the manifest's
+    absolute path. Raises ``ValueError`` with a readable message if the manifest is
+    unreadable, has no pages, or its entry PNG is missing.
+
+    Opening a floor through its manifest always uses the PNG the manifest names, so
+    its grid and edge walls land on the image they were drawn on.
+    """
+    if not path.lower().endswith(".json"):
+        return path, None
+    manifest = os.path.abspath(path)
+    try:
+        dungeon = Dungeon.load(manifest)
+    except Exception as e:                       # noqa: BLE001 — report any bad file
+        raise ValueError(f"Not a dungeon manifest: {path} ({e})") from e
+    entry = dungeon.entry_page()
+    if entry is None:
+        raise ValueError(f"Dungeon manifest has no pages: {path}")
+    png = entry.png
+    if not os.path.isabs(png):
+        png = os.path.join(os.path.dirname(manifest), png)
+    if not os.path.exists(png):
+        raise ValueError(f"Entry page '{entry.id}': map image not found ({entry.png})")
+    return png, manifest
+
+
 if __name__ == "__main__":
-    # Positional: map image. Optional: --seed N to fix the combat RNG for
+    # Positional: map image OR a .dungeon.json manifest. Optional: --seed N to fix the combat RNG for
     # reproducible live play (0/any int; omitted ⇒ time-based random seed).
     args = sys.argv[1:]
     seed = None
@@ -18745,6 +19020,14 @@ if __name__ == "__main__":
         default_map = os.path.normpath(os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "..", "encounters", "simplemap.png"))
         if not os.path.exists(default_map):
-            sys.exit("Usage: python main.py <map_image.png> [--seed N]")
+            sys.exit("Usage: python main.py <map_image.png | dungeon.json> [--seed N]")
         positional.append(default_map)
-    App(positional[0], seed=seed).run()
+    try:
+        start_png, start_manifest = resolve_start_path(positional[0])
+    except ValueError as e:
+        sys.exit(str(e))
+    app = App(start_png, seed=seed)
+    if start_manifest is not None:
+        # Same path as Dungeon Configuration → Open: loads the entry page's encounter.
+        app._on_open_dungeon_chosen(start_manifest)
+    app.run()

@@ -6,7 +6,7 @@
 #  3. Bridge VNC to WebSocket for browser access via noVNC on port 6080
 #  4. Run the game
 #
-#  Args (passed by run.sh):  $1 = container repo dir   $2 = map image path
+#  Args (passed by run.sh):  $1 = container repo dir   $2 = map image or .dungeon.json path
 #  With no args it just keeps the display alive for interactive use.
 # ─────────────────────────────────────────────────────────────────────────────
 set -e

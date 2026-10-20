@@ -392,6 +392,11 @@ class TerrainEditorDialog:
         self.on_edges_changed = None
         self.edge_drag = None
         self._edge_undo = []
+        # Edges carried from another floor that this image's detection disagrees with
+        # (the app's live list, mutated in place). Drawn blue until the DM edits them
+        # or accepts the rest with [Y]. ``edge_review_source`` names the floor(s).
+        self.edge_review = []
+        self.edge_review_source = ""
         # Edge doors (2B step 4): with edges enabled, Door mode places doors on grid
         # lines. ``door_edge_drag`` is (start, end) in map px while the button is held.
         self.door_edge_drag = None
@@ -403,7 +408,7 @@ class TerrainEditorDialog:
 
     def open(self, map_surf, terrain_regions, bm=None, ladders=None, door_links=None,
              on_regions_changed=None, edge_overrides=None, edges_enabled=False,
-             on_edges_changed=None):
+             on_edges_changed=None, edge_review=None, edge_review_source=""):
         """Open the terrain editor with existing terrain data.
 
         ``ladders`` is the app's live ladder list (Python-only cell objects); the editor
@@ -413,8 +418,11 @@ class TerrainEditorDialog:
         every edit to the region list, so the app can re-detect walls under Floor regions
         while the editor is open. ``edge_overrides`` is the app's live override dict
         for the Edge tool, edited in place; ``on_edges_changed()`` is called after each
-        edit so the app can re-detect."""
+        edit so the app can re-detect. ``edge_review`` is the app's live list of edges
+        carried from another floor that still need a decision (drawn blue)."""
         self.active = True
+        self.edge_review = edge_review if edge_review is not None else []
+        self.edge_review_source = edge_review_source or ""
         self.on_regions_changed = on_regions_changed
         self.edge_overrides = edge_overrides if edge_overrides is not None else {"add": [], "remove": []}
         self.edges_enabled = edges_enabled
@@ -669,6 +677,8 @@ class TerrainEditorDialog:
             elif event.key == pygame.K_z and event.mod & pygame.KMOD_CTRL \
                     and self.selected_type == "Edge":
                 self._undo_edges()
+            elif event.key == pygame.K_y and self.selected_type == "Edge":
+                self._accept_review()
             elif event.key == pygame.K_z and event.mod & pygame.KMOD_CTRL:
                 # Undo last region
                 if self.terrain_regions:
@@ -880,7 +890,8 @@ class TerrainEditorDialog:
         rem = [tuple(e) for e in ov.get("remove", [])]
         keys = list(dict.fromkeys(keys))
         keyset = set(keys)
-        snapshot = {"add": [list(e) for e in add], "remove": [list(e) for e in rem]}
+        snapshot = {"add": [list(e) for e in add], "remove": [list(e) for e in rem],
+                    "review": [list(e) for e in self.edge_review]}
         if on:
             new_rem = [e for e in rem if e not in keyset]
             new_add = add + [k for k in keys if k not in set(add)]
@@ -894,6 +905,8 @@ class TerrainEditorDialog:
         if new_add == add and new_rem == rem:
             return
         self._edge_undo.append(snapshot)
+        # An edited edge has been decided: it stops being blue.
+        self.edge_review[:] = [e for e in self.edge_review if tuple(e) not in keyset]
         ov["add"] = [list(e) for e in new_add]
         ov["remove"] = [list(e) for e in new_rem]
         if new_rem != rem or on:
@@ -909,7 +922,47 @@ class TerrainEditorDialog:
         prev = self._edge_undo.pop()
         self.edge_overrides["add"] = prev["add"]
         self.edge_overrides["remove"] = prev["remove"]
+        if "review" in prev:
+            self.edge_review[:] = prev["review"]
         self._edges_changed()
+
+    def _accept_review(self):
+        """[Y]: keep every remaining blue edge as it is now and stop flagging them."""
+        if not self.edge_review:
+            return
+        ov = self.edge_overrides
+        self._edge_undo.append({"add": [list(e) for e in ov.get("add", [])],
+                                "remove": [list(e) for e in ov.get("remove", [])],
+                                "review": [list(e) for e in self.edge_review]})
+        self.edge_review[:] = []
+        self._edges_changed()
+
+    def _draw_edge_review(self, canvas):
+        """Blue: edges where the carried floor and this image's detection disagree.
+        Solid where the edge is a wall now (the other floor has it, detection missed it);
+        dashed where it is open (detection found it, the other floor doesn't have it)."""
+        if not self.edge_review or not self.bm or not self.bm.v_line_positions \
+                or not self.bm.h_line_positions:
+            return
+        blue = (40, 140, 255)
+        for e in self.edge_review:
+            key = (int(e[0]), int(e[1]), e[2])
+            if not self._edge_ok(*key):
+                continue
+            a, b = self._edge_segment(key)
+            if self._is_edge_wall(key):
+                pygame.draw.line(canvas, blue, a, b, 5)
+                continue
+            self._draw_dashed(canvas, blue, a, b, 4)
+
+    @staticmethod
+    def _draw_dashed(canvas, colour, a, b, width, n=4):
+        """``n`` dashes from ``a`` to ``b`` (one grid edge)."""
+        for k in range(n):
+            t0, t1 = k / n, (k + 0.5) / n
+            pygame.draw.line(canvas, colour,
+                             (a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0),
+                             (a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1), width)
 
     def _edge_drag_preview(self):
         """(keys, on) the held drag would write: a run, a single edge, or a box."""
@@ -931,9 +984,25 @@ class TerrainEditorDialog:
         """Release: a left drag adds the run, or removes it when its first edge is
         already a wall; a left click toggles the nearest edge; a right drag erases the
         box."""
+        button, start, end = self.edge_drag
         keys, on = self._edge_drag_preview()
         self.edge_drag = None
-        self._set_edges(keys, on)
+        # A right-drag box also settles the blue edges in it: its walls are erased, and the
+        # open (dashed) ones stay open, so nothing in the box needs a decision any more.
+        inbox = set()
+        if button == 3 and self.edge_review:
+            inbox = set(self._edges_in_box(self._drag_rect(start, end)))
+        flagged = [e for e in self.edge_review if (int(e[0]), int(e[1]), e[2]) in inbox]
+        if keys:
+            self._set_edges(keys, on)       # its undo snapshot holds the blue list too
+        elif flagged:
+            ov = self.edge_overrides
+            self._edge_undo.append({"add": [list(e) for e in ov.get("add", [])],
+                                    "remove": [list(e) for e in ov.get("remove", [])],
+                                    "review": [list(e) for e in self.edge_review]})
+        if flagged:
+            self.edge_review[:] = [e for e in self.edge_review
+                                   if (int(e[0]), int(e[1]), e[2]) not in inbox]
 
     def _edge_segment(self, key):
         v, h = self.bm.v_line_positions, self.bm.h_line_positions
@@ -943,7 +1012,7 @@ class TerrainEditorDialog:
         return (v[c], h[r + 1]), (v[c + 1], h[r + 1])
 
     def _draw_edge_tool(self, canvas):
-        """Hand-added edges in orange; the held drag's run (yellow to add, white to
+        """Hand-added edges in orange; the held drag's run (green to add, white to
         remove) or erase box."""
         if not self.bm or not self.bm.v_line_positions or not self.bm.h_line_positions:
             return
@@ -960,9 +1029,16 @@ class TerrainEditorDialog:
             s.fill((230, 80, 80, 60))
             canvas.blit(s, rect.topleft)
             pygame.draw.rect(canvas, (230, 80, 80), rect, 2)
-        colour = (255, 230, 60) if on else (245, 245, 245)
+        colour = (90, 230, 120) if on else (245, 245, 245)   # blue is the review colour
         for key in keys:
             pygame.draw.line(canvas, colour, *self._edge_segment(key), 5)
+        if self.edge_drag[0] == 3 and self.edge_review:
+            # The open (dashed) blue edges the box will settle: white dashes over them.
+            inbox = set(self._edges_in_box(rect))
+            for e in self.edge_review:
+                key = (int(e[0]), int(e[1]), e[2])
+                if key in inbox and not self._is_edge_wall(key):
+                    self._draw_dashed(canvas, (245, 245, 245), *self._edge_segment(key), 5)
 
     # ── Edge doors ───────────────────────────────────────────────────────
     def _edge_doors(self):
@@ -1157,6 +1233,7 @@ class TerrainEditorDialog:
         canvas = self._canvas
         canvas.blit(self.map_surf, (0, 0))
         self._draw_detected(canvas)
+        self._draw_edge_review(canvas)
         if self.selected_type == "Edge":
             self._draw_edge_tool(canvas)
 
@@ -1303,8 +1380,14 @@ class TerrainEditorDialog:
             if self.edges_enabled:
                 lines = [("Edge: drag along a grid line to add a run (or remove it, if it starts "
                           "on a wall); click toggles one edge", (255, 200, 120)),
-                         ("Right-drag a box to erase every edge in it  |  [Ctrl+Z] undo an edge edit",
+                         ("Right-drag a box to erase every edge in it (and clear its blue)  |  "
+                          "[Ctrl+Z] undo an edge edit",
                           (170, 170, 170))]
+                if self.edge_review:
+                    src = f" from {self.edge_review_source}" if self.edge_review_source else ""
+                    lines.append((f"Blue: {len(self.edge_review)} edges carried{src} disagree "
+                                  "with this image (solid = wall, dashed = open). Edit them, "
+                                  "or [Y] keep the rest as they are", (90, 170, 255)))
             else:
                 lines = [("Edge: needs Walls ON and the Drawn detector "
                           "(Terrain… → Wall Detection…)", (230, 140, 140))]

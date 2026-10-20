@@ -1,15 +1,17 @@
 #!/bin/bash
 
 # Run script for RPG Battle Map GUI
-# Launches the battle map viewer with a map image
+# Launches the battle map viewer with a map image or a dungeon manifest
 # Usage: ./run.sh /path/to/map.png
+#        ./run.sh /path/to/name.dungeon.json   (opens the manifest's entry page)
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 <map_image.png>"
+    echo "Usage: $0 <map_image.png | name.dungeon.json>"
     echo ""
     echo "Examples:"
     echo "  $0 maps/TestDNDMap.png"
     echo "  $0 /absolute/path/to/map.png"
+    echo "  $0 \"encounters/Castle Ravenloft/main_floor_ravenloft.dungeon.json\""
     exit 1
 fi
 
@@ -17,7 +19,7 @@ MAP_PATH="$1"
 
 # Verify the map file exists
 if [ ! -f "$MAP_PATH" ]; then
-    echo "Error: Map file not found: $MAP_PATH"
+    echo "Error: Map or dungeon file not found: $MAP_PATH"
     exit 1
 fi
 
