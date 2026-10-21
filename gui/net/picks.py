@@ -459,7 +459,7 @@ def wanted(app) -> tuple[Arm, int, str] | None:
     """`(arm, actor, owner)` when a player's target prompt should be up, else None."""
     if not app.combat_active or app.combat_paused:
         return None
-    if app._npc_anim is not None or app._npc_drive_idx >= 0:
+    if app._npc_anim_defers() or app._npc_drive_idx >= 0:
         return None
     arm = armed(app)
     if arm is None or arm.name not in WIRED:

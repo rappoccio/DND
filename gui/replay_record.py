@@ -90,6 +90,11 @@ class RecordingCombat:
         self._append({"event": event, "args": [fields], "snap": engine_snapshot(self._engine, self._bm)})
 
     # — transparent delegation with logging for recorded methods —
+    def __setattr__(self, name, value):
+        # An engine property (record_moves) must land on the engine, not on this wrapper,
+        # where it would shadow the engine's value and switch nothing.
+        setattr(self._engine, name, value)
+
     def __getattr__(self, name):
         attr = getattr(self._engine, name)
         if name not in self._RECORDED or not callable(attr):

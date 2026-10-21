@@ -24,8 +24,9 @@ own commits. Both are now fixed and committed. **M5e.2 has landed (committed,
 2026-10-14). M5e.3 has landed (committed, 2026-10-14). M5e.4 has landed (`06b3b6b`,
 2026-10-14); M5e is complete.** Read "Handoff — M5e.4 landed", just before M6.
 **2026-10-19: M4b.0–M4b.2 are committed. M4b paused** for core-game fixes.
-**2026-10-20: M4b resumed. M4b.3 (browser playback and the toggle) has landed, uncommitted.
-M4b.4 is next:** read "Handoff — M4b.3 landed", just before M6.
+**2026-10-20: M4b resumed. M4b.3 (browser playback and the toggle) is committed (`6f5f5e0`, not pushed).
+M4b.4 (human-move slides on the DM screen) has landed, uncommitted. M4b.5 is next:** read
+"Handoff — M4b.4 landed", just before M6.
 
 ---
 
@@ -7284,7 +7285,7 @@ Nothing below has started. When multiplayer work resumes, pick it up from here.
 - Stage files by name. Never `-A`.
 - Commit only when asked. Never push unasked.
 
-##### M4b.3 — what landed *(2026-10-20, uncommitted)*
+##### M4b.3 — what landed *(2026-10-20, commit `6f5f5e0` "M4b.3: browser playback of the event stream, and the Animate moves toggle")*
 
 - **`gui/net/static/app.js`**, a new "Playback" section (B-5):
   - `seq`: a `view` sets it, and a contiguous `events` frame advances it. A frame whose
@@ -7335,7 +7336,7 @@ Nothing below has started. When multiplayer work resumes, pick it up from here.
 
 ##### Handoff — M4b.3 landed *(written 2026-10-20)*
 
-**State.** M4b.3 is **uncommitted**:
+**State.** M4b.3 is **committed** in `6f5f5e0` and not pushed:
 - changed: `gui/net/static/app.js`, `index.html`, `app.css`, `tests/test_live.py`,
   `tests/run_all_tests.py` and this plan;
 - new: `tests/app_harness.js`, `tests/playback_checks.js` and `tests/test_playback.py`.
@@ -7359,6 +7360,75 @@ moves the panel golden.
   - the toggle off;
   - the token look.
 - Then M6, M7 and M8.
+
+**Rules:** container only, never `docker build`; stage by name; commit only when asked;
+never push unasked.
+
+##### M4b.4 — what landed *(2026-10-20, uncommitted)*
+
+- **`record_moves` is on in the GUI** (`main.py`, at start-up). `_load_combat_state` turns
+  it on again after `restore_json`: the restore rebuilds the engine's context, and the
+  switch is not save state.
+- **`RecordingCombat.__setattr__`** (`replay_record.py`) now forwards to the engine.
+  Before, `app.combat.record_moves = True` would have set an attribute on the wrapper and
+  switched nothing. No code assigned through the wrapper before this slice.
+- **`_play_human_moves()`** drains the buffer into the stream (`extend_npc`) and plays it
+  as an `_npc_anim` with `on_done=None`. Only the mover is held, at its route's start;
+  every other agent and every HP bar is drawn live. If a playback is already running, the
+  move joins its queue, and that playback keeps its continuation.
+- **The B-2 trap is closed by where the drain sits.** `_play_human_moves` is called only
+  from `_after_move_committed`, which every human move reaches: straight after
+  `begin_move` or `move_agent`, or through `_reaction_finish` after an OA park. A parked
+  NPC turn's `_reaction_finish` is `_resume_npc_turn`, so its Move stays in the buffer for
+  `run_npc_turn`'s own drain.
+- **`_npc_anim_defers()`**: true only while a playback holds a continuation. The gates in
+  `net/offer.py` and `net/picks.py` use it in place of `_npc_anim is not None`, so a
+  player's offer and target pick stay up through a slide. A slide defers nothing.
+- **B-7, DM side:** an "Animate: ON/OFF" button under "Fog: ON" in the setup panel
+  (`animate_moves`, session-only, `_set_animate_moves`). `_advance_npc_playback` lands a
+  move at once when it is off, as it does for a fogged mover. The combat-panel golden does
+  not draw that column, so it is unchanged.
+- **Tests:** `tests/test_move_slides.py` (new, registered after `test_playback.py`), 8
+  checks: the switch on at start-up and after a resume; a DM move slides, holds only the
+  mover and streams once; the offer and a target pick stay up through a slide; a move
+  parked at an OA slides after the skip; a move joins a running playback; Animate: OFF;
+  and the B-2 trap, on a real parked NPC turn (Skarn under Command (Flee) provoking Aria).
+- **Mutants: all 14 killed**, plus a passing no-change control (`.claude/mutants_m4b4.py`,
+  untracked scratch). The `picks.py` gate survived the first pass, and
+  `test_a_pick_stays_up_through_a_slide` was added for it.
+- Suite **179 / 0** in the container. The goldens are unchanged. No C++ changed.
+
+**Decisions this slice made that Step 0 did not spell out:**
+- **A DM click during a human slide fast-forwards it and is consumed**, as during an NPC
+  playback (Step 0 B-6). The slide is 10 cells/s, so a 6-cell move holds the board for
+  0.6 s. If that eats too many clicks in play, the follow-up is to let a human slide pass
+  the click through after fast-forwarding.
+- **The "Animate" button lives in the setup panel**, beside "Fog". The setup panel is not
+  drawn during combat, so the DM sets it before or between fights.
+- **An NPC turn waits for a human slide to finish** (`_drive_npc_turn_if_pending` returns
+  while any playback runs), so a move the DM makes just before ending a turn plays out
+  first.
+
+##### Handoff — M4b.4 landed *(written 2026-10-20)*
+
+**State.** M4b.4 is **uncommitted**:
+- changed: `gui/main.py`, `gui/replay_record.py`, `gui/net/offer.py`,
+  `gui/net/picks.py`, `tests/run_all_tests.py` and this plan;
+- new: `tests/test_move_slides.py`.
+
+Leave `maps/TestDNDMap_terrain.json` and `.claude/mutants_m4b*.py` alone.
+
+**Next: M4b.5, the token look (B-8) and `GET /sprite/<basename>`.**
+- The browser token matches `_draw_one_agent`: a team-coloured square (`faction_color`'s
+  RGB), the sprite art or the one-letter placeholder, grey when unconscious, a red hatch on
+  a corpse. It keeps the name label and the band.
+- `/sprite` is authenticated like `/map.png`, answers only a basename some agent in that
+  viewer's view carries (404 otherwise), and is cacheable with an ETag.
+- B-10 mutant owed: `/sprite` serving a basename outside the viewer's view.
+
+**After that:** the manual browser checks (B-10): an NPC turn on a phone beside the DM
+screen; a player's own move sliding (now possible); the toggle off; the token look. Then
+M6, M7 and M8.
 
 **Rules:** container only, never `docker build`; stage by name; commit only when asked;
 never push unasked.

@@ -229,7 +229,7 @@ def gate(app) -> tuple[int, str] | None:
     """`(actor, owner)` when a player's offer should be up right now, else None."""
     if not app.combat_active or app.combat_paused:
         return None
-    if app._npc_anim is not None or app._npc_drive_idx >= 0:
+    if app._npc_anim_defers() or app._npc_drive_idx >= 0:
         return None
     actor = app._current_agent_idx()
     if not 0 <= actor < len(app.bm.placed_agents):

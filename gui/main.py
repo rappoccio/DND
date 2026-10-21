@@ -783,6 +783,9 @@ class App:
         # flips "Fog: ON" (btn_toggle_fog) when running a party through. Generate Dungeon
         # turns it on for you (_set_fog) since a generated dungeon is meant to be explored.
         self.show_fog = False
+        # M4b B-7: the DM screen's "Animate: ON/OFF". Off lands every move at once; bubbles,
+        # flashes and HP timing still play. Session-only, like the browser's own checkbox.
+        self.animate_moves = True
 
         # ── Combat engine (C++ — seeded PRNG, RL-ready) ──────────────────
         import time
@@ -791,6 +794,9 @@ class App:
                             else int(time.time() * 1000)) % (2**32)
         # Wrap the engine so every state-mutating call is recorded for checked replay.
         self.combat = RecordingCombat(rpg.CombatEngine(self.combat_seed), rpg)
+        # M4b B-2: record human moves too, so they slide (B-6) and reach the players' stream.
+        # Off by default in the engine, so RL and headless runs are untouched.
+        self.combat.record_moves = True
         self.logger = rpg.MessageLogger()
         self.combat.set_logger(self.logger)
         self.replay_log_file = None  # Will be set during combat start
@@ -1371,7 +1377,11 @@ class App:
         self.btn_toggle_fog = Button(pygame.Rect(px, toggle_fog_y, W, B),
                                      "Fog: ON" if self.show_fog else "Fog: OFF",
                                      (70, 90, 105), (100, 125, 145), font=self.font_md)
-        set_grid_y = toggle_fog_y + B + self._BTN_GAP
+        toggle_anim_y = toggle_fog_y + B + self._BTN_GAP
+        self.btn_toggle_animate = Button(pygame.Rect(px, toggle_anim_y, W, B),
+                                         "Animate: ON" if self.animate_moves else "Animate: OFF",
+                                         (70, 90, 105), (100, 125, 145), font=self.font_md)
+        set_grid_y = toggle_anim_y + B + self._BTN_GAP
         self.btn_set_grid = Button(pygame.Rect(px, set_grid_y, W, B),
                                    "Set Grid…",
                                    (80, 95, 95), (110, 130, 130), font=self.font_md)
@@ -1401,7 +1411,8 @@ class App:
         dung_y         = gen_y         + B + G
         toggle_walls_y = dung_y        + B + G
         toggle_fog_y   = toggle_walls_y + B + G
-        set_grid_y     = toggle_fog_y  + B + G
+        toggle_anim_y  = toggle_fog_y  + B + G
+        set_grid_y     = toggle_anim_y + B + G
         quit_y         = set_grid_y    + B + G
         stats_y        = quit_y        + B + 14
 
@@ -1431,6 +1442,7 @@ class App:
         self.btn_dungeon.rect.update(px, dung_y + off, W, B)
         self.btn_toggle_walls.rect.update(px, toggle_walls_y + off, W, B)
         self.btn_toggle_fog.rect.update(px, toggle_fog_y + off, W, B)
+        self.btn_toggle_animate.rect.update(px, toggle_anim_y + off, W, B)
         self.btn_set_grid.rect.update(px, set_grid_y + off, W, B)
         self.btn_quit.rect.update(px, quit_y + off, W, B)
         # Thirteen combat-panel buttons used to have their x refreshed here on a resize,
@@ -3216,6 +3228,13 @@ class App:
         a = self._npc_anim
         return a["hp"].get(idx) if a is not None else None
 
+    def _npc_anim_defers(self):
+        """True while a playback holds back a continuation (an NPC turn's advance, or its
+        parked reaction menu). A human move's slide (on_done=None) defers nothing, so the
+        player's offer and prompts stay up through it."""
+        a = self._npc_anim
+        return a is not None and a.get("on_done") is not None
+
     def _npc_anim_draws_dead(self, idx):
         """True while playback holds a now-dead token on screen (alive at snapshot)."""
         a = self._npc_anim
@@ -3239,8 +3258,8 @@ class App:
             if ev.kind == self._NPC_EV_MOVE:
                 path  = ev.path
                 steps = len(path) - 1
-                if steps <= 0 or self._agent_fogged(ev.agent_idx):
-                    if steps > 0:   # fogged mover: commit the destination, skip the slide
+                if steps <= 0 or not self.animate_moves or self._agent_fogged(ev.agent_idx):
+                    if steps > 0:   # fogged mover, or Animate: OFF: land it, skip the slide
                         a["pos"][ev.agent_idx] = (float(path[-1].col), float(path[-1].row))
                     self._npc_anim_next(now)
                     continue
@@ -3274,6 +3293,34 @@ class App:
                 self._npc_anim_next(now)
                 continue
             return
+
+    def _play_human_moves(self):
+        """M4b B-6: drain a committed human move from the engine buffer (record_moves) into
+        the players' stream, and slide it on this screen too.
+
+        The move is already committed and the menus already open, so the playback has no
+        continuation (on_done=None): it changes only what is drawn. If a playback is already
+        running, the move joins its queue, so that playback keeps its own continuation.
+
+        Called only from _after_move_committed, never straight after submit_decision: while
+        an NPC turn is parked for a human reaction, the buffer holds that turn's events, and
+        they belong to the run_npc_turn drain _resume_npc_turn leads to (the B-2 trap)."""
+        events = self.combat.take_npc_visual_events()
+        if not events:
+            return
+        self.events.extend_npc(events)
+        a = self._npc_anim
+        if a is None:
+            self._npc_anim_start(events, {}, on_done=None)
+            a = self._npc_anim
+        else:
+            a["events"] = list(a["events"]) + list(events)
+        # Hold each mover at its route's start until its slide begins. Only movers are held:
+        # every other agent, and every HP bar, is drawn live.
+        for ev in events:
+            if ev.kind == self._NPC_EV_MOVE and len(ev.path) > 1:
+                a["pos"].setdefault(ev.agent_idx,
+                                    (float(ev.path[0].col), float(ev.path[0].row)))
 
     def _npc_anim_next(self, now):
         a = self._npc_anim
@@ -10066,6 +10113,7 @@ class App:
         if idx < 0 or idx >= len(agents):
             return
         ag = agents[idx]
+        self._play_human_moves()   # M4b B-6: slide it, and stream it to the players
         self._mark_fog_dirty()   # any creature moving can change what the party sees
         self._flush_combat_log()
         self._sync_spell_effect_cache()
@@ -12130,6 +12178,8 @@ class App:
         if not self.combat.restore_json(json.dumps(doc.get("engine", {}))):
             self._flash_status("Combat state skipped — snapshot unreadable")
             return False
+        # The restore rebuilt the engine's context, and record_moves is not save state.
+        self.combat.record_moves = True
 
         order = []
         for e in doc.get("initiative_order", []):
@@ -14587,6 +14637,12 @@ class App:
         self.show_fog = on
         self.btn_toggle_fog.text = "Fog: ON" if on else "Fog: OFF"
         self._mark_fog_dirty()   # ensure the mask is current the moment fog turns on
+
+    def _set_animate_moves(self, on: bool):
+        """M4b B-7: switch move slides on/off, keeping the button label in sync. Read by
+        _advance_npc_playback; announces, flashes and HP timing play either way."""
+        self.animate_moves = on
+        self.btn_toggle_animate.text = "Animate: ON" if on else "Animate: OFF"
 
     def _mark_fog_dirty(self):
         """Flag the fog-of-war explored mask as stale.
@@ -17846,6 +17902,9 @@ class App:
         # ── Toggle Fog of War button ───────────────────────────────────────
         self.btn_toggle_fog.draw(self.screen)
 
+        # ── Toggle move animation (M4b B-7) ────────────────────────────────
+        self.btn_toggle_animate.draw(self.screen)
+
         # ── Set Grid (sample a tile) button ────────────────────────────────
         self.btn_set_grid.draw(self.screen)
 
@@ -18736,6 +18795,10 @@ class App:
                 # Toggle Fog of War (grey never-seen cells + hide enemy tokens in them)
                 if _hit(self.btn_toggle_fog):
                     self._set_fog(not self.show_fog)
+
+                # Toggle move animation: off lands moves at once (M4b B-7)
+                if _hit(self.btn_toggle_animate):
+                    self._set_animate_moves(not self.animate_moves)
 
                 # Set Grid (sample a tile to define a uniform grid)
                 if _hit(self.btn_set_grid):
