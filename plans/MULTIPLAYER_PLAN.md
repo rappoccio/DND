@@ -7919,6 +7919,85 @@ combat file itself (`_save_combat_state(slot_combat_path)`). Then M6.4 swaps the
 **Rules:** container only, never `docker build`; stage by name; commit only when asked;
 never push unasked.
 
+
+##### M6.3 — what landed *(2026-10-21, commit "M6.3: the autosave ring")*
+
+- **`gui/autosave.py`** (new, stdlib + `atomic_io`): `save(app)`, `list_slots(app)`,
+  `read_meta`, `slot_paths`, `ring_dir`. The ring is `<dir>/<base>_autosave/slot_<k>/`, and
+  each slot's files are named like the encounter's own sidecars (`<base>_agents.json`,
+  `_combat.json`, `_terrain.json`, `_lighting.json`, `_effects.json`), so a slot loads as an
+  encounter. Plus `meta.json` `{version, seq, round, turn_idx, actor, timestamp}`.
+  - A write removes the slot's `meta.json` first and writes it again last, atomically
+    (D-M6-4's commit marker). A slot with no marker, a torn one, or a newer `version` is
+    ignored.
+  - The slot written is the first empty one, else the lowest `seq`. The depth is
+    `roster.autosave_slots`.
+  - Agents are `_save_agents(slot, raw=True)` (D-M6-2). The slot writes its own
+    `_save_combat_state(slot)`, which carries the board snapshot. Terrain is
+    `_save_terrain(slot)`. Lighting and effects are copied from the scene, atomically, and a
+    scene without one clears the slot's stale copy.
+  - It saves only while `combat_active`. It never raises: a failure prints a warning and
+    returns `None`, and the turn goes on.
+- **`main.py`:** the hook sits at the tail of `_finish_turn_start` (D-M6-1), after the NPC
+  drive is armed. `App.autosave_enabled` comes from `RPG_AUTOSAVE` (default on; `0` is
+  off).
+- **`tests/run_all_tests.py`** sets `RPG_AUTOSAVE=0` for every suite, so the ~20 suites that
+  run fights don't write slots beside `maps/` on every turn. `.gitignore` adds
+  `*_autosave/`. A single suite run by hand outside the runner does autosave, into ignored
+  directories.
+- **The DM's scene files are never touched.** `_save_agents` writes the combat sidecar and
+  session only for `self._save_path`, and the slot path never is.
+
+**New suite `tests/test_autosave.py`** (registered after `test_board_snapshot.py`), 7 tests:
+- a turn start writes a slot naming its turn; with the switch off, nothing is written;
+- the rotation, with empty slots first and then the oldest; torn, garbled and future
+  markers are ignored;
+- the scene files stay byte for byte the same across four autosaved turns;
+- lighting and effects are copied, then cleared;
+- **slot ≡ oracle:** both oracle scenes, restored from their newest slot through
+  `_on_load_path_chosen`, lose exactly `KNOWN_PLAIN_GAPS` / `KNOWN_GAPS` (now just
+  `turn.npc_drive`). The oracle's own `_save` / `_restore` are unchanged; M6.4 swaps them;
+- failures never raise (the ring dir is blocked by a file; out of combat);
+- D-M6-8, the timing: **about 5 ms per save** on the hard scene (12×12), against a 250 ms
+  bound. The thread escape hatch isn't needed.
+
+**Mutants: 6 of 6 killed:**
+- newest overwritten instead of oldest;
+- `raw=False` (23 keys open);
+- the hook removed;
+- the stale copy not cleared (the first draft of that test let it survive; the test was
+  fixed);
+- the marker not checked;
+- the combat guard removed.
+
+Script: the session scratchpad, not in the tree.
+
+**Suite: 183 / 0** in the container (one suite more than M6.2). No C++ changed.
+
+##### Handoff — M6.3 landed *(written 2026-10-21)*
+
+**State.** M6.3 is **committed** ("M6.3: the autosave ring"):
+- new: `gui/autosave.py`, `tests/test_autosave.py`;
+- changed: `gui/main.py`, `tests/run_all_tests.py`, `.gitignore`, this plan.
+
+Leave `maps/TestDNDMap_terrain.json` and `.tmp_claude/` alone.
+
+**Next: M6.4**, which covers four things (D-M6-5):
+- `autosave.restore(app, slot)`;
+- the NPC re-arm, which closes `turn.npc_drive` and empties `KNOWN_GAPS`;
+- the fresh `view` to every seated player;
+- the "Restore autosave ▸" menu entry.
+
+Watch for one trap: loading a slot through `_on_load_path_chosen` points `_set_encounter_base`
+at the slot directory. The DM's next save would then land in the ring, and the next
+autosave would nest a ring inside a slot. The restore has to load the slot's files by path
+and keep the encounter base where it is. It also must not re-point the roster, since a
+changed `_session_path` replaces it and logs every player out. Then swap the oracle's
+`_save` / `_restore` onto the ring.
+
+**Rules:** container only, never `docker build`; stage by name; commit only when asked;
+never push unasked.
+
 ---
 
 ### M7 — Hardening

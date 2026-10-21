@@ -16,5 +16,9 @@ tools/__pycache__
 # and the join code — not scene data, and never shared with an encounter.
 *_session.json
 
+# The autosave ring (MULTIPLAYER_PLAN.md NN7, gui/autosave.py): crash-recovery copies of a
+# running fight, rewritten every turn. Never scene data.
+*_autosave/
+
 # The M5a intent log (net/submit.py), written beside replay_log.txt while a table is up.
 submit_log.jsonl

@@ -124,6 +124,7 @@ test_scripts = [
     # compare. A ratchet: KNOWN_GAPS shrinks slice by slice and is empty when M6 is done.
     "test_restore_oracle.py",
     "test_board_snapshot.py",
+    "test_autosave.py",
 
     # The masked page image (MULTIPLAYER_PLAN.md M4, D-M4-1) — `GET /map.png`. Kept with
     # the oracles for the same reason as the view: it is the one place the map crosses the
@@ -409,7 +410,9 @@ def run_tests():
     gui_dir = os.path.join(os.path.dirname(script_dir), "gui")
     # Silence the C++ map layer's "[BattleMap] …" stdout diagnostics for every suite (covers even
     # tests that don't import test_helpers). Honored by battleMapVerbose() in the engine.
-    child_env = os.environ | {"RPG_QUIET": "1"}
+    # …and keep the autosave ring (NN7) from writing slots beside the repo's maps on every
+    # turn start of every suite's fight. test_autosave.py turns it on for its own Apps.
+    child_env = os.environ | {"RPG_QUIET": "1", "RPG_AUTOSAVE": "0"}
     total_passed = 0
     total_failed = 0
     failed_scripts = []

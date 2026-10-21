@@ -70,6 +70,7 @@ from floor_overlay import FloorAlign
 from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
 # S1: every save that a crash could tear goes through this (MULTIPLAYER_PLAN.md).
 from atomic_io import atomic_write_json
+import autosave
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
@@ -660,6 +661,10 @@ class App:
         # can re-point it — that call then loads this encounter's session file.
         self.roster = SessionRoster()
         self._set_encounter_base(default_agents)
+        # The autosave ring (NN7, gui/autosave.py) writes at every turn start. RPG_AUTOSAVE=0
+        # turns it off; the test runner sets that, so a suite's fights don't leave slots
+        # beside the repo's maps. A test of the ring turns it back on for its own App.
+        self.autosave_enabled = os.environ.get("RPG_AUTOSAVE", "1") != "0"
         # The prompt bus (M1). Built after the roster so it can install prompt_lookup;
         # the screen does not exist yet, so the renderer resolves its size lazily.
         # Three renderers, because Step 0.2 found three widgets already drawing prompts:
@@ -5277,6 +5282,12 @@ class App:
         if (self.combat_active and self.bm.is_agent_npc_automated(new_idx)
                 and not self.bm.is_agent_on_deck(new_idx)):
             self._npc_drive_idx = new_idx
+
+        # The autosave ring (MULTIPLAYER_PLAN.md D-M6-1): the turn-start reactions have
+        # resolved, the action economy is reset and an NPC's turn has not run yet, so this
+        # is the top of the turn a restore lands on.
+        if self.autosave_enabled:
+            autosave.save(self)
 
     def _drive_npc_turn_if_pending(self):
         """Drive ONE automated NPC turn step this frame (NPC_AUTOMATION_PLAN Step 2). Called once per
