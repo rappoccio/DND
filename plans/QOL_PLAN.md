@@ -52,7 +52,7 @@ rebuild.
 - **Tests:** harness checks that `cellAt` round-trips at several zoom/pan settings, and
   that a pan gesture does not submit.
 
-### Q2 — One layout for both screens (item 1)
+### Q2 — One layout for both screens (item 1). **Done 2026-10-21**, checked live.
 - On a wide window (≥ ~56rem) the player page uses the DM's layout: the board fills the
   left side at full height, and a fixed **340 px** column on the right holds the prompt and
   action panel, the combined table (Q3) and the log. On a narrow window (phone portrait)

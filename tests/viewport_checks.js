@@ -205,6 +205,59 @@ check("a map of a different size starts at Fit again", () => {
   assert.deepStrictEqual([h.ev("vp.zoom"), h.ev("vp.cx"), h.ev("vp.cy")], [1, 750, 500]);
 });
 
+/* The wide layout (QOL Q2): the board box is the whole area left of the 340 px column. */
+function wide(h, matches = true) {
+  h.ev(`globalThis.matchMedia = (q) => ({ matches: ${matches} && q === WIDE_QUERY });`);
+}
+
+check("in the wide layout the canvas fills its box both ways, and the map fits it", () => {
+  const h = load();
+  wide(h);
+  h.ev("globalThis.innerHeight = 700; globalThis.devicePixelRatio = 2;");
+  const canvas = h.el("board");
+  canvas.parentElement = { clientWidth: 1100, clientHeight: 700 };
+  h.deliver(view());                                         // 1000 × 1000
+  assert.strictEqual(canvas.style.height, "", "the CSS sizes the canvas, not app.js");
+  assert.deepStrictEqual([canvas.width, canvas.height], [2200, 1400]);
+  assert.strictEqual(h.ev("lens.scale"), 0.7, "fit is min(box ÷ map) both ways");
+  assert.strictEqual(h.ev("lens.ox"), 200, "the map is centred across the box");
+  assert.strictEqual(h.ev("lens.oy"), 0);
+});
+
+check("a wide map in the wide layout fits the width, not the 80% cap", () => {
+  const h = load();
+  wide(h);
+  h.ev("globalThis.innerHeight = 800; globalThis.devicePixelRatio = 1;");
+  h.el("board").parentElement = { clientWidth: 1000, clientHeight: 800 };
+  h.deliver(view({ map: { cell_px: 50, cols: 40, rows: 10, image: "" } }));  // 2000 × 500
+  assert.strictEqual(h.ev("lens.scale"), 0.5);
+  assert.strictEqual(h.ev("lens.oy"), 275, "the map is not centred down the box");
+});
+
+check("below the breakpoint the narrow stack's sizing still holds", () => {
+  const h = load();
+  wide(h, false);
+  h.ev("globalThis.innerHeight = 500; globalThis.devicePixelRatio = 1;");
+  h.el("board").parentElement = { clientWidth: 800, clientHeight: 9999 };
+  h.deliver(view({ map: { cell_px: 50, cols: 10, rows: 40, image: "" } }));
+  assert.strictEqual(h.el("board").style.height, "400px");
+});
+
+check("a resize across the breakpoint re-lays the board", () => {
+  const h = load();
+  wide(h, false);
+  h.ev("globalThis.innerHeight = 600; globalThis.devicePixelRatio = 1;");
+  const canvas = h.el("board");
+  canvas.parentElement = { clientWidth: 600, clientHeight: 600 };
+  h.deliver(view({ map: { cell_px: 50, cols: 40, rows: 10, image: "" } }));  // 2000 × 500
+  assert.strictEqual(canvas.style.height, "150px");
+  wide(h);
+  canvas.parentElement = { clientWidth: 1000, clientHeight: 600 };
+  h.ev("drawBoard()");
+  assert.strictEqual(canvas.style.height, "");
+  assert.deepStrictEqual([canvas.width, canvas.height], [1000, 600]);
+});
+
 (async () => {
   for (const [name, fn] of checks) {
     try {

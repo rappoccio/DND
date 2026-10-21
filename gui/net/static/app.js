@@ -377,14 +377,22 @@ const ZOOM_MAX = 6.0;          // main.py App.ZOOM_MAX
 const ZOOM_STEP = 1.25;        // one press of + or −
 const TAP_SLOP_PX = 6;         // a pointer that moves further than this is a pan, not a tap
 const BOARD_MAX_VH = 0.8;      // the board's height cap, as a share of the window's
+// QOL Q2: from this width up, the page is the DM's — the board fills the left at full
+// height and a 340 px column holds the rest. Must match the media query in app.css.
+const WIDE_QUERY = "(min-width: 56rem)";
 
 let vp = { zoom: 1, cx: 0, cy: 0, key: "" };
 let lens = { cssW: 16, cssH: 16, dpr: 1, scale: 1, ox: 0, oy: 0, w: 16, h: 16 };
 
-/* Size the canvas to its box, and work out `lens`. The box's width is the layout's; the
-   height follows the map's aspect, capped so a tall map does not run off the screen. With
-   no box to measure — the node harness — the canvas is the map's nominal size, and the
-   transform is the identity. */
+function wideLayout() {
+  return !!(globalThis.matchMedia && globalThis.matchMedia(WIDE_QUERY).matches);
+}
+
+/* Size the canvas to its box, and work out `lens`. In the wide layout (QOL Q2) the box is
+   the whole board area, both ways, as the DM's map area is. In the narrow one the box's
+   width is the layout's and the height follows the map's aspect, capped so a tall map
+   does not run off the screen. With no box to measure — the node harness — the canvas is
+   the map's nominal size, and the transform is the identity. */
 function sizeBoard(w, h) {
   const key = `${w}x${h}`;
   if (vp.key !== key) vp = { zoom: 1, cx: w / 2, cy: h / 2, key };
@@ -392,7 +400,11 @@ function sizeBoard(w, h) {
   let cssW = box && box.clientWidth;
   let cssH = h;
   let dpr = 1;
-  if (cssW) {
+  if (cssW && wideLayout() && box.clientHeight) {
+    cssH = box.clientHeight;
+    canvas.style.height = "";          // app.css fills the box
+    dpr = globalThis.devicePixelRatio || 1;
+  } else if (cssW) {
     const tallest = (globalThis.innerHeight || Infinity) * BOARD_MAX_VH;
     cssH = Math.max(1, Math.round(Math.min(cssW * h / w, tallest)));
     canvas.style.height = `${cssH}px`;

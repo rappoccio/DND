@@ -7,12 +7,6 @@ Format: **[DM|Player|Both]** short title — what happened, what would be better
 
 ## Open
 
-1. **[Both] Homogenize layout / map zoom across DM and player screens** — The DM screen
-   puts its controls in a panel on the right; the player screen puts them (Round / On the
-   board / Log) along the bottom. So the map renders at a different relative zoom on each
-   screen, even in the same browser at the same window size. Pick one layout (or one sizing
-   rule for the map area) so both views show the map at the same scale.
-
 3. **[Player] Merge initiative and health into one table** — The player screen shows the
    initiative order ("Round" panel) and creature health ("On the board" panel) as two
    separate panels. Combine them into a single table in initiative order (name, initiative,
@@ -48,3 +42,7 @@ Format: **[DM|Player|Both]** short title — what happened, what would be better
 
 - **[Player] No zoom on the player screen** — QOL_PLAN Q1 (2026-10-21): wheel/trackpad,
   pinch, drag-to-pan, + / − / Fit and a % readout; range 50–600% like the DM. Checked live.
+- **[Both] Homogenize layout / map zoom across DM and player screens** — QOL_PLAN Q2
+  (2026-10-21): from 56rem up, the player page uses the DM's layout — board fills the left
+  at full height, a 340 px right column (`constants.PANEL_W`) holds the prompt and panels.
+  Phones keep the stack. Checked live.
