@@ -642,11 +642,18 @@ def test_the_client_keeps_the_credential_in_session_storage():
     would store a longer-lived secret that is usually already dead, so the check is for
     *access*, not for the word: a comment naming the rejected option is exactly what this
     file should contain.
+
+    M4b.3 (B-7) puts one thing in `localStorage`: the "Animate moves" preference, which is
+    not a secret and should outlive the tab. So the rule is now that every `localStorage`
+    access names `ANIM_KEY` and nothing else.
     """
     js = open(os.path.join(_STATIC, "app.js"), encoding="utf-8").read()
     assert "sessionStorage" in js, "the client stores its credential somewhere else"
-    assert not re.search(r"localStorage\s*[.\[]", js), \
-        "the client reaches for localStorage — D-M4e-2 rejected it"
+    uses = [line for line in js.splitlines() if re.search(r"localStorage\s*[.\[]", line)]
+    assert uses, "B-7's toggle is not kept in localStorage"
+    for line in uses:
+        assert re.search(r"localStorage\.(get|set)Item\(ANIM_KEY\b", line), \
+            f"the client reaches for localStorage for something other than B-7's toggle: {line.strip()}"
     assert "document.cookie" not in js, "A3: the credential is never a cookie"
     print("✅ test_the_client_keeps_the_credential_in_session_storage")
 

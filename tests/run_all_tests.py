@@ -115,6 +115,7 @@ test_scripts = [
     # ...and its delivery (M4b.2, B-3): the sent cursor, `events` frames and
     # `GET /events?since=`. A dropped send must re-send, never leave a gap.
     "test_event_delivery.py",
+    "test_playback.py",
 
     # The masked page image (MULTIPLAYER_PLAN.md M4, D-M4-1) — `GET /map.png`. Kept with
     # the oracles for the same reason as the view: it is the one place the map crosses the

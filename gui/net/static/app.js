@@ -1,6 +1,6 @@
 "use strict";
 /*
- * The player's client (MULTIPLAYER_PLAN.md M4e, M5a).
+ * The player's client (MULTIPLAYER_PLAN.md M4e, M5a, M4b.3).
  *
  * Four things happen here and nothing else: a join code becomes a credential
  * (`POST /join`), the credential opens `WS /live` and authenticates it with its first
@@ -129,6 +129,8 @@ function connect() {
       attempt = 0;
       setStatus("live", true);
       render(frame);
+    } else if (frame.t === "events") {
+      onEvents(frame);
     } else if (frame.t === "prompt") {
       if (!prompt || prompt.id !== frame.id) { awaiting = ""; ackNote = ""; }
       prompt = frame;
@@ -144,6 +146,7 @@ function connect() {
 
   socket.onclose = (event) => {
     socket = null;
+    seq = null;          // the next socket starts from a view, never from an events frame
     if (event.code === WS_UNAUTHENTICATED) {
       // The credential was refused or revoked: the DM closed the seat, or the game
       // restarted and took the signing key with it (A5). Reconnecting cannot help, so
@@ -264,6 +267,7 @@ setInterval(drawTimer, 250);
 
 function render(next) {
   view = next;
+  seq = next.seq;      // a view sets the client's seq (B-3); an events frame continues it
   el("who").textContent = recall(NAME_KEY) || "at the table";
   // A timed-out submit is resolved by this view either way: the prompt is gone, or it is
   // still live and the player may answer it again.
@@ -397,8 +401,11 @@ function drawBoard() {
   drawGrid(cell, map.cols, map.rows);
   drawReachable(cell);
   drawAoe(cell);
-  for (const agent of view.agents) drawToken(agent, cell);
+  for (const agent of displayed()) drawToken(agent, cell);
   drawTargets(cell);
+  const now = performance.now();
+  drawFlashes(cell, now);       // the DM screen's order: tokens, flashes, then the bubble
+  drawAnnouncement(cell, now);
 }
 
 /* `you.aoe` (M5e E-8): the template an area spell would cover from where the player
@@ -464,6 +471,9 @@ function cellAt(event) {
 }
 
 canvas.addEventListener("click", (event) => {
+  // A tap during a playback fast-forwards it and does nothing else, as a click does on the
+  // DM screen: the board is showing held state, so a cell read off it is the wrong one.
+  if (play) { fastForward(); if (view) drawBoard(); return; }
   if (!view || !prompt || view.you.prompt_id !== prompt.id) return;
   if (prompt.expects !== "cell" || !view.you.reachable) return;
   const [col, row] = cellAt(event);
@@ -615,6 +625,290 @@ function drawToken(agent, cell) {
   ctx.fillText(label, x + span / 2, y - 2);
 }
 
+// ── Playback (Envelope 3, M4b.3: B-5 and B-7) ───────────────────────────────
+//
+// An `events` frame arrives just before the `view` of the same cycle, and that view
+// already shows the turn as done. So every agent the events name is HELD at what the
+// previous view said (position, HP, alive) and drawn from that, while the queue plays
+// out the way `_advance_npc_playback` plays it on the DM screen: a move slides, an
+// announce typewrites over the actor, and an outcome flashes and drops the bar, then
+// pauses for a beat. A view that lands mid-playback is stored, but a held agent keeps
+// its held state until the queue drains, so a token never jumps and then slides.
+//
+// The DM's pace never waits for this. Each viewer plays on their own clock, and a tap
+// fast-forwards only their own board.
+
+// gui/constants.py, copied (B-5). A change there is a change here.
+const ANIM_CELLS_PER_SEC = 10.0;   // NPC_ANIM_CELLS_PER_SEC
+const TYPEWRITER_CPS = 40.0;       // NPC_TYPEWRITER_CPS
+const ANNOUNCE_HOLD_MS = 900;      // NPC_ANNOUNCE_HOLD_MS
+const OUTCOME_BEAT_MS = 300;       // NPC_OUTCOME_BEAT_MS
+const FLASH_MS = 1500;             // _spawn_flash's default `secs`
+const FLASH_GOOD = "rgb(120, 220, 140)";   // FLASH_GOOD
+const FLASH_BAD = "rgb(220, 110, 110)";    // FLASH_BAD
+const FLASH_CRIT = "rgb(255, 215, 0)";     // FLASH_CRIT
+
+/* The "Animate moves" toggle (B-7) is a per-device preference, not a secret, so it is the
+   one thing this file keeps in `localStorage`. The credential never goes there (D-M4e-2).
+   It is never sent: the server does not know or care how a viewer watches. */
+const ANIM_KEY = "dnd.animate";
+
+let seq = null;        // the last seq this client holds; null until a view arrives
+let resyncing = false; // a `GET /events?since=` is out
+let play = null;       // the playback in progress, or null
+let flashes = [];      // floating outcome texts, which outlive the playback that spawned them
+let animate = loadAnimate();
+let ticking = false;   // a requestAnimationFrame is pending
+
+function loadAnimate() {
+  try { return localStorage.getItem(ANIM_KEY) !== "off"; } catch (e) { return true; }
+}
+
+function saveAnimate(on) {
+  try { localStorage.setItem(ANIM_KEY, on ? "on" : "off"); } catch (e) { /* not kept */ }
+}
+
+/* The server's one promise (M4b.2, `_contiguous`): an `events` frame starts at the seq
+   this socket was last sent. Anything else is a bug somewhere, so the frame is dropped
+   rather than patched in, and the ring is asked for what was missed. */
+function onEvents(frame) {
+  if (!view || seq === null || frame.since !== seq) { resync(); return; }
+  seq = frame.seq;
+  if (frame.events && frame.events.length) enqueue(frame.events);
+}
+
+async function resync() {
+  const credential = recall(CRED_KEY);
+  if (resyncing || !credential || seq === null) return;
+  resyncing = true;
+  const asked = seq;
+  try {
+    const res = await fetch(`/events?since=${asked}`,
+                            { headers: { Authorization: `Bearer ${credential}` } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const frame = await res.json();
+    // The socket kept pushing while this was out. If it moved the seq, it delivered
+    // something newer than this answer, which is then stale.
+    if (!frame || frame.v !== PROTOCOL_VERSION || seq !== asked) return;
+    if (frame.t === "view") {
+      fastForward();               // the board is replaced, so nothing held is still true
+      render(frame);
+    } else if (frame.t === "events" && frame.since === seq) {
+      seq = frame.seq;
+      if (frame.events.length) enqueue(frame.events);
+    }
+  } catch (e) {
+    console.warn("events resync failed:", e);
+  } finally {
+    resyncing = false;
+  }
+}
+
+/* Which events hold their agent. A move and an announce, and an outcome with a timed HP
+   drop: the engine's outcomes, from an automated turn, where the DM screen holds the
+   whole board. A flash the GUI spawned itself carries no HP field. On the DM screen the
+   state had already changed when it flashed, so it holds nothing here either. */
+function holds(ev) {
+  if (ev.kind === "move" || ev.kind === "announce") return true;
+  return ev.kind === "outcome" && (ev.hp_after !== undefined || ev.band !== undefined);
+}
+
+function enqueue(events) {
+  if (!play) play = { queue: [], ei: 0, t0: performance.now(), applied: false, held: new Map() };
+  for (const ev of events) {
+    if (holds(ev) && !play.held.has(ev.agent)) play.held.set(ev.agent, holdFrom(ev.agent));
+    play.queue.push(ev);
+  }
+  tick();
+}
+
+/* The agent as the current view has it, which is the view before these events. One the
+   view does not carry (it walked into sight this turn) is held as absent: it appears at
+   the start of its first move, which the server cut to cells this viewer has seen. */
+function holdFrom(idx) {
+  const agent = view ? agentByIndex(idx) : null;
+  if (!agent) return { agent: null, col: 0, row: 0, hp: {} };
+  return { agent, col: agent.col, row: agent.row, hp: Object.assign({}, agent.hp) };
+}
+
+/* Its record comes from the newest view. Where it stands is the move's to say, and the
+   move sets that in the same frame. */
+function adopt(held, idx) {
+  if (held.agent) return;
+  const agent = agentByIndex(idx);
+  if (!agent) return;            // not in this view either: it plays, but draws nothing
+  held.agent = agent;
+  held.hp = Object.assign({}, agent.hp);
+}
+
+/* `_advance_npc_playback`, line for line where it can be. Instant events chain within a
+   frame; a timed one returns with its held state set for this frame's draw. */
+function advance(now) {
+  while (play) {
+    if (play.ei >= play.queue.length) { finish(); return; }
+    const ev = play.queue[play.ei];
+    const elapsed = now - play.t0;
+    if (ev.kind === "move") {
+      const held = play.held.get(ev.agent);
+      const path = ev.path;
+      const steps = path.length - 1;
+      adopt(held, ev.agent);
+      const dur = steps / ANIM_CELLS_PER_SEC * 1000;
+      // A one-cell path is a jump (B-4 cut the rest). With the toggle off every move is.
+      if (steps <= 0 || !animate || elapsed >= dur) {
+        land(held, path[path.length - 1]);
+        next(now);
+        continue;
+      }
+      const p = elapsed / dur * steps;
+      const i = Math.min(Math.floor(p), steps - 1);
+      const f = p - i;
+      held.col = path[i][0] + f * (path[i + 1][0] - path[i][0]);
+      held.row = path[i][1] + f * (path[i + 1][1] - path[i][1]);
+      return;
+    }
+    if (ev.kind === "announce") {
+      const dur = ev.text.length / TYPEWRITER_CPS * 1000 + ANNOUNCE_HOLD_MS;
+      if (elapsed >= dur) { next(now); continue; }
+      return;                    // drawAnnouncement renders the reveal from ev and t0
+    }
+    if (ev.kind === "outcome") {
+      if (!play.applied) { play.applied = true; applyOutcome(ev, now); }
+      if (elapsed >= OUTCOME_BEAT_MS) { next(now); continue; }
+      return;
+    }
+    next(now);                   // `turn`: the view already says whose turn it is
+  }
+}
+
+function next(now) {
+  play.ei += 1;
+  play.t0 = now;
+  play.applied = false;
+}
+
+function land(held, cell) {
+  if (!held) return;
+  held.col = cell[0];
+  held.row = cell[1];
+}
+
+/* The flash, and the bar drop it carries. `hp_after` is a number this viewer is entitled
+   to; `band` is all an enemy's bar is allowed to say. Neither means "leave the bar". */
+function applyOutcome(ev, now) {
+  const rise = 20 * flashes.filter((f) => f.agent === ev.agent).length;
+  flashes.push({ agent: ev.agent, text: ev.text, at: now === undefined ? performance.now() : now,
+                 colour: ev.crit ? FLASH_CRIT : (ev.good ? FLASH_GOOD : FLASH_BAD), rise });
+  const held = play && play.held.get(ev.agent);
+  if (!held) return;
+  if (ev.hp_after !== undefined) held.hp.cur = ev.hp_after;
+  else if (ev.band !== undefined) held.hp.band = ev.band;
+}
+
+/* `_npc_anim_fast_forward`: everything left lands at once, and the held state goes. */
+function fastForward() {
+  if (!play) return;
+  let first = true;
+  for (const ev of play.queue.slice(play.ei)) {
+    if (ev.kind === "move") {
+      const held = play.held.get(ev.agent);
+      adopt(held, ev.agent);
+      land(held, ev.path[ev.path.length - 1]);
+    } else if (ev.kind === "outcome" && !(first && play.applied)) {
+      applyOutcome(ev);
+    }
+    first = false;
+  }
+  finish();
+}
+
+function finish() {
+  play = null;                   // the live view shows, corpses and all
+  tick();
+}
+
+/* The loop runs only while something moves: a playback, or a flash still fading. */
+function tick() {
+  if (ticking) return;
+  ticking = true;
+  requestAnimationFrame(() => {
+    ticking = false;
+    advance(performance.now());
+    if (view) drawBoard();
+    if (play || flashes.length) tick();
+  });
+}
+
+/* What the board draws: the view, with every held agent swapped for its held self. A
+   held agent the view no longer carries is still drawn until the queue drains, as the
+   DM screen keeps a corpse on the board until its killing blow has played. */
+function displayed() {
+  if (!play) return view.agents;
+  const out = [];
+  for (const agent of view.agents) {
+    if (!play.held.has(agent.agent)) out.push(agent);
+  }
+  for (const [idx, held] of play.held) {
+    if (held.agent) out.push(Object.assign({}, held.agent, { agent: idx, col: held.col,
+                                                             row: held.row, hp: held.hp }));
+  }
+  return out;
+}
+
+function drawnAt(idx) {
+  return displayed().find((a) => a.agent === idx) || null;
+}
+
+/* Rises 20 px and fades over its lifetime, staggered above any flash already over the
+   same creature, as `_draw_floating_texts` does. It starts above the name label, which
+   the DM screen does not draw and a player needs. */
+function drawFlashes(cell, now) {
+  flashes = flashes.filter((f) => now - f.at < FLASH_MS);
+  if (!flashes.length) return;
+  const size = Math.max(10, Math.round(cell * 0.34));
+  ctx.font = `600 ${size}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.lineWidth = 3;
+  for (const f of flashes) {
+    const agent = drawnAt(f.agent);
+    if (!agent) continue;
+    const span = (agent.size || 1) * cell;
+    const p = Math.max(0, (now - f.at) / FLASH_MS);
+    const y = agent.row * cell - Math.max(9, Math.round(cell * 0.30)) - 6 - f.rise - p * 20;
+    ctx.globalAlpha = Math.max(0, 1 - p);
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+    ctx.strokeText(f.text, agent.col * cell + span / 2, y);
+    ctx.fillStyle = f.colour;
+    ctx.fillText(f.text, agent.col * cell + span / 2, y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+/* The typewriter bubble over the actor (`_draw_npc_announcement`). The server already
+   dropped a concealed actor's announce (B-4), so there is nothing to suppress here. */
+function drawAnnouncement(cell, now) {
+  if (!play || play.ei >= play.queue.length) return;
+  const ev = play.queue[play.ei];
+  if (ev.kind !== "announce") return;
+  const agent = drawnAt(ev.agent);
+  if (!agent) return;
+  const shown = ev.text.slice(0, Math.max(1, Math.floor((now - play.t0) / 1000 * TYPEWRITER_CPS)));
+  const size = Math.max(10, Math.round(cell * 0.34));
+  ctx.font = `${size}px system-ui, sans-serif`;
+  ctx.textAlign = "left";
+  const w = ctx.measureText(shown).width + 10;
+  const h = size + 6;
+  const span = (agent.size || 1) * cell;
+  const x = Math.max(4, Math.min(agent.col * cell + span / 2 - w / 2, canvas.width - w - 4));
+  const y = Math.max(4, agent.row * cell - Math.max(9, Math.round(cell * 0.30)) - h - 8);
+  ctx.fillStyle = "rgba(20, 15, 5, 0.84)";
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = "rgb(255, 240, 200)";
+  ctx.textBaseline = "top";
+  ctx.fillText(shown, x + 5, y + 3);
+  ctx.textBaseline = "alphabetic";
+}
+
 // ── Screens ─────────────────────────────────────────────────────────────────
 
 function showJoin(message) {
@@ -654,6 +948,11 @@ el("join-form").addEventListener("submit", async (event) => {
 });
 
 el("prompt-cancel").addEventListener("click", () => submit({ cancel: true }));
+el("animate").checked = animate;
+el("animate").addEventListener("change", (event) => {
+  animate = event.target.checked;   // a slide under way lands on the next frame
+  saveAnimate(animate);
+});
 el("prompt-filter").addEventListener("input", (event) => {
   filter.text = event.target.value;
   drawPrompt();

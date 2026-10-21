@@ -21,8 +21,11 @@ handoff follows "M5b, commit 1 — D-M5-1 landed".
 frozen (user: "agreed"). M5e.0, the two bug fixes, is committed. **M5e.1 has landed
 (committed, 2026-10-14)**; it found two DM-console bugs (F-M5e-9, F-M5e-10) that want their
 own commits. Both are now fixed and committed. **M5e.2 has landed (committed,
-2026-10-14). M5e.3 has landed (committed, 2026-10-14). M5e.4 is next.** Read "Handoff —
-M5e.3 landed", just before M6.
+2026-10-14). M5e.3 has landed (committed, 2026-10-14). M5e.4 has landed (`06b3b6b`,
+2026-10-14); M5e is complete.** Read "Handoff — M5e.4 landed", just before M6.
+**2026-10-19: M4b.0–M4b.2 are committed. M4b paused** for core-game fixes.
+**2026-10-20: M4b resumed. M4b.3 (browser playback and the toggle) has landed, uncommitted.
+M4b.4 is next:** read "Handoff — M4b.3 landed", just before M6.
 
 ---
 
@@ -7221,6 +7224,144 @@ open" list is unchanged, plus the rename finding above.
 - Container only. Never run `docker build`.
 - Stage files by name. Never `-A`.
 - Commit only when asked. Never push unasked.
+
+##### Handoff — M4b paused for core-game fixes *(written 2026-10-19)*
+
+**M4b is on hold.** The user wants to fix some "core game" issues first, before M4b.3.
+Nothing below has started. When multiplayer work resumes, pick it up from here.
+
+**State.**
+- `1c00dea` "M4b.2: event delivery, the sent cursor and /events" is **committed and not
+  pushed**. `main` is 3 commits ahead of `origin/main`: M4b.0, M4b.1 and M4b.2.
+- Suite **169 / 0** in the container. The goldens are unchanged, and no C++ changed.
+- Leave these alone:
+  - `maps/TestDNDMap_terrain.json`, which a suite run modifies. Never stage it.
+  - `.claude/mutants_m4b1.py` and `.claude/mutants_m4b2.py`, which are untracked
+    scratch.
+
+**Read first:** this handoff, then "Handoff — M4b.2 landed", then "M4b.2 — what landed".
+
+**What M4b.2 put in place.**
+- Each push cycle sends a socket `[events?, view, prompt?]`, and `view.seq` is that
+  player's seq.
+- The server guarantees that an `events` frame always starts at the seq that socket was
+  last sent (`_contiguous`). A `view` resets the seq.
+- A dropped send is re-sent on the next cycle, so there's no gap.
+- Every seated player's stream keeps updating, whether connected or not.
+- `GET /events?since=` answers from the 512-event buffer, or with a fresh `view` when
+  `since` is outside it. `GET /state` carries the seq too.
+
+**Next, when M4b resumes: M4b.3, the browser playback (B-5) and the toggle (B-7).**
+- Handle `t: "events"` in `app.js`:
+  - Apply a frame only when `since` equals the client's `seq`. Anything else is a bug:
+    drop the frame and fetch `GET /events?since=`.
+  - While a playback runs, keep the agents it names at the position, HP and alive state
+    of the previous view. A tap fast-forwards.
+- Copy the DM screen's four timing constants and its draw order.
+- Add an "Animate moves" checkbox, saved in `localStorage`. It switches off only the
+  slide.
+
+**After that:**
+- M4b.4: human-move slides on the DM screen. Watch the trap: once `record_moves` is on,
+  the move drain after `submit_decision` must not take a paused NPC turn's events.
+- M4b.5: the token look and the `/sprite` route.
+- The user's manual browser checks.
+- Then M6, M7 and M8.
+
+**Still open.**
+- The rename bug (in `memory/known_limitations.md`): after a DM renames a player, that
+  player's socket gets no pushes until it reconnects. Fixing it needs the user's OK, its
+  own failing test and its own commit.
+- The rest of the earlier "still open" list:
+  - Long Jump draws no Opportunity Attacks (C++);
+  - Fix B (C++);
+  - the flaky menus test;
+  - Row 5;
+  - no test for the Bonus Action rows of `_ARMS_A_SPELL`.
+
+**Rules:**
+- Container only. Never run `docker build`.
+- Stage files by name. Never `-A`.
+- Commit only when asked. Never push unasked.
+
+##### M4b.3 — what landed *(2026-10-20, uncommitted)*
+
+- **`gui/net/static/app.js`**, a new "Playback" section (B-5):
+  - `seq`: a `view` sets it, and a contiguous `events` frame advances it. A frame whose
+    `since` is not `seq` is dropped, and the client asks `GET /events?since=seq` (one
+    request at a time). An `events` answer is applied if it still starts at `seq`. A
+    `view` answer fast-forwards any playback and replaces the board. An answer that
+    arrives after the socket has moved `seq` on is stale and ignored. A socket close sets
+    `seq` to `null`, so nothing plays until the new socket's view.
+  - The four timing constants and the three flash colours are copied from
+    `constants.py`. `advance` follows `_advance_npc_playback` step for step: a move
+    slides, an announce typewrites and then holds, an outcome flashes and drops the bar,
+    then waits 300 ms. A `turn` event is skipped instantly. Draw order: tokens, flashes,
+    then the bubble. The `requestAnimationFrame` loop runs only while a playback or a
+    flash is live.
+  - Hold: each agent named by a `move`, an `announce`, or an `outcome` that carries
+    `hp_after` or `band` is held from the view in place when the frame arrives (the
+    previous view). A later view does not release it; only the end of the queue does. An
+    agent the previous view did not have (it walked into sight) is not drawn until its
+    first move starts.
+  - A tap on the board during a playback fast-forwards it, `_npc_anim_fast_forward`'s
+    way, and is consumed: it does not answer a cell prompt.
+- **B-7:** an "Animate moves" checkbox in the session header (`index.html`, `app.css`),
+  on by default and saved in `localStorage` under `dnd.animate`. When it is off, a move
+  lands at once, and announces, flashes and HP timing still play.
+- **Tests:**
+  - `tests/app_harness.js` loads the real `app.js` under node with a stub browser
+    (elements, canvas, socket, `fetch`, clock and animation frames), so a check can step
+    the client one frame at a time.
+  - `tests/playback_checks.js` holds 17 checks.
+  - `tests/test_playback.py` runs those checks and also pins the copied constants against
+    `constants.py`. It is registered after `test_event_delivery.py`.
+- **`test_live`'s storage rule** now allows `localStorage` for `ANIM_KEY` only. The
+  credential rule (D-M4e-2) is unchanged.
+- **Mutants: all 17 killed**, plus a passing no-change control. The harness is
+  `.claude/mutants_m4b3.py`, untracked scratch. One equivalent mutant (`adopt` setting a
+  position that the move overwrites in the same frame) pointed at dead code, and the dead
+  code was removed.
+- Suite **178 / 0** in the container. No C++ changed, and no Python under `gui/` changed.
+
+**Decisions this slice made that Step 0 did not spell out:**
+- **A GUI flash (no HP field) holds nothing.** On the DM screen the state has already
+  changed by the time it flashes, so the player sees the live bar under the flash, as the
+  DM does.
+- **The side panels (token list, log) stay live** during a playback. Only the board is
+  held. If that spoils a kill too early in practice, it is a follow-up.
+- **Flashes and the bubble start above the name label**, which the DM screen does not
+  draw.
+
+##### Handoff — M4b.3 landed *(written 2026-10-20)*
+
+**State.** M4b.3 is **uncommitted**:
+- changed: `gui/net/static/app.js`, `index.html`, `app.css`, `tests/test_live.py`,
+  `tests/run_all_tests.py` and this plan;
+- new: `tests/app_harness.js`, `tests/playback_checks.js` and `tests/test_playback.py`.
+
+Leave `maps/TestDNDMap_terrain.json` and `.claude/mutants_m4b*.py` alone.
+
+**Next: M4b.4, human-move slides on the DM screen (B-6).** Two parts:
+- Turn `record_moves` on, and drain the buffer after `begin_move`, `submit_decision` and
+  `move_agent` into the stream.
+- Start an `_npc_anim` with `on_done=None` for those moves.
+
+**The B-2 trap:** the drain after `submit_decision` must not take a paused NPC turn's
+events. B-7's DM-side "Animate: ON/OFF" button also belongs to M4b.4; check whether it
+moves the panel golden.
+
+**After that:**
+- M4b.5, the token look and `/sprite`.
+- The manual browser checks (B-10):
+  - an NPC turn on a phone beside the DM screen;
+  - a player's own move sliding (needs M4b.4);
+  - the toggle off;
+  - the token look.
+- Then M6, M7 and M8.
+
+**Rules:** container only, never `docker build`; stage by name; commit only when asked;
+never push unasked.
 
 ---
 

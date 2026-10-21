@@ -83,6 +83,10 @@ header {
 }
 
 .status { font-size: 0.8rem; color: var(--ink-dim); }
+#who { margin-right: auto; }
+.toggle { display: flex; align-items: center; gap: 5px; margin: 0;
+          font-size: 0.8rem; color: var(--ink-dim); }
+.toggle input { margin: 0; padding: 0; }
 .status[data-live="yes"] { color: var(--ok); }
 .status[data-live="no"]  { color: var(--other); }
 
