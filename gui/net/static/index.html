@@ -60,6 +60,14 @@
 
     <div class="board">
       <canvas id="board" width="16" height="16"></canvas>
+      <!-- QOL Q1: wheel, pinch and drag work on the board itself; these are for a mouse
+           with no wheel and for getting back to the whole map. -->
+      <div class="zoom" role="group" aria-label="Zoom">
+        <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+        <span id="zoom-level">100%</span>
+        <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" id="zoom-fit">Fit</button>
+      </div>
     </div>
 
     <div class="panels">

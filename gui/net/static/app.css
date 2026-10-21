@@ -115,15 +115,35 @@ header {
 .initiative li.turn { background: rgba(240, 192, 64, 0.12); }
 
 .board {
+  position: relative;
   background: var(--mask);
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
 }
 
-/* The canvas carries the page's own resolution and is scaled by the browser, so a phone
-   gets the whole board and a laptop gets it sharp. */
-canvas { display: block; width: 100%; height: auto; }
+/* The canvas is as wide as its box, and app.js sets its height from the map's aspect and
+   its backing store from devicePixelRatio, so the board is sharp at any zoom. The board
+   handles touch itself — drag pans, pinch zooms (QOL Q1) — so the browser must not. */
+canvas { display: block; width: 100%; height: auto; touch-action: none; cursor: grab; }
+canvas:active { cursor: grabbing; }
+
+.zoom {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  background: rgba(16, 16, 20, 0.78);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+.zoom button { margin: 0; padding: 4px 9px; min-width: 2rem; color: var(--ink);
+               background: transparent; border: 1px solid var(--line); }
+.zoom span { min-width: 3rem; text-align: center; color: var(--ink-dim); }
 
 .panels {
   display: grid;

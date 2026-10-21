@@ -364,6 +364,166 @@ function drawLog() {
   list.scrollTop = list.scrollHeight;
 }
 
+// ── The viewport: zoom and pan (QOL Q1) ─────────────────────────────────────
+//
+// The board is drawn in world pixels (`col * cell_px`) through one transform. `vp` is what
+// the player chose: a zoom multiplier on "fit the whole map" — the DM screen's `view_zoom`,
+// with its range — and the world point at the board's centre. `lens` is that choice turned
+// into CSS pixels for the board's current size, rebuilt on every draw. Nothing here goes on
+// the wire, and it resets on a reload or when the map changes size.
+
+const ZOOM_MIN = 0.5;          // main.py App.ZOOM_MIN
+const ZOOM_MAX = 6.0;          // main.py App.ZOOM_MAX
+const ZOOM_STEP = 1.25;        // one press of + or −
+const TAP_SLOP_PX = 6;         // a pointer that moves further than this is a pan, not a tap
+const BOARD_MAX_VH = 0.8;      // the board's height cap, as a share of the window's
+
+let vp = { zoom: 1, cx: 0, cy: 0, key: "" };
+let lens = { cssW: 16, cssH: 16, dpr: 1, scale: 1, ox: 0, oy: 0, w: 16, h: 16 };
+
+/* Size the canvas to its box, and work out `lens`. The box's width is the layout's; the
+   height follows the map's aspect, capped so a tall map does not run off the screen. With
+   no box to measure — the node harness — the canvas is the map's nominal size, and the
+   transform is the identity. */
+function sizeBoard(w, h) {
+  const key = `${w}x${h}`;
+  if (vp.key !== key) vp = { zoom: 1, cx: w / 2, cy: h / 2, key };
+  const box = canvas.parentElement;
+  let cssW = box && box.clientWidth;
+  let cssH = h;
+  let dpr = 1;
+  if (cssW) {
+    const tallest = (globalThis.innerHeight || Infinity) * BOARD_MAX_VH;
+    cssH = Math.max(1, Math.round(Math.min(cssW * h / w, tallest)));
+    canvas.style.height = `${cssH}px`;
+    dpr = globalThis.devicePixelRatio || 1;
+  } else {
+    cssW = w;
+  }
+  const bw = Math.max(1, Math.round(cssW * dpr));
+  const bh = Math.max(1, Math.round(cssH * dpr));
+  if (canvas.width !== bw || canvas.height !== bh) {
+    canvas.width = bw;
+    canvas.height = bh;
+  }
+  const scale = Math.min(cssW / w, cssH / h) * vp.zoom;
+  lens = { cssW, cssH, dpr, scale, w, h,
+           ox: cssW / 2 - vp.cx * scale, oy: cssH / 2 - vp.cy * scale };
+  el("zoom-level").textContent = `${Math.round(vp.zoom * 100)}%`;
+}
+
+/* A pointer event's position on the board, in CSS pixels from its top-left corner. */
+function boardPoint(event) {
+  const rect = canvas.getBoundingClientRect();
+  return [event.clientX - rect.left, event.clientY - rect.top];
+}
+
+function toWorld(sx, sy) {
+  return [(sx - lens.ox) / lens.scale, (sy - lens.oy) / lens.scale];
+}
+
+/* The centre may go anywhere over the map, never past its edge, so the map cannot be
+   panned out of sight. */
+function clampCentre() {
+  vp.cx = Math.max(0, Math.min(lens.w, vp.cx));
+  vp.cy = Math.max(0, Math.min(lens.h, vp.cy));
+}
+
+/* Zoom by `factor`, keeping the world point under (sx, sy) where it is. */
+function zoomAt(factor, sx, sy) {
+  if (!view) return;
+  const zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, vp.zoom * factor));
+  if (zoom === vp.zoom) return;
+  const [wx, wy] = toWorld(sx, sy);
+  const scale = lens.scale * zoom / vp.zoom;
+  vp.zoom = zoom;
+  vp.cx = wx + (lens.cssW / 2 - sx) / scale;
+  vp.cy = wy + (lens.cssH / 2 - sy) / scale;
+  clampCentre();
+  drawBoard();
+}
+
+function panBy(dx, dy) {
+  if (!view) return;
+  vp.cx -= dx / lens.scale;
+  vp.cy -= dy / lens.scale;
+  clampCentre();
+  drawBoard();
+}
+
+function fitView() {
+  if (!view) return;
+  vp = { zoom: 1, cx: lens.w / 2, cy: lens.h / 2, key: vp.key };
+  drawBoard();
+}
+
+/* Pointers: one drags the board, two pinch it. A gesture that moved at all ends in a click
+   the board must not take for a tap, so `swallowClick` eats it — and the next press clears
+   it, because a touch that moved fires no click to eat. */
+const pointers = new Map();     // pointerId → [clientX, clientY]
+let gesture = null;             // { moved, x0, y0 } for the press under way
+let swallowClick = false;
+
+canvas.addEventListener("pointerdown", (event) => {
+  if (event.pointerType === "mouse" && event.button !== 0) return;
+  if (!pointers.size) {
+    gesture = { moved: false, x0: event.clientX, y0: event.clientY };
+    swallowClick = false;
+  }
+  pointers.set(event.pointerId, [event.clientX, event.clientY]);
+  if (canvas.setPointerCapture) canvas.setPointerCapture(event.pointerId);
+  if (pointers.size > 1) gesture.moved = true;      // a pinch is never a tap
+});
+
+canvas.addEventListener("pointermove", (event) => {
+  const last = pointers.get(event.pointerId);
+  if (!last || !view) return;
+  const now = [event.clientX, event.clientY];
+  if (pointers.size === 1) {
+    if (!gesture.moved
+        && Math.hypot(now[0] - gesture.x0, now[1] - gesture.y0) < TAP_SLOP_PX) return;
+    gesture.moved = true;
+    pointers.set(event.pointerId, now);
+    panBy(now[0] - last[0], now[1] - last[1]);
+    return;
+  }
+  if (pointers.size !== 2) return;
+  const [a, b] = [...pointers.values()];
+  const before = { d: Math.hypot(a[0] - b[0], a[1] - b[1]),
+                   x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 };
+  pointers.set(event.pointerId, now);
+  const [c, d] = [...pointers.values()];
+  const after = { d: Math.hypot(c[0] - d[0], c[1] - d[1]),
+                  x: (c[0] + d[0]) / 2, y: (c[1] + d[1]) / 2 };
+  const rect = canvas.getBoundingClientRect();
+  if (before.d > 0) zoomAt(after.d / before.d, after.x - rect.left, after.y - rect.top);
+  panBy(after.x - before.x, after.y - before.y);
+});
+
+function endPointer(event) {
+  if (!pointers.delete(event.pointerId)) return;
+  if (!pointers.size && gesture && gesture.moved) swallowClick = true;
+}
+canvas.addEventListener("pointerup", endPointer);
+canvas.addEventListener("pointercancel", endPointer);
+
+canvas.addEventListener("wheel", (event) => {
+  if (!view) return;
+  event.preventDefault();
+  // A trackpad pinch arrives as a ctrl+wheel with small deltas; a line-mode wheel counts
+  // lines, not pixels.
+  const delta = event.deltaY * (event.deltaMode === 1 ? 16 : 1);
+  const [sx, sy] = boardPoint(event);
+  zoomAt(Math.exp(-delta * (event.ctrlKey ? 0.01 : 0.0015)), sx, sy);
+}, { passive: false });
+
+el("zoom-in").addEventListener("click", () => zoomAt(ZOOM_STEP, lens.cssW / 2, lens.cssH / 2));
+el("zoom-out").addEventListener("click", () => zoomAt(1 / ZOOM_STEP, lens.cssW / 2, lens.cssH / 2));
+el("zoom-fit").addEventListener("click", fitView);
+if (typeof addEventListener === "function") {
+  addEventListener("resize", () => { if (view) drawBoard(); });
+}
+
 // ── The board ───────────────────────────────────────────────────────────────
 
 function drawBoard() {
@@ -371,13 +531,15 @@ function drawBoard() {
   const cell = map.cell_px || 1;
   const w = Math.max(1, map.cols * cell);
   const h = Math.max(1, map.rows * cell);
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w;
-    canvas.height = h;
-  }
+  sizeBoard(w, h);
 
+  // The backing store in device pixels, cleared to the fog colour, then everything else in
+  // world pixels (`col * cell`) through the one viewport transform (QOL Q1).
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = MASK;
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const k = lens.dpr * lens.scale;
+  ctx.setTransform(k, 0, 0, k, lens.dpr * lens.ox, lens.dpr * lens.oy);
 
   // The image is named, not inlined, so it caches between re-keys (D-M4-1). It is fetched
   // again only when `map.image` changes — which for a player is when the party earns a
@@ -458,19 +620,20 @@ function drawTargets(cell) {
   ctx.setLineDash([]);
 }
 
-/* A tap on the board answers a live cell prompt with the cell under it. The canvas is
-   scaled by CSS, so the tap is mapped back through the canvas's own size onto the nominal
-   `col * cell_px` lattice the board is drawn on. Only a cell the server listed is sent:
-   any other tap would only come back `bad_option`. */
+/* A tap on the board answers a live cell prompt with the cell under it. The tap is mapped
+   back through the viewport (zoom and pan, QOL Q1) onto the nominal `col * cell_px`
+   lattice the board is drawn on. Only a cell the server listed is sent: any other tap
+   would only come back `bad_option`. */
 function cellAt(event) {
-  const rect = canvas.getBoundingClientRect();
+  const [sx, sy] = boardPoint(event);
   const cell = (view.map.cell_px || 1);
-  const x = (event.clientX - rect.left) * canvas.width / rect.width;
-  const y = (event.clientY - rect.top) * canvas.height / rect.height;
+  const [x, y] = toWorld(sx, sy);
   return [Math.floor(x / cell), Math.floor(y / cell)];
 }
 
 canvas.addEventListener("click", (event) => {
+  // The click that ends a pan or a pinch is not a tap.
+  if (swallowClick) { swallowClick = false; return; }
   // A tap during a playback fast-forwards it and does nothing else, as a click does on the
   // DM screen: the board is showing held state, so a cell read off it is the wrong one.
   if (play) { fastForward(); if (view) drawBoard(); return; }
@@ -1047,7 +1210,7 @@ function drawAnnouncement(cell, now) {
   const w = ctx.measureText(shown).width + 10;
   const h = size + 6;
   const span = (agent.size || 1) * cell;
-  const x = Math.max(4, Math.min(agent.col * cell + span / 2 - w / 2, canvas.width - w - 4));
+  const x = Math.max(4, Math.min(agent.col * cell + span / 2 - w / 2, view.map.cols * cell - w - 4));
   const y = Math.max(4, agent.row * cell - Math.max(9, Math.round(cell * 0.30)) - h - 8);
   ctx.fillStyle = "rgba(20, 15, 5, 0.84)";
   ctx.fillRect(x, y, w, h);
