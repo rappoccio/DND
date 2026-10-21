@@ -4981,10 +4981,10 @@ class App:
         cleared by the turn boundary's `_clear_pending_target_picks()`."""
         return any(getattr(self, name, idle) != idle for name, idle in self._TARGET_PICK_ARMS)
 
-    def _proceed_to_new_turn(self):
-        """Begin the next combatant's turn. Runs after _advance_turn ends the previous turn and the
-        legendary-action phase (if any) finishes draining."""
-        # Reset action economy and per-turn conditions for the new combatant.
+    def _reset_turn_economy(self):
+        """The action economy and the half-finished action picks, as a turn starts them.
+        Shared by the turn start and the autosave restore (M6.4), which lands on a top of
+        turn and must not inherit what the abandoned turn had armed."""
         self.action_used           = False
         self.bonus_used            = False
         self.pending_attack_slot       = ""
@@ -5000,6 +5000,12 @@ class App:
         self.pending_unarmed_type      = ""
         self._reaction_mover_idx       = -1
         self._attack_arm_snapshot      = None
+
+    def _proceed_to_new_turn(self):
+        """Begin the next combatant's turn. Runs after _advance_turn ends the previous turn and the
+        legendary-action phase (if any) finishes draining."""
+        # Reset action economy and per-turn conditions for the new combatant.
+        self._reset_turn_economy()
         # World Tree Vitality of the Tree: diagnostic for a stale turn-start target-pick (the actual
         # clear now lives in _clear_pending_target_picks, called just below).
         if self.pending_vitality_target or self._vitality_option_index != -1:
@@ -14521,11 +14527,12 @@ class App:
         n = len(self.bm.disallowed_cells)
         self._combat_log_add(f"Wall auto-detection turned {state} ({n} blocked cells).")
 
-    def _load_spell_effects(self):
+    def _load_spell_effects(self, path: str | None = None):
         """Load spell effect data from JSON file if it exists."""
-        if os.path.exists(self._effects_path):
+        path = path or self._effects_path
+        if os.path.exists(path):
             try:
-                rpg.apply_spell_effect_configuration(self.bm, self._effects_path)
+                rpg.apply_spell_effect_configuration(self.bm, path)
                 self._build_spell_effect_metadata()
             except Exception as e:
                 print(f"Warning: Failed to load spell effects: {e}")

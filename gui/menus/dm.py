@@ -16,6 +16,7 @@ the board opens, not a panel button.
 """
 
 import rpg_battle_map as rpg
+import autosave
 from helpers import door_touch_cells
 
 
@@ -32,6 +33,8 @@ def show_agents_menu(app):
         ("Import DDB…", app._import_ddb_character),
         ("Save…",       app._open_save_agents_browser),
         ("Load PCs…",   app._open_load_pcs_browser),
+        # M6.4 (D-M6-5): the way back into a fight after a crash, or a rewind.
+        ("Restore autosave ▸", lambda: show_restore_autosave_menu(app)),
         ("Create Mob…", lambda: app.mob_dialog.show(
                             lambda mob: app._on_mob_selected(mob))),
         # A bare method reference, not a call: it has to become a bound lambda here,
@@ -41,6 +44,20 @@ def show_agents_menu(app):
     ]
     app._ask_dm("action", "Agents", items,
                  anchor=(app.btn_agents.rect.x, app.btn_agents.rect.y))
+
+
+def show_restore_autosave_menu(app):
+    """The active encounter's autosave ring, newest first: round, actor and time per slot
+    (D-M6-5). Picking one restores it; an empty ring opens nothing and says so."""
+    slots = autosave.list_slots(app)
+    if not slots:
+        app._flash_status("No autosaves for this encounter yet")
+        return
+    options = [(autosave.slot_label(m), lambda k=m["slot"]: autosave.restore(app, k))
+               for m in slots]
+    app._ask_dm("action", "Restore autosave", options,
+                 anchor=(app.btn_agents.rect.x, app.btn_agents.rect.y),
+                 parent=app.prompts.answering)
 
 
 def show_pc_class_menu(app):

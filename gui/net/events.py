@@ -358,6 +358,24 @@ class EventStream:
                 if sid not in live:
                     p.detach(sid)
 
+    def resync_all(self) -> None:
+        """The board jumped under every viewer (an autosave restore, M6.4): nothing from
+        before this point may play on a client again.
+
+        The global events no projection has filtered yet belong to the abandoned board, and
+        their agent indices may name different creatures now, so they are dropped unread.
+        Every ring is emptied, so a ``since`` older than a principal's ``seq`` raises
+        ``Resync`` and answers with a fresh ``view``; and every socket's cursor moves to
+        its ``seq``, so the next cycle sends it a ``view`` and no ``events`` frame. ``seq``
+        itself does not move: it never goes backwards (B-3)."""
+        for p in self._views.values():
+            p._next = self._end
+            p._ring.clear()
+            for sid in p.sockets():
+                p._sent[sid] = p.seq
+        self._base = self._end
+        self._events.clear()
+
     def _trim(self) -> None:
         """Drop the global events every projection has already filtered."""
         low = min((p._next for p in self._views.values()), default=self._end)

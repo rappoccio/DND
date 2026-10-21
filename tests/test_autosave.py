@@ -7,8 +7,8 @@
     ``roster.autosave_slots`` of them;
   · ``meta.json`` is the commit marker: a slot without one is ignored and written first;
   · the DM's own scene files are never touched;
-  · a slot holds the whole fight: loaded as an encounter, it restores to the oracle's
-    fingerprint with only the oracle's known gaps (M6.4 swaps the oracle onto the ring);
+  · a slot holds the whole fight: the slot the turn-start hook wrote, restored into a
+    fresh App, matches the oracle's fingerprint with only the oracle's known gaps (none);
   · an autosave that fails returns None and never raises into the turn;
   · it is timed (D-M6-8).
 """
@@ -146,14 +146,15 @@ def test_lighting_and_effects_copied_or_cleared():
 def _restore_slot(app, k):
     app2 = App(MAP_PATH, seed=SEED)
     app2.autosave_enabled = False
-    app2._on_load_path_chosen(autosave.slot_paths(app, k)["agents"])
+    app2._set_encounter_base(app._save_path)
+    assert autosave.restore(app2, k), "the restore refused"
     return app2
 
 
 def test_slot_restores_the_fight():
-    """A slot is the whole fight: both oracle scenes, restored from their newest slot,
-    lose exactly the oracle's known gaps. The hard scene's raw-basis agents (summon,
-    tombstone) are what lets its resume run at all."""
+    """A slot is the whole fight: both oracle scenes, restored from the newest slot the
+    turn-start hook wrote (not one the test wrote), lose exactly the oracle's known gaps.
+    The hard scene's raw-basis agents (summon, tombstone) are what lets its resume run."""
     for hard, known, name in ((False, KNOWN_PLAIN_GAPS, "KNOWN_PLAIN_GAPS"),
                               (True, KNOWN_GAPS, "KNOWN_GAPS")):
         tmp = tempfile.mkdtemp()

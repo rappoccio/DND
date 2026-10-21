@@ -16,7 +16,11 @@ it again, atomically, only after every other file is in place, so a crash mid-wr
 a slot without one and that slot is ignored. With two or more slots a complete earlier
 save always survives. The slot written is the empty one, else the oldest (lowest ``seq``).
 
-Restoring a slot is M6.4. This module only writes and lists the ring.
+**Restoring a slot (M6.4, D-M6-5)** loads the slot's files by path, in the order
+``_on_load_path_chosen`` loads an encounter, and never through it: that would point the
+encounter base at the slot, so the DM's next save would land in the ring and the next
+autosave would nest a ring inside a slot, and a moved base re-points the roster, which logs
+every player out. The base, the roster and the DM's scene files stay exactly as they were.
 """
 
 from __future__ import annotations
@@ -147,3 +151,109 @@ def save(app) -> int | None:
     except Exception as e:                       # noqa: BLE001 — see the docstring
         print(f"Warning: autosave failed: {e}")
         return None
+
+
+# ── Restore (M6.4) ──────────────────────────────────────────────────────────
+
+def restore_blocked(app) -> str | None:
+    """Why a restore cannot run right now, or None. A restore replaces the board under
+    whatever is in flight, and these are the things whose continuation would then run
+    against the wrong fight: an automated turn mid-playback, an open reaction window, and
+    the legendary-action phase between two turns."""
+    if app._npc_anim is not None:
+        return "an automated turn is still playing"
+    if app.combat.pending_decision().active:
+        return "a reaction is waiting for an answer"
+    if app._legendary_queue or app._legendary_actor >= 0 or app._legendary_move_active:
+        return "the legendary-action phase is running"
+    return None
+
+
+def _read_slot(paths: dict[str, str]) -> str | None:
+    """Check the slot is one fight before the live scene is touched. Returns why not."""
+    try:
+        with open(paths["agents"]) as f:
+            agents = json.load(f)["agents"]
+        with open(paths["combat"]) as f:
+            combat = json.load(f)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return f"unreadable ({e})"
+    if not isinstance(agents, list) or not isinstance(combat, dict):
+        return "unreadable"
+    if not combat.get("combat_active") or not combat.get("initiative_order"):
+        return "it holds no running fight"
+    if combat.get("agent_basis") != [a.get("name") for a in agents if isinstance(a, dict)]:
+        return "its agents and its fight disagree"
+    return None
+
+
+def _settle_turn(app) -> None:
+    """Land on the top of the restored turn, the state ``_finish_turn_start`` leaves.
+
+    The slot was written there, where the action economy is fresh and no pick is armed;
+    a restore into a running App resets its own copies to match. The NPC drive is re-armed
+    from the restored turn (F-M6-4): the save point is before an automated turn runs, so
+    the turn on the slot has not run yet."""
+    app._reset_turn_economy()
+    app._clear_pending_target_picks()
+    app.pending_dispel_selection = None
+    app._reaction_finish = lambda: None
+    app.combat_panel_scroll = 0
+    cur = app._current_agent_idx()
+    app.selected_idx = cur
+    app._turn_start_idx = cur
+    app._npc_drive_idx = (cur if 0 <= cur < len(app.bm.placed_agents)
+                          and app.bm.is_agent_npc_automated(cur)
+                          and not app.bm.is_agent_on_deck(cur) else -1)
+    # The board snapshot replaced the spell effects, so their render metadata is rebuilt
+    # from what is on the board now rather than from the scene's configuration file.
+    app._effect_meta.clear()
+    app._build_spell_effect_metadata()
+    app._update_reach()
+    app._update_attack_overlay()
+    app._mark_fog_dirty()
+
+
+def _resync_players(app) -> None:
+    """Every seated player gets a fresh ``view`` and nothing replays (D-M6-5, D-M6-6).
+    The forced boundary pushes on the next frame even when the restored turn is the one
+    the push cycle last saw, and it publishes the page image without the lag."""
+    app.events.resync_all()
+    app._net_turn = None
+
+
+def restore(app, k: int) -> bool:
+    """Restore slot ``k`` of the active encounter's ring into ``app``. Returns True when
+    the fight resumed. A refusal flashes its reason and, short of the engine refusing its
+    own snapshot after the load, leaves the live scene untouched."""
+    why = restore_blocked(app)
+    if why is None:
+        meta = read_meta(app, k)
+        if meta is None:
+            why = "that slot is empty or torn"
+        else:
+            paths = slot_paths(app, k)
+            why = _read_slot(paths)
+    if why is not None:
+        app._flash_status(f"Autosave not restored: {why}")
+        return False
+    app._load_agents(paths["agents"])
+    app._load_terrain(paths["terrain"])
+    app._load_lighting(paths["lighting"])
+    app._load_spell_effects(paths["effects"])
+    if not app._load_combat_state(paths["combat"]):
+        return False                   # _load_combat_state has flashed why
+    _settle_turn(app)
+    _resync_players(app)
+    app._combat_log_add(f"[RESTORED] autosave: round {meta.get('round', 0) + 1}, "
+                        f"{meta.get('actor') or '?'}'s turn")
+    app._flush_combat_log()
+    app._flash_status(f"Restored: round {meta.get('round', 0) + 1}, "
+                      f"{meta.get('actor') or '?'}'s turn")
+    return True
+
+
+def slot_label(meta: dict) -> str:
+    """One menu row: round, actor and wall-clock time."""
+    when = time.strftime("%H:%M:%S", time.localtime(meta.get("timestamp", 0)))
+    return f"Round {meta.get('round', 0) + 1} · {meta.get('actor') or '?'} · {when}"

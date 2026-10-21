@@ -19,13 +19,15 @@ the current save path does not restore. The test fails when a key outside that l
 breaks, and also when a listed key starts restoring, so each slice that closes a gap must
 delete it from the list. The list is empty when M6 is done.
 
-``_save`` and ``_restore`` are the only two things a later slice swaps: today they are
-the DM's own encounter save and the Load path (``_on_load_path_chosen``); from M6.3/M6.4
-they are the autosave ring.
+``_save`` and ``_restore`` are the autosave ring since M6.4: ``autosave.save`` at the
+turn boundary, then ``autosave.restore`` into a fresh ``App`` pointed at the same encounter,
+which is what a DM does after a crash. Both lists are empty: M6 restores everything the
+fingerprint reads.
 
 A plain fight (no summon, no effect, a PC on turn) is the control. Until M6.2 the actor on
 turn came back without its condition flags (F-M6-7); it now restores cleanly, and stays a
-ratchet so it keeps doing so.
+ratchet so it keeps doing so. The control is also run through the DM's own encounter save
+and Load (``_dm_save`` / ``_dm_restore``), so that path stays under test as well.
 """
 
 import os
@@ -45,6 +47,7 @@ import tempfile
 
 import rpg_battle_map as rpg
 
+import autosave
 from main import App
 from net.roster import PC_FACTION
 
@@ -63,11 +66,9 @@ KNOWN_PLAIN_GAPS = frozenset()
 
 # The hard scene. Since M6.2 the raw-basis save keeps the summon and the tombstone at
 # their index, so the resume runs, and the board snapshot brings back the effects, the
-# light and terrain they set, and every agent's fight state. What is left is the NPC
-# drive, re-armed by the restore in M6.4.
-KNOWN_GAPS = frozenset({
-    "turn.npc_drive",                 # F-M6-4
-})
+# light and terrain they set, and every agent's fight state. Since M6.4 the restore
+# re-arms the NPC drive (F-M6-4), the last gap.
+KNOWN_GAPS = frozenset()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -177,11 +178,29 @@ def diff(before: dict, after: dict) -> dict:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  The save and the restore under test (swapped by M6.3 / M6.4)
+#  The save and the restore under test
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _save(app, raw=False) -> str:
-    """Today's path: the DM's encounter save (which writes the combat sidecar, with its
+def _save(app) -> tuple[str, int]:
+    """The autosave ring (M6.4): one slot written at the turn boundary the scene stops on.
+    The runner turns the per-turn hook off, so the slot is written here, explicitly."""
+    k = autosave.save(app)
+    assert k is not None, "the autosave wrote nothing"
+    return app._save_path, k
+
+
+def _restore(saved: tuple[str, int]):
+    """A fresh App, pointed at the same encounter the way a relaunched DM's is, then the
+    slot restored into it."""
+    path, k = saved
+    app = App(MAP_PATH, seed=SEED)
+    app._set_encounter_base(path)
+    assert autosave.restore(app, k), "the autosave restore refused"
+    return app
+
+
+def _dm_save(app, raw=False) -> str:
+    """The DM's encounter save (which writes the combat sidecar, with its
     board snapshot, and the session) plus the terrain file. `raw` keeps summons and
     tombstones at their index (D-M6-2), as the autosave will; the plain scene keeps the
     DM's own compacted save, so the DM's save and load stay under test too."""
@@ -190,7 +209,7 @@ def _save(app, raw=False) -> str:
     return app._save_path
 
 
-def _restore(path: str):
+def _dm_restore(path: str):
     app = App(MAP_PATH, seed=SEED)
     app._on_load_path_chosen(path)
     return app
@@ -308,13 +327,13 @@ def _advance_to(app, want):
     raise AssertionError("never reached the wanted turn")
 
 
-def _round_trip(hard):
+def _round_trip(hard, dm=False):
     tmp = tempfile.mkdtemp()
     try:
         app = _fight(tmp, hard=hard)
         before = fingerprint(app)
         assert fingerprint(app) == before, "the fingerprint itself is not stable"
-        after = fingerprint(_restore(_save(app, raw=hard)))
+        after = fingerprint(_dm_restore(_dm_save(app)) if dm else _restore(_save(app)))
         return before, after
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -364,6 +383,14 @@ def test_plain_fight_gaps_are_exactly_the_known_ones():
           f"({len(KNOWN_PLAIN_GAPS)} known gaps)")
 
 
+def test_plain_fight_survives_the_dm_save_and_load():
+    """The control again, through the DM's own encounter save and Load: the board snapshot
+    in `_combat.json` (M6.2) keeps that path whole too."""
+    before, after = _round_trip(hard=False, dm=True)
+    _ratchet(diff(before, after), KNOWN_PLAIN_GAPS, "KNOWN_PLAIN_GAPS")
+    print("✅ test_plain_fight_survives_the_dm_save_and_load")
+
+
 def test_hard_fight_gaps_are_exactly_the_known_ones():
     """The ratchet: every gap is listed, and every listed gap is still a gap."""
     before, after = _round_trip(hard=True)
@@ -382,7 +409,7 @@ def test_resumed_actor_can_move():
         actor = app._current_agent_idx()
         had = app.bm.placed_agents[actor].walk_remaining
         assert had > 0, "the scene's actor has no walk to lose"
-        app2 = _restore(_save(app))
+        app2 = _dm_restore(_dm_save(app))
         assert app2._current_agent_idx() == actor and app2.combat_active
         assert app2.bm.placed_agents[actor].walk_remaining == had, \
             f"resumed with {app2.bm.placed_agents[actor].walk_remaining} ft, not {had}"
@@ -403,7 +430,7 @@ def test_resumed_actor_can_move():
         app.combat.set_agent_conditions(app.bm, actor, cond)
         tired = app.bm.placed_agents[actor].walk_remaining
         assert tired == had - 10, (tired, had)
-        app3 = _restore(_save(app))
+        app3 = _dm_restore(_dm_save(app))
         assert app3.bm.placed_agents[actor].walk_remaining == tired, \
             f"an exhausted actor resumed with {app3.bm.placed_agents[actor].walk_remaining} ft, not {tired}"
         print("✅ test_resumed_actor_can_move")
@@ -432,6 +459,7 @@ def test_hard_scene_has_what_it_claims():
 
 if __name__ == "__main__":
     tests = [test_hard_scene_has_what_it_claims, test_resumed_actor_can_move, test_plain_fight_gaps_are_exactly_the_known_ones,
+             test_plain_fight_survives_the_dm_save_and_load,
              test_hard_fight_gaps_are_exactly_the_known_ones]
     failed = 0
     for t in tests:

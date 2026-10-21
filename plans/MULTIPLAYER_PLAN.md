@@ -7998,6 +7998,89 @@ changed `_session_path` replaces it and logs every player out. Then swap the ora
 **Rules:** container only, never `docker build`; stage by name; commit only when asked;
 never push unasked.
 
+##### M6.4 — what landed *(2026-10-21, uncommitted)*
+
+- **`autosave.restore(app, k)`** (D-M6-5). It loads the slot's files **by path**, in
+  `_on_load_path_chosen`'s order (agents, terrain, lighting, effects, then the combat
+  sidecar with its board), and never through `_on_load_path_chosen`. So the encounter base,
+  `_session_path` and the roster object stay as they were: no player is logged out, the
+  DM's next save goes to the scene, and the next autosave goes to the same ring.
+  - **Refused before the live scene is touched**, with a flash that says why: an automated
+    turn still playing (`_npc_anim`), an open reaction window (`pending_decision`), the
+    legendary phase, an empty or torn slot, unreadable files, a slot with no running fight,
+    or a slot whose agents and `agent_basis` disagree. Only a snapshot that the engine
+    itself refuses after the load (`_load_combat_state` returning False) can leave the
+    scene half-loaded. The DM's own files are untouched, so a Load recovers.
+  - **`_settle_turn`** puts the App at the top of the restored turn: the economy and the
+    picks are reset (`_reset_turn_economy`, newly factored out of `_proceed_to_new_turn`,
+    plus `_clear_pending_target_picks`), `selected_idx` / `_turn_start_idx` are set to the
+    actor, the spell-effect render metadata is rebuilt from the restored board, and **the
+    NPC drive is re-armed** when the actor is automated and not On Deck (F-M6-4). This
+    lives in the restore only and not in `_load_combat_state`, because only the autosave's
+    save point guarantees the automated turn hasn't run yet.
+  - **Players (D-M6-6):** `EventStream.resync_all()` (new) drops the global events nobody
+    has filtered (they name indices on the abandoned board), empties every ring and moves
+    every socket's cursor to its `seq`. No events frame is owed, a `since` from before the
+    restore answers with a fresh `view`, and `seq` never goes backwards. `_net_turn = None`
+    forces the next push cycle, page image included.
+- **The menu:** Agents… ▸ **Restore autosave ▸**, one row per committed slot, newest first:
+  `Round N · actor · HH:MM:SS`. An empty ring opens nothing and flashes "No autosaves for
+  this encounter yet". The ring is the **active encounter's**, so after a crash the DM
+  relaunches and, if the fight was in a Loaded encounter, Loads it first.
+- `main.py`: `_load_spell_effects(path=None)`; `_reset_turn_economy()`.
+
+**The oracle:** `_save` / `_restore` are now the ring (`autosave.save`, then
+`autosave.restore` into a fresh `App` pointed at the same base). **`KNOWN_GAPS` and
+`KNOWN_PLAIN_GAPS` are both empty.** The DM's own save and Load stay under test as
+`_dm_save` / `_dm_restore`: the new `test_plain_fight_survives_the_dm_save_and_load` and
+`test_resumed_actor_can_move` use them. `test_autosave.py::test_slot_restores_the_fight`
+now restores the slot the hook wrote through `autosave.restore`.
+
+**New suite `tests/test_autosave_restore.py`** (registered after `test_autosave.py`), 6
+tests:
+- the base, the paths and the roster survive, a credential minted before the restore still
+  verifies, no scene file is written, and the next autosave doesn't nest a ring;
+- a rewind in place (two turns on, with stale picks armed) lands on the slot's fingerprint;
+- the restored NPC turn runs on the next drive, and a PC's turn arms nothing;
+- 7 refusals, each leaving the fingerprint unchanged;
+- the player resync (no frame owed, `Resync` for an old `since`, the pending events dropped,
+  the push forced);
+- the menu: rows are the slots newest first, a pick restores, an empty ring opens nothing.
+
+**One fingerprint note:** a rewind *in place* renumbers the doors, because `_load_terrain`
+re-adds them and the door-id counter only counts up. The same thing already happens on any
+re-Load in a running App. Nothing holds a door id across a turn (neither snapshot names
+one; pick-lock and break-door read it at click time), so the in-place tests compare doors
+without `id`. The fresh-App oracle compares them with it.
+
+**Mutants: 7 of 7 killed:** no NPC re-arm; loading through the encounter base; no player
+resync; no economy reset; no pre-check; no in-flight guard; rings kept by `resync_all`.
+Plus a passing control. Script: `.tmp_claude/mutants_m6_4.py`, untracked scratch.
+
+**Suite: 184 / 0** in the container (one suite more than M6.3). No C++ changed.
+
+##### Handoff — M6.4 landed *(written 2026-10-21)*
+
+**State.** M6.4 is **uncommitted**:
+- new: `tests/test_autosave_restore.py`;
+- changed: `gui/autosave.py`, `gui/main.py`, `gui/menus/dm.py`, `gui/net/events.py`,
+  `tests/run_all_tests.py`, `tests/test_autosave.py`, `tests/test_restore_oracle.py`,
+  this plan.
+
+Leave `maps/TestDNDMap_terrain.json` and `.tmp_claude/` alone.
+
+**Worth a manual check** (needs `./run.sh`, so the user's): start a fight, play a few turns,
+use Agents… ▸ Restore autosave ▸, and watch a connected phone redraw on the restored board
+without replaying moves.
+
+**Next: M6.5**, the client's re-claim (D-M6-7): `app.js` keeps `principal_id` and the
+display name in `localStorage`, pre-fills the join card and sends `principal_id`. Plus tests
+for a dropped socket and for a restart: a new `App` and server, the slot restored, and the
+player back in their seat by `principal_id`.
+
+**Rules:** container only, never `docker build`; stage by name; commit only when asked;
+never push unasked.
+
 ---
 
 ### M7 — Hardening
