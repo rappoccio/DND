@@ -12140,6 +12140,14 @@ class App:
             "reaction_timeout_s": self.reaction_timeout_s,
             "turn_idx":      int(self.turn_idx),
             "round_num":     int(self.round_num),
+            # Each agent's OWN movement budget, the one a move spends. The engine snapshot
+            # carries a parallel copy, not this one, and `_load_agents` builds agents at 0,
+            # so without it a resumed actor could not take a step (F-M6-7). Stored as read,
+            # with exhaustion already taken off; the load adds back the exhaustion it finds.
+            "agent_budgets": [
+                [pt.walk_remaining, pt.fly_remaining, pt.swim_remaining, pt.burrow_remaining]
+                for pt in self.bm.placed_agents
+            ],
             "initiative_order": [
                 {"agent_idx": e.agent_idx, "d20": e.d20,
                  "modifier": e.modifier, "total": e.total}
@@ -12180,6 +12188,17 @@ class App:
             return False
         # The restore rebuilt the engine's context, and record_moves is not save state.
         self.combat.record_moves = True
+        # Re-seed each agent's own budget (see `_save_combat_state`). The getter takes
+        # exhaustion off on read, so the seed adds back whatever exhaustion this load left
+        # the agent with: the agent then reads exactly what it read at the save, whether
+        # or not its exhaustion survived. Absent in a sidecar written before F-M6-7's fix,
+        # which leaves the budgets where `_load_agents` put them.
+        budgets = doc.get("agent_budgets")
+        if isinstance(budgets, list) and len(budgets) == len(self.bm.placed_agents):
+            for i, (pt, b) in enumerate(zip(self.bm.placed_agents, budgets)):
+                if isinstance(b, list) and len(b) == 4:
+                    exh = 5 * self.combat.get_agent_conditions(self.bm, i).exhaustion_level
+                    pt.init_movement(*(max(0, int(ft)) + exh for ft in b))
 
         order = []
         for e in doc.get("initiative_order", []):

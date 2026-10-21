@@ -54,15 +54,14 @@ FOE_FACTION = 1
 
 # Every fingerprint key the current save path loses, measured on 2026-10-20 (M6.0). See
 # "M6.0 — what landed" in the plan for what each one is. A slice that closes a gap deletes
-# it here. A slice that un-masks a gap (M6.1 lets the combat resume run, which exposes
+# it here. A slice that un-masks a gap (M6.2 lets the combat resume run, which exposes
 # what the resume itself loses) may add it, and says so in its plan entry.
 
-# The control. F-M6-7: even when the resume runs, the actor on turn (Brannor) comes back
-# with no walk budget, and every per-agent condition flag (`AgentConditions`) is dropped,
-# because `_save_agents` writes neither.
+# The control. F-M6-7: even when the resume runs, every per-agent condition flag
+# (`AgentConditions`) is dropped, because `_save_agents` does not write the struct. The
+# actor's walk budget was lost here too, until the sidecar learned `agent_budgets`.
 KNOWN_PLAIN_GAPS = frozenset({
     "agents.Brannor.conditions",      # has_taken_turn_this_combat
-    "agents.Brannor.movement",        # 30 ft walk -> 0
 })
 
 # The hard scene. The summon and the tombstone change `agent_basis`, so the resume is
@@ -374,6 +373,46 @@ def test_hard_fight_gaps_are_exactly_the_known_ones():
     print(f"✅ test_hard_fight_gaps_are_exactly_the_known_ones ({len(KNOWN_GAPS)} known gaps)")
 
 
+def test_resumed_actor_can_move():
+    """F-M6-7's live half, in the DM's own save and load: the actor on turn must come back
+    with the walk it had, and spend it. The sidecar carried the engine's copy of the budget
+    but not the agent's own, which is the one a move spends, so the resumed actor read 0 ft
+    and every move was refused."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _fight(tmp, hard=False)
+        actor = app._current_agent_idx()
+        had = app.bm.placed_agents[actor].walk_remaining
+        assert had > 0, "the scene's actor has no walk to lose"
+        app2 = _restore(_save(app))
+        assert app2._current_agent_idx() == actor and app2.combat_active
+        assert app2.bm.placed_agents[actor].walk_remaining == had, \
+            f"resumed with {app2.bm.placed_agents[actor].walk_remaining} ft, not {had}"
+        assert app2.move_remaining_walk == had, "the panel's copy must agree"
+
+        start = app2.bm.placed_agents[actor].origin
+        dest = rpg.Cell(start.col + 1, start.row)
+        app2.combat.begin_move(app2.bm, actor, dest, rpg.MovementType.Walk)
+        moved = app2.bm.placed_agents[actor].origin
+        assert (moved.col, moved.row) == (dest.col, dest.row), \
+            f"the resumed actor could not take one step: still at {(moved.col, moved.row)}"
+
+        # Exhaustion is one of the flags the resume still drops (F-M6-7), so the budget is
+        # stored as read and the load adds back only the exhaustion it finds: an exhausted
+        # actor must come back with what it had, not its exhaustion's worth more.
+        cond = app.combat.get_agent_conditions(app.bm, actor)
+        cond.exhaustion_level = 2
+        app.combat.set_agent_conditions(app.bm, actor, cond)
+        tired = app.bm.placed_agents[actor].walk_remaining
+        assert tired == had - 10, (tired, had)
+        app3 = _restore(_save(app))
+        assert app3.bm.placed_agents[actor].walk_remaining == tired, \
+            f"an exhausted actor resumed with {app3.bm.placed_agents[actor].walk_remaining} ft, not {tired}"
+        print("✅ test_resumed_actor_can_move")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_hard_scene_has_what_it_claims():
     """The scene is only hard if it holds every hard part; guard it against a changed
     spell or map quietly emptying it."""
@@ -394,7 +433,7 @@ def test_hard_scene_has_what_it_claims():
 
 
 if __name__ == "__main__":
-    tests = [test_hard_scene_has_what_it_claims, test_plain_fight_gaps_are_exactly_the_known_ones,
+    tests = [test_hard_scene_has_what_it_claims, test_resumed_actor_can_move, test_plain_fight_gaps_are_exactly_the_known_ones,
              test_hard_fight_gaps_are_exactly_the_known_ones]
     failed = 0
     for t in tests:

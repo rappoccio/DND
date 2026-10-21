@@ -7639,8 +7639,8 @@ A read-only survey. No source file was changed.
 | Slice | Content | C++ |
 | ----- | ------- | :-: |
 | M6.0 | The restore oracle, as a test: a fight with a summon, a tombstone, Wall of Fire, Darkness, an opened door and an automated NPC on turn. Save at the boundary, restore into a fresh `App`, and compare the board, engine and turn loop. Lands with its known failures listed; it is the check that every later slice is held to. | no |
-| M6.1 | Raw-basis agent records for the autosave (D-M6-2) | no |
-| M6.2 | The `BattleMap` board snapshot (D-M6-3), sized by what M6.0 measured | yes |
+| ~~M6.1~~ | ~~Raw-basis agent records for the autosave (D-M6-2)~~ *folded into M6.2, 2026-10-20* | — |
+| M6.2 | The `BattleMap` board snapshot (D-M6-3), sized by what M6.0 measured, including the placed agents at raw index (D-M6-2) | yes |
 | M6.3 | `gui/autosave.py`, the ring and the save hook (D-M6-1, D-M6-4, D-M6-8) | no |
 | M6.4 | Restore, the NPC re-arm, the player resync and the menu entry (D-M6-5) | no |
 | M6.5 | The client's re-claim (D-M6-7), plus tests for a dropped socket and a restart | no |
@@ -7698,8 +7698,8 @@ A read-only survey. No source file was changed.
   the resume is refused outright. The engine (fresh RNG, `turn_counter` 0) and the turn
   loop (combat off) go with it. All four board effects and the light levels and terrain
   multipliers they set are lost (F-M6-3), and so is the NPC drive (F-M6-4).
-- **The refusal masks gaps.** Once M6.1 lets the resume run, the engine and turn-loop keys
-  may close, and gaps the refusal was hiding may open. M6.1 may add keys for that reason,
+- **The refusal masks gaps.** Once M6.2 lets the resume run (M6.1 was folded into it), the engine and turn-loop keys
+  may close, and gaps the refusal was hiding may open. M6.2 may add keys for that reason,
   as long as its plan entry names each one.
 - **Not lost:** doors (open state), terrain types, blocked cells, fog, the economy flags.
 
@@ -7720,10 +7720,46 @@ the user before starting M6.1 whether to fold it into M6.2.
 
 Leave `maps/TestDNDMap_terrain.json` and `.tmp_claude/` alone.
 
-**Next: M6.1.** First ask the user the fold-into-M6.2 question above. Also ask whether
-F-M6-7 (a resumed actor gets no movement) is a bug to fix on its own, since it breaks the
-DM's existing resume. Under the standing rule, a fix like that needs the user's OK and its
-own commit.
+**Answered (user, 2026-10-20):** yes to both. M6.1 is folded into M6.2, and the movement
+half of F-M6-7 is fixed on its own (below).
+
+**Amendment to the frozen Step 0 (2026-10-20, user: "yes"). M6.1 is folded into M6.2.**
+Reason: the summons, tombstones, budgets and condition flags all live in `PlacedAgent`,
+so a `BattleMap` snapshot that carries the placed-agent array at raw index closes F-M6-2
+and F-M6-7 together. D-M6-2 stands as the requirement (raw basis, the DM's encounter
+format unchanged) and M6.2 meets it. **M6.2 must also feed the DM's own `_combat.json`,**
+so that the condition flags (concentration, exhaustion, `has_taken_turn_this_combat`)
+survive the DM's save and load too, not only the autosave.
+
+##### F-M6-7 (movement) — fixed *(2026-10-20, user OK, its own commit)*
+
+- **The bug:** a fight resumed through the DM's save and load put the actor on turn back
+  at 0 ft of movement, and every move was refused (a one-step `begin_move` was confirmed
+  to leave it in place). An agent has two copies of its budget. The engine's copy rides
+  in the snapshot. The agent's own copy, the one `move_agent`, `reachable_cells` and the
+  NPC driver spend, was never saved, and `_load_agents` builds every agent at 0.
+- **The fix (`main.py`):**
+  - `_save_combat_state` writes `agent_budgets`: each placed agent's walk, fly, swim and
+    burrow, as read, by raw index.
+  - `_load_combat_state` re-seeds them with `init_movement`, before the panel mirror
+    reads them. The read takes exhaustion off, and exhaustion is one of the flags the
+    resume still drops. So the load adds back the exhaustion it finds, and an agent reads
+    back exactly what it read at the save, whether or not its exhaustion survived.
+  - A sidecar without the key (written before this fix) loads as before.
+- **Tests:** `test_restore_oracle.py::test_resumed_actor_can_move` checks that the actor's
+  budget and the panel's copy come back, that the actor takes a real step, and that an
+  exhausted actor (level 2) comes back with 20 ft, not 30. `agents.Brannor.movement`
+  leaves `KNOWN_PLAIN_GAPS`. The hard scene keeps its movement keys, because its resume
+  is still refused (F-M6-2).
+- **Mutants: 2 of 2 killed** (the budgets not saved; exhaustion added at the save as well,
+  which was the first draft), plus a passing control.
+- **Not fixed here:** the `AgentConditions` flags. They go with M6.2, as above.
+
+**Next: M6.2**, the `BattleMap` snapshot (C++; the user agreed to C++ for it). Start
+with a read-only look at `PlacedAgent`, `ActiveTerrainEffect`, `ActiveLightEffect`,
+`ActiveSpellEffect`, the per-cell light and multiplier arrays and the id counters, and
+write the slice's own short design before any code: what is snapshotted, the version
+key, and how the DM's sidecar and the autosave both use it.
 
 **Rules:** container only, never `docker build`; stage by name; commit only when asked;
 never push unasked.
