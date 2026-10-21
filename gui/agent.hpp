@@ -1405,6 +1405,14 @@ namespace rpg {
       speed_burrow_remaining_ += burrow_ft;
     }
 
+    // The four budgets as stored (walk, fly, swim, burrow), BEFORE exhaustion is taken off.
+    // The board snapshot (BattleMap::snapshot, M6.2) saves these and re-seeds them through
+    // initMovement, so a restored agent reads back exactly what it read at the save.
+    [[nodiscard]] std::array<int, 4> rawMovement() const noexcept {
+      return {speed_walk_remaining_, speed_fly_remaining_,
+              speed_swim_remaining_, speed_burrow_remaining_};
+    }
+
     [[nodiscard]] int getWalkRemaining()   const noexcept {
         return std::max(0, speed_walk_remaining_ - (5 * conditions_.exhaustion_level));
     }

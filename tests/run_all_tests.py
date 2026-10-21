@@ -123,6 +123,7 @@ test_scripts = [
     # The restore oracle (M6.0): save at the turn boundary, restore into a fresh App, and
     # compare. A ratchet: KNOWN_GAPS shrinks slice by slice and is empty when M6 is done.
     "test_restore_oracle.py",
+    "test_board_snapshot.py",
 
     # The masked page image (MULTIPLAYER_PLAN.md M4, D-M4-1) — `GET /map.png`. Kept with
     # the oracles for the same reason as the view: it is the one place the map crosses the

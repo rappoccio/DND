@@ -451,6 +451,21 @@ void bindBattleMap(py::module_& m) {
         .def("has_active_terrain_effects", &BattleMap::hasActiveTerrainEffects,
              "Check if there are any active terrain effects.")
 
+        // ── Board snapshot (MULTIPLAYER_PLAN.md M6.2) ────────────────────────
+        // Strings, as for CombatEngine.snapshot_json: written straight to a save file.
+        .def("snapshot_json", &BattleMap::snapshotJson,
+             "Serialize the board's mid-fight state to a JSON string: the terrain, light\n"
+             "and spell effects and their id counters, the per-cell terrain types,\n"
+             "multipliers and base light, and every placed agent at its RAW index\n"
+             "(placement, summon/tombstone fields, movement budgets, full stats,\n"
+             "conditions and loadout).")
+        .def("restore_json", &BattleMap::restoreJson, py::arg("text"),
+             "Overlay a snapshot_json() payload onto the agents already built (by\n"
+             "_load_agents). Returns False, having changed NOTHING, if the text is not\n"
+             "parseable, has the wrong shape, was written by a newer build, is for a\n"
+             "different grid size, or its agent names/sizes don't match the placed agents\n"
+             "one for one. A key the payload omits keeps the built value.")
+
         // Persistent spell effects (AoE from spells)
         .def_property_readonly("active_spell_effects", &BattleMap::activeSpellEffects,
              "Get all active spell effects from spells cast during combat.")

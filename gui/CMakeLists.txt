@@ -54,6 +54,7 @@ pybind11_add_module(rpg_battle_map
     combat_spells.cpp
     combat_attack.cpp
     combat_serialization.cpp
+    battle_map_serialization.cpp
     map_configs.cpp
     spell.cpp
 )

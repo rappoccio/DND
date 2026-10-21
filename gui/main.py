@@ -11793,29 +11793,38 @@ class App:
     # later `light_level` from the other. All callers use the free function directly.
 
     # FLAG: Move to C++
-    def _save_agents(self, path: str | None = None, exclude_indices=None):
+    def _save_agents(self, path: str | None = None, exclude_indices=None, raw: bool = False):
         path = path or self._save_path
         # exclude_indices: agent indices to omit (e.g. a party being carried to another
         # page — they are written to the destination instead of this page's file).
         exclude_indices = exclude_indices or set()
+        # raw (MULTIPLAYER_PLAN.md D-M6-2): keep summons and tombstones, so the file's agent
+        # list is the RAW index basis a board/engine snapshot is keyed by. Only the autosave
+        # and the restore oracle ask for it; the DM's encounter file keeps its compaction.
         data = []
         for i, pt in enumerate(self.bm.placed_agents):
             # Summoned creatures are transient (concentration-tied) and have no persisted
             # summoner link, so they are never written to the save — they vanish on reload
             # rather than becoming orphaned permanent agents.
-            if pt.summoner_idx >= 0 or pt.removed_from_play:
+            if not raw and (pt.summoner_idx >= 0 or pt.removed_from_play):
                 continue
             if i in exclude_indices:
                 continue
             s = self.combat.get_agent_stats(self.bm, i)
             # Save only the filename, not the full path, for portability
             sprite_filename = os.path.basename(pt.sprite_path) if pt.sprite_path else ""
+            col, row = pt.origin.col, pt.origin.row
+            if pt.removed_from_play:
+                # A tombstone sits off-map at (-1, -1), where _load_agents could not place
+                # it. Write it at any placeable cell instead; the board snapshot's overlay
+                # banishes it again and restores removed_from_play.
+                col, row = self._placeable_cell(pt.size)
             data.append({
                 "name":        pt.name,
                 "sprite_path": sprite_filename,
                 "size":        pt.size,
-                "col":         pt.origin.col,
-                "row":         pt.origin.row,
+                "col":         col,
+                "row":         row,
                 "faction":     pt.faction,
                 # Ownership (MULTIPLAYER_PLAN.md A1): an opaque principal id, "dm" for
                 # DM-controlled. The sole persisted source of truth for who drives this
@@ -12074,7 +12083,7 @@ class App:
         old_to_new = {}
         new_idx = 0
         for old_idx, pt in enumerate(self.bm.placed_agents):
-            if pt.summoner_idx >= 0 or pt.removed_from_play:
+            if not raw and (pt.summoner_idx >= 0 or pt.removed_from_play):
                 continue
             if old_idx in exclude_indices:
                 continue
@@ -12104,6 +12113,17 @@ class App:
             # The roster travels with the encounter: the `controller` ids just written
             # are meaningless without the principals they name (M0 / A1).
             self._save_session()
+
+    def _placeable_cell(self, size: int) -> tuple[int, int]:
+        """The first cell (row-major) an agent of `size` could be placed on, for a raw save
+        of a tombstone (see `_save_agents`). (0, 0) on a map with none, which the load
+        would skip; the snapshot's basis check then refuses the resume rather than
+        misapplying it."""
+        for r in range(self.bm.grid_rows - size + 1):
+            for c in range(self.bm.grid_cols - size + 1):
+                if not self.bm.is_blocked(rpg.Cell(c, r), size):
+                    return c, r
+        return 0, 0
 
     # ── Mid-combat resume (COMBAT_REFACTOR_PLAN.md R5) ────────────────────────
     #  The encounter save above stores the SCENE — agents, items, and the handful of
@@ -12140,14 +12160,10 @@ class App:
             "reaction_timeout_s": self.reaction_timeout_s,
             "turn_idx":      int(self.turn_idx),
             "round_num":     int(self.round_num),
-            # Each agent's OWN movement budget, the one a move spends. The engine snapshot
-            # carries a parallel copy, not this one, and `_load_agents` builds agents at 0,
-            # so without it a resumed actor could not take a step (F-M6-7). Stored as read,
-            # with exhaustion already taken off; the load adds back the exhaustion it finds.
-            "agent_budgets": [
-                [pt.walk_remaining, pt.fly_remaining, pt.swim_remaining, pt.burrow_remaining]
-                for pt in self.bm.placed_agents
-            ],
+            # The board snapshot (M6.2): effects, per-cell terrain and light, and every
+            # agent's fight state at its raw index — conditions, movement budgets (F-M6-7),
+            # full stats, loadout. Keyed by the same basis as `engine`.
+            "board":        json.loads(self.bm.snapshot_json()),
             "initiative_order": [
                 {"agent_idx": e.agent_idx, "d20": e.d20,
                  "modifier": e.modifier, "total": e.total}
@@ -12183,17 +12199,26 @@ class App:
             self._flash_status("Combat state skipped — agent list changed since save")
             return False
 
+        # The board first (M6.2): the engine's effects refer to the board's effect ids.
+        # A refused board changes nothing, so refusing the whole resume keeps the scene
+        # exactly as the load built it. Absent in a sidecar written before M6.2.
+        board = doc.get("board")
+        if board is not None and not self.bm.restore_json(json.dumps(board)):
+            self._flash_status("Combat state skipped — board snapshot unreadable")
+            return False
         if not self.combat.restore_json(json.dumps(doc.get("engine", {}))):
             self._flash_status("Combat state skipped — snapshot unreadable")
             return False
+        if board is not None:
+            self._mark_fog_dirty()   # placements and light may have changed under the fog
         # The restore rebuilt the engine's context, and record_moves is not save state.
         self.combat.record_moves = True
-        # Re-seed each agent's own budget (see `_save_combat_state`). The getter takes
-        # exhaustion off on read, so the seed adds back whatever exhaustion this load left
-        # the agent with: the agent then reads exactly what it read at the save, whether
-        # or not its exhaustion survived. Absent in a sidecar written before F-M6-7's fix,
+        # A sidecar written between F-M6-7's fix and M6.2 carries each agent's own budget
+        # as `agent_budgets` instead of a board. The getter takes exhaustion off on read,
+        # so the seed adds back whatever exhaustion this load left the agent with: the
+        # agent then reads exactly what it read at the save. Older sidecars have neither,
         # which leaves the budgets where `_load_agents` put them.
-        budgets = doc.get("agent_budgets")
+        budgets = doc.get("agent_budgets") if board is None else None
         if isinstance(budgets, list) and len(budgets) == len(self.bm.placed_agents):
             for i, (pt, b) in enumerate(zip(self.bm.placed_agents, budgets)):
                 if isinstance(b, list) and len(b) == 4:

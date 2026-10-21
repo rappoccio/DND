@@ -7764,6 +7764,161 @@ key, and how the DM's sidecar and the autosave both use it.
 **Rules:** container only, never `docker build`; stage by name; commit only when asked;
 never push unasked.
 
+##### M6.2 — design *(frozen 2026-10-20, user: "Yes"; full Stats + loadout)*
+
+A read-only survey (`battle_map.hpp`, `agent.hpp`, `combat_serialization.cpp`,
+`_save_agents` / `_save_combat_state` / `_load_combat_state`). No source changed.
+
+**What the survey found, beyond M6.0:**
+- `_save_agents` writes ~120 of `Agent::Stats`' fields. Of the rest, some are derived on
+  load (darkvision, multipliers), but about 50 are live fight state that no file carries:
+  `hunters_mark_target`, `vow_of_enmity_*`, `legendary_actions_current`,
+  `legendary_resistance_current`, `wild_shape_saved_*` (incl. weapons),
+  `sacred_weapon_turns`, the `wild_magic_*` timers, `bonus_actions_remaining`,
+  `shield_active`, `ac_temporary_modifications` and so on. M6.0's scenes don't exercise
+  them, which is why the oracle saw only `leveled_spell_cast_this_turn`.
+- `AgentConditions` (~150 fields, nearly all `bool`/`int`) has no writer at all.
+- The engine's `active_effects` refer to `BattleMap` effect ids, so restoring the engine
+  without the board leaves it pointing at effects that don't exist.
+- nlohmann's `NLOHMANN_DEFINE_TYPE_*` stops at 64 members, so `Stats` and `Conditions`
+  can't use the macro R5 used.
+
+**D-M6.2-1, what the snapshot holds.** `BattleMap::snapshot()` / `restore()`, bound as
+`bm.snapshot_json()` / `bm.restore_json(text) -> bool`, in a new TU
+`battle_map_serialization.cpp`:
+- `"version": 1` (`kBoardSnapshotVersion`); a newer version is refused, as in R5.
+- **Board:** `activeTerrainEffects_`, `activeLightEffects_`, `activeSpellEffects_`, their
+  three id counters, `terrainType_` (Wall of Stone overrides), `terrainMult_`,
+  `baseVisibilityLevel_`. `lightLevel_` and `tempTerrainDiff_` are **recomputed** after
+  the restore, not stored. Doors, fog and map items stay with their existing files (M6.0
+  shows they survive).
+- **Agents, by raw index:** `name` (the basis), origin incl. `z`, `summoner_idx`,
+  `removed_from_play`, `summon_spell`, `on_deck`, the four movement budgets, the full
+  `Conditions`, the full `Stats`, and the loadout (`weapons`, `spells`, `items`, `armor`).
+- `Stats` / `Conditions` use an X-macro field list (one line per field, `j.value(key,
+  default)` on read, so a payload missing a field keeps the default, as R5 does). The
+  `Weapon` / `Spell` mappings move from `combat_serialization.cpp` into a private header
+  shared by the two TUs; `Item` and `Armor` get small mappings.
+
+**D-M6.2-2, restore is an overlay.** Python still builds the agents (`_load_agents`:
+sprites, panel lists). `restore()` then overwrites each built agent's state, and first
+checks that the names match the basis one for one; on a mismatch it returns `false`
+having changed nothing. A parse or shape error also returns `false`, never throws.
+
+**D-M6.2-3, raw-basis agents (D-M6-2).** `_save_agents(path, raw=True)` keeps summons and
+tombstones in place. Only the autosave (M6.3) and the oracle call it; the DM's encounter
+save is unchanged. The overlay restores `summoner_idx` / `removed_from_play`, so
+`_load_agents` needs no new keys.
+
+**D-M6.2-4, the DM's own `_combat.json`.** `_save_combat_state` adds
+`"board": bm.snapshot_json()`; `_load_combat_state` restores it after the basis check and
+before the engine. That carries the condition flags, the Stats fight state and the
+effects through the DM's save/load whenever the basis matches. `agent_budgets` stops being
+written (the board carries the budgets) but is still read from older sidecars.
+
+**D-M6.2-5, the guard against a forgotten field.** A test sets every bound attribute of
+`Stats` and `AgentConditions` to a non-default value, round-trips the snapshot, and
+compares. A field added later without a line in the X-macro list fails it.
+
+**Tests:** the oracle's `_save` switches to `raw=True`, so the hard scene's resume runs.
+Every key that closes leaves `KNOWN_GAPS`; any key the refusal was hiding is named here
+when it appears. Plus D-M6.2-5's guard, a refused-basis test, and a truncated-file test.
+
+**Answered (user, 2026-10-20):** the design is agreed, and the snapshot carries the full
+`Stats` and loadout, not only `Conditions` and the budgets.
+
+##### M6.2 — what landed *(2026-10-20, commit "M6.2: the board snapshot")*
+
+- **C++ (new TU `gui/battle_map_serialization.cpp`, in `CMakeLists.txt`):**
+  `BattleMap::snapshot()` / `restore()` / `snapshotJson()` / `restoreJson()`, bound as
+  `bm.snapshot_json()` / `bm.restore_json(text)`. `"version": 1`
+  (`kBoardSnapshotVersion`), plus `cols` / `rows`.
+  - It holds the three effect lists, their id counters, `terrainType_`, `terrainMult_`,
+    `baseVisibilityLevel_`, and per agent: `name`, `size`, `z`, every `PlacedAgent` field,
+    the full `Stats` (203 fields), the full `Conditions` (152), and `movement` (the raw
+    budgets).
+  - `restore()` **stages the whole payload into copies and commits only at the end**, so
+    every refusal changes nothing, including a field of the wrong shape halfway through.
+    It refuses on a basis mismatch (names and sizes, by raw index), a different grid, a
+    newer version, a per-cell array of the wrong length, or a parse or shape error. A key
+    the payload omits keeps the built value. `updateTerrain()` and `updateLighting()` run
+    after the commit.
+  - `Stats`, `Conditions` and `PlacedAgent` use X-macro field lists. `Resource`, `Item`,
+    `Armor` and the three effect structs use the nlohmann macro.
+- **`gui/serialization_mappings.hpp`** (new, private): the Cell, damage-roll,
+  `AttackCondition`, `Weapon` and `Spell` mappings moved out of `combat_serialization.cpp`
+  unchanged, so both snapshots share them.
+- **`agent.hpp`:** `Agent::rawMovement()`, the four budgets before exhaustion is taken
+  off.
+- **`main.py`:**
+  - `_save_agents(..., raw=False)`. `raw=True` keeps summons and tombstones at their index
+    (D-M6-2). A tombstone is written at the first placeable cell (`_placeable_cell`),
+    because `_load_agents` can't place one at (-1, -1); the overlay banishes it again.
+  - `_save_combat_state` writes `"board"` and no longer writes `agent_budgets`.
+  - `_load_combat_state` restores the board after the basis check and before the engine.
+    A refused board refuses the resume ("board snapshot unreadable"). `agent_budgets` is
+    still read from a sidecar that has no board.
+
+**The oracle:**
+- **`KNOWN_PLAIN_GAPS` is empty.** The condition flags now survive the DM's own save and
+  load (the rest of F-M6-7).
+- **`KNOWN_GAPS` went from 24 to 1**: only `turn.npc_drive` (F-M6-4, M6.4) is left. The
+  hard scene saves with `raw=True`; the plain scene keeps the DM's compacted save, so the
+  DM path stays under test.
+- **One fingerprint change, named as the Step 0 amendment allows.** With the resume now
+  running, `engine` differed only in the *order* of `movement.*` entries. An int-keyed
+  `unordered_map` serializes in hash-iteration order, and a rebuilt map can iterate
+  differently with identical contents. The oracle now sorts arrays of two-field entries
+  (`_canonical`) and keeps the order of every other array. No gap was hidden by the
+  refusal beyond that.
+- `test_resumed_actor_can_move` passes unchanged.
+
+**New suite `tests/test_board_snapshot.py`** (registered after the oracle), 6 tests:
+- the field-list guard (D-M6.2-5), which parses the struct members out of the headers and
+  checks 12 types (554 fields) against their lists;
+- every bound `Stats` / `Conditions` field (159 / 144) set to a value off its default,
+  round-tripped onto an agent reset to defaults;
+- the raw budgets with exhaustion, and the `PlacedAgent` fields including a tombstone;
+- 10 refusals, each checked byte for byte to change nothing;
+- omitted keys keep the built value;
+- a pre-M6.2 sidecar (`agent_budgets`, no board) still resumes.
+
+**Mutants: 5 of 5 killed:**
+- a `Stats` field dropped from the list;
+- the size check moved after the commit;
+- conditions not read back;
+- the board not restored in `_load_combat_state`;
+- `raw` ignored.
+
+Each ran on its own (C++ ones rebuilt) and was reverted, followed by a clean rebuild.
+
+**Suite: 182 / 0** in the container (one suite more than M6.0). The goldens are unchanged.
+
+##### Handoff — M6.2 landed *(written 2026-10-20)*
+
+**State.** M6.2 is **committed** ("M6.2: the board snapshot"):
+- new: `gui/battle_map_serialization.cpp`, `gui/serialization_mappings.hpp`,
+  `tests/test_board_snapshot.py`;
+- changed: `gui/CMakeLists.txt`, `gui/agent.hpp`, `gui/battle_map.hpp`,
+  `gui/bind_battle_map.cpp`, `gui/combat_serialization.cpp`, `gui/main.py`,
+  `tests/run_all_tests.py`, `tests/test_restore_oracle.py`, this plan.
+
+Leave `maps/TestDNDMap_terrain.json` and `.tmp_claude/` alone.
+
+**Not covered here, as the design said:** the board snapshot is written only while a
+fight is on, because `_combat.json` is. Doors, fog and map items stay with their own
+files.
+
+**Next: M6.3**, `gui/autosave.py`: the ring, and the save hook at the tail of
+`_finish_turn_start` (D-M6-1, D-M6-4, D-M6-8). A slot's agent file is
+`_save_agents(slot_path, raw=True)`. Note that `_save_agents` writes the combat sidecar
+and session only when `path == self._save_path`, so the autosave must write the slot's
+combat file itself (`_save_combat_state(slot_combat_path)`). Then M6.4 swaps the oracle's
+`_save` / `_restore` for the ring, and closes `turn.npc_drive`.
+
+**Rules:** container only, never `docker build`; stage by name; commit only when asked;
+never push unasked.
+
 ---
 
 ### M7 — Hardening

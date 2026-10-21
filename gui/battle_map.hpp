@@ -883,6 +883,25 @@ public:
     [[nodiscard]] std::vector<MapItem> getAllItems()             const noexcept;
     void clearItems() noexcept;
 
+    // ── Board snapshot (MULTIPLAYER_PLAN.md M6.2) ─────────────────────────
+    // The mid-fight state of the board that no scene file carries: the terrain, light and
+    // spell effects with their id counters, the per-cell terrain types / multipliers / base
+    // light, and every placed agent at its RAW index (placement, summon and tombstone
+    // fields, movement budgets, full Stats, full Conditions, loadout). Defined in
+    // battle_map_serialization.cpp.
+    //
+    // restore() is an OVERLAY: the caller has already built the agents (main.py's
+    // _load_agents), and restore() overwrites their state. It refuses — returns false
+    // having changed NOTHING — when the agent names or sizes don't match the snapshot's
+    // basis one for one, when the grid size differs, or when the payload is the wrong
+    // shape. A key the payload omits keeps the built value. The computed overlays
+    // (lightLevel_, tempTerrainDiff_) are recomputed, not stored.
+    static constexpr int kBoardSnapshotVersion = 1;
+    [[nodiscard]] nlohmann::json snapshot() const;
+    [[nodiscard]] bool restore(const nlohmann::json& j);
+    [[nodiscard]] std::string snapshotJson() const;
+    [[nodiscard]] bool restoreJson(const std::string& text);
+
     // ── Tuning parameters ─────────────────────────────────────────────────
     struct DetectionParams {
         // Grid-line detection (Hough)

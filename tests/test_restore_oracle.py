@@ -23,9 +23,9 @@ delete it from the list. The list is empty when M6 is done.
 the DM's own encounter save and the Load path (``_on_load_path_chosen``); from M6.3/M6.4
 they are the autosave ring.
 
-A plain fight (no summon, no effect, a PC on turn) is the control. It was meant to restore
-cleanly, and it does not: the resume runs, and still the actor on turn comes back with no
-movement and without its condition flags (F-M6-7). So it is a ratchet too.
+A plain fight (no summon, no effect, a PC on turn) is the control. Until M6.2 the actor on
+turn came back without its condition flags (F-M6-7); it now restores cleanly, and stays a
+ratchet so it keeps doing so.
 """
 
 import os
@@ -57,36 +57,15 @@ FOE_FACTION = 1
 # it here. A slice that un-masks a gap (M6.2 lets the combat resume run, which exposes
 # what the resume itself loses) may add it, and says so in its plan entry.
 
-# The control. F-M6-7: even when the resume runs, every per-agent condition flag
-# (`AgentConditions`) is dropped, because `_save_agents` does not write the struct. The
-# actor's walk budget was lost here too, until the sidecar learned `agent_budgets`.
-KNOWN_PLAIN_GAPS = frozenset({
-    "agents.Brannor.conditions",      # has_taken_turn_this_combat
-})
+# The control. Clean since M6.2: the board snapshot in `_combat.json` carries the
+# condition flags (F-M6-7) and the movement budgets through the DM's own save and load.
+KNOWN_PLAIN_GAPS = frozenset()
 
-# The hard scene. The summon and the tombstone change `agent_basis`, so the resume is
-# refused outright (F-M6-2) and the engine and the turn loop are lost with it; the rest is
-# F-M6-3 (board effects, no writer) and F-M6-7 (condition flags, budgets).
+# The hard scene. Since M6.2 the raw-basis save keeps the summon and the tombstone at
+# their index, so the resume runs, and the board snapshot brings back the effects, the
+# light and terrain they set, and every agent's fight state. What is left is the NPC
+# drive, re-armed by the restore in M6.4.
 KNOWN_GAPS = frozenset({
-    "agents.basis",
-    "agents.Wolf.placement", "agents.Wolf.stats", "agents.Wolf.conditions",
-    "agents.Wolf.movement",
-    "agents.Imp.placement", "agents.Imp.stats", "agents.Imp.conditions",
-    "agents.Imp.movement",
-    "agents.Aria.conditions",         # concentrating on Wall of Fire
-    "agents.Aria.stats",              # leveled_spell_cast_this_turn
-    "agents.Brannor.conditions",      # concentrating on Darkness, has_taken_turn
-    "agents.Brannor.stats",           # leveled_spell_cast_this_turn
-    "agents.Brannor.movement",
-    "agents.Gnasher.conditions",      # has_taken_turn_this_combat
-    "agents.Gnasher.movement",        # the NPC on turn: 30 ft walk -> 0
-    "board.spell_effects",            # Wall of Fire
-    "board.terrain_effects",          # the DM's rubble
-    "board.terrain_mult",             # …and the multipliers it set
-    "board.light_effects",            # Darkness
-    "board.light_levels",             # …and the cells it darkened
-    "engine",                         # resume refused: fresh engine, fresh RNG
-    "turn.loop",                      # resume refused: combat not active
     "turn.npc_drive",                 # F-M6-4
 })
 
@@ -124,6 +103,23 @@ def _dump(obj, depth=0):
     return out if out else repr(obj)
 
 
+def _canonical(node):
+    """The engine snapshot with its hash-map arrays sorted. An int-keyed
+    `std::unordered_map` serializes as an array of two-field entries (`{agent, feet}`,
+    `{caster, targets}`, …) in hash-iteration order, and a map rebuilt by a restore can
+    iterate in a different order while holding the same entries (M6.2 measured it on the
+    movement budgets). Order there is not state, so it is not compared. Every other array
+    keeps its order."""
+    if isinstance(node, dict):
+        return {k: _canonical(v) for k, v in node.items()}
+    if isinstance(node, list):
+        items = [_canonical(v) for v in node]
+        if items and all(isinstance(v, dict) and len(v) == 2 for v in items):
+            items.sort(key=lambda v: json.dumps(v, sort_keys=True))
+        return items
+    return node
+
+
 def _cells(bm):
     return [rpg.Cell(c, r) for r in range(bm.grid_rows) for c in range(bm.grid_cols)]
 
@@ -157,7 +153,7 @@ def fingerprint(app) -> dict:
     fp["board.disallowed"] = sorted((c.col, c.row) for c in bm.disallowed_cells)
     fp["board.explored"] = sorted((c.col, c.row) for c in bm.explored_cells())
 
-    fp["engine"] = json.loads(combat.snapshot_json())
+    fp["engine"] = _canonical(json.loads(combat.snapshot_json()))
 
     fp["turn.loop"] = {
         "combat_active": bool(app.combat_active),
@@ -184,10 +180,12 @@ def diff(before: dict, after: dict) -> dict:
 #  The save and the restore under test (swapped by M6.3 / M6.4)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _save(app) -> str:
-    """Today's path: the DM's encounter save (which writes the combat sidecar and the
-    session) plus the terrain file. Lighting and effects have no mid-fight writer."""
-    app._save_agents()
+def _save(app, raw=False) -> str:
+    """Today's path: the DM's encounter save (which writes the combat sidecar, with its
+    board snapshot, and the session) plus the terrain file. `raw` keeps summons and
+    tombstones at their index (D-M6-2), as the autosave will; the plain scene keeps the
+    DM's own compacted save, so the DM's save and load stay under test too."""
+    app._save_agents(raw=raw)
     app._save_terrain()
     return app._save_path
 
@@ -316,7 +314,7 @@ def _round_trip(hard):
         app = _fight(tmp, hard=hard)
         before = fingerprint(app)
         assert fingerprint(app) == before, "the fingerprint itself is not stable"
-        after = fingerprint(_restore(_save(app)))
+        after = fingerprint(_restore(_save(app, raw=hard)))
         return before, after
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -397,9 +395,9 @@ def test_resumed_actor_can_move():
         assert (moved.col, moved.row) == (dest.col, dest.row), \
             f"the resumed actor could not take one step: still at {(moved.col, moved.row)}"
 
-        # Exhaustion is one of the flags the resume still drops (F-M6-7), so the budget is
-        # stored as read and the load adds back only the exhaustion it finds: an exhausted
-        # actor must come back with what it had, not its exhaustion's worth more.
+        # Exhaustion lives in the condition flags and the budget is stored raw (the board
+        # snapshot, M6.2): an exhausted actor must come back with what it had, not its
+        # exhaustion's worth more or less.
         cond = app.combat.get_agent_conditions(app.bm, actor)
         cond.exhaustion_level = 2
         app.combat.set_agent_conditions(app.bm, actor, cond)
