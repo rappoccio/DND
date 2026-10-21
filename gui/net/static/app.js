@@ -279,8 +279,7 @@ function render(next) {
   el("combat-state").textContent = view.combat.active
     ? (view.combat.paused ? "(paused)" : "") : "(out of combat)";
 
-  drawInitiative();
-  drawTokens();
+  drawRoster();
   drawLog();
   drawBoard();
 }
@@ -304,53 +303,64 @@ function hpText(agent) {
   return hp.band || "";
 }
 
-function drawInitiative() {
-  const list = el("initiative");
+/* QOL Q3: one table, the DM's initiative tracker — ▶ · name · init · HP, conditions under
+   the name. In combat the rows follow the initiative order, and whatever else is on the
+   board goes below a divider, alphabetically; out of combat the board is listed
+   alphabetically, as it was.
+
+   `combat.turn_idx` indexes the UNFILTERED order, so counting rows would mark the wrong
+   creature exactly when a hidden one exists. `turn_agent` (D-M5-5) is the agent index
+   itself, and null when the creature on turn is one this view does not carry — so no row
+   is marked, and nothing about the hidden one is inferred. */
+function drawRoster() {
+  const list = el("roster");
   list.textContent = "";
-  /* `combat.turn_idx` indexes the UNFILTERED order, so counting rows would mark the wrong
-     creature exactly when a hidden one exists. `turn_agent` (D-M5-5) is the agent index
-     itself, and null when the creature on turn is one this view does not carry — so no row
-     is marked, and nothing about the hidden one is inferred. */
-  for (const entry of view.combat.initiative) {
-    const agent = agentByIndex(entry.agent);
-    const row = document.createElement("li");
-    if (entry.agent === view.combat.turn_agent) row.className = "turn";
-    const who = document.createElement("span");
-    who.textContent = agent ? agent.name : `#${entry.agent}`;
-    if (agent) who.className = classOf(agent);
-    const total = document.createElement("span");
-    total.className = "hint";
-    total.textContent = entry.total;
-    row.append(who, total);
-    list.append(row);
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  const order = view.combat.active ? view.combat.initiative : [];
+  const ranked = new Set(order.map((entry) => entry.agent));
+  for (const entry of order) {
+    list.append(rosterRow(agentByIndex(entry.agent), entry.agent, entry.total));
   }
-  if (!view.combat.initiative.length) {
+  const rest = view.agents.filter((a) => !ranked.has(a.agent)).sort(byName);
+  if (order.length && rest.length) {
+    const divider = document.createElement("li");
+    divider.className = "divider";
+    divider.textContent = "Not in initiative";
+    list.append(divider);
+  }
+  for (const agent of rest) list.append(rosterRow(agent, agent.agent, null));
+  if (!order.length && !rest.length) {
     const row = document.createElement("li");
-    row.className = "hint";
-    row.textContent = "no initiative order";
+    row.className = "empty";
+    row.textContent = "nothing on the board";
     list.append(row);
   }
 }
 
-function drawTokens() {
-  const list = el("tokens");
-  list.textContent = "";
-  for (const agent of [...view.agents].sort((a, b) => a.name.localeCompare(b.name))) {
-    const row = document.createElement("li");
-    const who = document.createElement("span");
-    who.className = classOf(agent);
-    who.textContent = agent.name;
-    const right = document.createElement("span");
-    right.textContent = hpText(agent);
-    if (agent.conditions && agent.conditions.length) {
-      const conds = document.createElement("span");
-      conds.className = "conds";
-      conds.textContent = ` ${agent.conditions.join(", ")}`;
-      right.append(conds);
-    }
-    row.append(who, right);
-    list.append(row);
+function onTurn(idx) {
+  return !!view.combat.active && view.combat.turn_agent !== null
+      && view.combat.turn_agent !== undefined && idx === view.combat.turn_agent;
+}
+
+function rosterRow(agent, idx, total) {
+  const row = document.createElement("li");
+  const turn = onTurn(idx);
+  if (turn) row.className = "turn";
+  const cell = (cls, text) => {
+    const span = document.createElement("span");
+    span.className = cls;
+    span.textContent = text;
+    return span;
+  };
+  const name = cell("name", agent ? agent.name : `#${idx}`);
+  if (agent) name.className = `name ${classOf(agent)}`;
+  row.append(cell("mark", turn ? "▶" : ""), name,
+             cell("init", total === null ? "" : String(total)),
+             cell("hp", agent ? hpText(agent) : ""));
+  if (agent && agent.conditions && agent.conditions.length) {
+    row.append(cell("conds", agent.conditions.join(", ")));
   }
+  return row;
 }
 
 function drawLog() {
@@ -765,6 +775,7 @@ function drawGrid(cell, cols, rows) {
 
 /* The name label, coloured by what this viewer was told (see `classOf`). */
 const TOKEN_COLOURS = { mine: "#f0c040", ally: "#5aa9e6", other: "#e06666" };
+const TURN_OUTLINE = "rgb(255, 215, 0)";     // main.py _draw_agents, the selection rect
 
 // gui/constants.py, copied (B-8). A change there is a change here.
 const FACTION_COLORS = { 0: [160, 160, 160], 1: [210, 70, 70], 2: [80, 120, 220] };
@@ -893,6 +904,14 @@ function drawToken(agent, cell) {
   }
 
   if (corpse) drawHatch(x, y, span);
+
+  // QOL Q3: the creature on turn gets the DM's yellow outline — `_draw_agents`' selection
+  // rect, which follows the turn (main.py sets `selected_idx` on each advance).
+  if (onTurn(agent.agent)) {
+    ctx.strokeStyle = TURN_OUTLINE;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x + 1.5, y + 1.5, span - 3, span - 3);
+  }
 
   // The HP bar, `_draw_hp_bar`'s geometry and colours, when this viewer has numbers, and
   // nothing at all when they have a band — a bar drawn from a band would be this file

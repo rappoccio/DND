@@ -7,22 +7,12 @@ Format: **[DM|Player|Both]** short title — what happened, what would be better
 
 ## Open
 
-3. **[Player] Merge initiative and health into one table** — The player screen shows the
-   initiative order ("Round" panel) and creature health ("On the board" panel) as two
-   separate panels. Combine them into a single table in initiative order (name, initiative,
-   health/condition, current-turn marker), like a real table's initiative tracker.
-
 4. **[Player] Match the DM's action-panel groupings** — The player action bar is one flat
    row of identical yellow buttons. The DM's Combat panel groups them into Action / Bonus
    Action / Movement, with per-button colours (green Attack, purple Cast Spell, blue Dash,
    etc.) and greys out unavailable actions (e.g. Lay on Hands). The player view should use
    the same groups, order, colours, and disabled states, so "Cast Spell" (action) vs
    "Spell" (bonus action) is unambiguous.
-
-5. **[Player] Show whose turn it is the way the DM screen does** — On the DM screen the active
-   creature is highlighted yellow (▶ marker in the initiative list, yellow outline on its
-   token). The player screen has no equivalent on the map or in the initiative/board panels
-   (only a text banner above the action buttons). Use the same yellow highlight.
 
 6. **[Player] Drag-to-move preview like the DM screen** — When moving a token on the
    player view, the sprite doesn't follow the cursor to show which square it will land in;
@@ -46,3 +36,8 @@ Format: **[DM|Player|Both]** short title — what happened, what would be better
   (2026-10-21): from 56rem up, the player page uses the DM's layout — board fills the left
   at full height, a 340 px right column (`constants.PANEL_W`) holds the prompt and panels.
   Phones keep the stack. Checked live.
+- **[Player] Merge initiative and health into one table** — QOL_PLAN Q3 (2026-10-21): one
+  table in initiative order (▶ · name · init · HP · conditions), the rest of the board below
+  a divider; alphabetical out of combat. Checked live.
+- **[Player] Show whose turn it is the way the DM screen does** — QOL_PLAN Q3 (2026-10-21):
+  the DM's gold ▶ row and the yellow outline on the token on turn. Checked live.

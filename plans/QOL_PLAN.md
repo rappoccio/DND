@@ -63,7 +63,7 @@ rebuild.
   setting changes the DM's apparent size.
 - CSS/HTML only. It goes after Q1 because the board area's size has to drive the canvas.
 
-### Q3 — Initiative and health in one table (item 3) + turn highlight (item 5)
+### Q3 — Initiative and health in one table (item 3) + turn highlight (item 5). **Done 2026-10-21**, checked live (suite 186/0, `tests/test_roster.py`).
 - Replace "Round" and "On the board" with one table: **▶ marker · name · init · HP
   (numbers or band) · conditions**, in initiative order. Creatures on the board but not in
   initiative go below a divider. Out of combat it lists the board alphabetically, as now.
