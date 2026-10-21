@@ -27,6 +27,8 @@ own commits. Both are now fixed and committed. **M5e.2 has landed (committed,
 **2026-10-20: M4b resumed. M4b.3 (browser playback and the toggle) is committed (`6f5f5e0`, not pushed).
 M4b.4 (human-move slides on the DM screen) has landed, uncommitted. M4b.5 is next:** read
 "Handoff — M4b.4 landed", just before M6.
+**2026-10-20: M4b is complete (`c070472`). M6's Step 0 is frozen (user: "agreed"), and M6.0
+(the restore oracle) has landed, uncommitted.** Read "Handoff — M6.0 landed", under M6.
 
 ---
 
@@ -242,7 +244,9 @@ one-line reason, like every other frozen block.
 **Players**
 1. Open the URL in a browser.
 2. Enter the join code and your name.
-3. If you've played before, pick your seat from the list.
+3. If you've played before, type the same name as last time (pre-filled on the same
+   device). *(Amended 2026-10-20, D-M6-7: was "pick your seat from the list"; a seat list
+   shown before the code is checked leaks every name at the table.)*
 4. Play.
 
 **Dropped connection**
@@ -253,7 +257,7 @@ one-line reason, like every other frozen block.
 
 What this pins down, phase by phase: startup prints the join code *and* the reachable URL
 (M4); controller assignment is one submenu on the existing agent right-click menu, never a
-new dialog (M0); rejoin after a restart is a seat list, not a re-invite (M6); and a dropped
+new dialog (M0); rejoin after a restart is the same name, pre-filled, not a re-invite (M6; amended 2026-10-20, D-M6-7); and a dropped
 client recovers with a page reload and nothing else (M6). No step requires the DM to touch a
 player's device, and no step requires a player to install anything.
 
@@ -7542,6 +7546,187 @@ never push unasked.
   `gui/atomic_io.py`. NN7 may assume both writes are atomic against a process crash; see
   [S1 + S2](#s1--s2--landed-2026-09-22) for what it may **not** assume about power loss.)*
 - Rebind host callbacks (logger, render hook) **before** `restore()`, per R5's note.
+
+##### M6 — Step 0 *(frozen 2026-10-20, user: "agreed")*
+
+A read-only survey. No source file was changed.
+
+**What already works:**
+- **Reconnect while the process is alive.** `app.js` keeps the credential in
+  `sessionStorage` and retries the socket with a backoff (`RETRY_MS`, 1 s to 10 s). On
+  connect, `_live_resync` sends a fresh `view`, and `seq` restarts from it. A reload keeps
+  the seat. Nothing is missing here except a test that drops a socket mid-fight.
+- **Re-claiming a seat after a restart, on the server.** D-M4-4 step 2 (`principal_id`) and
+  step 3 (the name, case-insensitive) are both in `_claim_seat`. The client sends only the
+  name, never `principal_id`.
+- **Resuming a fight, by hand.** `_on_load_path_chosen` calls `_load_combat_state`, which
+  restores the engine and the turn loop from `<base>_combat.json`. Writes are atomic (S1).
+
+**Findings. These are the gaps between NN7 as written and the code:**
+- **F-M6-1: nothing saves at the turn boundary.** `_combat.json` is written only from the
+  tail of `_save_agents`. Its 8 callers are all DM actions (save, page switch, load PCs and
+  so on), so after a crash the sidecar is however old the DM's last save was.
+- **F-M6-2: a summon or a tombstone blocks any restore.** `_save_agents` drops summons and
+  `removed_from_play` agents and renumbers. `_load_combat_state` then refuses the resume,
+  because `agent_basis` no longer matches. A dismissed summon stays as a tombstone, so after
+  the first summon of a fight ends, the fight can never be restored again. `_load_agents`
+  doesn't read `summoner_idx` either.
+- **F-M6-3: some board state that changes mid-fight has no save.** NN7 says "full sidecar
+  set (agents + combat + terrain + lighting + effects)", and assumes each of those has a
+  writer. Not all of them do:
+  - `BattleMap` spell effects (`active_spell_effects`) and terrain effects
+    (`place_terrain_effect`, the DM effects that `tick_dm_terrain_effects` expires) are
+    never written. `_effects.json` is a configuration the DM authored, read by
+    `apply_spell_effect_configuration`. It is not a dump of state.
+  - Per-cell light levels and terrain multipliers set by spells are never written.
+    `_save_lighting` writes the DM's light sources only, and it uses a non-atomic
+    `open(path, 'w')`.
+  - R5's snapshot leaves `BattleMap` out on purpose ("those have their own save"). For these
+    parts, that save doesn't exist.
+
+  Which of them a restore rebuilds anyway (for example, from the engine's `active_effects`)
+  is not known yet. M6.0 measures it.
+- **F-M6-4: a restored NPC turn never runs.** `_finish_turn_start` arms `_npc_drive_idx` for
+  an automated actor, and the frame after runs the NPC's turn. `_load_combat_state` doesn't
+  re-arm it, so a restore onto an automated NPC's turn would sit there idle.
+- **F-M6-5: the frozen player procedure says "pick your seat from the list".** No seat list
+  exists. Re-claiming works by name. A seat list shown before the code is checked would
+  hand every name at the table to anyone who can reach 6081.
+- **F-M6-6: dungeon levels.** Only the active page is live. The other pages' files are
+  written on a page switch, so an autosave of the active page is the whole of the live
+  state.
+
+**Proposed decisions (D-M6-n):**
+- **D-M6-1, the save point:** the tail of `_finish_turn_start`. The turn-start reaction
+  window has resolved, the action economy is reset, and an NPC's turn hasn't run yet (it
+  runs the frame after). A turn start that parks on a reaction saves when that reaction
+  resolves, because `_finish_turn_start` is its continuation. The legendary phase has
+  already drained by then.
+- **D-M6-2, raw-basis agents in the autosave:** the slot's agent file keeps summons and
+  tombstones, at their raw index with `summoner_idx` and `removed_from_play`, so
+  `agent_basis` matches by construction. The DM's own encounter save keeps its compaction,
+  and its file format doesn't change. This fixes F-M6-2 for autosaves only.
+- **D-M6-3, a `BattleMap` board snapshot** for whatever M6.0 proves isn't rebuilt: the spell
+  effects, the terrain effects, light levels and terrain multipliers, as C++
+  `snapshot_json` / `restore_json` on `BattleMap`, built the way R5 built the engine's. This
+  is the one slice that touches C++.
+- **D-M6-4, the ring:** a new module, `gui/autosave.py` (NN3). Slots go in
+  `<base>_autosave/slot_<k>/`, and there are `roster.autosave_slots` of them (1–5, default 3,
+  already parsed). Each slot holds the agents, combat, board, terrain and lighting files,
+  plus `meta.json` `{round, turn_idx, actor, timestamp}`. `meta.json` is written last and
+  atomically, which makes it the commit marker: a slot without one is ignored. The oldest
+  slot is overwritten. The DM's scene files are never touched.
+- **D-M6-5, restore:** one function, `autosave.restore(app, slot)`. It loads the slot's
+  files in the same order `_on_load_path_chosen` does, restores the board, then the engine,
+  re-arms `_npc_drive_idx` (F-M6-4), and marks every seated player for a fresh `view`. NN7
+  puts the DM's restore UI in M7, but without some way in the mechanism can't be used after
+  a crash. **Proposal:** one entry, "Restore autosave ▸", on an existing menu, listing each
+  slot's round, actor and time. The alternative is a `--restore` start flag.
+- **D-M6-6, no replay on reconnect:** a socket that reconnects gets the fresh view it
+  already gets, and the moves it missed are not played back. Resume-at-`seq` is not built.
+  The 512-event buffer and `GET /events?since=` stay as they are.
+- **D-M6-7, re-claim after a restart:** the client keeps `principal_id` and the display
+  name in `localStorage`. Neither is a credential, so A3 holds. After a restart, the join
+  card is pre-filled with the name and sends `principal_id`, so D-M4-4 step 2 puts the
+  player back in their seat. **The frozen procedure gets amended:** Players step 3 changes
+  from "pick your seat from the list" to "type the same name as last time (pre-filled on
+  the same device)". No seat list is built (F-M6-5).
+- **D-M6-8, cost:** the autosave is timed in its test. If one hitches visibly, the escape
+  hatch is the one Step 0.1 named: serialize on the frame tick and write on a thread.
+
+**Proposed slices, one commit each:**
+
+| Slice | Content | C++ |
+| ----- | ------- | :-: |
+| M6.0 | The restore oracle, as a test: a fight with a summon, a tombstone, Wall of Fire, Darkness, an opened door and an automated NPC on turn. Save at the boundary, restore into a fresh `App`, and compare the board, engine and turn loop. Lands with its known failures listed; it is the check that every later slice is held to. | no |
+| M6.1 | Raw-basis agent records for the autosave (D-M6-2) | no |
+| M6.2 | The `BattleMap` board snapshot (D-M6-3), sized by what M6.0 measured | yes |
+| M6.3 | `gui/autosave.py`, the ring and the save hook (D-M6-1, D-M6-4, D-M6-8) | no |
+| M6.4 | Restore, the NPC re-arm, the player resync and the menu entry (D-M6-5) | no |
+| M6.5 | The client's re-claim (D-M6-7), plus tests for a dropped socket and a restart | no |
+
+**Questions for the user:**
+1. Is the restore entry a menu item now (D-M6-5) or a `--restore` flag, or do we wait for M7?
+2. Do you agree to the procedure amendment in D-M6-7, which drops the seat list?
+3. Do you agree that M6.2 touches C++?
+
+**Answers (user, 2026-10-20):**
+1. A "Restore autosave" menu entry, now, in M6.4.
+2. Yes. Players step 3 of the target procedure is amended to "type the same name as last
+   time (pre-filled on the same device)". No seat list. Reason: a seat list shown before
+   the code is checked leaks every name at the table.
+3. Yes, M6.2 may touch C++.
+
+##### M6.0 — what landed *(2026-10-20, uncommitted)*
+
+- **`tests/test_restore_oracle.py`** (new, registered after `test_sprites.py`). It
+  fingerprints everything a turn can read, then compares the fingerprint before a save
+  with the one after a restore into a fresh `App`. The fingerprint covers:
+  - every agent at its raw index: placement, summoner, tombstone, movement budgets, and a
+    full attribute dump of its stats and conditions;
+  - the board: doors, terrain, spell and light effects, per-cell light levels, terrain
+    types and multipliers, blocked cells, fog;
+  - the engine snapshot, the turn loop, the action economy and `_npc_drive_idx`.
+- **Two scenes:**
+  - the hard one Step 0 named: a summon (Wolf) and a tombstone (Imp); Wall of Fire and
+    Darkness, cast through `execute_spell`; a DM terrain effect; an opened door; and the
+    automated NPC Gnasher on turn with its drive armed and not yet run;
+  - a plain control: no summons and no effects, with a PC on turn.
+- **Both are ratchets.** `KNOWN_GAPS` and `KNOWN_PLAIN_GAPS` list the keys that don't
+  survive. The test fails on an unlisted gap, and also on a listed key that now survives,
+  so each slice must shrink the list.
+- **`_save` / `_restore`** are today's path: `_save_agents` + `_save_terrain`, then
+  `_on_load_path_chosen` into a new `App`. M6.3/M6.4 swap in the autosave ring.
+- A third check, `test_hard_scene_has_what_it_claims`, stops a changed spell or map from
+  quietly emptying the scene.
+- **Mutants:** 2 of 2 killed (the resume skipped; a gap closed without the list being
+  updated), plus a passing no-change control. Script: `.tmp_claude/mutants_m6_0.py`,
+  untracked scratch.
+
+**What it measured:**
+- **F-M6-7 (new): even a resume that runs loses state.** The plain control was meant to
+  restore cleanly, and it doesn't. The actor on turn comes back with a walk budget of 0
+  instead of 30, and every `AgentConditions` flag is dropped. In the plain scene that's
+  `has_taken_turn_this_combat`; in the hard scene it's also `concentrating` /
+  `concentrating_on`, and the stats flag `leveled_spell_cast_this_turn`. `_save_agents`
+  writes neither the condition struct nor the budgets. The engine's snapshot carries its
+  own `movement.walk_remaining`, but `_load_combat_state` mirrors the panel from the
+  placed agent, which `_load_agents` built fresh at 0. **So today's R5 resume hands the
+  actor on turn no movement.** This is a live bug in the DM's own save/load, not only in
+  the autosave.
+- **The hard scene loses 24 keys.** The summon and the tombstone change `agent_basis`, so
+  the resume is refused outright. The engine (fresh RNG, `turn_counter` 0) and the turn
+  loop (combat off) go with it. All four board effects and the light levels and terrain
+  multipliers they set are lost (F-M6-3), and so is the NPC drive (F-M6-4).
+- **The refusal masks gaps.** Once M6.1 lets the resume run, the engine and turn-loop keys
+  may close, and gaps the refusal was hiding may open. M6.1 may add keys for that reason,
+  as long as its plan entry names each one.
+- **Not lost:** doors (open state), terrain types, blocked cells, fog, the economy flags.
+
+**A question this raises for M6.1 and M6.2 (not decided, Step 0 is unchanged):** F-M6-7
+lives in `PlacedAgent` (conditions, budgets), and so do the summons and tombstones of
+F-M6-2. A `BattleMap` snapshot (M6.2) that included the placed-agent array at raw index
+would close F-M6-2 and F-M6-7 together, which would leave M6.1 almost nothing to do. Ask
+the user before starting M6.1 whether to fold it into M6.2.
+
+**Suite: 181 / 0** in the container (one suite more than M4b.5). The goldens are unchanged, and no C++ changed.
+
+##### Handoff — M6.0 landed *(written 2026-10-20)*
+
+**State.** M6.0 is **uncommitted**:
+- new: `tests/test_restore_oracle.py`;
+- changed: `tests/run_all_tests.py` and this plan (Step 0 frozen, the answers, the
+  procedure amendment, this entry).
+
+Leave `maps/TestDNDMap_terrain.json` and `.tmp_claude/` alone.
+
+**Next: M6.1.** First ask the user the fold-into-M6.2 question above. Also ask whether
+F-M6-7 (a resumed actor gets no movement) is a bug to fix on its own, since it breaks the
+DM's existing resume. Under the standing rule, a fix like that needs the user's OK and its
+own commit.
+
+**Rules:** container only, never `docker build`; stage by name; commit only when asked;
+never push unasked.
 
 ---
 
