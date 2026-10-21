@@ -192,6 +192,31 @@ def sight(app, viewer: Principal) -> net_events.Sight:
                             vitals=frozenset(vitals), hp_max=hp_max)
 
 
+def sprite_file(app, viewer: Principal, basename: str) -> str | None:
+    """`GET /sprite?name=<basename>`'s lookup (M4b.5, B-8): the file behind a sprite this viewer's
+    view carries right now, or None.
+
+    The route may serve a name only when some agent in **this viewer's** view carries it,
+    so the gates are ``_agents``' own, through ``_drawn``. Any other name is None and the
+    route answers 404, so a player cannot list the bestiary by guessing, nor fetch the art
+    of a creature still in the fog. The path returned is the agent's own ``sprite_path``,
+    never one built from ``basename``, so the URL cannot name a file the map did not.
+
+    Runs on the pygame thread (NN1), as every reader of the map does.
+    """
+    roster = app.roster
+    if not roster.authorize(viewer, Action.VIEW_SESSION):
+        raise PermissionError("viewer is not seated")
+    is_dm = roster.authorize(viewer, Action.VIEW_DM_CHANNEL)
+    if not basename:
+        return None
+    for i, pt in enumerate(bm_agents(app)):
+        if (pt.sprite_path and os.path.basename(pt.sprite_path) == basename
+                and _drawn(app, i, pt, is_dm) and os.path.isfile(pt.sprite_path)):
+            return pt.sprite_path
+    return None
+
+
 def bm_agents(app):
     """``bm.placed_agents`` is a pybind11 accessor that *copies* the vector on each read.
     Bound once so a projection walking it does not rebuild it per helper."""

@@ -581,40 +581,168 @@ function drawGrid(cell, cols, rows) {
   ctx.stroke();
 }
 
+// ── Tokens (M4b.5, B-8): `_draw_one_agent`'s look ───────────────────────────
+//
+// A team-coloured square, the sprite art over it (or the name's first letter when there is
+// no art), grey when unconscious and a red hatch on a corpse, then the HP bar. That much
+// is the DM screen's token. The name label and the band are not: the DM reads a name off
+// hover, and a phone has no hover.
+
+/* The name label, coloured by what this viewer was told (see `classOf`). */
 const TOKEN_COLOURS = { mine: "#f0c040", ally: "#5aa9e6", other: "#e06666" };
 
+// gui/constants.py, copied (B-8). A change there is a change here.
+const FACTION_COLORS = { 0: [160, 160, 160], 1: [210, 70, 70], 2: [80, 120, 220] };
+const FACTION_DEFAULT = [200, 200, 60];    // faction_color's fallback
+const COL_HP_HIGH = [60, 200, 80];
+const COL_HP_MID = [230, 180, 40];
+const COL_HP_LOW = [220, 60, 60];
+const FONT_SM = 14;
+// _draw_one_agent's own literals.
+const GREY_TINT = [105, 105, 115];         // an unconscious token
+const GLYPH_RGB = [25, 25, 30];
+const HATCH_RGBA = "rgba(180, 0, 0, 0.784)";   // (180, 0, 0, 200)
+
+const rgb = (c) => `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+
+function factionColour(fid) {
+  return FACTION_COLORS[fid] || FACTION_DEFAULT;
+}
+
+/* `sprites/C.png` and its kind are opaque one-letter tiles that would hide the team
+   colour, so the DM screen skips them and draws the letter itself. */
+function isLetterPlaceholder(sprite) {
+  const stem = (sprite || "").replace(/\.[^.]*$/, "");
+  return stem.length === 1 && /[A-Za-z]/.test(stem);
+}
+
+/* Sprite art by basename, fetched once from `GET /sprite?name=<basename>` with the credential,
+   as the page is. A sprite that will not load is retried at the page's interval, and the
+   token draws its letter until it does: the art is never a reason to stop drawing. */
+const sprites = new Map();   // basename → { img, ok, failedAt }
+
+function spriteImage(name) {
+  if (!name || isLetterPlaceholder(name)) return null;
+  let entry = sprites.get(name);
+  if (!entry || (!entry.ok && !entry.loading && Date.now() - entry.failedAt >= PAGE_RETRY_MS)) {
+    entry = { img: null, ok: false, loading: true, failedAt: 0 };
+    sprites.set(name, entry);
+    loadSprite(name, entry);
+  }
+  return entry.ok ? entry.img : null;
+}
+
+async function loadSprite(name, entry) {
+  const failed = () => { entry.loading = false; entry.failedAt = Date.now(); };
+  const credential = recall(CRED_KEY);
+  if (!credential) { failed(); return; }
+  try {
+    const res = await fetch(`/sprite?name=${encodeURIComponent(name)}`,
+                            { headers: { Authorization: `Bearer ${credential}` } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const objectUrl = URL.createObjectURL(await res.blob());
+    const img = new Image();
+    img.onload = () => {
+      entry.img = img; entry.ok = true; entry.loading = false;
+      if (view) drawBoard();
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); failed(); };
+    img.src = objectUrl;
+  } catch (e) {
+    failed();
+  }
+}
+
+/* The sprite multiplied by the grey tint, alpha kept, as BLEND_RGBA_MULT does. Built once
+   per sprite and size, because an unconscious body is drawn every frame it is on the board. */
+const greyCache = new Map();
+
+function greyed(img, name, span) {
+  const key = `${name}@${span}`;
+  if (greyCache.has(key)) return greyCache.get(key);
+  const off = document.createElement("canvas");
+  off.width = span;
+  off.height = span;
+  const g = off.getContext("2d");
+  g.drawImage(img, 0, 0, span, span);
+  g.globalCompositeOperation = "multiply";
+  g.fillStyle = rgb(GREY_TINT);
+  g.fillRect(0, 0, span, span);
+  g.globalCompositeOperation = "destination-in";
+  g.drawImage(img, 0, 0, span, span);
+  g.globalCompositeOperation = "source-over";
+  greyCache.set(key, off);
+  return off;
+}
+
+/* Down is `hp_disp <= 0` on the DM screen: a held HP during a playback counts, and so
+   does the band, which is all an enemy's bar says. Dead is read off the live view's agent,
+   as the DM screen reads `pt.conditions.dead` live, so a held body turns into a corpse
+   exactly when its killing blow drops the bar. */
+function downState(agent) {
+  const hp = agent.hp || {};
+  const down = hp.band === "Down" || (hp.cur !== undefined && hp.cur <= 0);
+  const live = (view && agentByIndex(agent.agent)) || agent;
+  const dead = (live.conditions || []).includes("dead");
+  return { corpse: down && dead, unconscious: down && !dead };
+}
+
 function drawToken(agent, cell) {
-  const kind = classOf(agent);
   const span = (agent.size || 1) * cell;
   const x = agent.col * cell;
   const y = agent.row * cell;
-  const down = (agent.hp && (agent.hp.band === "Down" || agent.hp.cur === 0));
+  const { corpse, unconscious } = downState(agent);
+  const team = factionColour(agent.faction);
 
-  ctx.globalAlpha = down ? 0.45 : 1;
-  ctx.beginPath();
-  ctx.arc(x + span / 2, y + span / 2, span * 0.38, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(10, 10, 14, 0.72)";
-  ctx.fill();
-  ctx.lineWidth = Math.max(2, cell * 0.06);
-  ctx.strokeStyle = TOKEN_COLOURS[kind];
-  ctx.stroke();
-  ctx.globalAlpha = 1;
+  // The team-coloured square, with a border 50 lighter; both grey when unconscious.
+  const fill = unconscious ? GREY_TINT : team;
+  const border = unconscious ? GREY_TINT : team.map((c) => Math.min(c + 50, 255));
+  ctx.fillStyle = rgb(fill);
+  ctx.fillRect(x + 1, y + 1, span - 2, span - 2);
+  ctx.strokeStyle = rgb(border);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 2, y + 2, span - 4, span - 4);
 
-  // A hit-point bar when this viewer has numbers, and nothing at all when they have a
-  // band — a bar drawn from a band would be this file inventing a number the server
-  // deliberately withheld.
-  const hp = agent.hp || {};
-  if (hp.cur !== undefined && hp.max) {
-    const frac = Math.max(0, Math.min(1, hp.cur / hp.max));
-    const barW = span * 0.72;
-    const barX = x + (span - barW) / 2;
-    const barY = y + span - Math.max(3, cell * 0.12);
-    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-    ctx.fillRect(barX, barY, barW, Math.max(3, cell * 0.08));
-    ctx.fillStyle = frac > 0.5 ? "#5ac47a" : (frac > 0 ? "#e0a33a" : "#e06666");
-    ctx.fillRect(barX, barY, barW * frac, Math.max(3, cell * 0.08));
+  const img = spriteImage(agent.sprite);
+  if (img) {
+    ctx.drawImage(unconscious ? greyed(img, agent.sprite, span) : img, x, y, span, span);
+  } else {
+    const glyph = (agent.name ? agent.name.slice(0, 1)
+                              : (agent.sprite || "").replace(/\.[^.]*$/, "")).toUpperCase();
+    ctx.font = `bold ${Math.max(FONT_SM, Math.floor(span * 0.55))}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = rgb(GLYPH_RGB);
+    ctx.fillText(glyph, x + span / 2, y + span / 2);
+    ctx.textBaseline = "alphabetic";
   }
 
+  if (corpse) drawHatch(x, y, span);
+
+  // The HP bar, `_draw_hp_bar`'s geometry and colours, when this viewer has numbers, and
+  // nothing at all when they have a band — a bar drawn from a band would be this file
+  // inventing a number the server deliberately withheld.
+  const hp = agent.hp || {};
+  if (hp.cur !== undefined && hp.max > 0) {
+    const frac = Math.min(1, Math.max(0, hp.cur) / hp.max);
+    const inset = 2;
+    const barH = Math.max(3, Math.floor(span / 12));
+    const barW = span - 2 * inset;
+    const barX = x + inset;
+    const barY = y + span - barH - inset;
+    ctx.fillStyle = "rgb(40, 40, 40)";
+    ctx.fillRect(barX, barY, barW, barH);
+    const fillW = Math.round(barW * frac);
+    if (fillW > 0) {
+      ctx.fillStyle = rgb(frac > 0.66 ? COL_HP_HIGH : (frac > 0.33 ? COL_HP_MID : COL_HP_LOW));
+      ctx.fillRect(barX, barY, fillW, barH);
+    }
+    ctx.strokeStyle = "rgb(10, 10, 10)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+  }
+
+  const kind = classOf(agent);
   const label = agent.name + (hp.band ? ` · ${hp.band}` : "");
   ctx.font = `${Math.max(9, Math.round(cell * 0.30))}px system-ui, sans-serif`;
   ctx.textAlign = "center";
@@ -623,6 +751,26 @@ function drawToken(agent, cell) {
   ctx.strokeText(label, x + span / 2, y - 2);
   ctx.fillStyle = TOKEN_COLOURS[kind];
   ctx.fillText(label, x + span / 2, y - 2);
+}
+
+/* The death hatch: both diagonals every `max(4, span / 8)` px, clipped to the token. */
+function drawHatch(x, y, span) {
+  const step = Math.max(4, Math.floor(span / 8));
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, span, span);
+  ctx.clip();
+  ctx.strokeStyle = HATCH_RGBA;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let offset = -span; offset < span * 2; offset += step) {
+    ctx.moveTo(x + offset, y);
+    ctx.lineTo(x + offset + span, y + span);
+    ctx.moveTo(x + offset + span, y);
+    ctx.lineTo(x + offset, y + span);
+  }
+  ctx.stroke();
+  ctx.restore();
 }
 
 // ── Playback (Envelope 3, M4b.3: B-5 and B-7) ───────────────────────────────

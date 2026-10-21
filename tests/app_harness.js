@@ -22,6 +22,10 @@ function load(opts = {}) {
   const fetches = [];
   const replies = [];
   const texts = [];
+  const calls = [];        // every canvas call, with the styles in force (M4b.5)
+  const images = [];       // every Image the client made; a check fires its onload
+  const sprites = [];      // GET /sprite?name=… requests, kept out of `fetches` and `replies`
+  const spriteStatus = new Map(opts.spriteStatus || []);   // basename → HTTP status
   const elements = new Map();
   const stores = {
     session: new Map([["dnd.credential", "cred"], ["dnd.principal", "Ann"]]),
@@ -31,12 +35,16 @@ function load(opts = {}) {
   const ctx2d = new Proxy({ fillStyle: "", globalAlpha: 1 }, {
     get(target, prop) {
       if (prop === "fillText") {
-        return (text, x, y) => texts.push({ text, x, y, fill: target.fillStyle,
-                                            alpha: target.globalAlpha });
+        return (text, x, y) => {
+          texts.push({ text, x, y, fill: target.fillStyle, alpha: target.globalAlpha });
+          calls.push({ fn: "fillText", args: [text, x, y], fill: target.fillStyle });
+        };
       }
       if (prop === "measureText") return (text) => ({ width: text.length * 6 });
       if (prop in target) return target[prop];
-      return () => {};
+      return (...args) => calls.push({ fn: prop, args, fill: target.fillStyle,
+                                       stroke: target.strokeStyle,
+                                       op: target.globalCompositeOperation });
     },
     set(target, prop, value) { target[prop] = value; return true; },
   });
@@ -79,6 +87,11 @@ function load(opts = {}) {
   }
 
   function fetch(url, init = {}) {
+    if (url.startsWith("/sprite?name=")) {
+      sprites.push({ url, init });
+      const status = spriteStatus.get(decodeURIComponent(url.slice(13))) || 200;
+      return Promise.resolve({ ok: status === 200, status, blob: async () => ({ url }) });
+    }
     fetches.push({ url, init });
     const reply = replies.shift();
     if (reply === undefined) return new Promise(() => {});   // never answers
@@ -96,13 +109,13 @@ function load(opts = {}) {
     setInterval: () => 0,
     setTimeout: () => 0,
     URL: { createObjectURL: () => "blob:x", revokeObjectURL: () => {} },
-    Image: class { },
+    Image: class { constructor() { images.push(this); } },
   };
   const context = vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(APP_JS, "utf8"), context, { filename: "app.js" });
 
   const h = {
-    clock, fetches, replies, texts, stores, sockets,
+    clock, fetches, replies, texts, stores, sockets, calls, images, sprites, spriteStatus,
     el: (id) => document.getElementById(id),
     ev: (expr) => vm.runInContext(expr, context),
     get socket() { return sockets[sockets.length - 1]; },

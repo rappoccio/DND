@@ -305,8 +305,10 @@ def test_no_route_is_a_prefix():
             f"the router holds {sorted(kinds)} — a prefix resource is a whole subtree"
         assert sorted(r.canonical for r in router.resources()) == [
             # `/events` is M4b.2's (B-3), authenticated like `/state`.
+            # `/sprite` is M4b.5's (B-8): the name is a query parameter, so this stays
+            # a plain resource.
             "/", "/app.css", "/app.js", "/events", "/join", "/live", "/map.png",
-            "/state"], \
+            "/sprite", "/state"], \
             f"the route table changed: {sorted(r.canonical for r in router.resources())}"
         print("✅ test_no_route_is_a_prefix")
 

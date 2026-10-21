@@ -49,7 +49,8 @@ def start_player_server(app) -> None:
                           submits=app._net_submits,
                           handle_submit=net_submit.handle_submit,
                           build_live=build_live,
-                          events_since=events_since)
+                          events_since=events_since,
+                          sprite_for=net_view.sprite_file)
     try:
         server.start()
     except Exception as exc:                       # a taken 6081 is the realistic one

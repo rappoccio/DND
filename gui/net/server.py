@@ -5,7 +5,8 @@ the pygame process. The skeleton — the thread, the single middleware point A9 
 and `GET /map.png` — landed in M4; `POST /join` and `GET /state` (M4c) added two routes,
 one pre-auth exemption and one shared queue; `WS /live`, `GET /` and the two files beside
 it are M4e's, and with them the route table the plan wrote down is complete. M4b.2 adds
-`GET /events?since=` (Envelope 3), answered on the frame tick like `GET /state`.
+`GET /events?since=` (Envelope 3), answered on the frame tick like `GET /state`. M4b.5
+adds `GET /sprite?name=<basename>`: the token art, looked up on the frame tick and read here.
 
 **The socket is the one route that authenticates itself.** A browser cannot put a header on
 a WebSocket handshake (A3), so `GET /live` is pre-auth in the middleware and validates its
@@ -64,6 +65,7 @@ from __future__ import annotations
 import asyncio
 import collections
 import dataclasses
+import hashlib
 import json
 import os
 import socket
@@ -370,6 +372,7 @@ class PlayerServer:
 
     def __init__(self, roster, map_images, commands, build_view, *,
                  submits=None, handle_submit=None, build_live=None, events_since=None,
+                 sprite_for=None,
                  host: str = PLAYER_HOST, port: int = PLAYER_PORT) -> None:
         """`commands` and `build_view` are the seam, and both are handed in (D-M4c-1).
 
@@ -395,6 +398,10 @@ class PlayerServer:
         # fresh view, which is the resync answer and therefore always a correct one.
         self._events_since = events_since or (lambda app, viewer, since:
                                               build_view(app, viewer))
+        # M4b.5, handed in the same way: `sprite_for(app, viewer, basename)` is the file a
+        # sprite this viewer's view carries, or None. It reads the map, so it runs on the
+        # frame tick. Without one, every sprite is a 404 — the client draws its letter.
+        self._sprite_for = sprite_for or (lambda app, viewer, basename: None)
         self._joins = _JoinLimiter()
         self._live_conns = _LiveConnections()
         self._host = host
@@ -496,6 +503,7 @@ class PlayerServer:
         app.router.add_post("/join", self._join)
         app.router.add_get("/state", self._state)
         app.router.add_get("/events", self._events)
+        app.router.add_get("/sprite", self._sprite)
         app.router.add_get("/live", self._live)
         # `stop()` stops the loop and then runs `runner.cleanup()`, which fires this.
         # Without it a player's browser holds a half-open socket to a process that has gone.
@@ -766,6 +774,55 @@ class PlayerServer:
             self.denials += 1
             return web.Response(status=403, text="forbidden")
         return web.json_response(frame, headers={"Cache-Control": "no-store"})
+
+    # ── GET /sprite?name=<basename> (M4b.5, B-8) ────────────────────────────
+
+    async def _sprite(self, request):
+        """One token's art, for a viewer whose view carries it, and a 404 for anything else.
+
+        Authenticated like `GET /map.png`. Which names a viewer may fetch is a question
+        about the map — is some agent this viewer can see wearing it? — so it is answered
+        on the frame tick by `sprite_for`, and only the file read happens here, off the
+        loop. A name outside the view is 404 rather than 403, so the route does not say
+        whether the file exists: it cannot be used to list the bestiary.
+
+        The name is a query parameter and not a path segment (`/sprite/<basename>` in
+        Step 0) because the route table holds plain resources only: `test_live` pins that
+        no resource matches more than one path, and a `{basename}` resource would.
+
+        Cacheable with an ETag over the bytes, `GET /map.png`'s way. The art behind a name
+        does not change in play, so a client pays for it once.
+        """
+        if not self._authorize(request, Action.VIEW_SESSION):
+            return web.Response(status=403, text="forbidden")
+        viewer = request["principal"]
+        basename = request.query.get("name", "")
+        lookup = self._sprite_for
+
+        try:
+            path = await asyncio.wait_for(
+                self._commands.submit(lambda app: lookup(app, viewer, basename)),
+                STATE_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            return web.Response(status=503, text="timeout",
+                                headers={"Retry-After": "1"})
+        except PermissionError:
+            self.denials += 1
+            return web.Response(status=403, text="forbidden")
+        if not path:
+            return web.Response(status=404, text="no such sprite")
+
+        try:
+            data = await asyncio.get_running_loop().run_in_executor(None, _read_file, path)
+        except OSError:
+            return web.Response(status=404, text="no such sprite")
+        etag = f'"{hashlib.sha256(data).hexdigest()[:32]}"'
+        if _etag_matches(request.headers.get("If-None-Match"), etag):
+            return web.Response(status=304, headers={"ETag": etag,
+                                                     "Cache-Control": _CACHE_CONTROL})
+        return web.Response(body=data, content_type=_SPRITE_TYPES.get(
+                                os.path.splitext(path)[1].lower(), "application/octet-stream"),
+                            headers={"ETag": etag, "Cache-Control": _CACHE_CONTROL})
 
     # ── The client's three files (D-M4e-1) ──────────────────────────────────
 
@@ -1155,6 +1212,16 @@ def _auth_error(status: int, error: str):
 # newest, so its body genuinely changes. `private` because a masked page is scoped to the
 # party and the DM's copy is not scoped at all.
 _CACHE_CONTROL = "private, no-cache"
+
+
+# The art `sprites/` holds. Anything else is served as bytes, which an `<img>` refuses.
+_SPRITE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                 ".gif": "image/gif", ".webp": "image/webp"}
+
+
+def _read_file(path: str) -> bytes:
+    with open(path, "rb") as fh:
+        return fh.read()
 
 
 def _etag_matches(header: str | None, etag: str) -> bool:

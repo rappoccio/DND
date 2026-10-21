@@ -118,6 +118,8 @@ test_scripts = [
     "test_playback.py",
     # Human moves slide on the DM screen and reach the stream (M4b.4, B-6 / B-7).
     "test_move_slides.py",
+    # The token look and `GET /sprite/<basename>` (M4b.5, B-8).
+    "test_sprites.py",
 
     # The masked page image (MULTIPLAYER_PLAN.md M4, D-M4-1) — `GET /map.png`. Kept with
     # the oracles for the same reason as the view: it is the one place the map crosses the

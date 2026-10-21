@@ -7433,6 +7433,90 @@ M6, M7 and M8.
 **Rules:** container only, never `docker build`; stage by name; commit only when asked;
 never push unasked.
 
+##### M4b.5 — what landed *(2026-10-20, uncommitted)*
+
+- **`GET /sprite?name=<basename>`** (`net/server.py`), authenticated like `/map.png`. The
+  name is a query parameter, not the path segment Step 0 wrote, because `test_live` pins
+  the route table as plain resources only (no resource may match more than one path), and
+  `/sprite/{basename}` would be a dynamic one. The pin gained `/sprite` and nothing else. Which names
+  a viewer may fetch is a map question, so it is answered on the frame tick by an injected
+  `sprite_for` (`net.link` passes `net.view.sprite_file`), as `/state` and `/events` are;
+  the server still holds no `App` (NN1). Only the file read runs on the net thread, in an
+  executor. A server built without `sprite_for` answers 404 to everything.
+- **`net.view.sprite_file(app, viewer, basename)`** walks the agents through `_drawn`, the
+  same three gates `_agents` uses, and returns the matching agent's own `sprite_path`. It
+  never builds a path from the URL, so `..` and a file no agent wears are both 404. The DM
+  passes the gates and so gets every sprite on the board, but still not a file no agent
+  wears. An unseated viewer raises `PermissionError`, which the route answers 403.
+- **Caching:** an ETag over the bytes (sha256, 32 hex), `private, no-cache`, and a 304 for
+  a matching `If-None-Match`. The client fetches each basename once anyway.
+- **The token in `app.js`** is `_draw_one_agent`'s:
+  - the team square in `faction_color`'s RGB, inset 1 px, with a 2 px border 50 lighter;
+  - the sprite art over it, fetched with the credential and drawn full-cell, or the name's
+    first letter (bold, `max(FONT_SM, 0.55 × span)`, `(25, 25, 30)`) when there is no art or
+    the sprite is a one-letter placeholder, which is never fetched;
+  - unconscious: square, border and art greyed by `(105, 105, 115)` (a multiply onto a
+    cached copy of the art, alpha kept);
+  - corpse: the red hatch, both diagonals every `max(4, span / 8)` px, clipped to the cell;
+  - the HP bar now follows `_draw_hp_bar`'s geometry and its three colours at 66 % / 33 %.
+    There is still no bar from a band.
+  - The name label and band stay, coloured by `classOf`, as before. The ringed circle is gone.
+- **Down and dead.** Down is the drawn HP (`cur <= 0`, or the band `Down`), so a held HP
+  during a playback counts. Dead is read off the **live** view's agent, as the DM screen
+  reads `pt.conditions.dead` live, so a held body becomes a corpse exactly when its killing
+  blow drops the bar.
+- **A sprite that will not load** draws the letter and is re-asked after `PAGE_RETRY_MS`,
+  never per frame.
+- **Tests:** `tests/test_sprites.py` (new, registered after `test_move_slides.py`): the
+  lookup against the view's gates, the unseated refusal, the route over a real socket
+  (401, 200 with `image/png`, 404 for the fogged creature, an unworn file, `..%2F`, an empty
+  name and an absolute path, the
+  DM's whole board), the 304, the copied constants pinned against `constants.py`
+  (`FACTION_COLORS`, the fallback, `COL_HP_*`, `FONT_SM`), and `tests/token_checks.js`,
+  13 checks of the client under the node harness. `app_harness.js` now records every
+  canvas call with the styles in force, keeps each `Image` the client makes, and answers
+  `/sprite?name=` fetches on their own (per-basename status), out of the `/events` reply queue.
+- **Mutants: 24 of 25 killed**, plus a passing no-change control (`.claude/mutants_m4b5.py`,
+  untracked scratch). B-10's owed mutant (`/sprite` serving a basename outside the view)
+  is killed. The survivor, the route's own `authorize` removed, is equivalent: the lookup
+  re-checks the seat and raises, which the route answers with the same 403, the same
+  arrangement `/state` has with `build_view`.
+- Suite **180 / 0** in the container. The goldens are unchanged. No C++ changed, and
+  the view's bytes did not change.
+
+**Decisions this slice made that Step 0 did not spell out:**
+- **The concentration ring, condition rings, boss ring and condition labels are not
+  drawn.** B-8 named the square, the art, grey and the hatch. The conditions are already in
+  the token list, and the rings are a follow-up if the table wants them.
+- **The label keeps the old mine/ally/other colours**, so a player still finds their own
+  token at a glance now that the square says team, not owner.
+
+##### Handoff — M4b.5 landed *(written 2026-10-20)*
+
+**State.** M4b.5 is **uncommitted**:
+- changed: `gui/net/server.py`, `gui/net/view.py`, `gui/net/link.py`,
+  `gui/net/static/app.js`, `tests/app_harness.js`, `tests/run_all_tests.py`,
+  `tests/test_live.py` and this plan;
+- new: `tests/test_sprites.py` and `tests/token_checks.js`.
+
+Leave `maps/TestDNDMap_terrain.json` and `.claude/mutants_m4b*.py` alone.
+
+**M4b's code is complete.** What is left of M4b is the user's manual browser checks
+(B-10):
+- an NPC turn on a phone beside the DM screen;
+- a player's own move sliding;
+- the "Animate moves" toggle off, on both screens;
+- the token look: team squares, sprite art, an unconscious body grey and a corpse hatched.
+
+**Next:** those checks, then M6 (reconnect, resync, restart), which starts with a
+read-only survey and a proposed Step 0.
+
+**Still open:** the rename bug (`memory/known_limitations.md`), and the list in "Handoff —
+M4b paused for core-game fixes".
+
+**Rules:** container only, never `docker build`; stage by name; commit only when asked;
+never push unasked.
+
 ---
 
 ### M6 — Reconnect, resync, restart
