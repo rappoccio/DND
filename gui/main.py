@@ -2553,6 +2553,7 @@ class App:
             self._edge_review = []
         self._edges_at_open = json.dumps([self._edge_overrides, self._edge_review],
                                          sort_keys=True)
+        self._doors_at_open = self._door_layout()
         # After the snapshot, so a list saved before the pruning rule is re-saved pruned.
         self._prune_edge_review()
         drawn = self._walls_enabled and (self._detection or {}).get("mode") == "dark_fraction"
@@ -2577,7 +2578,7 @@ class App:
             self._edge_overrides = None
         if not self._edge_review:
             self._edge_review = None
-        if edges_changed or \
+        if edges_changed or self._door_layout() != getattr(self, "_doors_at_open", None) or \
                 [r for r in self._terrain_regions if r.get("type") == "Floor"] != floors_before:
             self._redetect_walls()
             self._build_overlay()
@@ -2591,6 +2592,12 @@ class App:
         if self.selected_idx >= 0:
             self._update_reach()
             self._update_attack_overlay()
+
+    def _door_layout(self):
+        """Where the doors are (not their state): the outside flood depends on it."""
+        return sorted((sorted((c.col, c.row) for c in d.cells),
+                       sorted((e.cell.col, e.cell.row, int(e.side)) for e in d.edges))
+                      for d in self.bm.doors)
 
     def _toggle_show_terrain(self):
         self.show_terrain = not self.show_terrain
@@ -13807,12 +13814,8 @@ class App:
         # fileless encounter reverts the previous scene's painted Wall/Chasm/Water cells to Standard.
         self._apply_terrain_to_battle_map()
 
-        # Honour the walls preference: ON re-detects from a clean slate; OFF drops every
-        # auto-detected obstacle so a map the detector mis-read isn't blocked. (On first
-        # load detect_walls already ran in __init__; clear+detect reproduces that result.)
-        self._redetect_walls()
-
-        # Re-apply saved doors last so a closed door's Wall terrain survives wall detection.
+        # Saved doors go in before wall detection: the outside flood stops at doors, so it
+        # needs them placed (detection re-syncs each door's terrain afterwards).
         # New saves store a "cells" list (multi-cell wide doors); fall back to the legacy
         # single-cell "cell" field for older encounter files.
         for d in doors_data:
@@ -13848,6 +13851,11 @@ class App:
                     self._door_links[door_link_key(cells)] = [int(lt[0]), int(lt[1]), int(lt[2])]
             except Exception:
                 continue
+
+        # Honour the walls preference: ON re-detects from a clean slate; OFF drops every
+        # auto-detected obstacle so a map the detector mis-read isn't blocked. (On first
+        # load detect_walls already ran in __init__; clear+detect reproduces that result.)
+        self._redetect_walls()
 
         # Grid (re)analysis in C++ resets the explored mask to fully fogged. Restore the
         # persisted mask here (after all grid/wall/door processing that would clear it), so

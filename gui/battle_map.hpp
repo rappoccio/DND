@@ -936,6 +936,7 @@ private:
 
     // Reconcile doors_[idx]'s cell TerrainType with its open state (see .cpp).
     void syncDoorTerrain(int idx) noexcept;
+    void resyncDoors() noexcept;   // syncDoorTerrain for every door (after detection)
 
     // Wall of Stone helpers: overwrite an effect's cells with solid Wall terrain (saving the
     // pre-override TerrainType into e.saved_terrain) and later restore them. Called at the effect's

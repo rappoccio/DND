@@ -170,7 +170,7 @@ def test_edge_overrides_close_a_leak_and_open_a_wall():
 
 
 def test_flood_ignores_door_state():
-    """The flood reads static walls only: an open edge door on the outer wall doesn't leak it."""
+    """An open edge door on the outer wall doesn't leak the flood: doors block it whatever their state."""
     with tempfile.TemporaryDirectory() as tmp:
         bm = _bm(_png(tmp))
         _drawn(bm)
@@ -181,6 +181,25 @@ def test_flood_ignores_door_state():
         bm.detect_walls()
         assert not (_blocked(bm) & INSIDE)
     print("✅ test_flood_ignores_door_state passed")
+
+
+def test_a_door_in_a_gap_stops_the_flood():
+    """A doorway is a gap in the drawn wall; the door in it, open or shut, plugs the flood."""
+    with tempfile.TemporaryDirectory() as tmp:
+        png = _png(tmp, gap=True)
+        for is_open in (False, True):
+            bm = _bm(png)
+            bm.add_edge_door([rpg.Edge(C(X0 - 1, 3), E)], is_open)
+            _drawn(bm, seeds=[(0, 0)])
+            assert not (_blocked(bm) & INSIDE), f"edge door (open={is_open}) leaked the flood"
+            assert bm.edge_between(C(X0 - 1, 3), C(X0, 3)) != is_open
+            bm = _bm(png)
+            bm.add_door([C(X0 - 1, 3)], is_open)
+            _drawn(bm, seeds=[(0, 0)])
+            assert not (_blocked(bm) & INSIDE), f"cell door (open={is_open}) leaked the flood"
+            assert (X0 - 1, 3) not in _blocked(bm), "the flood doesn't take the doorway"
+            assert bm.is_blocked(C(X0 - 1, 3), 1) != is_open, "open, the doorway is walkable"
+    print("✅ test_a_door_in_a_gap_stops_the_flood passed")
 
 
 def test_allow_cell_reopens_a_detected_cell():
@@ -614,6 +633,22 @@ def test_edge_door_drag_places_a_wide_door_that_round_trips():
         assert not app.bm.edge_between(C(X0 - 1, 3), C(X0, 3)), "open, it passes the wall"
         assert app.bm.edge_between(C(X0 - 1, 2), C(X0, 2)), "the wall beside it still blocks"
     print("✅ test_edge_door_drag_places_a_wide_door_that_round_trips passed")
+
+
+def test_an_editor_door_in_a_gap_keeps_the_room_open_across_reload():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, terrain, _ = _edge_editor(tmp, {"detection": DETECTION}, gap=True)
+        ed = app.terrain_editor
+        ed.selected_type = "Door"
+        assert INSIDE <= _blocked(app.bm), "the gap leaks the flood"
+        _drag(ed, _vx(X0, 3), _vx(X0, 4))                 # one edge door across the gap
+        assert len(app.bm.doors) == 1
+        assert not (_blocked(app.bm) & INSIDE), "the door re-detects live in the editor"
+        app._close_terrain_editor()
+        assert not (_blocked(app.bm) & INSIDE)
+        app._load_terrain(terrain)
+        assert len(app.bm.doors) == 1 and not (_blocked(app.bm) & INSIDE), "and after reload"
+    print("✅ test_an_editor_door_in_a_gap_keeps_the_room_open_across_reload passed")
 
 
 def test_edge_door_click_toggles_and_a_drag_stops_at_four():

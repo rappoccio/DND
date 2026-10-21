@@ -379,6 +379,7 @@ void BattleMap::detectWalls()
         for (const Edge& e : params.edgeAdd)    setEdgeWall(e, true);
         for (const Edge& e : params.edgeRemove) setEdgeWall(e, false);
         floodOutside();
+        resyncDoors();
         return;
     }
 
@@ -395,6 +396,14 @@ void BattleMap::detectWalls()
 
     // Flood fill from the seed cell to mark everything unreachable as disallowed.
     if (params.floodFill) floodFillPassable();
+    resyncDoors();
+}
+
+// Detection rebuilds disallowed_ from scratch; an open door's doorway was cleared of it
+// when the door was placed, so clear it again (and re-own door edges) afterwards.
+void BattleMap::resyncDoors() noexcept
+{
+    for (std::size_t i = 0; i < doors_.size(); ++i) syncDoorTerrain(static_cast<int>(i));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,18 +462,19 @@ void BattleMap::floodOutside()
 {
     if (params.outsideSeeds.empty()) return;
     auto inBounds = [&](Cell c){ return c.col>=0&&c.row>=0&&c.col<cols_&&c.row<rows_; };
-    // The flood reads the static walls only, so an open door can't let it into a room
-    // and the result doesn't depend on whether doors are placed yet.
-    auto staticWall = [&](Cell a, Cell b) {
+    // The flood stops at static walls and at every door, open or shut: a doorway is a
+    // gap in the drawn wall, so without the door the flood would pour into the room.
+    // Reading door presence (not state) keeps the result independent of open/closed.
+    auto barrier = [&](Cell a, Cell b) {
         if (b.col < a.col || b.row < a.row) std::swap(a, b);
         const std::uint8_t bits = edgeBits(a);
-        return b.col > a.col ? (bits & kWallE) != 0 : (bits & kWallS) != 0;
+        return b.col > a.col ? (bits & (kWallE | kDoorE)) != 0 : (bits & (kWallS | kDoorS)) != 0;
     };
     CellSet reached;
     std::queue<Cell> q;
     for (Cell s : params.outsideSeeds) {
         s = Cell{s.col, s.row};
-        if (!inBounds(s) || disallowed_.contains(s) || reached.contains(s)) continue;
+        if (!inBounds(s) || disallowed_.contains(s) || reached.contains(s) || doorAt(s) >= 0) continue;
         reached.insert(s); q.push(s);
     }
     const std::array<Cell,4> dirs{{{0,-1},{0,1},{-1,0},{1,0}}};
@@ -473,7 +483,8 @@ void BattleMap::floodOutside()
         for (auto& d : dirs) {
             const Cell nb{cur.col+d.col, cur.row+d.row};
             if (!inBounds(nb) || reached.contains(nb) || disallowed_.contains(nb)) continue;
-            if (edgesActive_ && staticWall(cur, nb)) continue;
+            if (doorAt(nb) >= 0) continue;                  // a cell door plugs its doorway
+            if (edgesActive_ && barrier(cur, nb)) continue;
             reached.insert(nb); q.push(nb);
         }
     }

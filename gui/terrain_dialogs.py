@@ -752,9 +752,11 @@ class TerrainEditorDialog:
             if di >= 0:
                 self.door_links.pop(door_link_key(self.bm.doors[di].cells), None)
                 self.bm.remove_door(self.bm.doors[di].id)
+                self._edges_changed()       # re-detect: the outside flood stops at doors
                 return
         self.bm.add_door(cells, False, self.door_locked,
                          self.door_lock_dc, self.door_arcane, self.door_break_dc)
+        self._edges_changed()
         # Cross-map staple: if link mode is on and this door sits on a page edge, target
         # the abutting page's matching global cell (resolved to a page at use time).
         key = door_link_key(cells)
@@ -1072,9 +1074,11 @@ class TerrainEditorDialog:
                     self.door_links.pop(door_link_key(self.bm.doors[di].cells), None)
             if di >= 0:
                 self.bm.remove_door(self.bm.doors[di].id)
+                self._edges_changed()       # re-detect: the outside flood stops at doors
                 return
         self.bm.add_edge_door([edge_from_key(k) for k in keys], False, self.door_locked,
                               self.door_lock_dc, self.door_arcane, self.door_break_dc)
+        self._edges_changed()
 
     def _apply_terrain_to_selection(self):
         """Convert screen rect to grid cells and add terrain region, snapped to grid."""
