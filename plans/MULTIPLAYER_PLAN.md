@@ -7998,7 +7998,7 @@ changed `_session_path` replaces it and logs every player out. Then swap the ora
 **Rules:** container only, never `docker build`; stage by name; commit only when asked;
 never push unasked.
 
-##### M6.4 — what landed *(2026-10-21, uncommitted)*
+##### M6.4 — what landed *(2026-10-21, commit "M6.4: restore an autosave, and the Restore autosave menu")*
 
 - **`autosave.restore(app, k)`** (D-M6-5). It loads the slot's files **by path**, in
   `_on_load_path_chosen`'s order (agents, terrain, lighting, effects, then the combat
@@ -8061,7 +8061,7 @@ Plus a passing control. Script: `.tmp_claude/mutants_m6_4.py`, untracked scratch
 
 ##### Handoff — M6.4 landed *(written 2026-10-21)*
 
-**State.** M6.4 is **uncommitted**:
+**State.** M6.4 is **committed** (`77ee9f8`):
 - new: `tests/test_autosave_restore.py`;
 - changed: `gui/autosave.py`, `gui/main.py`, `gui/menus/dm.py`, `gui/net/events.py`,
   `tests/run_all_tests.py`, `tests/test_autosave.py`, `tests/test_restore_oracle.py`,
