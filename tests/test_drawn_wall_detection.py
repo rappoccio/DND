@@ -720,6 +720,93 @@ def test_editor_draws_edge_doors_and_the_drag_preview():
     print("✅ test_editor_draws_edge_doors_and_the_drag_preview passed")
 
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Walls must show on load, and fog must never reveal through a wall-less window
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_loaded_walls_are_drawn_without_a_toggle():
+    """Loading a page applied its walls to the engine but never rebuilt the overlay, so
+    "Walls: ON" showed nothing until the DM toggled walls off and on (and that OFF window
+    is what let the fog reveal through every wall). Cell (0, 0) is outside the building:
+    the drawn detection's flood blocks it, the constructor's Mean pass does not."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app, _ = _app(tmp, {"detection": DETECTION})
+        assert (0, 0) in _blocked(app.bm)
+        cx = cy = CELL // 2                       # centre of (0, 0); base_map_scale is 1.0
+        assert app.overlay.get_at((cx, cy)).a > 0, "blocked cell not drawn after load"
+    print("✅ test_loaded_walls_are_drawn_without_a_toggle passed")
+
+
+def test_fog_does_not_reveal_while_the_map_has_no_walls():
+    """The explored mask is monotonic and persisted, so a reveal made while walls are OFF
+    (a box through every wall) used to outlive the OFF window and get saved with the page.
+    With no walls the reveal now waits; once walls are back it reveals only the room."""
+    from net.roster import PC_FACTION
+    with tempfile.TemporaryDirectory() as tmp:
+        app, _ = _app(tmp, {"detection": DETECTION})
+        cfg = rpg.AgentConfig()
+        cfg.name, cfg.start_col, cfg.start_row, cfg.size, cfg.sprite_path = "Scout", 4, 3, 1, ""
+        app.combat.add_agent_config(app.bm, cfg)
+        app.pending_configs.append(cfg)
+        app.combat.apply_agent_configs(app.bm)
+        idx = next(i for i, pt in enumerate(app.bm.placed_agents) if pt.name == "Scout")
+        app.bm.set_agent_faction(idx, PC_FACTION)
+        app.bm.clear_fog()
+
+        app._toggle_walls()                       # OFF: no walls anywhere on this page
+        assert not app._walls_enabled and _blocked(app.bm) == set()
+        app._mark_fog_dirty()
+        app._refresh_fog()
+        assert app.bm.explored_cells() == [], "revealed through a wall-less map"
+        assert app._fog_dirty, "the pending reveal must survive until walls are back"
+
+        app._toggle_walls()                       # ON again
+        app._refresh_fog()
+        seen = {(c.col, c.row) for c in app.bm.explored_cells()}
+        assert (4, 3) in seen and seen <= INSIDE, f"revealed past the walls: {sorted(seen - INSIDE)}"
+    print("✅ test_fog_does_not_reveal_while_the_map_has_no_walls passed")
+
+
+
+def test_fog_hides_unseen_doors_and_ladders():
+    """Doors and ladders draw after the fog overlay, so they showed through it. Under fog
+    only those with an explored cell draw (an edge door counts either side), as the
+    player view already does; with fog off everything draws."""
+    import main as main_mod
+    with tempfile.TemporaryDirectory() as tmp:
+        app, _ = _app(tmp, {"detection": DETECTION})
+        seen_door = app.bm.add_door(cells=[C(3, 3)])
+        app.bm.add_door(cells=[C(6, 4)])                         # never seen
+        app.bm.add_edge_door([rpg.Edge(C(4, 3), S)])             # (4,3)|(4,4): (4,4) seen
+        app.bm.add_edge_door([rpg.Edge(C(5, 2), E)])             # (5,2)|(6,2): neither seen
+        app._ladders = [{"cells": [[2, 2]], "target": [0, 0, 1]},
+                        {"cells": [[7, 5]], "target": [0, 0, 1]}]
+        app.bm.clear_fog()
+        for c, r in ((3, 3), (4, 4), (2, 2)):
+            app.bm.set_explored(C(c, r), True)
+
+        drawn = {"doors": [], "ladders": 0}
+        orig_door, orig_lad = main_mod.draw_door_glyph, main_mod.draw_ladder_glyph
+        main_mod.draw_door_glyph = lambda _s, _x, _y, _c, door, *a, **k: drawn["doors"].append(door.id)
+        main_mod.draw_ladder_glyph = lambda *a, **k: drawn.__setitem__("ladders", drawn["ladders"] + 1)
+        try:
+            app._set_fog(True)
+            app._draw_doors(CELL)
+            app._draw_ladders(CELL)
+            assert len(drawn["doors"]) == 2 and seen_door in drawn["doors"], drawn
+            assert drawn["ladders"] == 1, drawn
+
+            drawn["doors"].clear(); drawn["ladders"] = 0
+            app._set_fog(False)
+            app._draw_doors(CELL)
+            app._draw_ladders(CELL)
+            assert len(drawn["doors"]) == 4 and drawn["ladders"] == 2, drawn
+        finally:
+            main_mod.draw_door_glyph, main_mod.draw_ladder_glyph = orig_door, orig_lad
+    print("✅ test_fog_hides_unseen_doors_and_ladders passed")
+
+
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

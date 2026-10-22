@@ -17,8 +17,8 @@ view moved, and that what gets stored is unchanged by the view:
   · wheel / arrows pan, Ctrl+wheel and +/- zoom, 0 resets; +/- keep their Door-mode
     meaning (lock DC);
   · drawing at high zoom works and paints the viewport only;
-  · the lighting editor passes wheel / zoom keys through to the app's map, and its
-    overlay follows the zoom.
+  · the lighting editor passes the wheel (zoom), zoom keys and arrows through to the
+    app's map, and its overlay follows the zoom.
 """
 
 import os
@@ -192,14 +192,17 @@ def test_the_lighting_editor_lets_zoom_and_pan_through():
     z = app.view_zoom
     pygame.event.clear()
     pygame.event.post(_key(pygame.K_EQUALS))
-    pygame.event.post(_wheel(y=-1))
     app._handle_events()
     assert app.view_zoom > z, "+ did not zoom the map under the lighting editor"
+    z = app.view_zoom
+    pygame.event.post(_wheel(y=1))
+    app._handle_events()
+    assert app.view_zoom > z, "wheel did not zoom the map under the lighting editor"
     pan_before = app.pan_y
-    pygame.event.post(_wheel(y=-1))
+    pygame.event.post(_key(pygame.K_DOWN))
     app._handle_events()
     assert app.pan_y == pan_before - 30, \
-        f"wheel did not pan under the lighting editor: {pan_before} -> {app.pan_y}"
+        f"arrow did not pan under the lighting editor: {pan_before} -> {app.pan_y}"
     assert app.lighting_editor.active, "a view event closed the lighting editor"
 
     # Placing a light at 2x lands on the cell under the pointer.

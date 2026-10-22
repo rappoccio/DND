@@ -7,7 +7,22 @@ Format: **[DM|Player|Both]** short title — what happened, what would be better
 
 ## Open
 
-_(nothing open)_
+- **[DM] Terrain editor zoom/pan doesn't match the main map view** (2026-10-22) — While
+  walling the Castle Ravenloft spire floors, the terrain editor's zoom and pan controls
+  behave differently from the main DM screen (the map view with the − / % / + / Fit bar).
+  They should be the same: same inputs, same zoom range and readout, and the editor
+  should open at the main view's current zoom/pan (and hand it back on close).
+
+- **[DM] Don't re-run wall detection every time a floor loads** (2026-10-22) — Paging
+  between dungeon floors calls `_load_map_png` → `bm.detect_walls()` (and
+  `_redetect_walls` after the terrain loads), so every page's walls are rebuilt from its
+  image each time. Once the DM has walled a floor by hand, that result should be
+  fixed: save the resolved walls in the page's `_terrain.json` (static edge walls via
+  `bm.edge_walls`, plus the blocked/disallowed cell set) and load them back instead of
+  detecting. Detection runs only when the DM asks for it (Wall Detection…, Set Grid…,
+  Rescale) or the page has never been walled. Needs a binding to set disallowed cells
+  (today there is only `allow_cell`). Found while padding the Castle Ravenloft pages to one
+  frame: new padding was re-detected as blocked on the next load.
 
 ## Bugs
 

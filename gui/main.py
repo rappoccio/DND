@@ -1018,9 +1018,10 @@ class App:
         self.initiative_scroll_offset = 0  # scroll offset for initiative tracker
         self._initiative_autopaged_turn = -1  # last turn_idx auto-paged into view
 
-        # ── Map panning (mouse scroll) ────────────────────────────────────
+        # ── Map panning (drag empty map, arrow keys) ────────────────────────────────────
         self.pan_x = 0            # horizontal pan offset in pixels
         self.pan_y = 0            # vertical pan offset in pixels
+        self._pan_drag = None     # an armed drag-to-pan (see _arm_pan_drag)
 
         self.clock = pygame.time.Clock()
 
@@ -1074,7 +1075,13 @@ class App:
         # ── C++ battle map ─────────────────────────────────────────────────
         self._map_path = path       # active PNG (dungeon pages reference it by name)
         self.bm = rpg.BattleMap(path)
-        self.bm.analyze_grid()
+        try:
+            self.bm.analyze_grid()
+        except RuntimeError:
+            # Too small/plain for auto-detection (e.g. a lone tower-top page). Start
+            # from a uniform 16 px grid; the page's saved manual_grid replaces it when
+            # _load_terrain runs.
+            self.bm.set_uniform_grid(16, 0, 0)
         self.bm.detect_walls()
 
         # ── Load image to get size BEFORE creating/resizing the display ────
@@ -1229,7 +1236,9 @@ class App:
     ZOOM_MIN     = 0.5    # user-zoom multiplier floor (relative to fit scale)
     ZOOM_MAX     = 6.0    # user-zoom multiplier ceiling
     ZOOM_STEP    = 1.15   # per wheel-notch / keypress factor
+    ZOOM_BTN_STEP = 1.25  # one press of the on-map + or − (net/static/app.js ZOOM_STEP)
     ZOOM_MAX_DIM = 8000   # hard cap on rendered map dimension (px) — memory guard
+    PAN_SLOP_PX  = 6      # a press that moves further than this is a pan (app.js TAP_SLOP_PX)
 
     def _apply_zoom(self, new_zoom, center=None):
         """Set ``view_zoom`` to ``new_zoom`` (clamped), re-render the map/overlay
@@ -1275,30 +1284,49 @@ class App:
         f = new_scale / old_scale
         self.pan_x = int(cx * (1.0 - f) + self.pan_x * f)
         self.pan_y = int(cy * (1.0 - f) + self.pan_y * f)
+        self._clamp_pan()
+
+    def _clamp_pan(self):
+        """Keep the map viewport's centre over the map, so it cannot be panned out of
+        sight — the player screen's ``clampCentre`` (net/static/app.js)."""
+        if not hasattr(self, "map_rect"):
+            return
+        vx = self._panel_x() // 2
+        vy = self.screen.get_height() // 2
+        self.pan_x = max(vx - self.map_rect.w, min(vx, self.pan_x))
+        self.pan_y = max(vy - self.map_rect.h, min(vy, self.pan_y))
+
+    def _pan_by(self, dx, dy):
+        self.pan_x += int(dx)
+        self.pan_y += int(dy)
+        self._clamp_pan()
+
+    def _wheel_zoom(self, event, center):
+        """Zoom at ``center`` for one wheel event, as the player screen does: the wheel
+        zooms, no modifier needed. ``MOUSEBUTTONDOWN`` 4/5 is the older pygame form."""
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
+            self._zoom_by(self.ZOOM_STEP if event.button == 4 else 1.0 / self.ZOOM_STEP,
+                          center=center)
+            return True
+        if hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
+            if event.y:
+                self._zoom_by(self.ZOOM_STEP if event.y > 0 else 1.0 / self.ZOOM_STEP,
+                              center=center)
+            return True
+        return False
 
     def _handle_map_view_event(self, event):
         """Zoom / pan the map from ``event`` alone, for a modal that draws over the live
-        map (the lighting editor) while the regular map handlers are shut off: wheel
-        pans (Shift for horizontal), Ctrl/Cmd+wheel zooms at the cursor, arrows pan,
-        +/- zoom, 0 resets. Returns True when the event was consumed."""
+        map (the lighting editor) while the regular map handlers are shut off: the wheel
+        zooms at the cursor, arrows pan, +/- zoom, 0 fits. Returns True when the event
+        was consumed."""
         if hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL:
-            mods = pygame.key.get_mods()
-            if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
-                if event.y:
-                    f = self.ZOOM_STEP if event.y > 0 else 1.0 / self.ZOOM_STEP
-                    self._zoom_by(f, center=pygame.mouse.get_pos())
-            elif mods & pygame.KMOD_SHIFT:
-                self.pan_x += (event.x or event.y) * 30
-            else:
-                self.pan_x += event.x * 30
-                self.pan_y += event.y * 30
-            return True
+            return self._wheel_zoom(event, pygame.mouse.get_pos())
         if event.type == pygame.KEYDOWN:
             pans = {pygame.K_UP: (0, 30), pygame.K_DOWN: (0, -30),
                     pygame.K_LEFT: (30, 0), pygame.K_RIGHT: (-30, 0)}
             if event.key in pans:
-                self.pan_x += pans[event.key][0]
-                self.pan_y += pans[event.key][1]
+                self._pan_by(*pans[event.key])
             elif event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
                 self._zoom_by(self.ZOOM_STEP)
             elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
@@ -1315,8 +1343,79 @@ class App:
         self._apply_zoom(self.view_zoom * factor, center=center)
 
     def _reset_zoom(self):
-        """Return to the fit-to-window scale, centered on the viewport."""
+        """Fit: the fit-to-window scale with the map back at the top-left, where a load
+        puts it (the player screen's Fit button)."""
         self._apply_zoom(1.0)
+        self.pan_x = 0
+        self.pan_y = 0
+
+    # ── The on-map zoom control (− 100% + Fit), as on the player screen ─────
+    def _zoom_control_rects(self):
+        """The control's buttons, keyed "out" / "level" / "in" / "fit", pinned to the
+        bottom-right corner of the map viewport."""
+        bh, gap, pad = 26, 4, 10
+        widths = (("out", 28), ("level", 54), ("in", 28), ("fit", 40))
+        total = sum(w for _, w in widths) + gap * (len(widths) - 1)
+        x = self._panel_x() - pad - total
+        y = self.screen.get_height() - pad - bh
+        rects = {}
+        for key, w in widths:
+            rects[key] = pygame.Rect(x, y, w, bh)
+            x += w + gap
+        return rects
+
+    def _draw_zoom_control(self):
+        labels = {"out": "−", "level": f"{self.view_zoom * 100:.0f}%", "in": "+", "fit": "Fit"}
+        for key, rect in self._zoom_control_rects().items():
+            if key != "level":
+                pygame.draw.rect(self.screen, (40, 40, 52), rect, border_radius=5)
+                pygame.draw.rect(self.screen, (102, 102, 128), rect, 1, border_radius=5)
+            else:
+                pygame.draw.rect(self.screen, (28, 28, 38), rect, border_radius=5)
+            col = (200, 200, 214) if key == "level" else (236, 236, 246)
+            t = self.font_sm.render(labels[key], True, col)
+            self.screen.blit(t, (rect.centerx - t.get_width() // 2,
+                                 rect.centery - t.get_height() // 2))
+
+    def _handle_zoom_control(self, event):
+        """A left click on the zoom control. True when the click was on it."""
+        if not (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1):
+            return False
+        hit = next((k for k, r in self._zoom_control_rects().items()
+                    if r.collidepoint(event.pos)), None)
+        if hit is None:
+            return False
+        centre = (self._panel_x() // 2, self.screen.get_height() // 2)
+        if hit == "in":
+            self._zoom_by(self.ZOOM_BTN_STEP, center=centre)
+        elif hit == "out":
+            self._zoom_by(1.0 / self.ZOOM_BTN_STEP, center=centre)
+        elif hit == "fit":
+            self._reset_zoom()
+        return True
+
+    # ── Drag to pan: a press on empty map (or a token it can't move) that leaves the
+    # slop pans, as on the player screen. Armed by the map's left-press handler. ──
+    def _arm_pan_drag(self, pos):
+        self._pan_drag = {"x0": pos[0], "y0": pos[1], "last": pos, "moved": False}
+
+    def _handle_pan_drag(self, event):
+        """Motion / release of an armed pan. True when the event was the pan's."""
+        drag = getattr(self, "_pan_drag", None)
+        if drag is None:
+            return False
+        if event.type == pygame.MOUSEMOTION:
+            if not drag["moved"] and math.hypot(event.pos[0] - drag["x0"],
+                                                event.pos[1] - drag["y0"]) < self.PAN_SLOP_PX:
+                return False
+            drag["moved"] = True
+            self._pan_by(event.pos[0] - drag["last"][0], event.pos[1] - drag["last"][1])
+            drag["last"] = event.pos
+            return True
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._pan_drag = None
+            return drag["moved"]      # a pan's release is no click (the jump overlay's, say)
+        return False
 
     # ─────────────────────────────────────────────────────────────────────
     #  Config panel widgets
@@ -14159,6 +14258,10 @@ class App:
             except Exception:
                 pass
         self._mark_fog_dirty()
+        # The walls/doors just applied must reach the screen too. Without this a loaded
+        # page showed "Walls: ON" with nothing drawn until Walls was toggled off and on,
+        # and that OFF window let the fog reveal straight through every wall.
+        self._build_overlay()
 
     @staticmethod
     def _normalize_ladders(raw):
@@ -14901,6 +15004,13 @@ class App:
         Monotonic OR of every cell any living party member can currently see into
         the persistent C++ explored mask. No-op unless a trigger set _fog_dirty."""
         if not self._fog_dirty:
+            return
+        # No reveal while the map has no walls at all (auto-detect OFF and nothing painted):
+        # the explored mask is monotonic and persisted, so a wall-blind reveal (a box through
+        # every wall) would outlive that window. Carved/painted dungeons switch auto-detect
+        # off on purpose but keep painted Wall cells, so they still reveal. The flag stays
+        # set, so the reveal catches up as soon as walls are back.
+        if not self._walls_enabled and not self._painted_terrain_cells:
             return
         self._fog_dirty = False
         try:
@@ -16090,8 +16200,14 @@ class App:
         """Draw every door on the map as a slab/lock glyph (reads bm.doors each frame).
 
         Doors are always drawn (independent of the terrain-visibility toggle): they are
-        interactive objects, and a closed door is not part of the painted terrain regions."""
+        interactive objects, and a closed door is not part of the painted terrain regions.
+        Under fog a door the party has never seen stays hidden: same rule as the player
+        view (net/view.py), any door cell explored, or either side of an edge door."""
+        fog = self._fog_active()
         for door in self.bm.doors:
+            if fog and not self._any_explored(
+                    [(c.col, c.row) for c in (door.cells or door_touch_cells(door))]):
+                continue
             if door.edges:
                 # An edge door is a bar on its grid line.
                 x, y, w, h = edge_door_rect(door, self._cell_to_screen, cpx)
@@ -16110,14 +16226,22 @@ class App:
                             h=(max(rows) - min_row + 1) * cpx,
                             linked=self._door_link_at(door) is not None)
 
+    def _any_explored(self, cells) -> bool:
+        """True when the party has explored at least one of ``cells`` ((col, row) pairs)."""
+        is_explored, Cell = self.bm.is_explored, rpg.Cell
+        return any(is_explored(Cell(int(c), int(r))) for c, r in cells)
+
     def _draw_ladders(self, cpx: int):
         """Draw every ladder as a rung-and-rails portal glyph (reads self._ladders).
 
         Like doors, ladders always draw (they are interactive objects). The arrow
         direction is derived from the target floor vs the active map's z_level."""
         z_here = int(getattr(self.bm, "z_level", 0) or 0)
+        fog = self._fog_active()
         for lad in self._ladders:
             cells = lad["cells"]
+            if fog and not self._any_explored((c[0], c[1]) for c in cells):
+                continue                                  # never seen: hidden like the floor under it
             cols = [c[0] for c in cells]
             rows = [c[1] for c in cells]
             if not cols:
@@ -18454,51 +18578,27 @@ class App:
                         self.panel_scroll = min(max(0, self.panel_scroll + d), panel_max)
                     continue
 
-            # ── Ctrl/Cmd + mouse wheel over the map: zoom (centered on cursor) ──
-            # Checked before the pan handlers below so the zoom modifier wins.
-            zoom_mod = bool(pygame.key.get_mods() & (pygame.KMOD_CTRL | pygame.KMOD_META))
-            if (map_input_allowed and zoom_mod and not over_initiative and not over_panel):
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
-                    f = self.ZOOM_STEP if event.button == 4 else 1.0 / self.ZOOM_STEP
-                    self._zoom_by(f, center=mouse_pos)
-                    continue
-                if (hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL
-                        and event.y != 0):
-                    f = self.ZOOM_STEP if event.y > 0 else 1.0 / self.ZOOM_STEP
-                    self._zoom_by(f, center=mouse_pos)
-                    continue
-
-            # ── Mouse wheel for map panning (suppressed while hovering the panel) ──
+            # ── Mouse wheel over the map: zoom at the cursor (the player screen's way) ──
             if (map_input_allowed and not over_initiative and not over_panel
-                    and event.type == pygame.MOUSEBUTTONDOWN):
-                if event.button == 4:  # Scroll up
-                    if pygame.key.get_mods() & pygame.KMOD_SHIFT:
-                        self.pan_x += 30
-                    else:
-                        self.pan_y += 30
-                elif event.button == 5:  # Scroll down
-                    if pygame.key.get_mods() & pygame.KMOD_SHIFT:
-                        self.pan_x -= 30
-                    else:
-                        self.pan_y -= 30
-            # Newer pygame versions use MOUSEWHEEL event
-            elif (map_input_allowed and not over_initiative and not over_panel
-                    and hasattr(pygame, 'MOUSEWHEEL') and event.type == pygame.MOUSEWHEEL):
-                if pygame.key.get_mods() & pygame.KMOD_SHIFT:
-                    self.pan_x += event.x * 30
-                else:
-                    self.pan_y += event.y * 30
+                    and self._wheel_zoom(event, mouse_pos)):
+                continue
+
+            # ── On-map zoom control, and drag-to-pan once a press has armed it ──
+            if map_input_allowed and self._handle_zoom_control(event):
+                continue
+            if self._handle_pan_drag(event):
+                continue
 
             # ── Keyboard panning (arrow keys) + zoom (+/-/0) ──────────────
             if map_input_allowed and event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_UP:
-                    self.pan_y += 30
+                    self._pan_by(0, 30)
                 elif event.key == pygame.K_DOWN:
-                    self.pan_y -= 30
+                    self._pan_by(0, -30)
                 elif event.key == pygame.K_LEFT:
-                    self.pan_x += 30
+                    self._pan_by(30, 0)
                 elif event.key == pygame.K_RIGHT:
-                    self.pan_x -= 30
+                    self._pan_by(-30, 0)
                 # Zoom in: '+' / '=' (main and numpad). Zoom out: '-'. Reset: '0'.
                 # Suppressed while an inline text field is capturing keystrokes.
                 elif self._pc_name_input:
@@ -18923,6 +19023,8 @@ class App:
                                     # During pause, allow selecting other agents; otherwise keep on current.
                                     if self.combat_paused:
                                         self.selected_idx = hit
+                                else:
+                                    self._arm_pan_drag(event.pos)
                     else:
                         # Normal mode: door interaction, drag any agent, or deselect.
                         # But disable dragging if jump overlay is active (use jump instead)
@@ -18944,6 +19046,8 @@ class App:
                             self._update_reach()
                             self._update_attack_overlay()
                         else:
+                            if not self.placement_mode_active:
+                                self._arm_pan_drag(event.pos)
                             self.selected_idx        = -1
                             self._reach_walk         = []
                             self._reach_fly          = []
@@ -19360,6 +19464,7 @@ class App:
             self._draw_hover_cursor()                       # always-on map cursor (in & out of combat)
             self._draw_agent_hover_name()                   # token name shown only under the pointer
             self._draw_staircase_hover()                    # staircase name/label/destination
+            self._draw_zoom_control()                       # − 100% + Fit, bottom-right of the map
             self._draw_panel()                              # config panel (hosts the Floor-nav block)
             net_offer.ensure(self)                          # D-M5-2: the offer, from the menu just built
             self._draw_cursor_cell_info()                   # debug: cell under cursor

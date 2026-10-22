@@ -20,6 +20,17 @@ metadata:
 
 ## Architecture / Infrastructure
 
+### Ladders and staircases: no crossing in combat [LIMITATION] (2026-10-22)
+Changing floors through a ladder (and, once built, a staircase; `plans/STAIRCASES_PLAN.md`)
+is refused while combat is running. Only one page is simulated at a time, so initiative,
+pursuit and attacks can't follow a creature to another floor. Both need adjusting together
+when cross-page combat exists.
+
+### Ladders and staircases: only the acting creature crosses [LIMITATION] (2026-10-22)
+Using a ladder or staircase carries the one creature that used it. The rest of the party
+stays on the old floor, and each must use it in turn. A "bring adjacent allies" option would
+cover both portal types.
+
 ### A renamed player's socket stops receiving pushes [TODO] (found 2026-10-17, M4b.2)
 **Symptom:** after the DM renames a seated player, that player's browser keeps its socket
 open but gets no more `view` or `events` frames until it reconnects. **Cause:**
