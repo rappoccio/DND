@@ -360,7 +360,7 @@ def test_failed_joins_are_rate_limited():
         assert _join(s, join_code=good, display_name="Nym")[0] == 429
 
         # Winding the window back is how a rolling window is tested without sleeping 60 s.
-        for hits in s.srv._joins._failures.values():
+        for hits in s.srv._auth_limiter._failures.values():
             for i in range(len(hits)):
                 hits[i] -= net_server.JOIN_FAILURE_WINDOW_S + 1
         assert _join(s, join_code=good, display_name="Nym")[0] == 202, \

@@ -117,6 +117,36 @@ LIVE_HEARTBEAT_S = 20.0
 WS_CLOSE_UNAUTHENTICATED = 4401
 WS_CLOSE_GOING_AWAY = 1001          # the server is stopping, not the client's fault
 
+# D-M7-3's close codes. Each says something the client acts on differently, so unlike the
+# one auth-failure code they are distinct: a newer screen took this seat's slot (stop
+# reconnecting), the DM removed the seat (show it), the table is full (retry later), and a
+# client broke the frame-rate rule (a bug or an attack; reconnecting is allowed).
+WS_CLOSE_REPLACED = 4408
+WS_CLOSE_REMOVED = 4403
+WS_CLOSE_TRY_LATER = 1013
+WS_CLOSE_POLICY = 1008
+
+# D-M7-3, the limits. Each sits well above what the real client does, so a table never
+# meets one, and each bounds work the net loop or the frame tick would otherwise do on a
+# client's say-so (F-M7-5).
+#
+# Sockets: the frame tick builds a view per socket 4 times a second, so the socket count
+# is frame-tick load. Four per principal covers a phone, a tablet and a reload's ghost
+# socket still waiting out its heartbeat. A fifth evicts the oldest.
+LIVE_MAX_PER_PRINCIPAL = 4
+LIVE_MAX_SOCKETS = 64
+# Sockets that connected and have not yet sent their first frame. Each holds the loop's
+# attention for up to `LIVE_AUTH_TIMEOUT_S`, and nothing has been proved about any of them.
+LIVE_MAX_PENDING = 16
+# Frames in: a bucket per socket. The client sends one auth frame, then one submit per
+# answer, so 40 in a burst and 10 a second sustained is an order of magnitude of headroom.
+LIVE_FRAME_BURST = 40
+LIVE_FRAME_RATE = 10.0
+# Submits in flight per socket. The client waits for each ack before it sends the next.
+LIVE_MAX_SUBMITS = 2
+# Frame-tick requests (`GET /state`, `/events`, `/sprite`) outstanding per principal.
+TICK_MAX_PER_PRINCIPAL = 4
+
 # D-M4c-3. Exact `(method, path)` pairs, matched against the *registered* route rather
 # than the requested string — never a prefix and never a path alone. `GET /join` is not a
 # member, and a prefix is how `/join/../state` becomes one.
@@ -199,14 +229,16 @@ def _same_origin(request) -> bool:
     return bool(host) and _origin_host(origin) == host
 
 
-# ── Rate limiting (A9's first implementation, D-M4c-5) ──────────────────────
+# ── Rate limiting (A9's first implementation, D-M4c-5; D-M7-3) ───────────────
 
-class _JoinLimiter:
-    """Failed joins per source address, in a rolling window.
+class _AuthLimiter:
+    """Failed authentications per source address, in a rolling window.
 
     `POST /join` is the one route with nothing in front of it, so it is where A9's owed
     rate limiting comes due. Scoped to *failures* because the thing being rationed is
-    guesses at the join code, not joining.
+    guesses at the join code, not joining. Since M7 (D-M7-3) a `/live` first frame that
+    fails counts against the same bucket: it is a guess at a credential, and before M7 it
+    was the one guess that cost nothing.
 
     `request.remote` is the peer address and **`X-Forwarded-For` is never consulted**:
     A6/A7 put any proxy outside this process, and trusting a header the client writes
@@ -291,6 +323,21 @@ class _LiveConn:
     sent_seq: int | None = None
     send_lock: asyncio.Lock = dataclasses.field(default_factory=asyncio.Lock)
     tasks: set = dataclasses.field(default_factory=set)
+    # D-M7-3: the inbound frame bucket, and the submits this socket has in flight.
+    tokens: float = float(LIVE_FRAME_BURST)
+    refilled: float = dataclasses.field(default_factory=time.monotonic)
+    submits: int = 0
+
+    def take_frame(self, now: float | None = None) -> bool:
+        """Spend one token on an inbound frame. False when the bucket is empty."""
+        now = time.monotonic() if now is None else now
+        self.tokens = min(float(LIVE_FRAME_BURST),
+                          self.tokens + (now - self.refilled) * LIVE_FRAME_RATE)
+        self.refilled = now
+        if self.tokens < 1.0:
+            return False
+        self.tokens -= 1.0
+        return True
 
 
 class _LiveConnections:
@@ -335,6 +382,13 @@ class _LiveConnections:
 
     def all(self) -> tuple[_LiveConn, ...]:
         return tuple(self._conns.values())
+
+    def of(self, principal_id: str) -> list[_LiveConn]:
+        """This principal's sockets, oldest first (the dict keeps connection order)."""
+        return [c for c in self._conns.values() if c.principal.id == principal_id]
+
+    def __len__(self) -> int:
+        return len(self._conns)
 
     def republish(self) -> None:
         """Rebuild the published tuple, and the id set. One store of one immutable object
@@ -401,8 +455,15 @@ class PlayerServer:
         # sprite this viewer's view carries, or None. It reads the map, so it runs on the
         # frame tick. Without one, every sprite is a 404 — the client draws its letter.
         self._sprite_for = sprite_for or (lambda app, viewer, basename: None)
-        self._joins = _JoinLimiter()
+        self._auth_limiter = _AuthLimiter()
         self._live_conns = _LiveConnections()
+        # D-M7-3's counters. Both live on the net loop only, like the limiter: sockets
+        # waiting on their first frame, and frame-tick requests outstanding per principal.
+        self._pending_auth = 0
+        self._tick_requests: dict[str, int] = {}
+        # D-M7-4's hook, installed by `net.link`: ``audit(text, dm_only)`` records one
+        # line in the session log. Called on the net thread; the log is thread-safe.
+        self.audit = None
         self._host = host
         self._port = port
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -549,6 +610,57 @@ class PlayerServer:
         request["principal"] = principal
         return await handler(request)
 
+    def _audit(self, text: str, dm_only: bool = True) -> None:
+        """One line in the session log (D-M7-4), when one is installed. Never raises: the
+        log must not cost a request its answer."""
+        hook = self.audit
+        if hook is None:
+            return
+        try:
+            hook(text, dm_only)
+        except Exception:
+            pass
+
+    def _auth_failed(self, addr: str, what: str) -> None:
+        """A failed authentication from ``addr``: A9's counter, the address's bucket, and a
+        DM-only log line. The first failure that fills the bucket says so once, which
+        bounds the log to the limiter's own rate (D-M7-4)."""
+        self.denials += 1
+        self._auth_limiter.record_failure(addr)
+        self._audit(f"Refused {what} from {addr}.")
+        if not self._auth_limiter.allowed(addr):
+            self._audit(f"Throttled {addr}: {JOIN_FAILURE_LIMIT} failed attempts in "
+                        f"{int(JOIN_FAILURE_WINDOW_S)} s.")
+
+    async def _on_frame_tick(self, request, fn):
+        """Run ``fn(app)`` on the frame tick for this request's principal, under D-M7-3's
+        per-principal cap. Returns ``(result, None)``, or ``(None, response)`` when the
+        answer is a status instead.
+
+        The cap is counted on the net loop, which is the only thread that touches it, so it
+        needs no lock. A request over the cap is refused before it queues anything: the
+        point is that the frame tick never sees it.
+        """
+        pid = request["principal"].id
+        if self._tick_requests.get(pid, 0) >= TICK_MAX_PER_PRINCIPAL:
+            self.denials += 1
+            return None, web.Response(status=429, text="busy", headers={"Retry-After": "1"})
+        self._tick_requests[pid] = self._tick_requests.get(pid, 0) + 1
+        try:
+            return await asyncio.wait_for(self._commands.submit(fn), STATE_TIMEOUT_S), None
+        except asyncio.TimeoutError:
+            return None, web.Response(status=503, text="timeout",
+                                      headers={"Retry-After": "1"})
+        except PermissionError:
+            self.denials += 1
+            return None, web.Response(status=403, text="forbidden")
+        finally:
+            left = self._tick_requests[pid] - 1
+            if left:
+                self._tick_requests[pid] = left
+            else:
+                del self._tick_requests[pid]
+
     def _authorize(self, request, action: Action, target=None) -> bool:
         """NN6's chokepoint, reached through the one helper so no route grows its own."""
         ok = self._roster.authorize(request["principal"], action, target)
@@ -616,14 +728,13 @@ class PlayerServer:
         # spend a bucket-free attempt by sending a malformed body, and a well-formed one
         # must not be cheaper than a wrong code.
         addr = request.remote or "?"
-        if not self._joins.allowed(addr):
+        if not self._auth_limiter.allowed(addr):
             self.denials += 1
             return _auth_error(429, "denied")
 
         roster = self._roster
         if not roster.check_join_code(str(body.get("join_code") or "")):
-            self._joins.record_failure(addr)
-            self.denials += 1
+            self._auth_failed(addr, "a join with a wrong code")
             return _auth_error(403, "denied")
 
         principal = self._claim_seat(roster, request["principal"], body)
@@ -712,28 +823,18 @@ class PlayerServer:
         if not self._authorize(request, Action.VIEW_SESSION):
             return web.Response(status=403, text="forbidden")
         viewer = request["principal"]
-
-        try:
-            view = await asyncio.wait_for(
-                self._commands.submit(lambda app: self._build_view(app, viewer)),
-                STATE_TIMEOUT_S)
-        except asyncio.TimeoutError:
-            # The frame loop is not pumping. Since M4d that is no longer a DM reading a
-            # dialog — the six modals pump — but generation work still blocks it, and
-            # D-M4d-3 says why nothing pumps through a terrain carve: a command reads
-            # `app.bm` while the carve is rewriting it. F1: a hung request is strictly
-            # better than a silent stall, and this is the bounded form of it.
-            # Envelope 2 has no error shape and is not given one; `"timeout"` in Step 0.5
-            # belongs to `submit_ack`, and inventing a second `view` shape would put an
-            # untested variant beside the one envelope with a byte-level test.
-            return web.Response(status=503, text="timeout",
-                                headers={"Retry-After": "1"})
-        except PermissionError:
-            # `build_view` raises it for a viewer who may not receive a view at all — a
-            # seat pulled between the middleware and the pump. A flow, not a bug, once
-            # there are two threads.
-            self.denials += 1
-            return web.Response(status=403, text="forbidden")
+        # A timeout is a 503: the frame loop is not pumping. Since M4d that is no longer a
+        # DM reading a dialog — the six modals pump — but generation work still blocks it,
+        # and D-M4d-3 says why nothing pumps through a terrain carve: a command reads
+        # `app.bm` while the carve is rewriting it. F1: a hung request is strictly better
+        # than a silent stall, and this is the bounded form of it. Envelope 2 has no error
+        # shape and is not given one. A `PermissionError` from `build_view` is a 403: a seat
+        # pulled between the middleware and the pump, which is a flow once there are two
+        # threads. Both answers come from `_on_frame_tick`.
+        view, refused = await self._on_frame_tick(
+            request, lambda app: self._build_view(app, viewer))
+        if refused is not None:
+            return refused
 
         # A view is per-viewer live state that changes every tick. The conditional-request
         # machinery `GET /map.png` earned is exactly wrong here, where nothing repeats.
@@ -762,16 +863,10 @@ class PlayerServer:
         viewer = request["principal"]
         answer = self._events_since
 
-        try:
-            frame = await asyncio.wait_for(
-                self._commands.submit(lambda app: answer(app, viewer, since)),
-                STATE_TIMEOUT_S)
-        except asyncio.TimeoutError:
-            return web.Response(status=503, text="timeout",
-                                headers={"Retry-After": "1"})
-        except PermissionError:
-            self.denials += 1
-            return web.Response(status=403, text="forbidden")
+        frame, refused = await self._on_frame_tick(
+            request, lambda app: answer(app, viewer, since))
+        if refused is not None:
+            return refused
         return web.json_response(frame, headers={"Cache-Control": "no-store"})
 
     # ── GET /sprite?name=<basename> (M4b.5, B-8) ────────────────────────────
@@ -798,16 +893,10 @@ class PlayerServer:
         basename = request.query.get("name", "")
         lookup = self._sprite_for
 
-        try:
-            path = await asyncio.wait_for(
-                self._commands.submit(lambda app: lookup(app, viewer, basename)),
-                STATE_TIMEOUT_S)
-        except asyncio.TimeoutError:
-            return web.Response(status=503, text="timeout",
-                                headers={"Retry-After": "1"})
-        except PermissionError:
-            self.denials += 1
-            return web.Response(status=403, text="forbidden")
+        path, refused = await self._on_frame_tick(
+            request, lambda app: lookup(app, viewer, basename))
+        if refused is not None:
+            return refused
         if not path:
             return web.Response(status=404, text="no such sprite")
 
@@ -884,11 +973,29 @@ class PlayerServer:
         if not ready.ok:
             # Not an upgrade at all — a browser pointed at `/live`, or a probe.
             return web.Response(status=400, text="protocol")
+        addr = request.remote or "?"
         await ws.prepare(request)
 
-        principal, credential = await self._live_authenticate(ws)
-        if principal is None:
+        # D-M7-3, before anything is read. A full table and a crowd of sockets that have
+        # proved nothing are both "try later"; an address out of guesses is refused as
+        # unauthenticated, exactly as its next guess would have been.
+        if len(self._live_conns) >= LIVE_MAX_SOCKETS or self._pending_auth >= LIVE_MAX_PENDING:
             self.denials += 1
+            self._audit(f"Turned away a connection from {addr}: the table is full.")
+            await ws.close(code=WS_CLOSE_TRY_LATER, message=b"busy")
+            return ws
+        if not self._auth_limiter.allowed(addr):
+            self.denials += 1
+            await ws.close(code=WS_CLOSE_UNAUTHENTICATED, message=b"unauthenticated")
+            return ws
+
+        self._pending_auth += 1
+        try:
+            principal, credential = await self._live_authenticate(ws)
+        finally:
+            self._pending_auth -= 1
+        if principal is None:
+            self._auth_failed(addr, "a connection with no valid credential")
             await ws.close(code=WS_CLOSE_UNAUTHENTICATED, message=b"unauthenticated")
             return ws
 
@@ -899,10 +1006,28 @@ class PlayerServer:
             await ws.close(code=WS_CLOSE_UNAUTHENTICATED, message=b"unauthenticated")
             return ws
 
+        # D-M7-3: a fifth socket for one principal takes the oldest one's place. The newest
+        # screen is the one in someone's hand; the oldest is usually a reload's ghost.
+        mine = self._live_conns.of(principal.id)
+        while len(mine) >= LIVE_MAX_PER_PRINCIPAL:
+            oldest = mine.pop(0)
+            self._live_conns.remove(oldest)
+            self._audit(f"Closed an older connection for {principal.display_name}: "
+                        f"{LIVE_MAX_PER_PRINCIPAL} screens at once.")
+            asyncio.ensure_future(oldest.ws.close(code=WS_CLOSE_REPLACED, message=b"replaced"))
+
         conn = self._live_conns.add(ws, principal, credential)
         try:
             await self._live_resync(conn)
             async for msg in ws:
+                # D-M7-3: every frame spends a token, read or dropped, because parsing one
+                # is the cost being rationed. An empty bucket closes the socket.
+                if not conn.take_frame():
+                    self.denials += 1
+                    self._audit(f"Closed {principal.display_name}'s connection from {addr}: "
+                                "too many messages.")
+                    await ws.close(code=WS_CLOSE_POLICY, message=b"rate")
+                    break
                 # After the auth frame the client speaks one kind of frame, `submit` (M5a).
                 # Anything else is read and dropped, which keeps the socket alive and the
                 # pongs flowing. A submit is handed to a task so this loop keeps reading
@@ -911,6 +1036,14 @@ class PlayerServer:
                 frame = _submit_frame(msg)
                 if frame is None:
                     continue
+                if conn.submits >= LIVE_MAX_SUBMITS:
+                    # The client waits for each ack, so a third in flight is not the client.
+                    # Refused here, so the frame tick never sees it.
+                    self.denials += 1
+                    prompt_id = frame.get("id") if isinstance(frame.get("id"), str) else ""
+                    await self._send_ack(conn, _ack(prompt_id, "protocol"))
+                    continue
+                conn.submits += 1
                 task = asyncio.ensure_future(self._submit(conn, frame))
                 conn.tasks.add(task)
                 task.add_done_callback(conn.tasks.discard)
@@ -932,6 +1065,14 @@ class PlayerServer:
         time. It may still be decided later. The client re-reads and never resubmits.
         """
         prompt_id = frame.get("id") if isinstance(frame.get("id"), str) else ""
+        try:
+            ack = await self._decide_submit(conn, frame, prompt_id)
+        finally:
+            conn.submits -= 1
+        await self._send_ack(conn, ack)
+
+    async def _decide_submit(self, conn, frame, prompt_id: str) -> dict:
+        """`_submit`'s decision, apart from the in-flight count it is wrapped in."""
         if self._submits is None or self._handle_submit is None:
             ack = _ack(prompt_id, "protocol")
         else:
@@ -947,7 +1088,7 @@ class PlayerServer:
                 # A handler that raised: its exception rode the future (rule 2). The
                 # client learns only that the frame was not accepted.
                 ack = _ack(prompt_id, "protocol")
-        await self._send_ack(conn, ack)
+        return ack
 
     async def _send_ack(self, conn, ack) -> None:
         """An ack waits for the socket rather than being dropped, unlike a push."""

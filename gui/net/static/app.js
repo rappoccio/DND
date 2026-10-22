@@ -47,6 +47,8 @@ const NAME_KEY = "dnd.principal";
 const SEAT_KEY = "dnd.seat";              // localStorage: {id, name}, a hint, never a credential (D-M6-7)
 const MASK = "rgb(24, 24, 28)";           // net/mapimg.py MASK_RGB
 const WS_UNAUTHENTICATED = 4401;          // net/server.py WS_CLOSE_UNAUTHENTICATED
+const WS_REPLACED = 4408;                 // net/server.py WS_CLOSE_REPLACED (D-M7-3)
+const WS_REMOVED = 4403;                  // net/server.py WS_CLOSE_REMOVED (D-M7-5)
 const RETRY_MS = [1000, 2000, 4000, 8000, 10000];
 
 const el = (id) => document.getElementById(id);
@@ -188,6 +190,18 @@ function connect() {
       // the credential goes and the join card comes back.
       forget(CRED_KEY);
       showJoin("Your seat was closed, or the game restarted. Join again.");
+      return;
+    }
+    if (event.code === WS_REMOVED) {
+      // The DM took this seat away (D-M7-5). The credential is dead with it.
+      forget(CRED_KEY);
+      showJoin("The DM removed you from the table.");
+      return;
+    }
+    if (event.code === WS_REPLACED) {
+      // A newer screen took this seat's last connection slot (D-M7-3). Reconnecting
+      // would only evict that screen in turn, so this one stops and says why.
+      setStatus("opened on another screen — reload to use this one", false);
       return;
     }
     const wait = RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)];

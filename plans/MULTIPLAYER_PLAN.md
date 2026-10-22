@@ -8280,6 +8280,12 @@ its callers, and the C++ fog and edge bindings. Baseline suite: 188 / 0 at `0eda
   the largest full view in the tree is timed in a test, and the number goes here. An
   executor would not help, because the encoder holds the GIL. If it is ever too slow, the
   fix is a smaller view.
+  *Measured 2026-10-21, in the container, on the two largest maps in the tree, with every
+  cell painted and explored (the worst case for the terrain list):* `wachterhaus.png`
+  (30×43) gives a 16 KB view in **0.1 ms** of `json.dumps`, and the Ravenloft main floor
+  (22×77) gives 21 KB in **0.2 ms**. `build_view` itself, on the frame tick, costs ~5 ms per
+  viewer per cycle. That is the real cost, and D-M7-3's socket caps are what bound it. The
+  net loop's encode is not worth moving.
 
 **Steps, one commit each.**
 
@@ -8287,7 +8293,7 @@ its callers, and the C++ fog and edge bindings. Baseline suite: 188 / 0 at `0eda
 | --- | ---- | :--: |
 | M7.1 | The party's fog gate (D-M7-1), with a byte-level test with the terrain editor open | ☑ |
 | M7.2 | The roster lock and the cancelled-command skip (D-M7-2). *The skip is the read queue's only: a submit that timed out is still decided, as Step 0.5 promises, and `test_submit` caught the first version.* | ☑ |
-| M7.3 | Limits (D-M7-3), plus the serialization measurement (D-M7-7) | ☐ |
+| M7.3 | Limits (D-M7-3), plus the serialization measurement (D-M7-7) | ☑ |
 | M7.4 | The session log, on the wire and in the client (D-M7-4) | ☐ |
 | M7.5 | The Table menu: kick, rotate, lock, restore, log (D-M7-5) | ☐ |
 | M7.6 | Reveal a region (D-M7-6) | ☐ |
