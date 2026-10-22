@@ -14815,7 +14815,15 @@ class App:
                 and not self.lighting_editor.active
                 and not self.terrain_editor.active)
 
-    def _agent_fogged(self, idx: int, pt=None) -> bool:
+    def _party_fog_active(self) -> bool:
+        """True when the party's fog is up — the gate for anything that leaves the process.
+
+        `_fog_active()` is the DM *screen's* gate: an open terrain or lighting editor lifts
+        it so the DM can see what they are editing. That must never lift a player's fog
+        (MULTIPLAYER_PLAN.md D-M7-1), so every net reader asks this instead."""
+        return bool(self.show_fog)
+
+    def _agent_fogged(self, idx: int, pt=None, party: bool = False) -> bool:
         """True when a non-party token's whole footprint sits in never-explored fog.
 
         The single home of the fog-of-war reveal gate. It used to be written out three
@@ -14831,8 +14839,11 @@ class App:
         hover tooltip withholds the name, and playback resolves the token's Move/Announce
         events instantly and silently — no info leak, and no dead air spent staring at an
         apparently empty map.
+
+        `party=True` is the net readers' form (D-M7-1): it ignores an open editor, which
+        un-fogs only the DM's own screen.
         """
-        if not self._fog_active():
+        if not (self._party_fog_active() if party else self._fog_active()):
             return False
         agents = self.bm.placed_agents
         if idx < 0 or idx >= len(agents):

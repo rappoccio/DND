@@ -28,6 +28,7 @@ Covered here:
   · D-M3-5: unexplored terrain, doors and ladders are omitted (test_unexplored_map_structure_omitted)
   · DM-channel FIELDS never reach a player, seen or not      (test_dm_only_fields_never_reach_a_player)
   · fog down shows a player what the DM's screen shows       (test_fog_down_matches_the_dm_screen)
+  · D-M7-1: an open editor lifts only the DM screen's fog    (test_an_open_editor_keeps_the_party_fog)
   · D-M5-5: turn_agent is null on a hidden creature's turn     (test_turn_agent_never_names_a_hidden_creature)
   · D-M3-6: prompt_id is gated by ANSWER_PROMPT              (test_prompt_id_only_for_its_owner)
   · D-M4-2: the fog mask crosses as row runs, not pairs      (test_fog_crosses_as_row_runs)
@@ -55,7 +56,8 @@ import tempfile
 import rpg_battle_map as rpg
 
 from net.roster import DM_PRINCIPAL_ID, PC_FACTION, Role
-from net.view import build_view, explored_runs
+from net import move as net_move
+from net.view import build_view, explored_runs, page_image, sight
 from main import App
 
 MAP_PATH = os.path.join(_ROOT, "maps", "TestGrid12x12.png")
@@ -428,6 +430,38 @@ def test_fog_down_matches_the_dm_screen():
     print("✅ test_fog_down_matches_the_dm_screen")
 
 
+def test_an_open_editor_keeps_the_party_fog():
+    """D-M7-1. A terrain or lighting editor un-fogs the DM's screen so the DM can see the
+    map being edited. Before M7 every net reader used that same gate, so for as long as an
+    editor stayed open each player's push carried the whole map. Byte level, for both
+    editors, through every reader whose output leaves the process: the view, the event
+    filter, the page mask, and the move overlay's cut."""
+    def check(app, kira, _spectator):
+        skarn = _idx(app, "Skarn")
+        aria = _idx(app, "Aria")
+        for editor in (app.terrain_editor, app.lighting_editor):
+            editor.active = True
+            try:
+                assert not app._fog_active(), "precondition: the DM's screen is un-fogged"
+                view = build_view(app, kira)
+                blob = _blob(view)
+                assert view["fog"]["active"] is True, "the view says the fog is down"
+                assert "Skarn" not in blob, "the open editor sent a hidden enemy to a player"
+                assert "[10, 9]" not in blob, "the open editor sent a fogged door to a player"
+                seen = sight(app, kira)
+                assert seen.hide_map and skarn not in seen.shown, "the event filter lifted"
+                assert page_image(app).fog_on is True, "the page image went out unmasked"
+                cut = net_move.explored_footprints(app, aria, [(1, 1), (9, 9)])
+                assert cut == [(1, 1)], f"the move overlay reached into the fog: {cut}"
+                # The DM's screen is the one thing the editor is allowed to change.
+                assert not app._agent_fogged(skarn), "the DM's screen should show Skarn"
+                assert app._agent_fogged(skarn, party=True)
+            finally:
+                editor.active = False
+    _run(check)
+    print("✅ test_an_open_editor_keeps_the_party_fog")
+
+
 def test_prompt_id_only_for_its_owner():
     """D-M3-6. The gate is ownership through ``authorize()``, not the widget drawing it."""
     def check(app, kira, spectator):
@@ -556,6 +590,7 @@ if __name__ == "__main__":
     test_unexplored_map_structure_omitted()
     test_dm_only_fields_never_reach_a_player()
     test_fog_down_matches_the_dm_screen()
+    test_an_open_editor_keeps_the_party_fog()
     test_prompt_id_only_for_its_owner()
     test_spectator_gets_a_view()
     test_unseated_principal_refused()

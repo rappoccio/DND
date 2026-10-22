@@ -301,7 +301,7 @@ def test_reachable_is_cut_to_the_explored_mask():
     # scene has no Large creature, so this half drives the filter with a stand-in App.
     from types import SimpleNamespace as NS
     cell = lambda c, r: NS(col=c, row=r)
-    big = NS(_fog_active=lambda: True,
+    big = NS(_party_fog_active=lambda: True,
              reachable_for=lambda idx, mt: [cell(0, 0), cell(0, 3), cell(2, 2)],
              bm=NS(placed_agents=[NS(size=2)],
                    explored_cells=lambda: [cell(c, r) for c in range(4) for r in range(4)]))

@@ -8157,6 +8157,147 @@ rate limiting, join-code rotation, a session log. And, if the table wants it, **
 fog** via `VisibilityService::computeVisibility` / `canPerceiveTarget` — a gameplay
 decision about whether the scout's vision is private, not a technical blocker.
 
+##### M7 — Step 0 *(frozen 2026-10-21, user: "do all of M7 at once, but commit at each step. I don't need to approve for this round")*
+
+**The user's scope calls, 2026-10-21.** Pause is **on hold**: it already exists as the
+`pause_resume` DM tool and the user does not expect to need more. Per-agent fog is **out**:
+fog stays party-scoped. The session log is **one joint log that everyone at the table can
+read**. Everything else in M7 is in, landed step by step with a commit per step. The user
+waived the Step 0 approval for this round, so this section records the decisions rather
+than proposing them.
+
+**Method.** A read-only survey first: `net/roster.py`, `net/server.py`, `net/link.py`,
+`net/view.py`, `net/submit.py`, `net/commands.py`, `net/offer.py`, `menus/dm.py`,
+`menus/board.py`, `actions.py`, `net/static/app.js` and `index.html`, `App._fog_active` and
+its callers, and the C++ fog and edge bindings. Baseline suite: 188 / 0 at `0eda4ba`.
+
+**Findings.**
+- **F-M7-1: the fog leak is real and is the only item with a security shape.**
+  `App._fog_active()` is `show_fog and not lighting_editor.active and not
+  terrain_editor.active` (`main.py:14808`). It is the DM screen's gate, and every net reader
+  uses it as the party's gate: `view.build_view`, `view.sight` (events), `view.page_image`
+  (the PNG mask), `picks.cells` and `move.explored_footprints`. While the DM edits terrain
+  or lighting, every player's push carries the whole map, every token and an unmasked PNG.
+- **F-M7-2: take over and force the turn already exist.** Any DM panel click on a player's
+  turn calls `net_offer.take_over` before it acts (D-M5-7), so the DM's End Turn *is* force
+  advance, and it is logged as a `takeover`. Pause exists too (`pause_resume`, which
+  withdraws the offer). Nothing to build. M7 only surfaces these in the session log.
+- **F-M7-3: kick and rotate are half built.** `SessionRoster` has `remove_principal`,
+  `rotate_join_code`, `revoke_kid`, `revoke_all`, and `push_cycle` already closes a socket
+  whose credential stops verifying. But no DM UI calls any of them, and the join code is
+  printed only to the terminal, which a DM on noVNC never sees.
+- **F-M7-4: the roster has no lock** (`server.py:47-52`). `POST /join` mutates it on the
+  net thread while the pygame thread seats players and syncs tokens.
+- **F-M7-5: a credentialed client can load the frame tick without limit.** `GET /state`,
+  `/events` and `/sprite` each queue a frame-tick command, and nothing bounds how many one
+  principal has outstanding. A timed-out command still runs, since `pump` never checks
+  whether its future was cancelled. One principal may open any number of sockets, and the
+  frame tick builds a view per socket 4× a second. Submits and junk frames on a socket are
+  unbounded too. The only limit is failed joins, and a garbage first frame on `/live` is
+  not counted in it.
+- **F-M7-6: A9's audit log is still a counter** (`PlayerServer.denials`).
+- **F-M7-7: the DM's restore UI is missing in combat.** The combat panel replaces the setup
+  panel, so Restore Autosave… has no button during a fight (M6.5's note).
+- **F-M7-8: there is no way to reveal one region.** The fog menu has Reveal all and Reset.
+  `set_explored` paints a single cell. Nothing finds a room.
+- **F-M7-9: the combat log goes to every viewer unfiltered** (`view.py`: `log`). That is
+  the frozen M3/M4b behaviour and is not changed here. The new session log is kept
+  separate from it, as the Identity section asks.
+
+**Decisions.**
+- **D-M7-1, the party's fog gate.** `App._party_fog_active()` returns `show_fog` alone, and
+  every reader whose output can leave the process uses it: `build_view`, `sight`,
+  `page_image`, `picks.cells`, `move.explored_footprints`, and the fog and concealment
+  predicates when the net code asks them (`_agent_fogged(..., party=True)`). The DM screen
+  keeps `_fog_active()`. An open editor un-fogs the DM's screen and nobody else's.
+- **D-M7-2, the roster lock.** `SessionRoster` gets one `threading.RLock`, held by every
+  method that reads or writes `_principals`, `_tokens` or `_owned`. It is never held
+  across a call out of the roster. `CommandQueue.pump` skips an entry whose future is
+  already done: the caller timed out, so nobody is waiting for its answer.
+- **D-M7-3, limits.** All of them are module constants in `net/server.py`, set well above
+  what the real client does:
+  - Auth failures per address: `_JoinLimiter` becomes `_AuthLimiter` and also counts a
+    `/live` first frame that fails. Over the limit, the socket is closed before its frame
+    is read. Still 10 a minute, still never `X-Forwarded-For`.
+  - At most **4 sockets per principal**. A fifth evicts the oldest with close code
+    **4408**, and the client stops reconnecting and says the seat was opened on another
+    screen.
+  - At most **64 sockets** in total and **16** waiting on their first frame. Past either
+    cap, a new socket is closed with **1013** (try again later).
+  - At most **4 frame-tick requests** outstanding per principal on `GET /state`,
+    `/events` and `/sprite`. Past that, `429`.
+  - At most **2 submits** in flight per socket. The client sends one at a time, so a third
+    is refused with ack error `protocol` and never reaches the frame tick.
+  - Inbound frames: a bucket of 40 per socket, refilling at 10 a second. A socket that
+    empties it is closed with **1008** (policy violation).
+- **D-M7-4, the session log.** It lives in a new module, `net/sessionlog.py`. `SessionLog`
+  is thread-safe because both threads write to it. It keeps a 200-entry in-memory ring,
+  plus an append-only `session_log.jsonl` that is written only once a server is running,
+  the way the submit log is, and is gitignored. An entry is `{n, at, text}`, plus `dm`
+  when only the DM may read it. `at` is local `HH:MM`, because this log is for people. Each
+  entry also records the principal **id** it concerns, so the file stays useful when a
+  name changes.
+  - **Public entries:** a player joins, takes back a seat, connects (first socket), or
+    drops (last socket); the DM takes over a player's turn or prompt; a prompt times out;
+    the game is paused or resumed; an autosave is restored (round only, never the actor:
+    the actor may be a creature the party cannot see); the join code changes (never the
+    code itself); a player is removed; the table is locked; the DM reveals or hides a
+    region; a new table is loaded.
+  - **DM-only entries** (A9's audit log, finally more than a counter): a failed join, a
+    refused first frame, a throttled address, an eviction, a cap hit, a rate-limit close.
+    Each one names the address. Every one of these sources is bounded by a limiter, so a
+    flood cannot grow the file without bound.
+  - **On the wire:** the view gains a `session` block, holding the last 50 entries this
+    viewer may read. The `dm` entries are filtered by `authorize(VIEW_DM_CHANNEL)`, and
+    are **omitted, not hidden**, for everyone else. It is an additive field; no frozen
+    field changes.
+  - **The client** gets a third panel, **Table**, beside Round and Log.
+  - **The DM console** gets **Session log…** in the Table menu, which lists the last 20
+    entries.
+- **D-M7-5, the Table menu.** A **Table…** button goes on the setup panel, sharing a row
+  with Restore Autosave…, and as a fourth DM tool, `table`, in the combat panel's session
+  row, so it works mid-fight. The menu holds:
+  - the join code and the URL, as a read-only header row;
+  - **Players ▸**: per player, *Remove from table* and *Rename…*;
+  - **New join code**: rotates the code, and nobody connected is signed out;
+  - **Lock the table**: a new code and `revoke_all`, so everyone must rejoin with the new
+    code;
+  - **Restore autosave…**, so a rewind works mid-fight (F-M7-7);
+  - **Session log…**.
+
+  *Remove* unseats the principal, hands their tokens back to the DM (`controller = "dm"`)
+  and saves the session. It closes their sockets with **4403**, and the client shows "The
+  DM removed you from the table." With an unchanged code they can rejoin, but only as a
+  new seat with no tokens. To keep someone out, lock the table. The `table` id is a
+  `GROUP_SESSION` DM tool, so it asks `DM_COMMAND` and the offer never carries it.
+- **D-M7-6, reveal a region.** `BattleMap::roomCells(start, cap)` goes in C++ (map
+  analysis is C++'s, per `architecture_cpp_only.md`). It is an orthogonal flood from
+  `start` that stops at detected walls, `Wall` terrain, any door cell, any wall edge and
+  any door edge, open or shut. It includes the blocking cells it touches, so the room's
+  walls show, and caps at `cap` cells. It is bound as `room_cells`. The right-click fog
+  menu gains **Reveal this room** and **Fog this room**, and the session log notes it.
+- **D-M7-7, the push serialization (owed from M4e).** Measured, not moved: `json.dumps` of
+  the largest full view in the tree is timed in a test, and the number goes here. An
+  executor would not help, because the encoder holds the GIL. If it is ever too slow, the
+  fix is a smaller view.
+
+**Steps, one commit each.**
+
+| # | Step | Done |
+| --- | ---- | :--: |
+| M7.1 | The party's fog gate (D-M7-1), with a byte-level test with the terrain editor open | ☑ |
+| M7.2 | The roster lock and the cancelled-command skip (D-M7-2) | ☐ |
+| M7.3 | Limits (D-M7-3), plus the serialization measurement (D-M7-7) | ☐ |
+| M7.4 | The session log, on the wire and in the client (D-M7-4) | ☐ |
+| M7.5 | The Table menu: kick, rotate, lock, restore, log (D-M7-5) | ☐ |
+| M7.6 | Reveal a region (D-M7-6) | ☐ |
+
+**A1–A9 check, to run at the end:** no display name used as a key (the log's text holds
+names, but each entry also carries the principal id); no `Role` branch outside
+`authorize()`; no cookie; no identity from an IP (addresses appear only in DM-only log
+text and in the limiter's bucket key); every new route and frame goes through the
+middleware or the first-frame check.
+
 ---
 
 ### M8 — Real authentication

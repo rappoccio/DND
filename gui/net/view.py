@@ -92,10 +92,11 @@ def build_view(app, viewer: Principal, seq: int = 0) -> dict:
     is_dm = roster.authorize(viewer, Action.VIEW_DM_CHANNEL)
 
     bm = app.bm
-    # `_fog_active()` is False while a map-authoring modal is open and whenever the DM has
-    # fog switched off — in both cases the DM's own screen is drawing the whole map, so
-    # nothing here may hide more than it does.
-    fog_on = bool(app._fog_active())
+    # The PARTY's gate, not the DM screen's (D-M7-1). `_fog_active()` also drops while a
+    # terrain or lighting editor is open, so the DM can see the map they are editing, and
+    # a view built on it carried the whole map to every player for as long as the editor
+    # stayed open. With fog switched off the DM's screen draws everything, and so may this.
+    fog_on = bool(app._party_fog_active())
     hide_map = fog_on and not is_dm
     explored = {(c.col, c.row) for c in bm.explored_cells()}
 
@@ -155,7 +156,8 @@ def _drawn(app, idx: int, pt, is_dm: bool) -> bool:
     """The three gates above, in one place, because ``sight`` must apply exactly these."""
     if pt.removed_from_play:
         return False
-    return is_dm or not (app._agent_fogged(idx, pt) or app._npc_concealed_from_party(idx, pt))
+    return is_dm or not (app._agent_fogged(idx, pt, party=True)
+                      or app._npc_concealed_from_party(idx, pt))
 
 
 def sight(app, viewer: Principal) -> net_events.Sight:
@@ -172,7 +174,7 @@ def sight(app, viewer: Principal) -> net_events.Sight:
     if not roster.authorize(viewer, Action.VIEW_SESSION):
         raise PermissionError("viewer is not seated")
     is_dm = roster.authorize(viewer, Action.VIEW_DM_CHANNEL)
-    hide_map = bool(app._fog_active()) and not is_dm
+    hide_map = bool(app._party_fog_active()) and not is_dm
 
     shown, party, sizes = set(), set(), {}
     for i, pt in enumerate(bm_agents(app)):
@@ -375,7 +377,7 @@ def page_image(app, explored=None, fog_on=None) -> mapimg.PageImage | None:
         return None
     bm = app.bm
     if fog_on is None:
-        fog_on = bool(app._fog_active())
+        fog_on = bool(app._party_fog_active())
     if explored is None:
         explored = {(c.col, c.row) for c in bm.explored_cells()}
     return mapimg.PageImage(

@@ -479,7 +479,7 @@ def cells(app, arm: Arm, actor: int) -> list[tuple[int, int]]:
     """M5d Step 0.2: what the viewer may hear about, or the jump's own landing set."""
     if arm.cells is not None:
         return arm.cells(app, actor)
-    if app._fog_active():
+    if app._party_fog_active():
         return sorted((c.col, c.row) for c in app.bm.explored_cells())
     return [(c, r) for r in range(app.bm.grid_rows) for c in range(app.bm.grid_cols)]
 
