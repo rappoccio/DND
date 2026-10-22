@@ -32,12 +32,25 @@ page abutting the bottom edge. ``+Z`` is *up* a floor.
           "rows":           <int>           # page height in cells (bm.grid_rows)
         },
         ...
-      ]
+      ],
+      "staircases": [                       # optional; absent in older manifests
+        {
+          "id":    <int>,                   # unique, never reused after a delete
+          "name":  "Staircase <id>",        # DM-renamable
+          "label": "<optional note>",
+          "ends":  [{"page": "<page id>", "cell": [col, row]}, ...]   # 1 or 2 ends
+        },
+        ...
+      ],
+      "next_staircase_id": <int>            # the id the next staircase gets
     }
 
-Portals (ladders, inter-map door staples) live in the per-encounter ``_terrain.json``
-files (Phases 4–5), NOT here — the manifest stays about *placement*, and derives
-door-staple adjacency from page origins.
+Ladders and inter-map door staples live in the per-encounter ``_terrain.json`` files
+(Phases 4–5), NOT here, and door-staple adjacency is derived from page origins.
+Staircases are the exception (``plans/STAIRCASES_PLAN.md``): each one spans two pages,
+so the manifest owns both ends. An end is page-local (a page id and a local cell), so a
+page can move on its floor without breaking it. A staircase with one end is unfinished:
+the DM has placed end A and not yet end B on the floor above or below.
 """
 
 from __future__ import annotations
@@ -137,11 +150,68 @@ class MapPage:
 
 
 @dataclass
+class StaircaseEnd:
+    """One end of a staircase: a local cell on one page."""
+
+    page: str
+    cell: tuple[int, int]
+
+    def to_dict(self) -> dict:
+        return {"page": self.page, "cell": [int(self.cell[0]), int(self.cell[1])]}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StaircaseEnd":
+        c = list(d.get("cell", [0, 0]))
+        c = (c + [0, 0])[:2]
+        return cls(page=str(d["page"]), cell=(int(c[0]), int(c[1])))
+
+
+@dataclass
+class Staircase:
+    """A two-page portal between adjacent floors, owning both of its ends."""
+
+    id: int
+    ends: list[StaircaseEnd] = field(default_factory=list)
+    name: str = ""
+    label: str = ""
+
+    def __post_init__(self):
+        if not self.name:
+            self.name = f"Staircase {self.id}"
+
+    @property
+    def finished(self) -> bool:
+        return len(self.ends) == 2
+
+    def other_end(self, end_index: int) -> Optional[StaircaseEnd]:
+        """The end opposite ``end_index``, or ``None`` while unfinished."""
+        if not self.finished or end_index not in (0, 1):
+            return None
+        return self.ends[1 - end_index]
+
+    def to_dict(self) -> dict:
+        d = {"id": int(self.id), "name": self.name}
+        if self.label:
+            d["label"] = self.label
+        d["ends"] = [e.to_dict() for e in self.ends]
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Staircase":
+        return cls(id=int(d["id"]),
+                   ends=[StaircaseEnd.from_dict(e) for e in d.get("ends", [])][:2],
+                   name=str(d.get("name", "")),
+                   label=str(d.get("label", "")))
+
+
+@dataclass
 class Dungeon:
     """An ordered collection of :class:`MapPage` sharing one global grid."""
 
     pages: list[MapPage] = field(default_factory=list)
     entry_page_id: Optional[str] = None
+    staircases: list[Staircase] = field(default_factory=list)
+    next_staircase_id: int = 1
 
     # ── Lookup helpers ──────────────────────────────────────────────────────
     def page_by_id(self, page_id: Optional[str]) -> Optional[MapPage]:
@@ -226,23 +296,117 @@ class Dungeon:
             self.entry_page_id = page.id
 
     def remove_page(self, page_id: str) -> None:
+        """Remove a page. A staircase loses its end on that page: a finished one becomes
+        unfinished (its other end stays placed), an unfinished one is deleted."""
         self.pages = [p for p in self.pages if p.id != page_id]
         if self.entry_page_id == page_id:
             self.entry_page_id = self.pages[0].id if self.pages else None
+        kept = []
+        for st in self.staircases:
+            st.ends = [e for e in st.ends if e.page != page_id]
+            if st.ends:
+                kept.append(st)
+        self.staircases = kept
+
+    # ── Staircases ──────────────────────────────────────────────────────────
+    def staircase_by_id(self, sid: int) -> Optional[Staircase]:
+        for st in self.staircases:
+            if st.id == sid:
+                return st
+        return None
+
+    def new_staircase(self, page_id: str, cell, name: str = "", label: str = "") -> Staircase:
+        """Place end A of a new, unfinished staircase and give it the next id."""
+        if self.page_by_id(page_id) is None:
+            raise ValueError(f"no page {page_id!r}")
+        st = Staircase(id=self.next_staircase_id,
+                       ends=[StaircaseEnd(page_id, (int(cell[0]), int(cell[1])))],
+                       name=name, label=label)
+        self.next_staircase_id += 1
+        self.staircases.append(st)
+        return st
+
+    def finish_staircase(self, sid: int, page_id: str, cell) -> Staircase:
+        """Place end B of an unfinished staircase. Refused (ValueError) unless the page
+        is on the floor directly above or below end A's page."""
+        st = self.staircase_by_id(sid)
+        if st is None:
+            raise ValueError(f"no staircase {sid}")
+        if st.finished:
+            raise ValueError(f"{st.name} already has both ends")
+        a_page = self.page_by_id(st.ends[0].page)
+        b_page = self.page_by_id(page_id)
+        if a_page is None or b_page is None:
+            raise ValueError("staircase end on a missing page")
+        if abs(b_page.z - a_page.z) != 1:
+            raise ValueError(f"{st.name} must end on floor {a_page.z - 1} or {a_page.z + 1}")
+        st.ends.append(StaircaseEnd(page_id, (int(cell[0]), int(cell[1]))))
+        return st
+
+    def remove_staircase(self, sid: int) -> None:
+        """Delete a staircase and both its ends. Its id is not reused."""
+        self.staircases = [st for st in self.staircases if st.id != sid]
+
+    def staircase_ends_on(self, page_id: str) -> list[tuple[Staircase, int]]:
+        """Every ``(staircase, end_index)`` with an end on ``page_id``."""
+        return [(st, i) for st in self.staircases
+                for i, e in enumerate(st.ends) if e.page == page_id]
+
+    def staircase_ends_at(self, page_id: str, cell) -> list[tuple[Staircase, int]]:
+        """Every ``(staircase, end_index)`` whose end is ``cell`` on ``page_id``. Several
+        staircases may share a cell (a landing that goes both up and down)."""
+        c = (int(cell[0]), int(cell[1]))
+        return [(st, i) for st, i in self.staircase_ends_on(page_id)
+                if st.ends[i].cell == c]
+
+    def staircase_direction(self, st: Staircase, end_index: int) -> Optional[str]:
+        """"up" or "down": which way the other end lies from ``end_index``. ``None`` if
+        the staircase is unfinished or broken (a missing page, or the floors are not
+        adjacent, e.g. after a page was moved to another Z)."""
+        other = st.other_end(end_index)
+        if other is None:
+            return None
+        here = self.page_by_id(st.ends[end_index].page)
+        there = self.page_by_id(other.page)
+        if here is None or there is None:
+            return None
+        dz = there.z - here.z
+        if dz == 1:
+            return "up"
+        if dz == -1:
+            return "down"
+        return None
+
+    def staircase_end_global(self, end: StaircaseEnd) -> Optional[tuple[int, int, int]]:
+        """An end's global ``(X, Y, Z)``, derived from its page; ``None`` if the page is gone."""
+        p = self.page_by_id(end.page)
+        return p.local_to_global(*end.cell) if p is not None else None
 
     # ── Serialization ───────────────────────────────────────────────────────
     def to_dict(self) -> dict:
-        return {
+        d = {
             "version": DUNGEON_SCHEMA_VERSION,
             "entry_page_id": self.entry_page_id,
             "pages": [p.to_dict() for p in self.pages],
         }
+        # Staircase keys only once the dungeon has had one, so a manifest that never
+        # used them is written back unchanged.
+        if self.staircases or self.next_staircase_id > 1:
+            d["staircases"] = [st.to_dict() for st in self.staircases]
+            d["next_staircase_id"] = int(self.next_staircase_id)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "Dungeon":
         pages = [MapPage.from_dict(pd) for pd in d.get("pages", [])]
         entry = d.get("entry_page_id")
-        dung = cls(pages=pages, entry_page_id=entry)
+        stairs = [Staircase.from_dict(sd) for sd in d.get("staircases", [])]
+        stairs = [st for st in stairs if st.ends]
+        # The stored counter wins, but never below max(id) + 1, so a hand-edited or
+        # truncated manifest still can't hand out a live id twice.
+        nxt = max([int(d.get("next_staircase_id", 1))] + [st.id + 1 for st in stairs])
+        dung = cls(pages=pages, entry_page_id=entry, staircases=stairs,
+                   next_staircase_id=nxt)
         # Repair a dangling/missing entry pointer so entry_page() is always valid.
         if dung.page_by_id(entry) is None:
             dung.entry_page_id = pages[0].id if pages else None
