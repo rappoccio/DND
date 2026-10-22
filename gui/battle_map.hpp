@@ -856,7 +856,8 @@ public:
     // D-M7-6): an orthogonal flood that stops at detected walls, Wall terrain, any door
     // cell, any wall edge and any door edge, open or shut. The blocking cells it touches
     // are included, so the room's walls show with it; a room's wall corners are included
-    // too. At most `cap` cells, start first. Empty when `start` is off the grid.
+    // too, unless reaching one crosses an edge (that cell is past a drawn wall). At most
+    // `cap` cells, start first. Empty when `start` is off the grid.
     [[nodiscard]] std::vector<Cell> roomCells(Cell start, int cap) const;
 
     // Get/set light level at a cell (for debugging or manual map configuration).

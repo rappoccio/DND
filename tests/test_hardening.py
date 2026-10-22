@@ -722,6 +722,26 @@ def test_room_cells_stop_at_the_room():
         bm.add_edge_door(edges=[edge], open=True)
         assert as_set(bm.room_cells(cell(6, 6), 4000)) == between, "an open edge door leaked"
 
+        # A room drawn with edge walls, standing in wall cells (a drawn map's outside is
+        # detected wall). Its corners touch wall cells diagonally across the edges, and
+        # those are past the wall: the first version added them, which on Ravenloft's
+        # main floor revealed a ring of the outside around a tower (found in the manual
+        # check, 2026-10-21).
+        app2, _, bm2, _ = _blank_map(tmp)
+        box = {(c, r) for c in (2, 3, 4) for r in (2, 3, 4)}
+        for c in range(cols):
+            for r in range(rows):
+                if (c, r) not in box:
+                    bm2.set_terrain_type(cell(c, r), rpg.TerrainType.Wall)
+        for r in (2, 3, 4):
+            bm2.set_edge_wall(cell(1, r), rpg.EdgeSide.East, True)
+            bm2.set_edge_wall(cell(4, r), rpg.EdgeSide.East, True)
+        for c in (2, 3, 4):
+            bm2.set_edge_wall(cell(c, 1), rpg.EdgeSide.South, True)
+            bm2.set_edge_wall(cell(c, 4), rpg.EdgeSide.South, True)
+        assert as_set(bm2.room_cells(cell(3, 3), 4000)) == box, \
+            sorted(as_set(bm2.room_cells(cell(3, 3), 4000)) - box)
+
         # The cap, and a start off the grid.
         capped = bm.room_cells(cell(1, 1), 5)
         assert len(capped) == 5 and (capped[0].col, capped[0].row) == (1, 1)

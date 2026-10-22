@@ -8296,7 +8296,7 @@ its callers, and the C++ fog and edge bindings. Baseline suite: 188 / 0 at `0eda
 | M7.3 | Limits (D-M7-3), plus the serialization measurement (D-M7-7) | ☑ |
 | M7.4 | The session log, on the wire and in the client (D-M7-4). *Amends D-M5-7: clicking Pause (and M7.5's Table…) is no longer a takeover, only the reaction timer was exempt, so a pause read as "the DM took over Kira's turn". `net_offer.NOT_A_TAKEOVER` lists the three. The client's list is `#table-log`, since `#session` is the page's `<main>`.* | ☑ |
 | M7.5 | The Table menu: kick, rotate, lock, restore, log (D-M7-5). *Opening it on a player's turn supersedes the offer, as every DM menu does through the one-live-prompt bus, and the offer is re-posted when the menu closes. That is not a takeover and logs nothing. The combat panel golden changed in its header row only.* | ☑ |
-| M7.6 | Reveal a region (D-M7-6) | ☑ |
+| M7.6 | Reveal a region (D-M7-6). *Fixed after the user's manual check ("fog sees through walls", Ravenloft main floor): the corner step added wall cells diagonally across edge walls, revealing a ring of the outside around a drawn tower. A corner is now added only when neither L route crosses an edge. The flood's interior matched the engine's walk reach exactly (169/169) before and after. It still runs through open archways, by design, since only walls and doors bound a room.* | ☑ |
 
 **A1–A9 check, to run at the end:** no display name used as a key (the log's text holds
 names, but each entry also carries the principal id); no `Role` branch outside

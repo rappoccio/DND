@@ -2393,12 +2393,18 @@ std::vector<Cell> BattleMap::roomCells(Cell start, int cap) const
     }
     // A room drawn with wall cells has corners the orthogonal flood never touches. Add
     // the blocking diagonal neighbours of the cells it passed, so the corners show too.
+    // Only where neither L route to the corner crosses an edge: on a map whose walls are
+    // drawn lines, the cell past an edge wall's corner is the next room (or the outside),
+    // and revealing it shows what is behind the wall.
     constexpr int kDiag[4][2] = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
     for (const Cell& c : inside) {
         for (const auto& d : kDiag) {
             if (out.size() >= limit) return out;
             const Cell n{c.col + d[0], c.row + d[1]};
             if (!inGrid(n) || seen[at(n)] || !stops(n) || doorAt(n) >= 0) continue;
+            const Cell viaCol{n.col, c.row}, viaRow{c.col, n.row};
+            if (edgeStops(c, viaCol) || edgeStops(viaCol, n)
+                    || edgeStops(c, viaRow) || edgeStops(viaRow, n)) continue;
             seen[at(n)] = 1;
             out.push_back(n);
         }
