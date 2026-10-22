@@ -232,23 +232,61 @@ function drawPrompt() {
   filterBox.hidden = !live || prompt.options.length <= FILTER_AT;
   if (!live) return;
   const needle = filter.text.trim().toLowerCase();
-  for (const option of prompt.options) {
-    if (needle && !option.label.toLowerCase().includes(needle)) continue;
-    const item = document.createElement("li");
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = option.label;
-    button.disabled = !option.enabled || !!awaiting;
-    button.addEventListener("click", () => submit({ option: option.id }));
-    item.append(button);
-    if (!option.enabled && option.disabled_reason) {
-      const why = document.createElement("span");
-      why.className = "hint";
-      why.textContent = ` ${option.disabled_reason}`;
-      item.append(why);
-    }
-    list.append(item);
+  const shown = prompt.options.filter(
+    (option) => !needle || option.label.toLowerCase().includes(needle));
+  if (prompt.kind !== "action") {
+    for (const option of shown) list.append(optionItem(option));
+    return;
   }
+  for (const [group, heading] of ACTION_SECTIONS) {
+    const rows = shown.filter((option) => sectionOf(option) === group);
+    if (!rows.length) continue;
+    const head = document.createElement("li");
+    head.className = "section";
+    head.textContent = heading;
+    list.append(head);
+    for (const option of rows) list.append(optionItem(option));
+  }
+}
+
+/* The action offer's sections (QOL Q4), in the order this screen draws them, with the DM
+   panel's headings. `option.group` is the panel's own section (`actions.Action.group`, or
+   "movement" for Move); a group this list does not know goes under "Other", so a new one
+   is never dropped. End Turn closes the list, under a rule rather than a heading. */
+const ACTION_SECTIONS = [
+  ["action", "Action"],
+  ["portent", "Portent Dice"],
+  ["bonus", "Bonus Action"],
+  ["movement", "Movement"],
+  ["utility", "Other"],
+  ["turn", ""],
+];
+
+function sectionOf(option) {
+  return ACTION_SECTIONS.some(([group]) => group === option.group) ? option.group : "utility";
+}
+
+/* One option's row. An option that carries the DM's button colour is drawn in it; a
+   disabled one is greyed the way the DM's disabled buttons are, and keeps its reason. */
+function optionItem(option) {
+  const item = document.createElement("li");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = option.label;
+  button.disabled = !option.enabled || !!awaiting;
+  if (option.color) {
+    button.className = option.enabled ? "dm" : "dm off";
+    if (option.enabled) button.style.background = option.color;
+  }
+  button.addEventListener("click", () => submit({ option: option.id }));
+  item.append(button);
+  if (!option.enabled && option.disabled_reason) {
+    const why = document.createElement("span");
+    why.className = "hint";
+    why.textContent = ` ${option.disabled_reason}`;
+    item.append(why);
+  }
+  return item;
 }
 
 /* A reaction the player owns is skipped when the DM's timer runs out. The server decides

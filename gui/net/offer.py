@@ -27,7 +27,9 @@ The offer is posted with `render="remote"`, so the DM console draws nothing for 
 
 from __future__ import annotations
 
-from actions import GROUP_SESSION, METAMAGIC_VALUE_BY_ID
+from dataclasses import replace
+
+from actions import GROUP_BONUS, GROUP_SESSION, METAMAGIC_VALUE_BY_ID
 from net import move as net_move, picks as net_picks
 from net.roster import DM_PRINCIPAL_ID
 from prompts import Option
@@ -40,6 +42,10 @@ I, C_I, A, A_MULTI, C_A, X, C_X, S, DM = (
     "I", "C→I", "A", "A*", "C→A", "X", "C→X", "S", "DM")
 
 PLAYABLE = frozenset({I, C_I})
+
+# The offer's Move row's section. Move is not an `ActionMenu` id, so it has no
+# `Action.group`; the player's screen draws it under its own "Movement" heading (QOL Q4).
+GROUP_MOVEMENT = "movement"
 
 # The pick rows whose arms `net/picks.WIRED` projects (M5d). `CLASS` keeps their class;
 # this is what makes them playable. A row goes in only with every arm it can reach.
@@ -203,8 +209,11 @@ def offered(app, actor: int, owner: str) -> list[Option]:
 
     Move comes first (D-M5-4). It is not an `ActionMenu` id and its callback is not
     `perform`: it opens the Move prompt, which `net/move.py` owns.
+
+    Each row carries the DM panel's section and colour (QOL Q4), and the rows come in the
+    order the panel draws them, so the player's screen lays the turn out as the DM's does.
     """
-    out: list[Option] = [net_move.option(app, actor, owner)]
+    out: list[Option] = [replace(net_move.option(app, actor, owner), group=GROUP_MOVEMENT)]
     for act in app._action_menu.values():
         # The one filter for DM tools. It is the group test, not the DM rows of `CLASS`,
         # so that a session tool added later is withheld whether or not anyone
@@ -212,17 +221,48 @@ def offered(app, actor: int, owner: str) -> list[Option]:
         # the wire.
         if act.group == GROUP_SESSION or act.id == "place_terrain":
             continue
+        look = {"group": act.group, "color": _color(app, act.id)}
         cls = CLASS.get(act.id)
         if not act.enabled:
             out.append(Option(act.id, act.label, enabled=False,
-                              disabled_reason=act.disabled_reason or None))
+                              disabled_reason=act.disabled_reason or None, **look))
         elif cls in PLAYABLE or act.id in WIRED:
             out.append(Option(act.id, act.label,
-                              on_choose=lambda aid=act.id: app.perform(aid, owner)))
+                              on_choose=lambda aid=act.id: app.perform(aid, owner), **look))
         else:
             out.append(Option(act.id, act.label, enabled=False,
-                              disabled_reason=REASONS.get(cls, _REASON_UNKNOWN)))
-    return out
+                              disabled_reason=REASONS.get(cls, _REASON_UNKNOWN), **look))
+    return _dm_order(app, out)
+
+
+def _color(app, action_id: str) -> str | None:
+    """The DM's button colour for `action_id`, as "#rrggbb", read off the `btn_cbt_<id>`
+    widget the panel draws: one source, so the two screens cannot drift apart. The draw
+    pass has already run this frame, so a colour the panel sets as it draws (a Metamagic
+    toggle's armed shade) is the one read here. No widget, no colour."""
+    btn = getattr(app, "btn_cbt_" + action_id, None)
+    if btn is None:
+        return None
+    r, g, b = (int(c) for c in tuple(btn.color)[:3])
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _dm_order(app, options: list[Option]) -> list[Option]:
+    """`options` in the DM panel's draw order. Every group but §7 is built in the order it
+    is drawn; §7 is drawn run by run (`App._BON_DRAW_RUNS`), so its rows are sorted by run.
+    The sort is stable, so each run keeps the build order the panel draws it in."""
+    run = {aid: i for i, ids in enumerate(app._BON_DRAW_RUNS) for aid in ids}
+    last = len(app._BON_DRAW_RUNS)
+    bonus = sorted((o for o in options if o.group == GROUP_BONUS),
+                   key=lambda o: run.get(o.id, last))
+    it = iter(bonus)
+    return [next(it) if o.group == GROUP_BONUS else o for o in options]
+
+
+def _projection(actor: int, owner: str, options: list[Option]) -> tuple:
+    return (actor, owner,
+            tuple((o.id, o.label, o.enabled, o.disabled_reason, o.group, o.color)
+                  for o in options))
 
 
 def gate(app) -> tuple[int, str] | None:
@@ -240,11 +280,6 @@ def gate(app) -> tuple[int, str] | None:
     if app.combat.pending_decision().active or app._target_pick_armed():
         return None
     return actor, owner
-
-
-def _projection(actor: int, owner: str, options: list[Option]) -> tuple:
-    return (actor, owner,
-            tuple((o.id, o.label, o.enabled, o.disabled_reason) for o in options))
 
 
 def ensure(app) -> None:

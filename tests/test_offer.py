@@ -17,6 +17,9 @@ what it offers, when, to whom, and that the DM console neither sees it nor loses
   · an unwired pick row goes out disabled, and is refused  (test_a_pick_row_is_offered_disabled)
   · a DM click takes the turn over, and is logged           (test_a_dm_click_takes_over)
   · a pause withdraws the offer, without a takeover line    (test_a_pause_withdraws_the_offer)
+  · each row carries the DM's section and colour (QOL Q4)   (test_the_offer_carries_the_dm_look)
+  · the rows come in the DM panel's draw order (QOL Q4)     (test_the_offer_is_in_the_dm_draw_order)
+  · the client draws the DM's sections and colours (Q4)     (test_the_offer_in_the_client)
 
 The scene is `test_combat_panel.py`'s, through `test_action_menu.py`'s `_app`: Aria is a
 Fighter 5 with Skarn adjacent, and Kira, a player, controls her.
@@ -28,6 +31,7 @@ import contextlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -41,12 +45,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menus import panel
 from net import link as net_link, offer as net_offer
 from net.roster import Role
-from prompts import PromptState, Response
+from prompts import Option, PromptState, Response
 
 from gui_driver import post_click
 from test_action_menu import _app, _draw
-from test_combat_panel import (PanelCapture, _goto, _idx, _preserve_cwd_logs,
-                               _restore_cwd_logs)
+from test_combat_panel import (PanelCapture, _goto, _idx, _item, _preserve_cwd_logs,
+                               _restore_cwd_logs, _set_conditions)
 from test_live import _auth_frame, _faster_cadence, _ws
 from test_submit import _Table, _drain, _next, _submit
 
@@ -331,6 +335,80 @@ def test_the_wire_never_carries_dm_tools():
     print("✅ test_the_wire_never_carries_dm_tools")
 
 
+def _hex(rgb):
+    return "#" + "".join(f"{int(c):02x}" for c in tuple(rgb)[:3])
+
+
+def test_the_offer_carries_the_dm_look():
+    """QOL Q4: every row names the DM panel's section, and its colour is the one the DM's
+    `btn_cbt_<id>` widget is drawn in. Move is "movement" with no colour (no widget). Cyra,
+    a Sorcerer, brings the two spell rows. A prompt that is not the offer sends neither
+    field."""
+    app, kira, wen = _aria_turn()
+    rows = {o.id: o for o in _offer(app).options}
+    want = {"atk_action": "action", "dash": "action", "end_turn": "turn",
+            "move": "movement"}
+    for aid, group in want.items():
+        assert rows[aid].group == group, (aid, rows[aid].group)
+    for aid in ("atk_action", "dash", "end_turn"):
+        assert rows[aid].color == _hex(panel.cbt_btn(app, aid).color), (aid, rows[aid].color)
+    assert rows["move"].color is None, rows["move"].color
+    wire = rows["atk_action"].to_wire()
+    assert wire["group"] == "action" and wire["color"] == rows["atk_action"].color, wire
+
+    _goto(app, "Cyra")
+    _frame(app)
+    rows = {o.id: o for o in _offer(app).options}
+    assert app.prompts.live.owner == wen.id
+    for aid, group in (("spell_action", "action"), ("spell_bonus", "bonus")):
+        assert rows[aid].group == group, (aid, rows[aid].group)
+        assert rows[aid].color == _hex(panel.cbt_btn(app, aid).color), (aid, rows[aid].color)
+
+    plain = Option("yes", "Yes").to_wire()
+    assert "group" not in plain and "color" not in plain, plain
+    print("✅ test_the_offer_carries_the_dm_look")
+
+
+def test_the_offer_is_in_the_dm_draw_order():
+    """QOL Q4: the offer lists its rows top to bottom, left to right, as the DM panel just
+    drew them. The menu builds §7 in a different order from the one it is drawn in, so
+    this holds `App._BON_DRAW_RUNS` to the draw code for a Fighter, a Cleric, a Sorcerer
+    with Metamagic, and Skarn carrying a potion while burning, beside Aria: Use Item and
+    Extinguish are built before the Shove row and the Telekinetic feat's shove, and drawn
+    after them."""
+    app, kira, wen = _aria_turn()
+    skarn = _idx(app, "Skarn")
+    s = app.combat.get_agent_stats(app.bm, skarn)
+    s.add_feat("Telekinetic")
+    app.combat.set_agent_stats(app.bm, skarn, s)
+    _set_conditions(app, skarn, burning=True)
+    app.combat.add_item_to_agent(app.bm, skarn, _item("Potion of Healing"))
+    for name in ("Aria", "Brannor", "Cyra", "Skarn"):
+        idx = _goto(app, name)
+        _frame(app)
+        ids = [o.id for o in net_offer.offered(app, idx, kira.id) if o.id != "move"]
+        drawn = sorted(ids, key=lambda aid: (panel.cbt_btn(app, aid).rect.y,
+                                             panel.cbt_btn(app, aid).rect.x))
+        assert ids == drawn, f"{name}: offered {ids}\n  drawn {drawn}"
+        assert len(ids) > 5, (name, ids)
+    print("✅ test_the_offer_is_in_the_dm_draw_order")
+
+
+def test_the_offer_in_the_client():
+    """`offer_checks.js`, run against the real `app.js`; skipped without node."""
+    node = shutil.which("node") or shutil.which("nodejs")
+    if node is None:
+        print("⚠️  test_the_offer_in_the_client SKIPPED — no node in this image")
+        return
+    checks = os.path.join(os.path.dirname(os.path.abspath(__file__)), "offer_checks.js")
+    done = subprocess.run([node, checks], capture_output=True, text=True, timeout=60)
+    for line in done.stdout.strip().splitlines():
+        print(f"   {line}")
+    assert done.returncode == 0, \
+        f"the offer checks failed:\n{(done.stdout + done.stderr).strip()[-800:]}"
+    print("✅ test_the_offer_in_the_client")
+
+
 def test_a_pick_row_is_offered_disabled():
     """A pick row that is not wired goes out greyed with a reason, and a submit of one is
     refused before anything runs. Since M5d every A / C→A / X row is wired, so the check
@@ -440,6 +518,9 @@ if __name__ == "__main__":
         test_a_pick_row_is_offered_disabled()
         test_a_remote_dodge_then_a_fresh_offer()
         test_end_turn_moves_the_offer()
+        test_the_offer_carries_the_dm_look()
+        test_the_offer_is_in_the_dm_draw_order()
+        test_the_offer_in_the_client()
     finally:
         _restore_cwd_logs(_saved)
     print("\n✅ All offer tests passed!")

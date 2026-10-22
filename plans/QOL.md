@@ -7,13 +7,6 @@ Format: **[DM|Player|Both]** short title — what happened, what would be better
 
 ## Open
 
-4. **[Player] Match the DM's action-panel groupings** — The player action bar is one flat
-   row of identical yellow buttons. The DM's Combat panel groups them into Action / Bonus
-   Action / Movement, with per-button colours (green Attack, purple Cast Spell, blue Dash,
-   etc.) and greys out unavailable actions (e.g. Lay on Hands). The player view should use
-   the same groups, order, colours, and disabled states, so "Cast Spell" (action) vs
-   "Spell" (bonus action) is unambiguous.
-
 6. **[Player] Drag-to-move preview like the DM screen** — When moving a token on the
    player view, the sprite doesn't follow the cursor to show which square it will land in;
    after the move is committed it just animates from origin to destination. The DM screen
@@ -41,3 +34,7 @@ Format: **[DM|Player|Both]** short title — what happened, what would be better
   a divider; alphabetical out of combat. Checked live.
 - **[Player] Show whose turn it is the way the DM screen does** — QOL_PLAN Q3 (2026-10-21):
   the DM's gold ▶ row and the yellow outline on the token on turn. Checked live.
+- **[Player] Match the DM's action-panel groupings** — QOL_PLAN Q4 (2026-10-21): the offer
+  carries each row's DM section and button colour, in the DM panel's draw order; the
+  player screen draws Action / Bonus Action / Movement / Other / End Turn in those colours,
+  with disabled rows greyed and their reason shown. Checked live.

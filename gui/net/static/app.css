@@ -105,6 +105,15 @@ header {
 .prompt-options { margin: 0; padding: 0; list-style: none; display: flex;
                   flex-wrap: wrap; gap: 6px; }
 .prompt-options button { margin-top: 0; padding: 9px 12px; }
+/* The action offer (QOL Q4): a heading per DM section, and the DM's button colours.
+   `.dm` text is constants.COL_TEXT; `.off` is the DM's disabled button (main.py's
+   dialog `button()`: fill (44, 46, 56), text (108, 108, 120)). */
+.prompt-options li.section { flex-basis: 100%; margin-top: 4px; font-size: 0.8rem;
+                             color: rgb(170, 170, 200); }   /* constants.COL_LABEL */
+.prompt-options li.section:empty { border-top: 1px solid var(--line); margin-top: 6px; }
+.prompt-options button.dm { color: rgb(220, 220, 220); border: 1px solid #3c3c4a; }
+.prompt-options button.dm.off { background: rgb(44, 46, 56); color: rgb(108, 108, 120);
+                                opacity: 1; }
 .prompt button.secondary { margin-top: 8px; padding: 7px 12px; color: var(--ink);
                            background: transparent; border: 1px solid var(--line); }
 .prompt .error { margin: 6px 0 0; }

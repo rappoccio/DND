@@ -179,6 +179,14 @@ _BON_RUN_BAND      = (
 _BON_RUN_METAMAGIC = tuple(METAMAGIC_ID_BY_VALUE[int(_v)]
                            for _v, _n, _sp, _note in METAMAGIC_OPTIONS)
 
+# The order `_draw_combat_panel` draws §7 in, run by run: the economy-band header row,
+# Arcane Ward, Wild Shape, then the rows and runs above. The menu BUILDS §7 in another
+# order, so the player's offer (`net/offer.py`, QOL Q4) sorts its bonus rows by this; within
+# a run both keep the build order. Keep it in step with the draw code.
+_BON_DRAW_RUNS = (("atk_bonus", "spell_bonus"), ("charge_arcane_ward",), ("wild_shape",),
+                  _BON_ROW_SHOVE, _BON_RUN_ESCAPE, _BON_ROW_CUNNING, _BON_RUN_UNBANDED,
+                  _BON_RUN_BAND, _BON_RUN_METAMAGIC)
+
 # ── Summoning registry ─────────────────────────────────────────────────────
 # Maps a summon spell's name to a FIXED DND2024_MonsterStats.json key it conjures (non-scaling).
 # The 2024 "Summon X" line now uses the scaling SUMMON_SPELL_TO_SPIRIT path instead (which takes
@@ -1315,6 +1323,7 @@ class App:
     _LABEL_GAP    =  4   # gap between label and its widget
     _ROW_GAP      = 12   # gap between one row's widget and the next row's label
     _BTN_H        = 30   # button height
+    _BON_DRAW_RUNS = _BON_DRAW_RUNS   # for `net/offer.py`, which cannot import main
     _BTN_GAP      =  8   # gap between buttons
     _TITLE_H      = 26   # height of the bold title
     _BROWSE_W     = 34   # width of the "…" browse button

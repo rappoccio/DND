@@ -73,7 +73,12 @@ rebuild.
   correct as is.
 - Client only.
 
-### Q4 — The DM's action groups, order, colours and disabled states (item 4)
+### Q4 — The DM's action groups, order, colours and disabled states (item 4). **Done 2026-10-21**, checked live (suite 186/0).
+*As built:* the menu does NOT build §7 in draw order (Use Item / Extinguish are built
+before the Shove row, drawn after it), so `main._BON_DRAW_RUNS` lists §7's runs in draw
+order and `offer._dm_order` stable-sorts the bonus rows by it. `test_offer.py` holds it to
+the drawn rects (fails without the sort). Client headings: Action, Portent Dice, Bonus
+Action, Movement, Other (utility and any unknown group), then End Turn under a rule.
 - **Server:** `prompts.Option` gains two optional fields, `group` and `color` (hex).
   `to_wire()` sends them only when set, so every other prompt stays as it is.
   `net/offer.offered()` fills them in:

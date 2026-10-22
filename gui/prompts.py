@@ -93,11 +93,20 @@ class Option:
     enabled:         bool = True
     disabled_reason: str | None = None
     on_choose:       Callable[[], None] | None = None
+    # How a renderer lays the row out (QOL Q4): the DM panel's section (`Action.group`, or
+    # "movement" for the offer's Move) and its button colour as "#rrggbb". Only the action
+    # offer sets them; every other prompt leaves them None and they stay off the wire.
+    group:           str | None = None
+    color:           str | None = None
 
     def to_wire(self) -> dict:
         d: dict = {"id": self.id, "label": self.label, "enabled": self.enabled}
         if self.disabled_reason:
             d["disabled_reason"] = self.disabled_reason
+        if self.group:
+            d["group"] = self.group
+        if self.color:
+            d["color"] = self.color
         return d
 
 
