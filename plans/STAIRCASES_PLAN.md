@@ -1,6 +1,6 @@
 # Staircases
 
-**Status 2026-10-22: Step 0 frozen (D1–D6 decided). Steps 1 (manifest), 2 (use) and 3 (editor) done; step 4 next.** Came out of laddering
+**Status 2026-10-22: Step 0 frozen (D1–D6 decided). Steps 1–3 done; step 4 converted (37 staircases), hand labels pending.** Came out of laddering
 Castle Ravenloft: every stair there is faked with ladder pairs, and the pairs keep colliding.
 
 ## Status and handoff (2026-10-22)
@@ -39,7 +39,16 @@ Castle Ravenloft: every stair there is faked with ladder pairs, and the pairs ke
   one row per staircase (`_staircase_summary`), each opening Go to end A / B
   (`_staircase_goto`, refused in combat), Rename…, Relabel…, Delete; every change writes
   the manifest. Tests: `tests/test_staircase_editor.py` (7); suite 193/0.
-- **Next: step 4 (Ravenloft conversion).** Not started.
+- **Step 4 (Ravenloft conversion): converted; labels still to fill in by hand.**
+  `tools/ladders_to_staircases.py <manifest> [--keep PAGE:COL,ROW ...] [--apply]`: pairs
+  every ladder with its return (the ladder on its landing that leads back onto one of its
+  cells), lower floor as end A, ids in floor order; reports and stops on an unpaired,
+  ambiguous or non-adjacent ladder and on a `--keep` that names none; a same-page ladder
+  is left alone. Dry run by default; `--apply` backs up to `pre_staircases/`. Run on
+  Castle Ravenloft 2026-10-22 with `--keep tower_peaks_map9_10_ravenloft:39,20` (K60 →
+  roof): 74 ladders → Staircases 1–37, 2 ladders left. Tests:
+  `tests/test_ladders_to_staircases.py` (7); suite 194/0.
+- **Next:** label Staircases 1–37 (K21, K83, …) from Dungeon Configuration → Staircases….
 
 ## Decided (user, 2026-10-22)
 
@@ -181,3 +190,5 @@ Each step lands with its own tests (container, `./test.sh`).
    **Done 2026-10-22** (`tests/test_staircase_editor.py`, 7 tests; suite 193/0).
 4. **Ravenloft:** run the conversion, then label by hand. *Tests:* the conversion keeps
    every link; an unpaired ladder stops it.
+   **Converted 2026-10-22** (`tools/ladders_to_staircases.py`,
+   `tests/test_ladders_to_staircases.py`, 7 tests; suite 194/0); labels pending.
