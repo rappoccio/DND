@@ -18,6 +18,7 @@ the board opens, not a panel button.
 import rpg_battle_map as rpg
 import autosave
 from helpers import door_touch_cells
+from net.roster import DM_PRINCIPAL_ID
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -44,17 +45,140 @@ def show_agents_menu(app):
                  anchor=(app.btn_agents.rect.x, app.btn_agents.rect.y))
 
 
-def show_restore_autosave_menu(app):
+def show_restore_autosave_menu(app, anchor=None, parent=None):
     """The active encounter's autosave ring, newest first: round, actor and time per slot
-    (D-M6-5). Picking one restores it; an empty ring opens nothing and says so."""
+    (D-M6-5). Picking one restores it; an empty ring opens nothing and says so.
+
+    ``anchor`` and ``parent`` are the Table menu's (D-M7-5), which opens this mid-fight,
+    when the setup panel's button is not drawn."""
     slots = autosave.list_slots(app)
     if not slots:
         app._flash_status("No autosaves for this encounter yet")
         return
     options = [(autosave.slot_label(m), lambda k=m["slot"]: autosave.restore(app, k))
                for m in slots]
-    app._ask_dm("action", "Restore autosave", options,
-                 anchor=(app.btn_restore_autosave.rect.x, app.btn_restore_autosave.rect.y))
+    if anchor is None:
+        anchor = (app.btn_restore_autosave.rect.x, app.btn_restore_autosave.rect.y)
+    app._ask_dm("action", "Restore autosave", options, anchor=anchor, parent=parent)
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  The Table menu (MULTIPLAYER_PLAN.md D-M7-5): the join code and URL,
+#  the seats, a new code, locking the table, a rewind, the session log.
+#  Reached from the setup panel's Table… and the combat panel's `table`
+#  tool, so it works mid-fight.
+# ─────────────────────────────────────────────────────────────────────
+SESSION_LOG_ROWS = 20
+
+
+def show_table_menu(app, anchor=None):
+    if anchor is None:
+        anchor = (app.btn_table.rect.x, app.btn_table.rect.y)
+    roster = app.roster
+    net = getattr(app, "_net", None)
+    where = f" · {net.url}" if net is not None else " · no player server"
+    players = roster.players()
+    items = [
+        # A header row. It is a row only because a context menu has no other kind; picking
+        # it does nothing.
+        (f"Join code {roster.join_code}{where}", lambda: None),
+        (f"Players ({len(players)}) ▸", lambda: _players_menu(app, anchor)),
+        ("New join code", lambda: new_join_code(app)),
+        ("Lock the table (new code, everyone rejoins)", lambda: lock_table(app)),
+        ("Restore autosave…", lambda: show_restore_autosave_menu(
+            app, anchor=anchor, parent=app.prompts.answering)),
+        ("Session log…", lambda: _session_log_menu(app, anchor)),
+    ]
+    app._ask_dm("action", "Table", items, anchor=anchor)
+
+
+def _players_menu(app, anchor):
+    players = app.roster.players()
+    if not players:
+        app._flash_status("Nobody is seated yet")
+        return
+    items = [(f"{p.display_name} ▸", lambda pid=p.id: _player_menu(app, pid, anchor))
+             for p in players]
+    app._ask_dm("action", "Players", items, anchor=anchor, parent=app.prompts.answering)
+
+
+def _player_menu(app, principal_id, anchor):
+    name = app.roster.display_name(principal_id)
+    owned = len(app.roster.controlled_by(principal_id))
+    items = [
+        (f"Remove {name} from the table", lambda: remove_player(app, principal_id)),
+        ("Rename…", lambda: _rename_player(app, principal_id)),
+    ]
+    app._ask_dm("action", f"{name} · {owned} token{'s' if owned != 1 else ''}", items,
+                 anchor=anchor, parent=app.prompts.answering)
+
+
+def _session_log_menu(app, anchor):
+    lines = app.session_log.tail(include_dm=True, limit=SESSION_LOG_ROWS)
+    if not lines:
+        app._flash_status("The session log is empty")
+        return
+    items = [(f"{e['at']}  {'[DM] ' if e.get('dm') else ''}{e['text']}", lambda: None)
+             for e in lines]
+    app._ask_dm("action", "Session log", items, anchor=anchor,
+                 parent=app.prompts.answering)
+
+
+def remove_player(app, principal_id) -> None:
+    """Unseat a player (D-M7-5). Their tokens go back to the DM, their seat goes, and
+    their screens close with 4403, so the client can say the DM removed them.
+
+    With the join code unchanged they can join again, as a new seat with no tokens. The
+    controller fields are rewritten rather than left orphaned: A1 would fold an unknown
+    controller to the DM anyway, but the save should say so plainly."""
+    if principal_id == DM_PRINCIPAL_ID or app.roster.get(principal_id) is None:
+        return
+    name = app.roster.display_name(principal_id)
+    app._sync_roster_tokens()
+    for idx in app.roster.controlled_by(principal_id):
+        app.bm.set_agent_controller(idx, DM_PRINCIPAL_ID)
+    app.roster.remove_principal(principal_id)
+    app._sync_roster_tokens()
+    app._save_session()
+    if getattr(app, "_net", None) is not None:
+        app._net.close_principal(principal_id)
+    app.session_log.add(f"The DM removed {name} from the table.", principal=principal_id)
+    app._flash_status(f"Removed {name}. Their tokens are the DM's.")
+
+
+def _rename_player(app, principal_id) -> None:
+    old = app.roster.display_name(principal_id)
+
+    def _commit(name):
+        name = (name or "").strip()
+        if not name or name == old or app.roster.get(principal_id) is None:
+            return
+        app.roster.rename_principal(principal_id, name)
+        app._save_session()
+        app.session_log.add(f"The DM renamed {old} to {name}.", principal=principal_id)
+    app.name_prompt.show(old, _commit, title="Rename player")
+
+
+def new_join_code(app) -> None:
+    """A fresh code. Everyone already seated keeps their seat and their screen: a code is
+    an invite, and this only stops the old one inviting anybody new."""
+    code = app.roster.rotate_join_code()
+    app._save_session()
+    app.session_log.add("The DM changed the join code.")
+    print(f"[net] join code: {code}")
+    app._flash_status(f"New join code: {code}")
+
+
+def lock_table(app) -> None:
+    """A new code, and every credential revoked at once (A5's panic button). Each seat is
+    kept, so a player who joins again with the new code takes back their own seat and
+    tokens; anyone who only had the old code is out."""
+    code = app.roster.rotate_join_code()
+    app.roster.revoke_all()
+    app._save_session()
+    app.session_log.add("The DM locked the table. Everyone joins again with the new code.")
+    print(f"[net] join code: {code}")
+    app._flash_status(f"Table locked. New join code: {code}")
 
 
 def show_pc_class_menu(app):

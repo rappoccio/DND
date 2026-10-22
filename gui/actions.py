@@ -313,7 +313,7 @@ class ActionMenu:
     # ── §1 — DM tools ──────────────────────────────────────────────────────────
     @staticmethod
     def _session(app) -> list[Action]:
-        # All three are DM tools standing outside the fiction, so none has an economy.
+        # All four are DM tools standing outside the fiction, so none has an economy.
         # The timer is D-M5-7's: how long a player has to answer a reaction. Its label is
         # the value, and a click moves it to the next one.
         timeout = app.reaction_timeout_s
@@ -325,6 +325,9 @@ class ActionMenu:
                    "React untimed" if timeout is None else f"React {timeout}s",
                    GROUP_SESSION),
             Action("end_combat", "End Combat", GROUP_SESSION),
+            # D-M7-5: the Table menu (join code, players, lock, rewind, session log), here
+            # so the DM can reach it mid-fight, when the setup panel is not drawn.
+            Action("table", "Table…", GROUP_SESSION),
         ]
 
     # ── §3 — turn control ──────────────────────────────────────────────────────

@@ -192,6 +192,7 @@ CLASS: dict[str, str] = {
     "reaction_timer": DM,
     "end_turn": I,
     "end_combat": DM,
+    "table": DM,                 # D-M7-5: the Table menu
     "drop_concentration": I,
     "drop_weapon_main": I,
     "drop_weapon_off": I,

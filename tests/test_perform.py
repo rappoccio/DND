@@ -182,7 +182,7 @@ def test_perform_asks_authorize():
 
     assert app.perform("dodge", wen.id) is False, "Wen does not control Aria"
     assert app.perform("dodge", "no-such-principal") is False
-    for dm_tool in ("pause_resume", "reaction_timer", "end_combat"):
+    for dm_tool in ("pause_resume", "reaction_timer", "end_combat", "table"):
         assert dm_tool in app._action_menu
         assert app.perform(dm_tool, kira.id) is False, f"a player ran {dm_tool}"
     assert _state(app) == before, "a refused perform changed the game"

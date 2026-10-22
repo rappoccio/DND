@@ -1378,6 +1378,9 @@ class App:
         rs_y = bc_y + B + self._BTN_GAP
         self.btn_restore_autosave = Button(pygame.Rect(px, rs_y, W, B), "Restore Autosave…",
                                            (95, 95, 75), (130, 130, 100), font=self.font_md)
+        # D-M7-5: the Table menu shares the row. The combat panel has its own `table` tool.
+        self.btn_table = Button(pygame.Rect(px, rs_y, W, B), "Table…",
+                                (95, 95, 75), (130, 130, 100), font=self.font_md)
         ter_y = rs_y + B + self._BTN_GAP
         self.btn_terrain = Button(pygame.Rect(px, ter_y, W, B), "Terrain…",
                                   (80, 100, 120), (110, 130, 160), font=self.font_md)
@@ -1464,7 +1467,8 @@ class App:
         self.btn_long_rest.rect.update(px, b1 + off, SW, B)
         self.btn_short_rest.rect.update(px + SW + 4, b1 + off, SW, B)
         self.btn_begin_combat.rect.update(px, bc_y + off, W, B)
-        self.btn_restore_autosave.rect.update(px, rs_y + off, W, B)
+        self.btn_restore_autosave.rect.update(px, rs_y + off, SW, B)
+        self.btn_table.rect.update(px + SW + 4, rs_y + off, SW, B)
         self.btn_terrain.rect.update(px, ter_y + off, W, B)
         self.btn_lighting.rect.update(px, light_y + off, W, B)
         self.btn_generate_dungeon.rect.update(px, gen_y + off, W, B)
@@ -1600,6 +1604,9 @@ class App:
         self.btn_cbt_reaction_timer = Button(pygame.Rect(px, dummy_y, HW, B),
                                           "React 60s",
                                           (120, 140, 170), (150, 170, 200), self.font_md)
+        self.btn_cbt_table       = Button(pygame.Rect(px, dummy_y, HW, B),
+                                          "Table…",
+                                          (95, 95, 75), (130, 130, 100), self.font_md)
         self.btn_cbt_end_turn    = Button(pygame.Rect(px, dummy_y, W, B),
                                           "End Turn",
                                           COL_BTN_ENDTURN, COL_BTN_ENDTURN_HOV, self.font_md)
@@ -17231,6 +17238,9 @@ class App:
                                  else "The DM resumed the game.")
         if action_id == "reaction_timer":
             self._cycle_reaction_timeout()
+        if action_id == "table":
+            dm.show_table_menu(self, anchor=(self.btn_cbt_table.rect.x,
+                                             self.btn_cbt_table.rect.y))
         if action_id == "end_turn":
             if self.pending_beguiling:
                 # Don't let End Turn silently waste an armed Beguiling Magic offer — make the
@@ -17987,7 +17997,9 @@ class App:
             self.btn_begin_combat.draw(self.screen)
 
         # ── Restore Autosave… (always: after a crash the board may still be empty) ──
+        # ── and Table…, the join code and the seats (D-M7-5) ──────────────────
         self.btn_restore_autosave.draw(self.screen)
+        self.btn_table.draw(self.screen)
 
         # ── Terrain… / Lighting… grouped menus ─────────────────────────────
         self.btn_terrain.draw(self.screen)
@@ -18877,6 +18889,10 @@ class App:
                 # Restore Autosave… — the active encounter's ring, newest first
                 if _hit(self.btn_restore_autosave):
                     dm.show_restore_autosave_menu(self)
+
+                # Table… — join code, players, lock, rewind, session log (D-M7-5)
+                if _hit(self.btn_table):
+                    dm.show_table_menu(self)
 
                 # Terrain… — edit / load / save / generate / show-hide / clear
                 if _hit(self.btn_terrain):

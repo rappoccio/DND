@@ -55,7 +55,7 @@ from test_live import _auth_frame, _faster_cadence, _ws
 from test_submit import _Table, _drain, _next, _submit
 
 _MAIN = os.path.join(_ROOT, "gui", "main.py")
-_DM_TOOLS = ("pause_resume", "reaction_timer", "end_combat", "place_terrain")
+_DM_TOOLS = ("pause_resume", "reaction_timer", "end_combat", "table", "place_terrain")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -171,13 +171,13 @@ def test_the_class_table_is_the_dispatch():
                    and n.left.id == key and isinstance(n.comparators[0], ast.Name)
                    and n.comparators[0].id == "action_id" for n in ast.walk(node)):
                 dispatched |= set(getattr(actions, node.iter.func.value.id))
-    assert len(dispatched) == 120, len(dispatched)
+    assert len(dispatched) == 121, len(dispatched)     # M7.5 added `table`
     assert set(net_offer.CLASS) == dispatched, (
         f"missing {sorted(dispatched - set(net_offer.CLASS))}, "
         f"extra {sorted(set(net_offer.CLASS) - dispatched)}")
     counts = collections.Counter(net_offer.CLASS.values())
     assert counts == {"I": 66, "C→I": 8, "A": 16, "A*": 1, "C→A": 7, "X": 12,
-                      "C→X": 1, "S": 5, "DM": 4}, counts
+                      "C→X": 1, "S": 5, "DM": 5}, counts
     assert sorted(i for i, c in net_offer.CLASS.items() if c == "DM") == sorted(_DM_TOOLS)
     assert all(net_offer.CLASS[i] == "I" for i in actions.METAMAGIC_VALUE_BY_ID)
     # M5d: every pick row is wired. M5e.2: every S row, Divine Intervention last.
@@ -318,7 +318,8 @@ def test_the_wire_never_carries_dm_tools():
     """Byte level: Kira's whole stream, over enough cycles that the offer went out many
     times, never names a DM tool, even though the DM's menu holds all of them."""
     with _table() as t:
-        assert all(i in t.app._action_menu for i in ("pause_resume", "reaction_timer", "end_combat"))
+        assert all(i in t.app._action_menu
+                   for i in ("pause_resume", "reaction_timer", "end_combat", "table"))
         t.start()
         with _ws(t.srv.port) as kira:
             kira.send_text(_auth_frame(t.credential(t.kira.id)))

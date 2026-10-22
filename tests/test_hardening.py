@@ -17,6 +17,11 @@ Covered here:
   · D-M7-4: joins, re-joins, connects and drops are said    (test_the_table_hears_who_comes_and_goes)
   · D-M7-4: a takeover, an expiry and a pause are said      (test_the_table_hears_the_dm)
   · D-M7-4: the Table panel and the close codes, in node    (test_the_table_panel_in_the_client)
+  · D-M7-5: Table… on the setup panel opens the menu         (test_the_setup_button_opens_the_table_menu)
+  · D-M7-5: the combat tool opens it and takes nothing over  (test_the_combat_tool_opens_it_mid_fight)
+  · D-M7-5: removing a player, end to end                    (test_removing_a_player)
+  · D-M7-5: a new code keeps seats; a lock signs everyone out (test_new_code_and_lock)
+  · D-M7-5: rename, and the session log viewer               (test_rename_and_the_log_viewer)
 """
 
 import asyncio
@@ -37,6 +42,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from net import server as net_server
 from net import sessionlog as net_sessionlog
+from prompts import PromptState
 from net.commands import CommandQueue
 from net.roster import (Action, DM_PRINCIPAL_ID, PromptTarget, Role, SessionRoster,
                         TokenInfo)
@@ -482,6 +488,180 @@ def test_the_table_panel_in_the_client():
     print("✅ test_the_table_panel_in_the_client")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  D-M7-5 — the Table menu
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _choose(app, label_start):
+    """Pick the live menu's row that starts with ``label_start``, as the DM."""
+    live = app.prompts.live
+    assert live is not None, f"no menu is open to pick {label_start!r} from"
+    opt = next((o for o in live.options if o.label.startswith(label_start)), None)
+    assert opt is not None, (label_start, [o.label for o in live.options])
+    assert app.prompts.choose(opt.id).ok
+    return app.prompts.live
+
+
+def test_the_setup_button_opens_the_table_menu():
+    import shutil
+    import tempfile
+    from gui_driver import post_click
+    from test_gameview import _scene
+    tmp = tempfile.mkdtemp()
+    try:
+        app, _, _ = _scene(tmp)
+        app._reposition_panel()
+        btn = app.btn_table
+        assert btn.rect.top == app.btn_restore_autosave.rect.top, "not on the restore row"
+        for other in (app.btn_restore_autosave, app.btn_begin_combat, app.btn_terrain):
+            assert not btn.rect.colliderect(other.rect), f"{btn.rect} overlaps {other.text}"
+        post_click(app, btn.rect.center)
+        live = app.prompts.live
+        assert live is not None and live.title == "Table", live and live.title
+        labels = [o.label for o in live.options]
+        assert labels[0] == f"Join code {app.roster.join_code} · no player server", labels
+        assert labels[1] == "Players (2) ▸", labels
+        assert live.owner == DM_PRINCIPAL_ID
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("✅ test_the_setup_button_opens_the_table_menu")
+
+
+def test_the_combat_tool_opens_it_mid_fight():
+    """In a fight the setup panel is gone, so the Table menu is a DM tool in the combat
+    panel. Opening it on Kira's turn is not acting on her turn (NOT_A_TAKEOVER)."""
+    import shutil
+    import tempfile
+    from gui_driver import post_click
+    from menus import panel
+    from test_offer import _aria_turn, _frame, _offer, _log
+    tmp = tempfile.mkdtemp()
+    try:
+        app, _, _ = _aria_turn(tmp)
+        offer = _offer(app)
+        assert offer is not None
+        post_click(app, panel.cbt_btn(app, "table").rect.center)
+        live = app.prompts.live
+        assert live is not None and live.title == "Table", live and live.title
+        labels = [o.label for o in live.options]
+        assert "Restore autosave…" in labels, labels
+        # The bus holds one live prompt, so the menu supersedes the offer, as any DM menu
+        # does. That is not a takeover: nothing is logged, and once the menu is answered
+        # the offer comes back.
+        assert offer.state is PromptState.SUPERSEDED, offer.state
+        assert _log(app) == [], _log(app)
+        assert not [e for e in app.session_log.tail(include_dm=True) if "took over" in e["text"]]
+        _choose(app, "Join code")
+        _frame(app)
+        assert _offer(app) is not None, "Kira's offer did not come back"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("✅ test_the_combat_tool_opens_it_mid_fight")
+
+
+def test_removing_a_player():
+    """Players ▸ Kira ▸ Remove: her screen closes with 4403, her seat and credential are
+    gone, Aria is the DM's again in the record and in the session file, and the table
+    is told. With the same code she can join again, as a new seat with nothing."""
+    with _server(push=True) as s:
+        s.app.session_log.path = os.path.join(s.tmp, "session_log.jsonl")
+        s.srv.audit = s.app.session_log.add
+        aria = next(i for i, pt in enumerate(s.app.bm.placed_agents) if pt.name == "Aria")
+        sock = _opened(s.srv.port, s.player)
+        try:
+            from menus import dm as dm_menus
+            dm_menus.show_table_menu(s.app)
+            _choose(s.app, "Players")
+            _choose(s.app, "Kira ▸")
+            _choose(s.app, "Remove Kira")
+            assert _closed_with(sock) == net_server.WS_CLOSE_REMOVED
+        finally:
+            sock.close()
+        assert s.app.roster.get(s.kira.id) is None
+        assert s.app.bm.placed_agents[aria].controller == DM_PRINCIPAL_ID
+        assert s.app.roster.controller_of(aria) == DM_PRINCIPAL_ID
+        with open(s.app._session_path, encoding="utf-8") as fh:
+            assert s.kira.id not in fh.read(), "the session file still seats Kira"
+        assert s.get("/state", credential=s.player)[0] == 401
+        status, _, body = s.post("/join", {"v": 1, "t": "auth",
+                                          "join_code": s.app.roster.join_code,
+                                          "display_name": "Kira", "principal_id": s.kira.id})
+        assert status == 202, status
+        again = json.loads(body)
+        assert again["principal"]["id"] != s.kira.id and again["seated"] is False, again
+        texts = [e["text"] for e in s.app.session_log.tail(include_dm=False)]
+        assert texts.index("The DM removed Kira from the table.") \
+            < texts.index("Kira joined the table."), texts
+        with open(s.app.session_log.path, encoding="utf-8") as fh:
+            logged = [json.loads(line) for line in fh]
+        removed = next(e for e in logged if e["text"].startswith("The DM removed"))
+        assert removed["principal"] == s.kira.id, "the file lost whose seat it was"
+    print("✅ test_removing_a_player")
+
+
+def test_new_code_and_lock():
+    """A new code stops the old one inviting anyone, and signs nobody out. Locking the
+    table also revokes every credential; a seat survives it, and joining again with the
+    new code takes it back, tokens and all."""
+    from menus import dm as dm_menus
+    with _server(push=True) as s:
+        s.srv.audit = s.app.session_log.add
+        old = s.app.roster.join_code
+        sock = _opened(s.srv.port, s.player)
+        try:
+            dm_menus.new_join_code(s.app)
+            new = s.app.roster.join_code
+            assert new != old
+            assert s.post("/join", {"v": 1, "t": "auth", "join_code": old})[0] == 403
+            assert sock.view(timeout=3.0)["t"] in ("view", "events"), "the code change dropped a screen"
+            assert s.get("/state", credential=s.player)[0] == 200
+
+            dm_menus.lock_table(s.app)
+            assert s.app.roster.join_code != new
+            assert _closed_with(sock) == net_server.WS_CLOSE_UNAUTHENTICATED
+        finally:
+            sock.close()
+        assert s.get("/state", credential=s.player)[0] == 401
+        status, _, body = s.post("/join", {"v": 1, "t": "auth",
+                                          "join_code": s.app.roster.join_code,
+                                          "display_name": "Kira", "principal_id": s.kira.id})
+        assert status == 202, status
+        back = json.loads(body)
+        assert back["principal"]["id"] == s.kira.id and back["seated"] is True, back
+        public = " ".join(e["text"] for e in s.app.session_log.tail(include_dm=False))
+        assert "The DM changed the join code." in public
+        assert "The DM locked the table." in public
+        assert old not in public and new not in public, "a join code reached the table's log"
+        assert s.app.roster.join_code not in public
+    print("✅ test_new_code_and_lock")
+
+
+def test_rename_and_the_log_viewer():
+    import shutil
+    import tempfile
+    from menus import dm as dm_menus
+    from test_gameview import _scene
+    tmp = tempfile.mkdtemp()
+    try:
+        app, kira, _ = _scene(tmp)
+        dm_menus.show_table_menu(app)
+        _choose(app, "Players")
+        _choose(app, "Kira ▸")
+        _choose(app, "Rename")
+        assert app.name_prompt.visible
+        app.name_prompt._callback("Kira the Bold")
+        assert app.roster.display_name(kira.id) == "Kira the Bold"
+        app.session_log.add("Refused a join from 10.1.1.1.", dm_only=True)
+        dm_menus.show_table_menu(app)
+        log = _choose(app, "Session log")
+        labels = [o.label for o in log.options]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    assert labels[0].endswith("The DM renamed Kira to Kira the Bold."), labels
+    assert labels[1].endswith("[DM] Refused a join from 10.1.1.1."), labels
+    print("✅ test_rename_and_the_log_viewer")
+
+
 if __name__ == "__main__":
     test_the_roster_survives_racing_threads()
     test_the_bus_hook_runs_outside_the_lock()
@@ -498,4 +678,9 @@ if __name__ == "__main__":
     test_the_table_hears_who_comes_and_goes()
     test_the_table_hears_the_dm()
     test_the_table_panel_in_the_client()
+    test_the_setup_button_opens_the_table_menu()
+    test_the_combat_tool_opens_it_mid_fight()
+    test_removing_a_player()
+    test_new_code_and_lock()
+    test_rename_and_the_log_viewer()
     print("\n✅ All hardening tests passed!")

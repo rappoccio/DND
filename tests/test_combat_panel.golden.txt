@@ -5,9 +5,10 @@
 
 === 01 normal turn — Aria (Fighter 5, dual wield, foe adjacent) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -144,9 +145,10 @@ meta | bottom=658 max_scroll=0
 
 === 02 action used — Aria ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -284,9 +286,10 @@ meta | bottom=620 max_scroll=0
 
 === 03 bonus used — Aria ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -424,9 +427,10 @@ meta | bottom=552 max_scroll=0
 
 === 04 incapacitated — Aria ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -564,9 +568,10 @@ meta | bottom=484 max_scroll=0
 
 === 05 frightened — Aria ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -704,9 +709,10 @@ meta | bottom=654 max_scroll=0
 
 === 06 prone — Aria ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -843,9 +849,10 @@ meta | bottom=658 max_scroll=0
 
 === 07 grappled — Aria (bucket 7c: adjacency + condition) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -982,9 +989,10 @@ meta | bottom=692 max_scroll=0
 
 === 08 mid attack sequence (action slot) — Aria (bucket 7b) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -1121,9 +1129,10 @@ meta | bottom=658 max_scroll=0
 
 === 08b mid attack sequence (bonus slot) — Aria (bucket 7b) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -1260,9 +1269,10 @@ meta | bottom=552 max_scroll=0
 
 === 09 cleric turn — Brannor (bucket 7e: Channel Divinity cluster) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  |   19  Cyra
@@ -1402,9 +1412,10 @@ meta | bottom=710 max_scroll=0
 
 === 10 sorcerer turn — Cyra (bucket 7d: metamagic toggles) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -1544,9 +1555,10 @@ meta | bottom=744 max_scroll=0
 
 === 11 sorcerer, bonus spent — Cyra (bucket 7d: band-independent) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -1687,9 +1699,10 @@ meta | bottom=638 max_scroll=0
 
 === 12 hasted, bonus spent — Cyra (bucket 7d: haste_action) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -1830,9 +1843,10 @@ meta | bottom=672 max_scroll=0
 
 === 13 featureless combatant — Skarn ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  |   19  Cyra
@@ -1969,9 +1983,10 @@ meta | bottom=590 max_scroll=0
 
 === 14 paused — Aria (§1: pause_resume label from state) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ▶ Resume | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ▶ Resume | 1052,38,78,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1134,38,75,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1213,38,92,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1309,38,59,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -2108,9 +2123,10 @@ meta | bottom=658 max_scroll=0
 
 === 15 concentrating — Brannor (§9: drop_concentration) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  |   19  Cyra
@@ -2250,9 +2266,10 @@ meta | bottom=744 max_scroll=0
 
 === 16 one droppable weapon — Skarn (§9: n=1 drop row) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  |   19  Cyra
@@ -2389,9 +2406,10 @@ meta | bottom=590 max_scroll=0
 
 === 17 nick off-hand — Aria (§4: the [Action used] arm's one button) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -2529,9 +2547,10 @@ meta | bottom=654 max_scroll=0
 
 === 18 diviner with portent — Cyra (§6: the whole section) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -2673,9 +2692,10 @@ meta | bottom=712 max_scroll=0
 
 === 19 draconic sorcerer with an affinity — Cyra (F8) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -2821,9 +2841,10 @@ meta | bottom=826 max_scroll=0
 
 === 20 abjurer, ward charged — Cyra (charge_arcane_ward) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -2963,9 +2984,10 @@ meta | bottom=676 max_scroll=0
 
 === 21 druid, unshifted — Cyra (wild_shape) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -3104,9 +3126,10 @@ meta | bottom=676 max_scroll=0
 
 === 22 druid, shifted — Cyra (wild_shape: the Exit arm) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -3246,9 +3269,10 @@ meta | bottom=688 max_scroll=0
 
 === 23 monk, open hand 17 — Cyra (patient_defense, step_of_wind, wholeness_of_body, martial_arts, flurry_of_blows) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -3386,9 +3410,10 @@ meta | bottom=806 max_scroll=0
 
 === 24 monk, mercy 3 — Cyra (hand_of_healing) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -3526,9 +3551,10 @@ meta | bottom=806 max_scroll=0
 
 === 25 barbarian, berserker 14 — Cyra (rage, intimidating_presence) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -3665,9 +3691,10 @@ meta | bottom=692 max_scroll=0
 
 === 26 barbarian, zealot 10 — Cyra (rage, zealous_presence) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -3804,9 +3831,10 @@ meta | bottom=692 max_scroll=0
 
 === 27 warlock, great old one 6 — Cyra (clairvoyant_combatant, magical_cunning) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -3945,9 +3973,10 @@ meta | bottom=710 max_scroll=0
 
 === 28 warlock, celestial 3 — Cyra (healing_light) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -4086,9 +4115,10 @@ meta | bottom=710 max_scroll=0
 
 === 29 warlock, invocations 8+18 — Cyra (one_with_shadows, familiar) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -4227,9 +4257,10 @@ meta | bottom=744 max_scroll=0
 
 === 30 cleric, war 10 — Cyra (war_priest, divine_intervention) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -4373,9 +4404,10 @@ meta | bottom=758 max_scroll=0
 
 === 31 cleric, light 17 — Cyra (corona) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -4523,9 +4555,10 @@ meta | bottom=792 max_scroll=0
 
 === 32 sorcerer, wild magic 6 — Cyra (bend_luck, tides_of_chaos) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -4666,9 +4699,10 @@ meta | bottom=812 max_scroll=0
 
 === 33 sorcerer, surge window open — Cyra (the 3 wild_magic_*) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -4809,9 +4843,10 @@ meta | bottom=914 max_scroll=0
 
 === 34 sorcerer, clockwork 18 — Cyra (trance_of_order, bastion_of_law, clockwork_cavalcade) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -4959,9 +4994,10 @@ meta | bottom=860 max_scroll=0
 
 === 35 sorcerer, aberrant 18 — Cyra (revelation_in_flesh, warping_implosion) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -5109,9 +5145,10 @@ meta | bottom=826 max_scroll=0
 
 === 36 rogue 3 — Cyra (steady_aim) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -5248,9 +5285,10 @@ meta | bottom=692 max_scroll=0
 
 === 37 fighter, battle master 3 — Cyra (bm_maneuver) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -5387,9 +5425,10 @@ meta | bottom=726 max_scroll=0
 
 === 38 fighter, psi warrior 3 — Cyra (telekinetic, Psi site) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -5526,9 +5565,10 @@ meta | bottom=726 max_scroll=0
 
 === 39 paladin, devotion 3 — Cyra (lay_on_hands, sacred_weapon) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -5667,9 +5707,10 @@ meta | bottom=710 max_scroll=0
 
 === 40 paladin, vengeance 20 — Cyra (vow_of_enmity, avenging_angel) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -5814,9 +5855,10 @@ meta | bottom=758 max_scroll=0
 
 === 41 paladin, ancients 20 — Cyra (elder_champion) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -5961,9 +6003,10 @@ meta | bottom=724 max_scroll=0
 
 === 42 paladin, glory 20 after a smite — Cyra (inspiring_smite, living_legend) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -6108,9 +6151,10 @@ meta | bottom=758 max_scroll=0
 
 === 43 bard, lore 3 — Cyra (grant_inspiration) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -6250,9 +6294,10 @@ meta | bottom=676 max_scroll=0
 
 === 44 bard holding a die — Cyra (use_inspiration) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -6392,9 +6437,10 @@ meta | bottom=710 max_scroll=0
 
 === 45 ranger, gloom stalker 3 — Cyra (dread_ambusher) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -6533,9 +6579,10 @@ meta | bottom=676 max_scroll=0
 
 === 46 ranger, beast master 14 — Cyra (tireless, natures_veil, companion) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -6677,9 +6724,10 @@ meta | bottom=744 max_scroll=0
 
 === 47 feats, conditions and an item — Skarn (boon_of_fate, merge_shadows, blink_steps, gwm_hew, telekinetic feat site, use_item, extinguish) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  |   19  Cyra
@@ -6816,9 +6864,10 @@ meta | bottom=828 max_scroll=0
 
 === 48 monk with vibrations planted — Cyra (quivering_palm) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -6956,9 +7005,10 @@ meta | bottom=840 max_scroll=0
 
 === 49 cleric, trickery 6 — Cyra (turn_undead, invoke_duplicity) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -7099,9 +7149,10 @@ meta | bottom=710 max_scroll=0
 
 === 50 cleric, trickery 6 with a duplicate — Cyra (move_duplicity, swap_duplicity) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -7242,9 +7293,10 @@ meta | bottom=778 max_scroll=0
 
 === 51 cleric, life 3 — Cyra (preserve_life) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -7384,9 +7436,10 @@ meta | bottom=710 max_scroll=0
 
 === 52 bard, glamour 14 — Cyra (mantle, mantle_majesty, unbreakable_majesty, beguiling_restore) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -7532,9 +7585,10 @@ meta | bottom=826 max_scroll=0
 
 === 53 bard, glamour 14, uses spent but windows open — Cyra (the OR arm of mantle_majesty and unbreakable_majesty) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -7680,9 +7734,10 @@ meta | bottom=792 max_scroll=0
 
 === 54 rogue, soulknife 13 — Cyra (psychic_teleport, psychic_veil) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -7819,9 +7874,10 @@ meta | bottom=760 max_scroll=0
 
 === 55 monk, shadow 17 — Cyra (shadow_step, cloak_of_shadows, shadow_arts_darkness) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -7959,9 +8015,10 @@ meta | bottom=874 max_scroll=0
 
 === 56 monk, elements 6 — Cyra (elemental_attunement, elemental_burst) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -8099,9 +8156,10 @@ meta | bottom=840 max_scroll=0
 
 === 57 monk, elements 6, attunement running — Cyra (the ✓ label) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -8239,9 +8297,10 @@ meta | bottom=840 max_scroll=0
 
 === 58 warlock, archfey 6, rider selected — Cyra (fey_effect, steps_of_fey, misty_escape) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -8380,9 +8439,10 @@ meta | bottom=778 max_scroll=0
 
 === 59 warlock, archfey 3, stale rider — Cyra (the L3 cap clamps the selection back to None) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -8521,9 +8581,10 @@ meta | bottom=744 max_scroll=0
 
 === 60 grappling a neighbour — Aria (bucket 7c: grapple_drop) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -8660,9 +8721,10 @@ meta | bottom=692 max_scroll=0
 
 === 61 grappling with an auto-bite weapon — Aria (bucket 7c: bite_grappled) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -8799,9 +8861,10 @@ meta | bottom=726 max_scroll=0
 
 === 62 netted — Aria (bucket 7c: escape_net) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -8938,9 +9001,10 @@ meta | bottom=692 max_scroll=0
 
 === 63 psi warrior 3 WITH the Telekinetic feat — Cyra (F10: one widget, both draw sites in one pass) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -9077,9 +9141,10 @@ meta | bottom=760 max_scroll=0
 
 === 64 dual-wield caster — Aria (bucket 7b: both band headers) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -9216,9 +9281,10 @@ meta | bottom=692 max_scroll=0
 
 === 65 dual-wield caster mid bonus sequence — Aria (bucket 7b) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra
@@ -9355,9 +9421,10 @@ meta | bottom=586 max_scroll=0
 
 === 66 sorcerer 7, all nine metamagic options — Cyra (bucket 7d: the seven dark toggles) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -9499,9 +9566,10 @@ meta | bottom=982 max_scroll=2
 
 === 67 two metamagic options armed — Cyra (bucket 7d: the tick) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -9643,9 +9711,10 @@ meta | bottom=982 max_scroll=2
 
 === 68 sorcery incarnate, two options armed — Cyra (bucket 7d) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -9788,9 +9857,10 @@ meta | bottom=967 max_scroll=0
 
 === 69 sorcery incarnate with no Sorcery Points — Cyra (bucket 7d: the caption outlives its buttons) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
 text | Initiative  | ▶ 19  Cyra
@@ -9933,9 +10003,10 @@ meta | bottom=661 max_scroll=0
 
 === 99 nobody on turn — out-of-range agent (F7) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 btn  | Initiative  | btn_cbt_end_turn | End Turn | 1052,116,316,30 | yes
 text | Action      | Action
@@ -10065,9 +10136,10 @@ meta | bottom=354 max_scroll=0
 
 === 100 On Deck reserves — Aria (two Goblins and an Ogre held back) ===
 text | Header      | ⚔  Combat
-btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,102,30 | yes
-btn  | Header      | btn_cbt_reaction_timer | React 60s | 1158,38,102,30 | yes
-btn  | Header      | btn_cbt_end_combat | End Combat | 1264,38,102,30 | yes
+btn  | Header      | btn_cbt_pause_resume | ⏸ Pause | 1052,38,64,30 | yes
+btn  | Header      | btn_cbt_reaction_timer | React 60s | 1120,38,79,30 | yes
+btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
+btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
 text | Initiative  |   19  Cyra

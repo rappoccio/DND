@@ -1297,6 +1297,28 @@ class PlayerServer:
             pass
 
 
+    def close_principal(self, principal_id: str, code: int = WS_CLOSE_REMOVED) -> None:
+        """Close every socket ``principal_id`` holds, from the pygame thread (D-M7-5).
+
+        The DM removing a seat. The next push cycle would close these anyway, since the
+        credential stops verifying once the seat is gone, but it would close them with
+        4401, and the player would read "your seat was closed, or the game restarted".
+        Scheduled first, so this close lands before that one. A second close on a closing
+        socket does nothing.
+        """
+        loop = self._loop
+        if loop is None:
+            return
+        try:
+            loop.call_soon_threadsafe(self._close_principal, principal_id, code)
+        except RuntimeError:
+            pass
+
+    def _close_principal(self, principal_id: str, code: int) -> None:
+        for conn in self._live_conns.of(principal_id):
+            asyncio.ensure_future(conn.ws.close(code=code, message=b"removed"))
+
+
 def _contiguous(frames: list, sent_seq: int | None) -> list:
     """``frames`` with its `events` frame made to start at ``sent_seq`` (M4b.2, B-3).
 
