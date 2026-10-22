@@ -51,12 +51,11 @@ const layout = (items) => items.map((li) => (li.className === "section"
 const checks = [];
 const check = (name, fn) => checks.push([name, fn]);
 
-check("sections in the DM's order, each with its own rows, End Turn last", () => {
+check("sections in the DM's order, each with its own rows, End Turn last; no Move (Q5)", () => {
   const h = load();
   assert.deepStrictEqual(layout(offered(h)), [
     ["§", "Action"], "⚔ Attack", "Dash",
     ["§", "Bonus Action"], "Second Wind", "Bend Luck",
-    ["§", "Movement"], "Move",
     ["§", "Other"], "Drop Sword", "New",
     ["§", ""], "End Turn",
   ]);
@@ -75,8 +74,8 @@ check("a row is drawn in the DM's colour; a disabled one is greyed and keeps its
   assert.strictEqual(bend.children[0].className, "dm off");
   assert.strictEqual(bend.children[0].style.background, undefined);
   assert.match(bend.children[1].textContent, /ask the DM/);
-  const move = button("Move").children[0];
-  assert.strictEqual(move.className, "");          // no colour → the client's default
+  const plain = button("New").children[0];
+  assert.strictEqual(plain.className, "");         // no colour → the client's default
 });
 
 check("a click still submits the option id", () => {

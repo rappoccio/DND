@@ -124,6 +124,8 @@ test_scripts = [
     "test_viewport.py",
     # The combined initiative/health table and the turn highlight (QOL Q3).
     "test_roster.py",
+    # Drag to move on the player board (QOL Q5).
+    "test_drag.py",
     # The restore oracle (M6.0): save at the turn boundary, restore into a fresh App, and
     # compare. A ratchet: KNOWN_GAPS shrinks slice by slice and is empty when M6 is done.
     "test_restore_oracle.py",

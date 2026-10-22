@@ -138,6 +138,7 @@ function connect() {
       // cycle, so the countdown re-anchors on each push and never drifts far.
       promptEndsAt = frame.deadline_ms == null ? 0 : performance.now() + frame.deadline_ms;
       drawPrompt();
+      resumeChain();
       if (view) drawBoard();   // a target pick rings tokens instead of painting squares
     } else if (frame.t === "submit_ack") {
       onAck(frame);
@@ -201,6 +202,8 @@ function onAck(frame) {
     // A timeout stays locked until a view arrives; every other refusal is final for this
     // answer, and the player may pick again if the prompt is still theirs.
     if (frame.error !== "timeout") awaiting = "";
+    chain = null;        // the chain's "move" or its cell was not taken: nothing moves
+    landing = null;
   }
   drawPrompt();
 }
@@ -238,8 +241,10 @@ function drawPrompt() {
     for (const option of shown) list.append(optionItem(option));
     return;
   }
+  // QOL Q5: no Move button here — dragging your token is how you move (decision 2).
+  const rowsShown = shown.filter((option) => option.id !== MOVE_OPTION);
   for (const [group, heading] of ACTION_SECTIONS) {
-    const rows = shown.filter((option) => sectionOf(option) === group);
+    const rows = rowsShown.filter((option) => sectionOf(option) === group);
     if (!rows.length) continue;
     const head = document.createElement("li");
     head.className = "section";
@@ -253,6 +258,8 @@ function drawPrompt() {
    panel's headings. `option.group` is the panel's own section (`actions.Action.group`, or
    "movement" for Move); a group this list does not know goes under "Other", so a new one
    is never dropped. End Turn closes the list, under a rule rather than a heading. */
+const MOVE_OPTION = "move";               // net/move.MOVE_ID: the offer's Move row
+
 const ACTION_SECTIONS = [
   ["action", "Action"],
   ["portent", "Portent Dice"],
@@ -317,6 +324,7 @@ function render(next) {
   el("combat-state").textContent = view.combat.active
     ? (view.combat.paused ? "(paused)" : "") : "(out of combat)";
 
+  resumeChain();
   drawRoster();
   drawLog();
   drawBoard();
@@ -532,7 +540,12 @@ canvas.addEventListener("pointerdown", (event) => {
   }
   pointers.set(event.pointerId, [event.clientX, event.clientY]);
   if (canvas.setPointerCapture) canvas.setPointerCapture(event.pointerId);
-  if (pointers.size > 1) gesture.moved = true;      // a pinch is never a tap
+  if (pointers.size > 1) {
+    gesture.moved = true;      // a pinch is never a tap
+    if (drag) { drag = null; if (view) drawBoard(); }   // …nor a move: the token snaps back
+  } else if (view) {
+    drag = dragFrom(...boardPoint(event));
+  }
 });
 
 canvas.addEventListener("pointermove", (event) => {
@@ -544,6 +557,7 @@ canvas.addEventListener("pointermove", (event) => {
         && Math.hypot(now[0] - gesture.x0, now[1] - gesture.y0) < TAP_SLOP_PX) return;
     gesture.moved = true;
     pointers.set(event.pointerId, now);
+    if (drag) { dragTo(...boardPoint(event)); return; }
     panBy(now[0] - last[0], now[1] - last[1]);
     return;
   }
@@ -563,9 +577,184 @@ canvas.addEventListener("pointermove", (event) => {
 function endPointer(event) {
   if (!pointers.delete(event.pointerId)) return;
   if (!pointers.size && gesture && gesture.moved) swallowClick = true;
+  if (!drag || pointers.size) return;
+  const held = drag;
+  drag = null;
+  // A press on the token that never left the slop is a tap, and the click handler has it.
+  if (gesture && gesture.moved && event.type === "pointerup") drop(held);
+  if (view) drawBoard();
 }
 canvas.addEventListener("pointerup", endPointer);
 canvas.addEventListener("pointercancel", endPointer);
+
+// ── Drag to move (QOL Q5) ───────────────────────────────────────────────────
+//
+// The player screen has no Move button (decision 2): you move by dragging your token, as
+// the DM does. While it is dragged the token leaves its square and a ghost sits on the
+// cell under the pointer, outlined green when the live Move prompt lists that cell in
+// `you.reachable` and red when it does not — the DM's drag ghost (`main.py`, "Draw drag
+// ghost"). Nothing is computed here (NN2): green is the server's list, read.
+//
+// A drag is offered while the token's own turn is asking, in one of two ways:
+//
+//   · the **action offer** is live and its Move row is enabled. Picking the token up sends
+//     `{option:"move"}` at once, so the Move prompt — and with it `you.reachable` — is
+//     back within a push or two and the squares paint while the token is still held, as
+//     the DM's do on selection. Until then the outline is neutral. A drop before the
+//     prompt arrives is held and answered when it does, if that prompt lists the cell; if
+//     it does not, or the press was only a tap, the Move prompt stays up with its squares
+//     painted, to drag, tap or cancel.
+//   · the **Move prompt** this client opened is live (after a mode switch, a refused cell,
+//     or a reconnect). A drop on a listed cell submits it; any other drop sends nothing.
+//
+// Both answers go through the one `submit()`, so F-M5-5's frame count holds. A Move
+// prompt looks exactly like a jump's landing pick or a spell's point pick on the wire —
+// `kind:"cell"`, the offer as its parent — so the client knows it only as the cell prompt
+// under the offer it sent "move" on. A page reload forgets that, and a Move prompt live
+// across a reload is answered by tapping its squares, as before.
+
+const DRAG_OK = "rgb(80, 220, 80)";        // main.py's drag outline, valid
+const DRAG_BAD = "rgb(220, 60, 60)";       // …and invalid
+const DRAG_UNKNOWN = "rgb(235, 235, 235)"; // the chain's drag: no set has been asked for yet
+const LANDING_MS = 3000;                   // how long a dropped token is shown where it went
+
+let drag = null;        // { agent, cell, origin } while a token is being dragged
+let moveParent = null;  // the offer this client sent "move" on; its cell child is the Move prompt
+let chain = null;       // { agent, origin, cell, offer } — a pick-up waiting for its Move prompt;
+                        // `cell` is null until the token is dropped
+let landing = null;     // { agent, from, cell, until } — your own drop, shown at once
+
+function livePrompt() {
+  return view && prompt && view.you.prompt_id === prompt.id ? prompt : null;
+}
+
+function isMovePrompt(p) {
+  return !!p && p.kind === "cell" && moveParent !== null && p.parent_id === moveParent;
+}
+
+/* How a drag of `actor` would be answered right now: "move", "offer", or null. */
+function dragMode(actor) {
+  const live = livePrompt();
+  if (!live || awaiting || play || live.actor !== actor) return null;
+  if (isMovePrompt(live) && view.you.reachable) return "move";
+  if (live.kind === "action"
+      && live.options.some((o) => o.id === MOVE_OPTION && o.enabled)) return "offer";
+  return null;
+}
+
+/* A press at board point (sx, sy) picks up the token under it, if it is this viewer's
+   and its turn is asking for a move. */
+function dragFrom(sx, sy) {
+  const [wx, wy] = toWorld(sx, sy);
+  const cell = view.map.cell_px || 1;
+  const controls = view.you.controls || [];
+  for (const agent of view.agents) {
+    const span = (agent.size || 1) * cell;
+    if (wx < agent.col * cell || wx >= agent.col * cell + span
+        || wy < agent.row * cell || wy >= agent.row * cell + span) continue;
+    const mode = controls.includes(agent.agent) ? dragMode(agent.agent) : null;
+    if (!mode) return null;
+    const held = { agent: agent.agent, size: agent.size || 1, origin: [agent.col, agent.row],
+                   cell: [agent.col, agent.row] };
+    if (mode === "offer") {
+      // Ask for the Move prompt now, so its squares are up before the token is put down.
+      chain = { agent: held.agent, origin: held.origin, cell: null, offer: prompt.id };
+      moveParent = prompt.id;
+      submit({ option: MOVE_OPTION });
+    }
+    return held;
+  }
+  return null;
+}
+
+/* The top-left cell the token would land on with its centre under (sx, sy). */
+function dragTo(sx, sy) {
+  const [wx, wy] = toWorld(sx, sy);
+  const cell = view.map.cell_px || 1;
+  const off = (drag.size - 1) / 2;
+  const next = [Math.floor(wx / cell - off), Math.floor(wy / cell - off)];
+  if (next[0] === drag.cell[0] && next[1] === drag.cell[1]) return;
+  drag.cell = next;
+  drawBoard();
+}
+
+function listed(cell) {
+  const cells = view.you.reachable || [];
+  return cells.some(([c, r]) => c === cell[0] && r === cell[1]);
+}
+
+/* Green, red, or neutral: what the ghost's outline says about its cell. */
+function dragColour(held) {
+  if (dragMode(held.agent) !== "move") return DRAG_UNKNOWN;
+  return listed(held.cell) ? DRAG_OK : DRAG_BAD;
+}
+
+/* A drop on the token's own square is no move: the Move prompt, if the pick-up opened
+   one, stays up. A drop while the Move prompt is live answers it; one before it arrives
+   waits for it in `chain`. */
+function drop(held) {
+  const [col, row] = held.cell;
+  if (col === held.origin[0] && row === held.origin[1]) return;
+  if (dragMode(held.agent) === "move") {
+    if (listed(held.cell)) moveTo(held);
+    return;
+  }
+  if (chain && chain.agent === held.agent) chain.cell = held.cell;
+}
+
+function moveTo(held) {
+  landing = { agent: held.agent, from: held.origin, cell: held.cell,
+              until: performance.now() + LANDING_MS, played: false };
+  submit({ cell: [held.cell[0], held.cell[1]] });
+}
+
+/* The chain's second half, run on every view and prompt frame until it lands or lapses.
+   It waits out the offer's own submit, then answers the first Move prompt that is live;
+   any other live prompt means the turn went somewhere else, and the held cell is dropped. */
+function resumeChain() {
+  if (!chain || awaiting) return;
+  const live = livePrompt();
+  if (!live) return;
+  if (live.id === chain.offer) { chain = null; return; }    // the "move" was refused
+  const held = chain;
+  if (isMovePrompt(live) && !view.you.reachable) return;    // the view with its set is next
+  chain = null;
+  if (!isMovePrompt(live) || !held.cell) return;            // still held, or only a tap
+  if (listed(held.cell)) moveTo(held);
+  else { ackNote = "That square is out of reach. Tap a green one, or cancel."; drawPrompt(); }
+}
+
+/* Your own drop is drawn where it went until the view moves the token, rather than
+   snapping back for the push it takes the server to say so. */
+function landed(agent) {
+  if (!landing || agent.agent !== landing.agent) return agent;
+  if (performance.now() > landing.until) { landing = null; return agent; }
+  if (agent.col !== landing.from[0] || agent.row !== landing.from[1]) return agent;
+  return Object.assign({}, agent, { col: landing.cell[0], row: landing.cell[1] });
+}
+
+/* …and its `move` event lands at once instead of replaying origin to destination. */
+function ownMove(ev) {
+  if (!landing || landing.played || ev.agent !== landing.agent) return false;
+  const end = ev.path[ev.path.length - 1];
+  if (end[0] !== landing.cell[0] || end[1] !== landing.cell[1]) return false;
+  landing.played = true;
+  return true;
+}
+
+function drawDrag(cell) {
+  if (!drag || !gesture || !gesture.moved) return;
+  const agent = view.agents.find((a) => a.agent === drag.agent);
+  if (!agent) return;
+  const span = drag.size * cell;
+  const [x, y] = [drag.cell[0] * cell, drag.cell[1] * cell];
+  ctx.globalAlpha = 180 / 255;
+  drawToken(Object.assign({}, agent, { col: drag.cell[0], row: drag.cell[1] }), cell);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = dragColour(drag);
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x + 1.5, y + 1.5, span - 3, span - 3);
+}
 
 canvas.addEventListener("wheel", (event) => {
   if (!view) return;
@@ -623,7 +812,10 @@ function drawBoard() {
   drawGrid(cell, map.cols, map.rows);
   drawReachable(cell);
   drawAoe(cell);
-  for (const agent of displayed()) drawToken(agent, cell);
+  for (const agent of displayed()) {
+    if (!(drag && gesture && gesture.moved && agent.agent === drag.agent)) drawToken(agent, cell);
+  }
+  drawDrag(cell);
   drawTargets(cell);
   const now = performance.now();
   drawFlashes(cell, now);       // the DM screen's order: tokens, flashes, then the bubble
@@ -1135,7 +1327,7 @@ function advance(now) {
       adopt(held, ev.agent);
       const dur = steps / ANIM_CELLS_PER_SEC * 1000;
       // A one-cell path is a jump (B-4 cut the rest). With the toggle off every move is.
-      if (steps <= 0 || !animate || elapsed >= dur) {
+      if (steps <= 0 || !animate || elapsed >= dur || ownMove(ev)) {
         land(held, path[path.length - 1]);
         next(now);
         continue;
@@ -1223,10 +1415,10 @@ function tick() {
    held agent the view no longer carries is still drawn until the queue drains, as the
    DM screen keeps a corpse on the board until its killing blow has played. */
 function displayed() {
-  if (!play) return view.agents;
+  if (!play) return view.agents.map(landed);
   const out = [];
   for (const agent of view.agents) {
-    if (!play.held.has(agent.agent)) out.push(agent);
+    if (!play.held.has(agent.agent)) out.push(landed(agent));
   }
   for (const [idx, held] of play.held) {
     if (held.agent) out.push(Object.assign({}, held.agent, { agent: idx, col: held.col,

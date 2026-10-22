@@ -1,5 +1,9 @@
 # QOL plan — the player screen catches up with the DM's
 
+**Status: complete, 2026-10-21.** Q1–Q5 landed and were checked live. Q0 (the Attack-click
+bug) was never reproduced and is closed with the plan; its diagnosis and fix stay below for
+when a bug report brings it back. New issues go to `plans/QOL.md` as bug reports.
+
 Plan for the items in `plans/QOL.md` (2026-10-21). Nearly all of it is the player
 client (`gui/net/static/app.{js,css}`, `index.html`); only Q4 touches the server.
 
@@ -97,7 +101,17 @@ Action, Movement, Other (utility and any unknown group), then End Turn under a r
   the right group and colour, and Move is `movement`. Harness check: sections render in
   order.
 
-### Q5 — Drag to move with a live preview (item 6). Depends on Q1.
+### Q5 — Drag to move with a live preview (item 6). Depends on Q1. **Done 2026-10-21**, checked live (suite 187/0, `tests/test_drag.py`).
+*As built:* the ghost is the DM's (`main.py` "Draw drag ghost"): the token leaves its square,
+a 180/255-alpha copy snaps to the cell under the pointer, and the outline is green/red.
+Picking the token up during the offer sends `{option:"move"}` at once (user, 2026-10-21: the
+squares must show on selection, not after the drop), so the reachable squares paint while the
+token is held; until the Move prompt arrives the outline is neutral. A tap on the token leaves
+the Move prompt up, which is how a player selects without dragging. On the wire a Move prompt
+is identical to a jump or spell cell pick (`kind:"cell"`, parent = the offer), so the client
+knows it only as the cell prompt under the offer it sent `move` on (`moveParent`). A reload
+forgets that, and a Move prompt live across a reload is answered by tapping, as before. A chain
+whose cell is not listed leaves the Move prompt up with a note ("out of reach").
 - **No Move button on the player screen** (decision 2): dragging is how you move.
 - Press on **your own token** → the sprite follows the pointer and the cell under it is
   outlined: green if it is in `you.reachable`, red if not. Release on a green cell →

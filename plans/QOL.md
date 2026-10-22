@@ -7,11 +7,7 @@ Format: **[DM|Player|Both]** short title — what happened, what would be better
 
 ## Open
 
-6. **[Player] Drag-to-move preview like the DM screen** — When moving a token on the
-   player view, the sprite doesn't follow the cursor to show which square it will land in;
-   after the move is committed it just animates from origin to destination. The DM screen
-   drags the sprite live so you can see the target square before dropping. Make the player
-   view match: live drag preview of the token (and target square) before committing.
+_(nothing open)_
 
 ## Bugs
 
@@ -38,3 +34,7 @@ Format: **[DM|Player|Both]** short title — what happened, what would be better
   carries each row's DM section and button colour, in the DM panel's draw order; the
   player screen draws Action / Bonus Action / Movement / Other / End Turn in those colours,
   with disabled rows greyed and their reason shown. Checked live.
+- **[Player] Drag-to-move preview like the DM screen** — QOL_PLAN Q5 (2026-10-21): no Move
+  button; pressing your token opens Move and paints the reachable squares, the DM's ghost
+  follows the pointer with a green/red outline, a drop on green moves, and your own move lands
+  without replaying. Checked live.
