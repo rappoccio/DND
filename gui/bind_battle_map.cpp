@@ -404,6 +404,10 @@ void bindBattleMap(py::module_& m) {
              "DM 'reveal all': mark every cell explored.")
         .def("clear_fog", &BattleMap::clearFog,
              "DM 'reset fog': mark every cell unexplored (fully fogged).")
+        .def("room_cells", &BattleMap::roomCells, py::arg("start"), py::arg("cap") = 4000,
+             "The room around start, for the DM's reveal/fog this room (D-M7-6): a flood\n"
+             "stopped by walls, Wall terrain, doors (cell or edge, open or shut) and wall\n"
+             "edges, plus the walls it touches. At most cap cells, start first.")
 
         // Temporary terrain effects (spells, items, etc. with duration)
         .def("place_terrain_effect", &BattleMap::placeTerrainEffect,

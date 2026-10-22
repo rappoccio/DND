@@ -22,6 +22,8 @@ Covered here:
   · D-M7-5: removing a player, end to end                    (test_removing_a_player)
   · D-M7-5: a new code keeps seats; a lock signs everyone out (test_new_code_and_lock)
   · D-M7-5: rename, and the session log viewer               (test_rename_and_the_log_viewer)
+  · D-M7-6: the room flood stops at walls, doors and edges    (test_room_cells_stop_at_the_room)
+  · D-M7-6: Reveal / Fog this room, through the fog menu      (test_reveal_and_fog_a_room)
 """
 
 import asyncio
@@ -662,6 +664,111 @@ def test_rename_and_the_log_viewer():
     print("✅ test_rename_and_the_log_viewer")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  D-M7-6 — reveal a region
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _blank_map(tmp):
+    from test_gameview import _scene
+    app, kira, _ = _scene(tmp)
+    bm = app.bm
+    # The scene's own structure would muddy the counts: clear it to an open 11×11 floor.
+    import rpg_battle_map as rpg
+    for d in list(bm.doors):
+        bm.remove_door(d.id)
+    for c in range(bm.grid_cols):
+        for r in range(bm.grid_rows):
+            bm.set_terrain_type(rpg.Cell(c, r), rpg.TerrainType.Standard)
+    return app, kira, bm, rpg
+
+
+def test_room_cells_stop_at_the_room():
+    import shutil
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    try:
+        app, _, bm, rpg = _blank_map(tmp)
+        cols, rows = int(bm.grid_cols), int(bm.grid_rows)
+        cell = lambda c, r: rpg.Cell(c, r)
+        as_set = lambda cells: {(c.col, c.row) for c in cells}
+
+        # Open floor: the whole map, start first.
+        whole = bm.room_cells(cell(1, 1), 4000)
+        assert (whole[0].col, whole[0].row) == (1, 1)
+        assert len(whole) == cols * rows
+
+        # A wall of Wall terrain down column 5, with a door cell in it at row 3. The room
+        # west of it is columns 0-4, plus the wall and the door it touches, and nothing
+        # east of them: an open door is still the room's edge.
+        for r in range(rows):
+            if r != 3:
+                bm.set_terrain_type(cell(5, r), rpg.TerrainType.Wall)
+        bm.add_door(cells=[cell(5, 3)], open=True)
+        west = as_set(bm.room_cells(cell(1, 1), 4000))
+        assert west == {(c, r) for c in range(6) for r in range(rows)}, sorted(west)
+
+        # Starting on the wall is the wall alone.
+        assert as_set(bm.room_cells(cell(5, 0), 4000)) == {(5, 0)}
+
+        # An edge wall east of column 7, then an open edge door on one of its edges: the
+        # room between the two walls is columns 6-7, and the door does not let it out.
+        for r in range(rows):
+            bm.set_edge_wall(cell(7, r), rpg.EdgeSide.East, True)
+        between = as_set(bm.room_cells(cell(6, 6), 4000))
+        assert between == {(c, r) for c in (6, 7) for r in range(rows)} \
+            | {(5, r) for r in range(rows)}, sorted(between)
+        edge = rpg.Edge()
+        edge.cell, edge.side = cell(7, 6), rpg.EdgeSide.East
+        bm.add_edge_door(edges=[edge], open=True)
+        assert as_set(bm.room_cells(cell(6, 6), 4000)) == between, "an open edge door leaked"
+
+        # The cap, and a start off the grid.
+        capped = bm.room_cells(cell(1, 1), 5)
+        assert len(capped) == 5 and (capped[0].col, capped[0].row) == (1, 1)
+        assert bm.room_cells(cell(-1, 0), 4000) == []
+        assert bm.room_cells(cell(1, 1), 0) == []
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("✅ test_room_cells_stop_at_the_room")
+
+
+def test_reveal_and_fog_a_room():
+    """The fog menu's two new rows, end to end: right-click a cell, Reveal this room, and
+    a player's view now carries that room; Fog this room puts it back. The table hears it."""
+    import shutil
+    import tempfile
+    from menus import board
+    from net.view import build_view
+    tmp = tempfile.mkdtemp()
+    try:
+        app, kira, bm, rpg = _blank_map(tmp)
+        rows = int(bm.grid_rows)
+        for r in range(rows):
+            bm.set_terrain_type(rpg.Cell(8, r), rpg.TerrainType.Wall)
+        bm.set_explored_cells([])
+        app._mark_fog_dirty = lambda: None       # the party's sight is not under test here
+        x, y = app._cell_to_screen(10, 2)
+        pos = (int(x) + 3, int(y) + 3)
+        assert (lambda c: (c.col, c.row))(app._screen_to_cell(*pos)) == (10, 2)
+        board.show_fog_menu(app, pos)
+        labels = [o.label for o in app.prompts.live.options]
+        assert labels[:2] == ["Reveal this room", "Fog this room"], labels
+        _choose(app, "Reveal this room")
+        explored = {(c.col, c.row) for c in bm.explored_cells()}
+        assert explored == {(c, r) for c in (8, 9, 10) for r in range(rows)}, sorted(explored)
+        runs = build_view(app, kira)["fog"]["explored_runs"]
+        assert runs == [[r, 8, 10] for r in range(rows)], runs
+
+        board.show_fog_menu(app, pos)
+        _choose(app, "Fog this room")
+        assert bm.explored_cells() == []
+        texts = [e["text"] for e in app.session_log.tail(include_dm=False)]
+        assert texts == ["The DM revealed part of the map.", "The DM fogged part of the map."]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("✅ test_reveal_and_fog_a_room")
+
+
 if __name__ == "__main__":
     test_the_roster_survives_racing_threads()
     test_the_bus_hook_runs_outside_the_lock()
@@ -683,4 +790,6 @@ if __name__ == "__main__":
     test_removing_a_player()
     test_new_code_and_lock()
     test_rename_and_the_log_viewer()
+    test_room_cells_stop_at_the_room()
+    test_reveal_and_fog_a_room()
     print("\n✅ All hardening tests passed!")

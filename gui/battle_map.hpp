@@ -852,6 +852,12 @@ public:
     void setExploredCells(const std::vector<Cell>& cells) noexcept; // JSON import (replaces mask)
     void revealAllFog() noexcept;                                  // DM "reveal all"
     void clearFog() noexcept;                                      // DM "reset fog"
+    // The room around `start`, for the DM's "reveal / fog this room" (MULTIPLAYER_PLAN.md
+    // D-M7-6): an orthogonal flood that stops at detected walls, Wall terrain, any door
+    // cell, any wall edge and any door edge, open or shut. The blocking cells it touches
+    // are included, so the room's walls show with it; a room's wall corners are included
+    // too. At most `cap` cells, start first. Empty when `start` is off the grid.
+    [[nodiscard]] std::vector<Cell> roomCells(Cell start, int cap) const;
 
     // Get/set light level at a cell (for debugging or manual map configuration).
     [[nodiscard]] VisibilityLevel getLightLevel(Cell c) const noexcept;

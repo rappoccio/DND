@@ -324,15 +324,40 @@ def show_on_deck_recall_menu(app, hit, pos):
                  anchor=pos, actor_idx=hit)
 
 
+# D-M7-6: the most cells "this room" may be. A room is bounded by walls and doors, so this
+# only bites on an open map, where the flood would otherwise run to the edges.
+ROOM_CAP = 4000
+
+
 def show_fog_menu(app, pos):
-    """Manual overrides on the persistent explored mask: reveal everything, or reset
-    back to fully fogged."""
+    """Manual overrides on the persistent explored mask: the room under the click
+    (D-M7-6), everything, or back to fully fogged."""
     def _reveal_all_fog():
         app.bm.reveal_all_fog()
     def _reset_fog():
         app.bm.clear_fog()
         app._mark_fog_dirty()   # re-reveal whatever the party can currently see
-    app._ask_dm("action", "Fog of war",
-                 [("Reveal all fog", _reveal_all_fog),
-                  ("Reset fog", _reset_fog)],
-                 anchor=pos)
+    items = []
+    cell = app._screen_to_cell(*pos)
+    if cell is not None:
+        items += [("Reveal this room", lambda c=cell: set_room_fog(app, c, revealed=True)),
+                  ("Fog this room", lambda c=cell: set_room_fog(app, c, revealed=False))]
+    items += [("Reveal all fog", _reveal_all_fog),
+              ("Reset fog", _reset_fog)]
+    app._ask_dm("action", "Fog of war", items, anchor=pos)
+
+
+def set_room_fog(app, cell, revealed: bool) -> int:
+    """Reveal or re-fog the room around ``cell`` (`BattleMap.room_cells`). Returns how many
+    cells it touched. Re-fogging then re-reveals what the party can see right now, as
+    Reset fog does, so a room someone is standing in does not go dark around them."""
+    cells = app.bm.room_cells(cell, ROOM_CAP)
+    for c in cells:
+        app.bm.set_explored(c, revealed)
+    if not revealed:
+        app._mark_fog_dirty()
+    capped = " (capped: no walls closed it)" if len(cells) >= ROOM_CAP else ""
+    app._flash_status(f"{'Revealed' if revealed else 'Fogged'} {len(cells)} cells{capped}")
+    app.session_log.add("The DM revealed part of the map." if revealed
+                        else "The DM fogged part of the map.")
+    return len(cells)

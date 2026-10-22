@@ -2342,6 +2342,70 @@ void BattleMap::clearFog() noexcept {
     std::fill(explored_.begin(), explored_.end(), static_cast<uint8_t>(0));
 }
 
+std::vector<Cell> BattleMap::roomCells(Cell start, int cap) const
+{
+    std::vector<Cell> out;
+    const auto inGrid = [&](Cell c) {
+        return c.col >= 0 && c.row >= 0 && c.col < cols_ && c.row < rows_;
+    };
+    if (cap <= 0 || !inGrid(start)) return out;
+    const auto at = [&](Cell c) {
+        return static_cast<std::size_t>(c.row) * static_cast<std::size_t>(cols_)
+             + static_cast<std::size_t>(c.col);
+    };
+    // A cell the flood reaches but does not pass: a wall, or a door, whatever its state.
+    // A door is where one room ends and the next begins, so an open one stops it too.
+    const auto stops = [&](Cell c) {
+        if (doorAt(c) >= 0 || disallowed_.contains(c)) return true;
+        const std::size_t i = at(c);
+        return i < terrainType_.size() && terrainType_[i] == TerrainType::Wall;
+    };
+    // An edge the flood does not cross: a wall now, or a door edge in any state.
+    const auto edgeStops = [&](Cell a, Cell b) {
+        if (edgeBetween(a, b)) return true;
+        const Edge e = (b.col > a.col) ? Edge{a, EdgeSide::East}
+                     : (b.col < a.col) ? Edge{b, EdgeSide::East}
+                     : (b.row > a.row) ? Edge{a, EdgeSide::South}
+                     :                   Edge{b, EdgeSide::South};
+        return doorAtEdge(e) >= 0;
+    };
+
+    const std::size_t limit = static_cast<std::size_t>(cap);
+    std::vector<std::uint8_t> seen(static_cast<std::size_t>(cols_) * static_cast<std::size_t>(rows_), 0);
+    std::vector<Cell> inside;                  // the cells the flood passed through
+    std::queue<Cell> todo;
+    seen[at(start)] = 1;
+    out.push_back(start);
+    if (!stops(start)) todo.push(start);
+    constexpr int kOrth[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    while (!todo.empty() && out.size() < limit) {
+        const Cell c = todo.front();
+        todo.pop();
+        inside.push_back(c);
+        for (const auto& d : kOrth) {
+            const Cell n{c.col + d[0], c.row + d[1]};
+            if (!inGrid(n) || seen[at(n)] || edgeStops(c, n)) continue;
+            seen[at(n)] = 1;
+            out.push_back(n);
+            if (out.size() >= limit) break;
+            if (!stops(n)) todo.push(n);
+        }
+    }
+    // A room drawn with wall cells has corners the orthogonal flood never touches. Add
+    // the blocking diagonal neighbours of the cells it passed, so the corners show too.
+    constexpr int kDiag[4][2] = {{1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
+    for (const Cell& c : inside) {
+        for (const auto& d : kDiag) {
+            if (out.size() >= limit) return out;
+            const Cell n{c.col + d[0], c.row + d[1]};
+            if (!inGrid(n) || seen[at(n)] || !stops(n) || doorAt(n) >= 0) continue;
+            seen[at(n)] = 1;
+            out.push_back(n);
+        }
+    }
+    return out;
+}
+
 PlacedAgent& BattleMap::placedAgentMut(int idx) noexcept {
     static PlacedAgent dummy;
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size()))

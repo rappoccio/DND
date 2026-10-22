@@ -8296,13 +8296,48 @@ its callers, and the C++ fog and edge bindings. Baseline suite: 188 / 0 at `0eda
 | M7.3 | Limits (D-M7-3), plus the serialization measurement (D-M7-7) | ☑ |
 | M7.4 | The session log, on the wire and in the client (D-M7-4). *Amends D-M5-7: clicking Pause (and M7.5's Table…) is no longer a takeover, only the reaction timer was exempt, so a pause read as "the DM took over Kira's turn". `net_offer.NOT_A_TAKEOVER` lists the three. The client's list is `#table-log`, since `#session` is the page's `<main>`.* | ☑ |
 | M7.5 | The Table menu: kick, rotate, lock, restore, log (D-M7-5). *Opening it on a player's turn supersedes the offer, as every DM menu does through the one-live-prompt bus, and the offer is re-posted when the menu closes. That is not a takeover and logs nothing. The combat panel golden changed in its header row only.* | ☑ |
-| M7.6 | Reveal a region (D-M7-6) | ☐ |
+| M7.6 | Reveal a region (D-M7-6) | ☑ |
 
 **A1–A9 check, to run at the end:** no display name used as a key (the log's text holds
 names, but each entry also carries the principal id); no `Role` branch outside
 `authorize()`; no cookie; no identity from an IP (addresses appear only in DM-only log
 text and in the limiter's bucket key); every new route and frame goes through the
 middleware or the first-frame check.
+
+**A1–A9 check, run 2026-10-21 over `git diff 0eda4ba -- gui/`: clean.** No display name is
+used as a key: the Players menu labels rows with names and keys them by id, and every new
+table (`_live_conns.of`, `_tick_requests`, the session file) is keyed by principal id. No
+new `Role` read. `remove_player`'s `DM_PRINCIPAL_ID` guard is the roster's own rule (the
+DM's seat cannot be removed), not an authorization branch. No cookie. Addresses appear
+only in DM-only log text and in the limiter's bucket key, which predates M7. No new
+route.
+
+##### Handoff — M7 landed *(written 2026-10-21)*
+
+**State.** M7 is **done**: six commits on `main`, unpushed, one per step (M7.1 `f74f776`,
+M7.2 `1f16398`, M7.3 `0fcb21a`, M7.4 `90cdb07`, M7.5 `df283b7`, and M7.6). The suite is
+**189 / 0**, with the new `tests/test_hardening.py` (22 checks, plus `session_checks.js`
+under node). One C++ change: `BattleMap::roomCells`, bound as `room_cells`.
+
+**Worth a manual check** (needs `./run.sh`, so the user's):
+- *Table…* on the setup panel shows the join code and the URL. In a fight, the `Table…` DM
+  tool sits beside End Combat.
+- From a phone: join, then Players ▸ name ▸ Remove. The phone shows "The DM removed you
+  from the table."
+- Lock the table: every phone goes back to the join card. Joining again with the new code
+  takes back the same seat and tokens.
+- The phone's Table panel: joins, drops, a pause, a takeover.
+- Right-click an empty cell with fog on: *Reveal this room* reveals it on both screens.
+- Open the terrain editor during a session: the phones keep their fog.
+
+**Still open, carried:** everything in M6.5's list, plus F-M7-9 (the combat log goes to
+every viewer unfiltered, and can name a creature the party cannot see; this is frozen M3
+behaviour and wants its own decision), and Pause, on hold by the user's call.
+
+**Next: M8**, real authentication. It gets its own document.
+
+**Rules:** container only, never `docker build`; stage by name; commit only when asked;
+never push unasked.
 
 ---
 
