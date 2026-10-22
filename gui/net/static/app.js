@@ -14,7 +14,11 @@
  *   · **The credential lives in `sessionStorage`** (D-M4e-2). A reload keeps the seat; the
  *     tab closing drops it, which matches the credential's own lifetime — the signing key
  *     is minted in memory at process start (A5), so a credential cannot usefully outlive
- *     the tab by much. Never a cookie (A3), never `localStorage`.
+ *     the tab by much. Never a cookie (A3), never `localStorage`. What does outlive the
+ *     tab is the seat it named (D-M6-7): `principal_id` and the display name go in
+ *     `localStorage`, so that after a restart the join card comes back pre-filled and the
+ *     join claims the same chair. Neither is a credential — the join code still has to be
+ *     typed — so A3 holds.
  *
  *   · **The picture and the mask do not agree.** `fog.explored_runs` is live; `map.image`
  *     lags up to 3 s (D-M4-1). The lag is only ever *extra* fog, so a cell the party has
@@ -40,6 +44,7 @@
 const PROTOCOL_VERSION = 1;
 const CRED_KEY = "dnd.credential";        // sessionStorage, per D-M4e-2
 const NAME_KEY = "dnd.principal";
+const SEAT_KEY = "dnd.seat";              // localStorage: {id, name}, a hint, never a credential (D-M6-7)
 const MASK = "rgb(24, 24, 28)";           // net/mapimg.py MASK_RGB
 const WS_UNAUTHENTICATED = 4401;          // net/server.py WS_CLOSE_UNAUTHENTICATED
 const RETRY_MS = [1000, 2000, 4000, 8000, 10000];
@@ -77,17 +82,45 @@ function forget(key) {
   try { sessionStorage.removeItem(key); } catch (e) { /* nothing to do */ }
 }
 
+// ── The remembered seat (D-M6-7) ────────────────────────────────────────────
+// A restart takes every credential with it (A5), and a seat list would hand every name at
+// the table to anyone who can reach the port (F-M6-5). So this device remembers which seat
+// it last held, and the join card offers it back. `principal_id` is sent only while the
+// name field still says the remembered name: a second player on the same phone who types
+// their own name gets their own seat, not the first player's.
+
+function rememberSeat(principal) {
+  if (!principal || typeof principal.id !== "string") return;
+  // An unnamed seat's display name is its id (the roster's fallback); that is no name to
+  // pre-fill, and comparing it to an empty field would never match.
+  const name = principal.display_name === principal.id ? "" : (principal.display_name || "");
+  try {
+    localStorage.setItem(SEAT_KEY, JSON.stringify({ id: principal.id, name }));
+  } catch (e) { /* not kept; the name still matches after a restart if typed */ }
+}
+
+function recallSeat() {
+  let seat = null;
+  try { seat = JSON.parse(localStorage.getItem(SEAT_KEY) || "null"); } catch (e) { return null; }
+  if (!seat || typeof seat.id !== "string" || typeof seat.name !== "string") return null;
+  return seat;
+}
+
+const sameName = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
 // ── Joining (Envelope 1) ────────────────────────────────────────────────────
 
 async function join(code, name) {
+  // `display_name` is a matching HINT, not a rename: the server never relabels a seat
+  // with it (D-M4c-4). `principal_id` is the stronger hint, D-M4-4 step 2, and it is what
+  // puts a player back in their own chair after a restart even if the DM renamed it.
+  const envelope = { v: PROTOCOL_VERSION, t: "auth", join_code: code, display_name: name };
+  const seat = recallSeat();
+  if (seat && sameName(seat.name, name)) envelope.principal_id = seat.id;
   const res = await fetch("/join", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    // `display_name` is a matching HINT, not a rename: the server never relabels a seat
-    // with it (D-M4c-4). Sending it is how a player who reconnects after a restart lands
-    // back in their own chair.
-    body: JSON.stringify({ v: PROTOCOL_VERSION, t: "auth", join_code: code,
-                           display_name: name })
+    body: JSON.stringify(envelope)
   });
   let body = {};
   try { body = await res.json(); } catch (e) { /* an HTML error page, or nothing */ }
@@ -100,6 +133,7 @@ async function join(code, name) {
   }
   remember(CRED_KEY, body.credential);
   remember(NAME_KEY, body.principal ? (body.principal.display_name || "") : "");
+  rememberSeat(body.principal);
   return body;
 }
 
@@ -153,7 +187,7 @@ function connect() {
       // restarted and took the signing key with it (A5). Reconnecting cannot help, so
       // the credential goes and the join card comes back.
       forget(CRED_KEY);
-      showJoin("Your seat was closed. Join again.");
+      showJoin("Your seat was closed, or the game restarted. Join again.");
       return;
     }
     const wait = RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)];
@@ -1486,6 +1520,8 @@ function drawAnnouncement(cell, now) {
 function showJoin(message) {
   el("session").hidden = true;
   el("join").hidden = false;
+  const seat = recallSeat();
+  if (seat && !el("name").value) el("name").value = seat.name;   // D-M6-7: the same chair
   const error = el("join-error");
   error.textContent = message || "";
   error.hidden = !message;

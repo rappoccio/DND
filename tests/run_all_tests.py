@@ -132,6 +132,8 @@ test_scripts = [
     "test_board_snapshot.py",
     "test_autosave.py",
     "test_autosave_restore.py",
+    # Reconnect and restart: the client re-claims its seat by principal_id (M6.5).
+    "test_reclaim.py",
 
     # The masked page image (MULTIPLAYER_PLAN.md M4, D-M4-1) — `GET /map.png`. Kept with
     # the oracles for the same reason as the view: it is the one place the map crosses the

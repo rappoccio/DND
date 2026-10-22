@@ -28,7 +28,8 @@ function load(opts = {}) {
   const spriteStatus = new Map(opts.spriteStatus || []);   // basename → HTTP status
   const elements = new Map();
   const stores = {
-    session: new Map([["dnd.credential", "cred"], ["dnd.principal", "Ann"]]),
+    session: new Map(Object.entries(opts.session ||
+                                    { "dnd.credential": "cred", "dnd.principal": "Ann" })),
     local: new Map(Object.entries(opts.local || {})),
   };
 
@@ -80,6 +81,7 @@ function load(opts = {}) {
     };
   }
 
+  const timeouts = [];     // setTimeout callbacks; a check runs one to fire a retry (M6.5)
   const sockets = [];
   class WebSocket {
     constructor(url) { this.url = url; this.sent = []; sockets.push(this); }
@@ -95,6 +97,10 @@ function load(opts = {}) {
     fetches.push({ url, init });
     const reply = replies.shift();
     if (reply === undefined) return new Promise(() => {});   // never answers
+    if (reply && reply.$status) {        // {$status, $body}: an answer that is not a 200
+      return Promise.resolve({ ok: reply.$status < 300, status: reply.$status,
+                               json: async () => reply.$body });
+    }
     return Promise.resolve({ ok: true, status: 200, json: async () => reply,
                              blob: async () => ({}) });
   }
@@ -107,7 +113,7 @@ function load(opts = {}) {
     performance: { now: () => clock.now },
     requestAnimationFrame: (fn) => { rafs.push(fn); return rafs.length; },
     setInterval: () => 0,
-    setTimeout: () => 0,
+    setTimeout: (fn, ms) => { timeouts.push({ fn, ms }); return timeouts.length; },
     URL: { createObjectURL: () => "blob:x", revokeObjectURL: () => {} },
     Image: class { constructor() { images.push(this); } },
   };
@@ -116,6 +122,7 @@ function load(opts = {}) {
 
   const h = {
     clock, fetches, replies, texts, stores, sockets, calls, images, sprites, spriteStatus,
+    timeouts,
     el: (id) => document.getElementById(id),
     ev: (expr) => vm.runInContext(expr, context),
     get socket() { return sockets[sockets.length - 1]; },
@@ -137,7 +144,7 @@ function load(opts = {}) {
       return out;
     },
   };
-  h.open();
+  if (sockets.length) h.open();   // no credential stored: the join card, and no socket
   return h;
 }
 

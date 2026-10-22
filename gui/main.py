@@ -1365,7 +1365,13 @@ class App:
         self.btn_begin_combat = Button(pygame.Rect(px, bc_y, W, B),
                                       "Begin Combat",
                                       COL_BTN_COMBAT, COL_BTN_COMBAT_HOV, font=self.font_md)
-        ter_y = bc_y + B + self._BTN_GAP
+        # The way back into a fight after a crash, or a rewind (M6.4, D-M6-5). Its own
+        # button rather than a row in Agents…, and under Begin Combat because it is the
+        # other way a fight starts.
+        rs_y = bc_y + B + self._BTN_GAP
+        self.btn_restore_autosave = Button(pygame.Rect(px, rs_y, W, B), "Restore Autosave…",
+                                           (95, 95, 75), (130, 130, 100), font=self.font_md)
+        ter_y = rs_y + B + self._BTN_GAP
         self.btn_terrain = Button(pygame.Rect(px, ter_y, W, B), "Terrain…",
                                   (80, 100, 120), (110, 130, 160), font=self.font_md)
         light_y = ter_y + B + self._BTN_GAP
@@ -1419,7 +1425,8 @@ class App:
 
         # ── Base (top-anchored, scroll-independent) y for each row ──
         bc_y           = b1            + B + G + 8
-        ter_y          = bc_y          + B + G
+        rs_y           = bc_y          + B + G
+        ter_y          = rs_y          + B + G
         light_y        = ter_y         + B + G
         gen_y          = light_y       + B + G
         dung_y         = gen_y         + B + G
@@ -1450,6 +1457,7 @@ class App:
         self.btn_long_rest.rect.update(px, b1 + off, SW, B)
         self.btn_short_rest.rect.update(px + SW + 4, b1 + off, SW, B)
         self.btn_begin_combat.rect.update(px, bc_y + off, W, B)
+        self.btn_restore_autosave.rect.update(px, rs_y + off, W, B)
         self.btn_terrain.rect.update(px, ter_y + off, W, B)
         self.btn_lighting.rect.update(px, light_y + off, W, B)
         self.btn_generate_dungeon.rect.update(px, gen_y + off, W, B)
@@ -17957,6 +17965,9 @@ class App:
         if self.bm.placed_agents:
             self.btn_begin_combat.draw(self.screen)
 
+        # ── Restore Autosave… (always: after a crash the board may still be empty) ──
+        self.btn_restore_autosave.draw(self.screen)
+
         # ── Terrain… / Lighting… grouped menus ─────────────────────────────
         self.btn_terrain.draw(self.screen)
         self.btn_lighting.draw(self.screen)
@@ -18841,6 +18852,10 @@ class App:
                 # Begin Combat
                 if _hit(self.btn_begin_combat):
                     self._start_combat()
+
+                # Restore Autosave… — the active encounter's ring, newest first
+                if _hit(self.btn_restore_autosave):
+                    dm.show_restore_autosave_menu(self)
 
                 # Terrain… — edit / load / save / generate / show-hide / clear
                 if _hit(self.btn_terrain):

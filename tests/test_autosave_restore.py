@@ -8,7 +8,8 @@
   · a restored automated NPC's turn runs on the next frame (F-M6-4);
   · every refusal leaves the live fight untouched;
   · every seated player is resynced: nothing from the abandoned board replays;
-  · the DM reaches it from Agents… ▸ Restore autosave ▸, one row per slot, newest first.
+  · the DM reaches it from its own panel button, Restore Autosave…, one row per slot,
+    newest first; Agents… no longer carries it.
 
 The oracle (`test_restore_oracle.py`) is the restore's full-fingerprint check into a fresh
 App; this suite is everything around it.
@@ -35,6 +36,7 @@ from main import App
 from menus import dm
 from net import events as net_events
 from net.events import Resync, Sight
+from gui_driver import post_click
 from test_restore_oracle import MAP_PATH, SEED, _fight, diff, fingerprint, _report
 
 
@@ -243,15 +245,17 @@ def test_players_are_resynced():
 
 
 def test_menu_lists_and_restores():
-    """Agents… carries the entry; the submenu lists each slot newest first, with round,
-    actor and time, and a pick restores that slot. An empty ring opens nothing."""
+    """The panel button opens the list; it lists each slot newest first, with round,
+    actor and time, and a pick restores that slot. An empty ring opens nothing. Agents…
+    no longer carries the entry."""
     tmp = tempfile.mkdtemp()
     try:
         app = _fight(tmp, hard=False)
         dm.show_agents_menu(app)
         labels = [o.label for o in app.prompts.live.options]
-        assert "Restore autosave ▸" in labels, labels
-        app.prompts.choose_label("Restore autosave ▸")
+        assert not any("autosave" in l.lower() for l in labels), labels
+        app.prompts.cancel()
+        dm.show_restore_autosave_menu(app)
         sub = app.prompts.live
         slots = autosave.list_slots(app)
         assert sub is not None and [o.label for o in sub.options] == \
@@ -280,10 +284,36 @@ def test_menu_lists_and_restores():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_the_panel_button_opens_the_list():
+    """After a crash the relaunched DM is on the setup panel, not in a fight. A real click
+    on Restore Autosave… opens the slot list, and picking a row resumes the fight. The
+    button has its own row: it overlaps neither Begin Combat above nor Terrain… below."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _fight(tmp, hard=False)
+        app2 = _fresh(app)
+        assert not app2.combat_active
+        app2._reposition_panel()
+        btn = app2.btn_restore_autosave
+        for other in (app2.btn_begin_combat, app2.btn_terrain, app2.btn_agents):
+            assert not btn.rect.colliderect(other.rect), f"{btn.rect} overlaps {other.text}"
+        assert app2.btn_begin_combat.rect.bottom <= btn.rect.top < app2.btn_terrain.rect.top
+        post_click(app2, btn.rect.center)
+        live = app2.prompts.live
+        assert live is not None and live.title == "Restore autosave", \
+            f"the click opened {live.title if live else None}"
+        assert app2.prompts.choose_label(live.options[0].label).ok
+        assert app2.combat_active, "picking a slot did not resume the fight"
+        print("✅ test_the_panel_button_opens_the_list")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     tests = [test_restore_keeps_the_base_and_the_roster, test_rewind_in_place,
              test_restored_npc_turn_runs, test_refusals_change_nothing,
-             test_players_are_resynced, test_menu_lists_and_restores]
+             test_players_are_resynced, test_menu_lists_and_restores,
+             test_the_panel_button_opens_the_list]
     failed = 0
     for t in tests:
         try:

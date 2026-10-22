@@ -8081,6 +8081,73 @@ player back in their seat by `principal_id`.
 **Rules:** container only, never `docker build`; stage by name; commit only when asked;
 never push unasked.
 
+##### M6.5 — what landed *(2026-10-21, commit "M6.5: re-claim the seat after a restart; Restore Autosave gets its own button")*
+
+- **The client's re-claim (D-M6-7), `app.js`.** After a successful join the client keeps
+  `{id, name}` in `localStorage` under `dnd.seat` (`rememberSeat`). The credential stays in
+  `sessionStorage`, and the join code is never stored. `showJoin` pre-fills the name field
+  from the seat when the field is empty, and `join` sends `principal_id` **only while the
+  typed name still matches the remembered one** (case-insensitive, trimmed, like
+  `_claim_seat`). So a second player on the same phone who types their own name gets their
+  own seat, not the first player's. An unnamed seat (display name = id) is remembered with
+  `name: ""`, so the id is never pre-filled as a name, and an empty field still re-claims
+  it. A garbled `dnd.seat` is ignored. The 4401 message now reads "Your seat was closed,
+  or the game restarted. Join again." No server change: `_claim_seat` step 2 already
+  existed.
+- **`tests/app_harness.js`:** `opts.session` (start with no credential), `{$status, $body}`
+  replies, captured `setTimeout`s (`h.timeouts`), and no `open()` when no socket was made.
+- **`tests/test_live.py`:** the storage rule now allows `ANIM_KEY` and `SEAT_KEY` only, and
+  pins the one `SEAT_KEY` write to `{ id: principal.id, name }`.
+- **New suite `tests/test_reclaim.py`** (registered after `test_autosave_restore.py`):
+  - `reclaim_checks.js`, 11 checks on the real `app.js`: first join remembers the seat; no
+    credential or code in `localStorage`; pre-fill and `principal_id` after a restart;
+    case-insensitive match; a different name sends no id; unnamed seat; garbled seat; a
+    refused join keeps the seat; a dropped socket (1006) keeps the credential and retries
+    with it; 4401 drops the credential, keeps the seat, pre-fills; a pre-fill never
+    overwrites typed text;
+  - **a dropped socket:** the TCP connection dies with no close frame, the server drops it
+    from `live_ids()`, and the same credential opens a new socket onto the same seat and
+    token with a `seq` that didn't go backwards;
+  - **a restart:** Kira seated on Aria, autosave, a join on server 1; then a new `App`
+    (`_fresh`), a new server, `autosave.restore`. The old credential is refused with 4401,
+    and the DM renames the seat. A join with `principal_id` lands on Kira's id, `seated`,
+    keeps the DM's label, controls Aria in the live view, and mints no second seat.
+
+**Mutants: 6 of 6 killed** (`reclaim_checks.js` against mutated copies of `app.js`): the id
+never sent; the id sent whatever the name; no pre-fill; the seat never remembered; the
+credential written into the seat; the id pre-filled as a name. Copies in
+`.tmp_claude/m65/`, untracked scratch.
+
+**Suite: 188 / 0** in the container. No C++ changed.
+
+##### Handoff — M6.5 landed; M6 complete *(written 2026-10-21)*
+
+**State.** M6.5 is **committed** ("M6.5: re-claim the seat after a restart; Restore Autosave gets its own button"), and **M6 is done**:
+- new: `tests/test_reclaim.py`, `tests/reclaim_checks.js`;
+- changed: `gui/net/static/app.js`, `gui/main.py`, `gui/menus/dm.py`,
+  `tests/app_harness.js`, `tests/test_live.py`, `tests/test_autosave_restore.py`,
+  `tests/run_all_tests.py`, this plan.
+
+Leave `maps/TestDNDMap_terrain.json` and `.tmp_claude/` alone.
+
+**Worth a manual check** (needs `./run.sh`, so the user's): join from a phone, quit the DM
+console mid-fight, relaunch, Load the encounter, Restore Autosave…. The phone shows the
+join card with the name pre-filled; type the code, and it is back on its token.
+
+**Moved after the user's check (2026-10-21):** Restore autosave is now its own setup-panel
+button, **Restore Autosave…**, under Begin Combat, and is gone from Agents…. It is drawn
+always, since after a crash the board may still be empty. During a fight the combat
+panel replaces the setup panel, so an in-fight rewind still has no button. The user plans
+to retool the panel buttons anyway. New check:
+`test_autosave_restore.py::test_the_panel_button_opens_the_list` (a real click on a
+relaunched App). Suite 188 / 0.
+
+**Next: M6 is done.** M7 (hardening) needs its own read-only survey and a frozen Step 0
+before any code.
+
+**Rules:** container only, never `docker build`; stage by name; commit only when asked;
+never push unasked.
+
 ---
 
 ### M7 — Hardening

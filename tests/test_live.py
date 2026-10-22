@@ -646,16 +646,22 @@ def test_the_client_keeps_the_credential_in_session_storage():
     file should contain.
 
     M4b.3 (B-7) puts one thing in `localStorage`: the "Animate moves" preference, which is
-    not a secret and should outlive the tab. So the rule is now that every `localStorage`
-    access names `ANIM_KEY` and nothing else.
+    not a secret and should outlive the tab. M6.5 (D-M6-7) puts a second: the seat this
+    device last held, `{id, name}`, so a restart's join card is pre-filled. So the rule is
+    now that every `localStorage` access names `ANIM_KEY` or `SEAT_KEY`, and the one write
+    of `SEAT_KEY` is built from the principal's id and a name and nothing else.
+    `reclaim_checks.js` checks the same thing by running it.
     """
     js = open(os.path.join(_STATIC, "app.js"), encoding="utf-8").read()
     assert "sessionStorage" in js, "the client stores its credential somewhere else"
     uses = [line for line in js.splitlines() if re.search(r"localStorage\s*[.\[]", line)]
     assert uses, "B-7's toggle is not kept in localStorage"
     for line in uses:
-        assert re.search(r"localStorage\.(get|set)Item\(ANIM_KEY\b", line), \
-            f"the client reaches for localStorage for something other than B-7's toggle: {line.strip()}"
+        assert re.search(r"localStorage\.(get|set)Item\((ANIM_KEY|SEAT_KEY)\b", line), \
+            f"the client reaches for localStorage for something other than its two keys: {line.strip()}"
+    seat_writes = [line for line in uses if "setItem(SEAT_KEY" in line]
+    assert seat_writes == ["    localStorage.setItem(SEAT_KEY, JSON.stringify({ id: principal.id, name }));"], \
+        f"the seat is written from something other than {{id, name}}: {seat_writes}"
     assert "document.cookie" not in js, "A3: the credential is never a cookie"
     print("✅ test_the_client_keeps_the_credential_in_session_storage")
 
