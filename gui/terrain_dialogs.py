@@ -8,6 +8,7 @@ import rpg_battle_map as rpg
 from constants import *
 from widgets import Button
 from helpers import edge_key, edge_from_key
+from dungeon import Staircase
 
 
 def door_link_key(cells):
@@ -436,6 +437,20 @@ class TerrainEditorDialog:
         # Edge doors (2B step 4): with edges enabled, Door mode places doors on grid
         # lines. ``door_edge_drag`` is (start, end) in map px while the button is held.
         self.door_edge_drag = None
+        # Staircase tool (plans/STAIRCASES_PLAN.md step 3). ``dungeon`` is the app's live
+        # manifest, edited in place like ``ladders``; ``page_id`` is the page this session
+        # edits. Placement is two-phase (D6): a click places end A of a new staircase, or
+        # end B of ``stair_finish_id`` when one is picked. ``stair_selected`` is the
+        # (id, end_index) picked for editing; with ``stair_moving`` the next click moves
+        # that end. ``ask_text(initial, commit, title, allow_empty)`` is the app's prompt.
+        self.dungeon = None
+        self.page_id = None
+        self.ask_text = None
+        self.stair_finish_id = None
+        self.stair_selected = None
+        self.stair_moving = False
+        self.stair_message = ""
+        self._stair_undo = []
 
     ZOOM_MIN = 0.5
     ZOOM_MAX = 6.0
@@ -444,7 +459,8 @@ class TerrainEditorDialog:
 
     def open(self, map_surf, terrain_regions, bm=None, ladders=None, door_links=None,
              on_regions_changed=None, edge_overrides=None, edges_enabled=False,
-             on_edges_changed=None, edge_review=None, edge_review_source=""):
+             on_edges_changed=None, edge_review=None, edge_review_source="",
+             dungeon=None, page_id=None, ask_text=None):
         """Open the terrain editor with existing terrain data.
 
         ``ladders`` is the app's live ladder list (Python-only cell objects); the editor
@@ -455,7 +471,9 @@ class TerrainEditorDialog:
         while the editor is open. ``edge_overrides`` is the app's live override dict
         for the Edge tool, edited in place; ``on_edges_changed()`` is called after each
         edit so the app can re-detect. ``edge_review`` is the app's live list of edges
-        carried from another floor that still need a decision (drawn blue)."""
+        carried from another floor that still need a decision (drawn blue). ``dungeon``
+        and ``page_id`` enable the Staircase tool: its edits go straight into
+        ``dungeon.staircases``, and the app writes the manifest when the editor closes."""
         self.active = True
         self.edge_review = edge_review if edge_review is not None else []
         self.edge_review_source = edge_review_source or ""
@@ -473,6 +491,14 @@ class TerrainEditorDialog:
         self.bm = bm
         self.ladders = ladders if ladders is not None else []
         self.door_links = door_links if door_links is not None else {}
+        self.dungeon = dungeon
+        self.page_id = page_id
+        self.ask_text = ask_text
+        self.stair_selected = None
+        self.stair_moving = False
+        self.stair_message = ""
+        self._stair_undo = []
+        self.stair_finish_id = self._default_finish_id() if self._stairs_ok() else None
         self.reset_view()
 
     # ── View (zoom / pan) ────────────────────────────────────────────────
@@ -587,6 +613,16 @@ class TerrainEditorDialog:
                 if self.edges_enabled and self.bm:
                     self.edge_drag = (event.button, pos, pos)
                 return
+            if self.selected_type == "Staircase" and event.button in (1, 3):
+                if event.button == 3:
+                    self.stair_selected = None
+                    self.stair_moving = False
+                    return
+                cell = self._pos_to_cell(pos)
+                if cell is not None:
+                    shift = bool(pygame.key.get_mods() & pygame.KMOD_SHIFT)
+                    self._stair_click(cell, place=shift)
+                return
             if event.button == 1 and self.selected_type == "Ladder":
                 # A ladder is a single-cell portal: click places one (target auto-filled
                 # to the same global X,Y one floor up/down); clicking an existing one
@@ -660,6 +696,8 @@ class TerrainEditorDialog:
 
         # Keyboard shortcuts
         if event.type == pygame.KEYDOWN:
+            if self.selected_type == "Staircase" and self._stair_key(event):
+                return
             if event.key == pygame.K_1:
                 self.selected_type = "Wall"
             elif event.key == pygame.K_2:
@@ -676,6 +714,8 @@ class TerrainEditorDialog:
                 self.selected_type = "Floor"
             elif event.key == pygame.K_8:
                 self.selected_type = "Edge"
+            elif event.key == pygame.K_9:
+                self.selected_type = "Staircase"
             elif event.key == pygame.K_u and self.selected_type == "Ladder":
                 self.ladder_up = not self.ladder_up
             elif event.key == pygame.K_l and self.selected_type == "Door":
@@ -852,6 +892,223 @@ class TerrainEditorDialog:
         dz = 1 if self.ladder_up else -1
         self.ladders.append({"cells": [(col, row)],
                              "target": [ox + col, oy + row, z + dz]})
+
+    # ── Staircase tool ───────────────────────────────────────────────────
+    def _stairs_ok(self):
+        return (self.dungeon is not None and self.page_id is not None
+                and self.dungeon.page_by_id(self.page_id) is not None)
+
+    def _finishable(self):
+        """Unfinished staircases this page could take end B of: end A on another page,
+        those one floor up or down first, newest first. One on a floor further away is
+        still listed, so finishing it is refused with a reason rather than hidden."""
+        z = self.dungeon.page_by_id(self.page_id).z
+
+        def adjacent(st):
+            p = self.dungeon.page_by_id(st.ends[0].page)
+            return p is not None and abs(p.z - z) == 1
+        out = [st for st in self.dungeon.staircases
+               if not st.finished and st.ends[0].page != self.page_id]
+        return sorted(out, key=lambda st: (not adjacent(st), -st.id))
+
+    def _default_finish_id(self):
+        """The staircase opening the editor offers to finish: the newest unfinished one
+        whose end A is one floor up or down, else None (the next click starts a new one)."""
+        for st in self._finishable():
+            a = self.dungeon.page_by_id(st.ends[0].page)
+            if abs(a.z - self.dungeon.page_by_id(self.page_id).z) == 1:
+                return st.id
+            break
+        return None
+
+    def _cycle_finish(self):
+        ids = [None] + [st.id for st in self._finishable()]
+        i = ids.index(self.stair_finish_id) if self.stair_finish_id in ids else 0
+        self.stair_finish_id = ids[(i + 1) % len(ids)]
+
+    def _stair_snapshot(self):
+        self._stair_undo.append([st.to_dict() for st in self.dungeon.staircases])
+
+    def _undo_stairs(self):
+        """Put the staircases back as they were before the last edit. The id counter is
+        left alone, so an id handed out and undone is still never handed out again."""
+        if not self._stair_undo:
+            return
+        self.dungeon.staircases[:] = [Staircase.from_dict(d) for d in self._stair_undo.pop()]
+        self.stair_selected = None
+        self.stair_moving = False
+        if self.stair_finish_id is not None:
+            st = self.dungeon.staircase_by_id(self.stair_finish_id)
+            if st is None or st.finished:
+                self.stair_finish_id = self._default_finish_id()
+        self.stair_message = "Undid a staircase edit."
+
+    def _selected_stair(self):
+        if self.stair_selected is None:
+            return None, -1
+        st = self.dungeon.staircase_by_id(self.stair_selected[0])
+        i = self.stair_selected[1]
+        if st is None or i >= len(st.ends) or st.ends[i].page != self.page_id:
+            self.stair_selected = None
+            return None, -1
+        return st, i
+
+    def _stair_click(self, cell, place=False):
+        """A left click with the Staircase tool on ``cell``: move the selected end there
+        (after [M]), select the end already on the cell (cycling through a shared
+        landing), or place an end. ``place`` (Shift+click) places even on a cell that
+        already holds an end, so two staircases can share a landing (D2)."""
+        if not self._stairs_ok():
+            self.stair_message = ("Staircases need a dungeon: Dungeon Configuration → "
+                                  "New Dungeon or Open Dungeon.")
+            return
+        c = (int(cell.col), int(cell.row))
+        if self.stair_moving:
+            st, i = self._selected_stair()
+            self.stair_moving = False
+            if st is not None:
+                self._stair_snapshot()
+                st.ends[i].cell = c
+                self.stair_message = f"Moved {st.name}'s end {'AB'[i]} to {c}."
+            return
+        here = self.dungeon.staircase_ends_at(self.page_id, c)
+        if here and not place:
+            keys = [(st.id, i) for st, i in here]
+            k = keys.index(self.stair_selected) + 1 if self.stair_selected in keys else 0
+            self.stair_selected = keys[k % len(keys)]
+            self.stair_message = ""
+            return
+        self._stair_snapshot()
+        if self.stair_finish_id is not None:
+            try:
+                st = self.dungeon.finish_staircase(self.stair_finish_id, self.page_id, c)
+            except ValueError as e:
+                self._stair_undo.pop()
+                self.stair_message = f"Refused: {e}."
+                return
+            self.stair_selected = (st.id, 1)
+            self.stair_finish_id = self._default_finish_id()
+            self.stair_message = f"{st.name} finished: it joins {st.ends[0].page} and {self.page_id}."
+        else:
+            st = self.dungeon.new_staircase(self.page_id, c)
+            self.stair_selected = (st.id, 0)
+            z = self.dungeon.page_by_id(self.page_id).z
+            self.stair_message = (f"{st.name}: end A placed. Switch to floor {z - 1} or "
+                                  f"{z + 1} and open the editor there to finish it.")
+
+    def _delete_selected_stair(self):
+        st, _ = self._selected_stair()
+        if st is None:
+            return
+        self._stair_snapshot()
+        self.dungeon.remove_staircase(st.id)
+        self.stair_selected = None
+        self.stair_moving = False
+        if self.stair_finish_id == st.id:
+            self.stair_finish_id = self._default_finish_id()
+        self.stair_message = f"Deleted {st.name} (both ends)."
+
+    def _edit_selected_stair_text(self, field):
+        """Rename (``field`` "name") or relabel (``field`` "label") the selected
+        staircase through the app's prompt. An empty label clears it; a name can't be
+        empty."""
+        st, _ = self._selected_stair()
+        if st is None or self.ask_text is None:
+            return
+        sid = st.id
+
+        def commit(text):
+            target = self.dungeon.staircase_by_id(sid)
+            text = (text or "").strip()
+            if target is None or getattr(target, field) == text:
+                return
+            self._stair_snapshot()
+            setattr(target, field, text)
+        title = f"Rename {st.name}" if field == "name" else f"Label for {st.name} (empty clears)"
+        self.ask_text(getattr(st, field), commit, title, field == "label")
+
+    def _stair_key(self, event):
+        """Staircase-tool keys; True when ``event`` was one of them."""
+        if not self._stairs_ok():
+            return False
+        k = event.key
+        if k == pygame.K_z and event.mod & pygame.KMOD_CTRL:
+            self._undo_stairs()
+            return True
+        if k == pygame.K_f:
+            self.stair_moving = False
+            self._cycle_finish()
+            return True
+        has_sel = self._selected_stair()[0] is not None
+        if k == pygame.K_m and has_sel:
+            self.stair_moving = not self.stair_moving
+            return True
+        if k == pygame.K_n and has_sel:
+            self._edit_selected_stair_text("name")
+            return True
+        if k == pygame.K_l and has_sel:
+            self._edit_selected_stair_text("label")
+            return True
+        if k in (pygame.K_DELETE, pygame.K_BACKSPACE) and has_sel:
+            self._delete_selected_stair()
+            return True
+        return False
+
+    def _draw_staircases(self, canvas, v, h, size):
+        by_cell = {}
+        for st, i in self.dungeon.staircase_ends_on(self.page_id):
+            by_cell.setdefault(st.ends[i].cell, []).append((st, i))
+        for (c, r), ends in by_cell.items():
+            if c >= len(v) or r >= len(h):
+                continue
+            dirs = [self.dungeon.staircase_direction(st, i) for st, i in ends]
+            draw_stair_glyph(canvas, v[c], h[r], size,
+                             directions=tuple(d for d in dirs if d is not None),
+                             ids=[st.id for st, _ in ends], font_sm=self.font_sm)
+        st, i = self._selected_stair()
+        if st is not None:
+            c, r = st.ends[i].cell
+            if c < len(v) and r < len(h):
+                colour = (255, 140, 60) if self.stair_moving else (90, 230, 255)
+                pygame.draw.rect(canvas, colour, pygame.Rect(v[c], h[r], size, size), 3)
+
+    def _stair_hud_lines(self):
+        """(text, colour) lines under the tool list while the Staircase tool is on."""
+        if not self._stairs_ok():
+            return [("Staircase: needs a dungeon (Dungeon Configuration → New Dungeon "
+                     "or Open Dungeon)", (230, 140, 140))]
+        d = self.dungeon
+        z = d.page_by_id(self.page_id).z
+        st, i = self._selected_stair()
+        if self.stair_moving and st is not None:
+            nxt = f"Next click: move {st.name}'s end {'AB'[i]} here ([M] cancels)"
+        elif self.stair_finish_id is not None:
+            fin = d.staircase_by_id(self.stair_finish_id)
+            a = d.page_by_id(fin.ends[0].page) if fin is not None else None
+            where = f" (end A on {a.id}, floor {a.z})" if a is not None else ""
+            nxt = f"Next click: finish {fin.name if fin else '?'}{where}"
+        else:
+            nxt = f"Next click: end A of a new staircase (Staircase {d.next_staircase_id})"
+        lines = [(nxt, (220, 200, 120))]
+        if st is not None:
+            label = f" ({st.label})" if st.label else ""
+            other = st.other_end(i)
+            if other is None:
+                to = "unfinished"
+            else:
+                p = d.page_by_id(other.page)
+                to = (f"to {other.page} {tuple(other.cell)}, floor {p.z}"
+                      if p is not None else "to a missing page")
+            lines.append((f"Selected: {st.name}{label}, end {'AB'[i]} on floor {z}, {to}",
+                          (90, 230, 255)))
+        lines.append(("Click an end to select it (again: the next one on a shared cell); "
+                      "Shift+click places on an end", (170, 170, 170)))
+        lines.append(("[F] new / finish  [M] move end  [N] rename  [L] label  "
+                      "[Del] delete staircase  [Ctrl+Z] undo  [Right click] deselect",
+                      (170, 170, 170)))
+        if self.stair_message:
+            lines.append((self.stair_message, (255, 230, 140)))
+        return lines
 
     # ── Edge tool ────────────────────────────────────────────────────────
     # An edge is keyed (c, r, "E"|"S"): the east or south side of cell (c, r), as in the
@@ -1340,6 +1597,8 @@ class TerrainEditorDialog:
                     z_here = int(getattr(self.bm, "z_level", 0) or 0)
                     draw_ladder_glyph(canvas, v[c], h[r], size,
                                       going_up=(tz > z_here), font_sm=self.font_sm)
+            if self._stairs_ok() and v and h:
+                self._draw_staircases(canvas, v, h, size)
             # Preview the in-progress door span while dragging.
             if self.door_edge_drag is not None:
                 for key in self._door_edge_keys(*self.door_edge_drag):
@@ -1372,7 +1631,8 @@ class TerrainEditorDialog:
             "[5] Door (click a grid line)" if self._edge_doors() else "[5] Door (click a cell)",
             f"[6] Ladder (click a cell)",
             f"[7] Floor (clears detected walls)",
-            f"[8] Edge (drag along a grid line)"
+            f"[8] Edge (drag along a grid line)",
+            f"[9] Staircase (click a cell)",
         ]
         y = 10
         for text in sel_texts:
@@ -1383,7 +1643,7 @@ class TerrainEditorDialog:
         # Current type highlight
         current_idx = {"Wall": 0, "Chasm": 1, "Water": 2,
                        "Difficult Terrain": 3, "Door": 4, "Ladder": 5,
-                       "Floor": 6, "Edge": 7}.get(self.selected_type, 3)
+                       "Floor": 6, "Edge": 7, "Staircase": 8}.get(self.selected_type, 3)
         pygame.draw.rect(screen, (255, 255, 100), pygame.Rect(8, 8 + current_idx*18, 175, 16), 2)
 
         if self.selected_type == "Ladder":
@@ -1411,6 +1671,9 @@ class TerrainEditorDialog:
                         "(click toggles; drag for a wide door, max 4)")
             keys_surf = self.font_sm.render(hint, True, (170, 170, 170))
             screen.blit(keys_surf, (10, y + 28))
+        elif self.selected_type == "Staircase":
+            for k, (text, colour) in enumerate(self._stair_hud_lines()):
+                screen.blit(self.font_sm.render(text, True, colour), (10, y + 10 + 18 * k))
         elif self.selected_type == "Floor":
             fl = self.font_sm.render(
                 "Floor: drag a box to clear the detected wall cells and edges inside it",

@@ -1,6 +1,6 @@
 # Staircases
 
-**Status 2026-10-22: Step 0 frozen (D1–D6 decided). Steps 1 (manifest) and 2 (use) done; step 3 next.** Came out of laddering
+**Status 2026-10-22: Step 0 frozen (D1–D6 decided). Steps 1 (manifest), 2 (use) and 3 (editor) done; step 4 next.** Came out of laddering
 Castle Ravenloft: every stair there is faked with ladder pairs, and the pairs keep colliding.
 
 ## Status and handoff (2026-10-22)
@@ -25,8 +25,21 @@ Castle Ravenloft: every stair there is faked with ladder pairs, and the pairs ke
   creature's controller, so the bus authorizes the answer. A player cannot *open* it
   from the browser; that waits on MULTIPLAYER M5f (Interact), as for ladders and doors.
   Tests: `tests/test_staircase_use.py` (5); suite 192/0.
-- **Next: step 3 (editor).** Not started.
-- **Then:** step 4 (Ravenloft conversion).
+- **Step 3 (editor): done.** `gui/terrain_dialogs.py`: tool **[9] Staircase**. A click
+  places end A of a new staircase, or end B of the one picked to finish (the editor opens
+  offering the newest unfinished staircase one floor away; **[F]** cycles new / each
+  unfinished one, and a non-adjacent floor is refused with a reason). A click on an end
+  selects it (again: the next one on a shared cell); **Shift+click** places on an end
+  (D2). With an end selected: **[M]** move, **[N]** rename, **[L]** label (empty clears),
+  **[Del]** delete the staircase. **Ctrl+Z** undoes staircase edits (own stack; the id
+  counter is never rolled back). Rename/label use `app.name_prompt` (`allow_empty` added),
+  which the event loop now routes *above* the terrain editor. `main.py`:
+  `_close_terrain_editor` writes the manifest (`_dungeon_save_manifest`) when the
+  staircases changed. **Staircases…** in Dungeon Configuration (`dm.show_staircases_menu`):
+  one row per staircase (`_staircase_summary`), each opening Go to end A / B
+  (`_staircase_goto`, refused in combat), Rename…, Relabel…, Delete; every change writes
+  the manifest. Tests: `tests/test_staircase_editor.py` (7); suite 193/0.
+- **Next: step 4 (Ravenloft conversion).** Not started.
 
 ## Decided (user, 2026-10-22)
 
@@ -165,5 +178,6 @@ Each step lands with its own tests (container, `./test.sh`).
    **Done 2026-10-22** (`tests/test_staircase_use.py`, 5 tests; suite 192/0).
 3. **Editor:** the Staircase tool (two-phase), undo, the Staircases… list. *Tests:*
    place A, finish B on Z ± 1 (refused otherwise), delete removes both ends, edit/undo.
+   **Done 2026-10-22** (`tests/test_staircase_editor.py`, 7 tests; suite 193/0).
 4. **Ravenloft:** run the conversion, then label by hand. *Tests:* the conversion keeps
    every link; an unpaired ladder stops it.

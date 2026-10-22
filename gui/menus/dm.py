@@ -239,12 +239,44 @@ def show_dungeon_menu(app):
             ("Pages / Overview…", app._dungeon_pages_overview),
             ("Add Page…",         app._dungeon_add_page_browser),
             ("Align Floor",       lambda: app.floor_align.start(app)),
+            ("Staircases…",       lambda: show_staircases_menu(app)),
             ("Save Dungeon",      app._dungeon_save),
             ("Open Dungeon…",     app._dungeon_open_browser),
             ("Close Dungeon",     app._dungeon_close),
         ]
     app._ask_dm("action", "Dungeon configuration", items,
                  anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y))
+
+
+def show_staircases_menu(app, anchor=None):
+    """Every staircase in the dungeon, with both ends and whether it is unfinished. Each
+    row opens its own menu: go to either end, rename, relabel, delete."""
+    if anchor is None:
+        anchor = (app.btn_dungeon.rect.x, app.btn_dungeon.rect.y)
+    stairs = sorted(app.dungeon.staircases, key=lambda st: st.id) if app.dungeon else []
+    if not stairs:
+        app._flash_status("No staircases yet: place one with the terrain editor's "
+                          "Staircase tool [9].")
+        return
+    items = [(f"{app._staircase_summary(st)} ▸",
+              lambda sid=st.id: _staircase_menu(app, sid, anchor)) for st in stairs]
+    app._ask_dm("action", "Staircases", items, anchor=anchor,
+                parent=app.prompts.answering)
+
+
+def _staircase_menu(app, sid, anchor):
+    st = app.dungeon.staircase_by_id(sid)
+    if st is None:
+        return
+    items = [(f"Go to end {'AB'[i]}: {e.page} {tuple(e.cell)}",
+              lambda i=i: app._staircase_goto(sid, i)) for i, e in enumerate(st.ends)]
+    items += [
+        ("Rename…", lambda: app._staircase_prompt(sid, "name")),
+        ("Relabel…", lambda: app._staircase_prompt(sid, "label")),
+        (f"Delete {st.name} (both ends)", lambda: app._staircase_delete(sid)),
+    ]
+    app._ask_dm("action", app._staircase_summary(st), items, anchor=anchor,
+                parent=app.prompts.answering)
 
 
 def show_door_menu(app, cell, pos):

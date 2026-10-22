@@ -2593,6 +2593,9 @@ class App:
         # The editor edits self._ladders in place; snapshot it so the close can pair the
         # ladders placed / removed this session with their other ends (_pair_ladders).
         self._ladders_at_open = [self._ladder_key(lad) for lad in self._ladders]
+        # The Staircase tool edits the manifest's staircases in place; the close writes the
+        # manifest if they changed.
+        self._stairs_at_open = self._staircases_snapshot()
         # The Edge tool edits the overrides in place and re-detects after each edit.
         # First visit to a floor of a dungeon: start from the nearest edited floor's edges
         # and flag where this image disagrees (blue). Saves the page if it carried.
@@ -2614,7 +2617,12 @@ class App:
                                  on_edges_changed=lambda: self._redetect_walls(
                                      self.terrain_editor.terrain_regions),
                                  edge_review=self._edge_review,
-                                 edge_review_source=", ".join(self._edges_carried_from or []))
+                                 edge_review_source=", ".join(self._edges_carried_from or []),
+                                 dungeon=self.dungeon,
+                                 page_id=self.dungeon_page.id if self.dungeon_page else None,
+                                 ask_text=lambda text, commit, title, allow_empty:
+                                     self.name_prompt.show(text, commit, title=title,
+                                                           allow_empty=allow_empty))
 
     def _close_terrain_editor(self):
         """Esc in the terrain editor: take its edits, save them, give new / removed
@@ -2636,6 +2644,8 @@ class App:
         self._door_links = self.terrain_editor.door_links
         self._save_terrain()
         self._pair_ladders(getattr(self, "_ladders_at_open", []))
+        if self._staircases_snapshot() != getattr(self, "_stairs_at_open", None):
+            self._dungeon_save_manifest()
         self._apply_terrain_to_battle_map()
         self.terrain_editor.close()
         # Recalculate reach and attack overlays if an agent is selected
@@ -2832,6 +2842,20 @@ class App:
         self._save_agents()
         self._save_terrain()
         self._flash_status(f"Saved {os.path.basename(path)} ({len(self.dungeon.pages)} pages)")
+
+    def _dungeon_save_manifest(self) -> bool:
+        """Write the manifest alone, for staircase edits: the active page's scene is not
+        touched (the terrain editor's close saves it on its own)."""
+        if self.dungeon is None:
+            return False
+        path = self._dungeon_manifest_path or dungeon_path_for(self._save_path)
+        try:
+            self.dungeon.save(path)
+        except OSError as e:                          # noqa: BLE001 — report, don't crash
+            self._flash_status(f"Could not save dungeon: {e}")
+            return False
+        self._dungeon_manifest_path = path
+        return True
 
     def _dungeon_open_browser(self):
         start = os.path.dirname(self._dungeon_manifest_path or self._save_path) or self._map_dir
@@ -5581,6 +5605,80 @@ class App:
             self._flash_status(f"{verb} {st.name} to floor {page.z}: {page.id}")
             return True
         return False
+
+    def _staircases_snapshot(self):
+        """The manifest's staircases as plain data, to tell whether an edit changed them."""
+        if self.dungeon is None:
+            return None
+        return ([st.to_dict() for st in self.dungeon.staircases],
+                self.dungeon.next_staircase_id)
+
+    # ── The Staircases… list (Dungeon Configuration) ─────────────────────────
+    def _staircase_summary(self, st) -> str:
+        """"Staircase 7 (K21): M (2, 2) floor 0 ↔ U (6, 5) floor 1", or "…, unfinished"."""
+        ends = []
+        for e in st.ends:
+            p = self.dungeon.page_by_id(e.page)
+            ends.append(f"{e.page} {tuple(e.cell)}" + (f" floor {p.z}" if p else " (missing)"))
+        head = st.name + (f" ({st.label})" if st.label else "")
+        if not st.finished:
+            return f"{head}: {ends[0]}, unfinished"
+        broken = "" if self.dungeon.staircase_direction(st, 0) else ", broken"
+        return f"{head}: {ends[0]} ↔ {ends[1]}{broken}"
+
+    def _staircase_goto(self, sid: int, end_index: int) -> bool:
+        """Show end ``end_index`` of staircase ``sid``: switch to its page (refused in
+        combat, like any page change) and pan its cell to the middle of the map view."""
+        st = self.dungeon.staircase_by_id(sid) if self.dungeon is not None else None
+        if st is None or not 0 <= end_index < len(st.ends):
+            return False
+        end = st.ends[end_index]
+        page = self.dungeon.page_by_id(end.page)
+        if page is None:
+            self._flash_status(f"{st.name}: page '{end.page}' is gone.")
+            return False
+        if self.dungeon_page is None or self.dungeon_page.id != page.id:
+            if not self._switch_to_page(page):
+                return False
+        c, r = end.cell
+        x0, y0 = self._cell_to_screen(c, r)
+        x1, y1 = self._cell_to_screen(c + 1, r + 1)
+        self.pan_x += self._panel_x() // 2 - (x0 + x1) // 2
+        self.pan_y += self.screen.get_height() // 2 - (y0 + y1) // 2
+        self._flash_status(f"{st.name}, end {'AB'[end_index]}: {page.id} {tuple(end.cell)}, "
+                           f"floor {page.z}")
+        return True
+
+    def _staircase_set_text(self, sid: int, field: str, text: str) -> bool:
+        """Rename (``field`` "name") or relabel ("label") a staircase and write the
+        manifest. A blank name falls back to "Staircase {id}"; a blank label clears it."""
+        st = self.dungeon.staircase_by_id(sid) if self.dungeon is not None else None
+        if st is None or field not in ("name", "label"):
+            return False
+        text = (text or "").strip()
+        if field == "name" and not text:
+            text = f"Staircase {st.id}"
+        setattr(st, field, text)
+        return self._dungeon_save_manifest()
+
+    def _staircase_prompt(self, sid: int, field: str):
+        st = self.dungeon.staircase_by_id(sid) if self.dungeon is not None else None
+        if st is None:
+            return
+        title = f"Rename {st.name}" if field == "name" else f"Label for {st.name} (empty clears)"
+        self.name_prompt.show(getattr(st, field),
+                              lambda text: self._staircase_set_text(sid, field, text),
+                              title=title, allow_empty=(field == "label"))
+
+    def _staircase_delete(self, sid: int) -> bool:
+        """Delete a staircase and both its ends, and write the manifest."""
+        st = self.dungeon.staircase_by_id(sid) if self.dungeon is not None else None
+        if st is None:
+            return False
+        self.dungeon.remove_staircase(sid)
+        if self._dungeon_save_manifest():
+            self._flash_status(f"Deleted {st.name} (both ends).")
+        return True
 
     @staticmethod
     def _ladder_key(lad) -> tuple:
@@ -18430,6 +18528,12 @@ class App:
                     self._handle_map_view_event(event)
                 continue
 
+            # ── Name prompt is a top modal: consume events while open. Ahead of the
+            # terrain editor, whose Staircase tool opens it for a rename / label. ──────
+            if self.name_prompt.visible:
+                self.name_prompt.handle(event)
+                continue
+
             # ── Terrain editor gets first pick when open ──────────────────
             if self.terrain_editor.active:
                 self.terrain_editor.handle(event)
@@ -18458,11 +18562,6 @@ class App:
             # ── Grid-span picker is a top modal: consume events while open ─────────
             if self._grid_span_dialog.visible:
                 self._grid_span_dialog.handle(event)
-                continue
-
-            # ── Name prompt is a top modal: consume events while open ──────────────
-            if self.name_prompt.visible:
-                self.name_prompt.handle(event)
                 continue
 
             # ── Team picker is a top modal: consume events while open ──────────────

@@ -1769,7 +1769,8 @@ class TeamPickerDialog:
 class NamePromptDialog:
     """Tiny modal text prompt: a single editable line + OK/Cancel. Used by the
     agent right-click menu to rename a placed agent. Commits `callback(new_name)`
-    on OK/Enter (only when non-empty); Esc/Cancel/click-outside dismisses."""
+    on OK/Enter (only when non-empty, unless ``allow_empty``); Esc/Cancel/click-outside
+    dismisses."""
     PAD   = 14
     BTN_H = 28
     INP_H = 30
@@ -1785,9 +1786,11 @@ class NamePromptDialog:
         self._ok_rect = None
         self._cancel_rect = None
         self._frames_since_show = 0
+        self._allow_empty = False
 
-    def show(self, current_text, callback, title="Rename Agent"):
+    def show(self, current_text, callback, title="Rename Agent", allow_empty=False):
         self.visible = True
+        self._allow_empty = allow_empty
         self._text = current_text or ""
         self._title = title
         self._callback = callback
@@ -1799,7 +1802,7 @@ class NamePromptDialog:
 
     def _commit(self):
         new = self._text.strip()
-        if new and self._callback:
+        if (new or self._allow_empty) and self._callback:
             self._callback(new)
         self.visible = False
 
