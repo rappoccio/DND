@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import pygame
 
-from net import commands, events as net_events, submit as net_submit, view as net_view
+from net import (commands, events as net_events, sessionlog as net_sessionlog,
+                 submit as net_submit, view as net_view)
 from net.roster import PROTOCOL_VERSION
 
 
@@ -58,6 +59,9 @@ def start_player_server(app) -> None:
         return
     app._net = server
     app.submit_log.path = net_submit.SUBMIT_LOG_PATH     # D-M5-6a: a table exists, so log
+    # D-M7-4: the table's log goes to a file too, and the server's refusals land in it.
+    app.session_log.path = net_sessionlog.SESSION_LOG_PATH
+    server.audit = app.session_log.add
     print(f"[net] players join at {server.url}")
     print(f"[net] join code: {app.roster.join_code}")
 

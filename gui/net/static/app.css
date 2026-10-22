@@ -228,3 +228,6 @@ canvas:active { cursor: grabbing; }
 }
 .log li { padding: 2px 0; }
 .log li:last-child { color: var(--ink); }
+/* D-M7-4: the session log's time, and the lines only the DM's view carries. */
+.log .at { color: var(--ink-dim); margin-right: 6px; font-variant-numeric: tabular-nums; }
+.log li.dm { color: var(--warn); }

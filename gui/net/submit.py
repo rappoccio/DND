@@ -137,6 +137,9 @@ class SubmitLog:
         self.path = path
         self.lines = 0          # written this session; the suite reads it
         self.remote = False     # True while handle_submit is inside the bus
+        # D-M7-4: ``announce(event, prompt)`` repeats a `takeover` or `expired` line to the
+        # session log, which the whole table reads. Installed by `App`; None writes nothing.
+        self.announce = None
 
     def write(self, principal_id: str, result: SubmitResult, prompt, answer,
               event: str = "submit") -> None:
@@ -161,6 +164,7 @@ class SubmitLog:
         if event == "cancelled" and prompt.resolved_by == CLOCK_PRINCIPAL_ID:
             self.write(CLOCK_PRINCIPAL_ID, SubmitResult(True, prompt.id), prompt,
                        {"cancel": True}, event="expired")
+            self._announce("expired", prompt)
             return
         if prompt.owner == DM_PRINCIPAL_ID or prompt.resolved_by != DM_PRINCIPAL_ID:
             return
@@ -170,6 +174,16 @@ class SubmitLog:
             answer = {"cancel": True}
         self.write(DM_PRINCIPAL_ID, SubmitResult(True, prompt.id), prompt, answer,
                    event="takeover")
+        self._announce("takeover", prompt)
+
+    def _announce(self, event: str, prompt) -> None:
+        hook = self.announce
+        if hook is None:
+            return
+        try:
+            hook(event, prompt)
+        except Exception as exc:          # the table's log must never cost the bus a frame
+            print(f"[net] session log line dropped: {exc}")
 
     def _append(self, entry: dict) -> None:
         if self.path is None:

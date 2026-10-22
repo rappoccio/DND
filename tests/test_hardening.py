@@ -12,6 +12,11 @@ Covered here:
   · D-M7-3: a third submit in flight never queues           (test_a_third_submit_is_refused)
   · D-M7-3: a fifth frame-tick read waiting is a 429        (test_frame_tick_reads_are_capped)
   · the client stops on 4408 and shows the join card on 4403 (test_the_client_knows_the_new_close_codes)
+  · D-M7-4: the ring, its tail and the DM-only filter       (test_the_session_log_ring)
+  · D-M7-4: a DM-only line never reaches a player's bytes   (test_dm_lines_never_reach_a_player)
+  · D-M7-4: joins, re-joins, connects and drops are said    (test_the_table_hears_who_comes_and_goes)
+  · D-M7-4: a takeover, an expiry and a pause are said      (test_the_table_hears_the_dm)
+  · D-M7-4: the Table panel and the close codes, in node    (test_the_table_panel_in_the_client)
 """
 
 import asyncio
@@ -31,6 +36,7 @@ sys.path.insert(0, os.path.join(_ROOT, "gui"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from net import server as net_server
+from net import sessionlog as net_sessionlog
 from net.commands import CommandQueue
 from net.roster import (Action, DM_PRINCIPAL_ID, PromptTarget, Role, SessionRoster,
                         TokenInfo)
@@ -181,7 +187,7 @@ def test_a_bad_first_frame_spends_the_bucket():
     is refused on the socket and on `POST /join` alike."""
     with _server(pump=True) as s:
         lines = []
-        s.srv.audit = lambda text, dm_only: lines.append((text, dm_only))
+        s.srv.audit = lambda text, dm_only=True, principal=None: lines.append((text, dm_only))
         for _ in range(net_server.JOIN_FAILURE_LIMIT):
             with _ws(s.srv.port) as sock:
                 sock.send_text(_auth_frame("not-a-credential"))
@@ -339,6 +345,143 @@ def test_the_client_knows_the_new_close_codes():
     print("✅ test_the_client_knows_the_new_close_codes")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  D-M7-4 — the session log
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_the_session_log_ring():
+    log = net_sessionlog.SessionLog()
+    for n in range(net_sessionlog.RING_SIZE + 10):
+        log.add(f"line {n}", dm_only=(n % 2 == 1))
+    assert len(log) == net_sessionlog.RING_SIZE, "the ring is not bounded"
+    public = log.tail(include_dm=False)
+    assert len(public) == net_sessionlog.WIRE_TAIL
+    assert all("dm" not in e for e in public), "a DM line in the public tail"
+    assert public[-1]["text"] == f"line {net_sessionlog.RING_SIZE + 8}"
+    dm = log.tail(include_dm=True)
+    assert dm[-1] == {"n": net_sessionlog.RING_SIZE + 10, "at": dm[-1]["at"],
+                      "text": f"line {net_sessionlog.RING_SIZE + 9}", "dm": True}, dm[-1]
+    assert [e["n"] for e in dm] == sorted(e["n"] for e in dm), "the tail is not in order"
+    # Fresh dicts: a caller that edits its copy edits nothing else (CommandQueue rule 3).
+    dm[-1]["text"] = "edited"
+    assert log.tail(include_dm=True)[-1]["text"] != "edited"
+    # No path, no file: a headless App writes nothing into the tree.
+    assert log.path is None
+    print("✅ test_the_session_log_ring")
+
+
+def test_dm_lines_never_reach_a_player():
+    """Byte level, like every fog check: an address in a DM-only line is omitted from a
+    player's view, not marked hidden. The DM's view carries it, marked `dm`."""
+    import shutil
+    import tempfile
+    from net.view import build_view
+    from test_gameview import _scene
+    tmp = tempfile.mkdtemp()
+    try:
+        app, kira, _ = _scene(tmp)
+        app.session_log.add("Kira joined the table.", principal=kira.id)
+        app.session_log.add("Refused a join with a wrong code from 10.9.8.7.", dm_only=True)
+        player = json.dumps(build_view(app, kira))
+        dm = build_view(app, app.roster.get(DM_PRINCIPAL_ID))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    assert "Kira joined the table." in player
+    assert "10.9.8.7" not in player and '"dm"' not in player, "a DM line reached a player"
+    assert [e.get("dm", False) for e in dm["session"]] == [False, True], dm["session"]
+    assert "principal" not in json.dumps(dm["session"]), "the wire carries the file's ids"
+    print("✅ test_dm_lines_never_reach_a_player")
+
+
+def _wait_for(pred, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while not pred():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.02)
+
+
+def test_the_table_hears_who_comes_and_goes():
+    """The server's public lines: a new seat, a seat taken back, a first screen and a
+    last one. A second screen and its close say nothing."""
+    with _server(pump=True) as s:
+        log = s.app.session_log
+        s.srv.audit = log.add
+        texts = lambda: [e["text"] for e in log.tail(include_dm=False)]
+        code = s.app.roster.join_code
+        status, _, body = s.post("/join", {"v": 1, "t": "auth", "join_code": code,
+                                          "display_name": "Mira"})
+        assert status == 202, status
+        mira = json.loads(body)["principal"]["id"]
+        status, _, _ = s.post("/join", {"v": 1, "t": "auth", "join_code": code,
+                                       "principal_id": mira})
+        assert status == 202
+        assert texts() == ["Mira joined the table.", "Mira took back their seat."], texts()
+
+        a = _opened(s.srv.port, s.player)
+        b = _opened(s.srv.port, s.player)
+        _wait_for(lambda: "Kira connected." in texts())
+        b.close()
+        time.sleep(0.3)
+        assert "Kira disconnected." not in texts(), "a second screen's close was a drop"
+        a.close()
+        _wait_for(lambda: "Kira disconnected." in texts())
+        assert texts().count("Kira connected.") == 1, texts()
+    print("✅ test_the_table_hears_who_comes_and_goes")
+
+
+def test_the_table_hears_the_dm():
+    """The bus's lines, said to the table: the DM taking a player's turn over, a prompt
+    that ran out of time, and a pause and resume."""
+    import shutil
+    import tempfile
+    from types import SimpleNamespace as NS
+    from gui_driver import post_click
+    from menus import panel
+    from prompts import CLOCK_PRINCIPAL_ID
+    from test_offer import _aria_turn, _frame, _offer
+    tmp = tempfile.mkdtemp()
+    try:
+        app, kira, _ = _aria_turn(tmp)
+        assert _offer(app) is not None, "precondition: Kira's offer is up"
+        post_click(app, panel.cbt_btn(app, "dodge").rect.center)
+        texts = [e["text"] for e in app.session_log.tail(include_dm=False)]
+        assert texts == ["The DM took over Kira's turn."], texts
+
+        app.submit_log.observe("cancelled", NS(id="p9", kind="reaction", owner=kira.id,
+                                               resolved_by=CLOCK_PRINCIPAL_ID,
+                                               actor_idx=0, response=None))
+        _frame(app)
+        post_click(app, panel.cbt_btn(app, "pause_resume").rect.center)
+        _frame(app)
+        post_click(app, panel.cbt_btn(app, "pause_resume").rect.center)
+        texts = [e["text"] for e in app.session_log.tail(include_dm=False)]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    assert texts[1:] == ["Kira's reaction timed out.", "The DM paused the game.",
+                         "The DM resumed the game."], texts
+    print("✅ test_the_table_hears_the_dm")
+
+
+def test_the_table_panel_in_the_client():
+    """`session_checks.js`, run against the real `app.js`; skipped without node."""
+    import shutil
+    import subprocess
+    node = shutil.which("node") or shutil.which("nodejs")
+    if node is None:
+        print("⚠️  test_the_table_panel_in_the_client SKIPPED — no node in this image")
+        return
+    checks = os.path.join(_ROOT, "tests", "session_checks.js")
+    done = subprocess.run([node, checks], capture_output=True, text=True, timeout=60)
+    for line in done.stdout.strip().splitlines():
+        print(f"   {line}")
+    assert done.returncode == 0, \
+        f"the session checks failed:\n{(done.stdout + done.stderr).strip()[-800:]}"
+    html = open(os.path.join(_ROOT, "gui", "net", "static", "index.html"),
+                encoding="utf-8").read()
+    assert html.count('id="table-log"') == 1 and html.count('id="session"') == 1
+    print("✅ test_the_table_panel_in_the_client")
+
+
 if __name__ == "__main__":
     test_the_roster_survives_racing_threads()
     test_the_bus_hook_runs_outside_the_lock()
@@ -350,4 +493,9 @@ if __name__ == "__main__":
     test_a_third_submit_is_refused()
     test_frame_tick_reads_are_capped()
     test_the_client_knows_the_new_close_codes()
+    test_the_session_log_ring()
+    test_dm_lines_never_reach_a_player()
+    test_the_table_hears_who_comes_and_goes()
+    test_the_table_hears_the_dm()
+    test_the_table_panel_in_the_client()
     print("\n✅ All hardening tests passed!")

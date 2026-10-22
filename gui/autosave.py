@@ -248,6 +248,9 @@ def restore(app, k: int) -> bool:
     app._combat_log_add(f"[RESTORED] autosave: round {meta.get('round', 0) + 1}, "
                         f"{meta.get('actor') or '?'}'s turn")
     app._flush_combat_log()
+    # The table's line names the round only: the actor may be a creature the party cannot
+    # see, and the session log goes to every seat unfiltered by fog (D-M7-4).
+    app.session_log.add(f"The DM restored an autosave from round {meta.get('round', 0) + 1}.")
     app._flash_status(f"Restored: round {meta.get('round', 0) + 1}, "
                       f"{meta.get('actor') or '?'}'s turn")
     return True

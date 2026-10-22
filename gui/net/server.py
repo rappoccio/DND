@@ -461,8 +461,9 @@ class PlayerServer:
         # waiting on their first frame, and frame-tick requests outstanding per principal.
         self._pending_auth = 0
         self._tick_requests: dict[str, int] = {}
-        # D-M7-4's hook, installed by `net.link`: ``audit(text, dm_only)`` records one
-        # line in the session log. Called on the net thread; the log is thread-safe.
+        # D-M7-4's hook, installed by `net.link`: ``audit(text, dm_only=, principal=)``
+        # records one line in the session log (`SessionLog.add`). Called on the net
+        # thread; the log is thread-safe.
         self.audit = None
         self._host = host
         self._port = port
@@ -610,14 +611,15 @@ class PlayerServer:
         request["principal"] = principal
         return await handler(request)
 
-    def _audit(self, text: str, dm_only: bool = True) -> None:
-        """One line in the session log (D-M7-4), when one is installed. Never raises: the
-        log must not cost a request its answer."""
+    def _audit(self, text: str, dm_only: bool = True, principal: str | None = None) -> None:
+        """One line in the session log (D-M7-4), when one is installed. DM-only unless
+        said otherwise, since most of what the server has to say is a refusal. Never
+        raises: the log must not cost a request its answer."""
         hook = self.audit
         if hook is None:
             return
         try:
-            hook(text, dm_only)
+            hook(text, dm_only=dm_only, principal=principal)
         except Exception:
             pass
 
@@ -737,12 +739,17 @@ class PlayerServer:
             self._auth_failed(addr, "a join with a wrong code")
             return _auth_error(403, "denied")
 
+        before = {p.id for p in roster.players()}
         principal = self._claim_seat(roster, request["principal"], body)
         credential = roster.mint_credential(principal.id)
         if credential is None:
             # The seat went away between the match and the mint — the DM unseated them in
             # that window. Indistinguishable from a bad code on the wire, deliberately.
             return _auth_error(403, "denied")
+        self._audit(f"{principal.display_name} "
+                    + ("took back their seat." if principal.id in before
+                       else "joined the table."),
+                    dm_only=False, principal=principal.id)
 
         return web.json_response(status=202, data={
             "v": PROTOCOL_VERSION,
@@ -1017,6 +1024,11 @@ class PlayerServer:
             asyncio.ensure_future(oldest.ws.close(code=WS_CLOSE_REPLACED, message=b"replaced"))
 
         conn = self._live_conns.add(ws, principal, credential)
+        if len(self._live_conns.of(principal.id)) == 1:
+            # The first screen, not every reload: one line when someone arrives and one
+            # when their last screen goes (D-M7-4).
+            self._audit(f"{principal.display_name} connected.", dm_only=False,
+                        principal=principal.id)
         try:
             await self._live_resync(conn)
             async for msg in ws:
@@ -1049,6 +1061,9 @@ class PlayerServer:
                 task.add_done_callback(conn.tasks.discard)
         finally:
             self._live_conns.remove(conn)
+            if not self._live_conns.of(principal.id):
+                self._audit(f"{principal.display_name} disconnected.", dm_only=False,
+                            principal=principal.id)
         return ws
 
     async def _submit(self, conn, frame) -> None:

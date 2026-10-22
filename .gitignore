@@ -22,3 +22,5 @@ tools/__pycache__
 
 # The M5a intent log (net/submit.py), written beside replay_log.txt while a table is up.
 submit_log.jsonl
+# The M7 session log (net/sessionlog.py): the table's log, with real names in it.
+session_log.jsonl

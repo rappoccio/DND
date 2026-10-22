@@ -375,6 +375,7 @@ function render(next) {
   resumeChain();
   drawRoster();
   drawLog();
+  drawSession();
   drawBoard();
 }
 
@@ -463,6 +464,23 @@ function drawLog() {
   for (const line of view.log.slice(-60)) {
     const row = document.createElement("li");
     row.textContent = line;
+    list.append(row);
+  }
+  list.scrollTop = list.scrollHeight;
+}
+
+/* D-M7-4: the table's log. Each line is `{n, at, text}`, plus `dm` on the lines only the
+   DM's view carries. A server older than M7 sends no `session`, and this draws nothing. */
+function drawSession() {
+  const list = el("table-log");
+  list.textContent = "";
+  for (const line of view.session || []) {
+    const row = document.createElement("li");
+    if (line.dm) row.className = "dm";
+    const at = document.createElement("span");
+    at.className = "at";
+    at.textContent = line.at;
+    row.append(at, document.createTextNode(line.text));
     list.append(row);
   }
   list.scrollTop = list.scrollHeight;

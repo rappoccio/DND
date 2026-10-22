@@ -71,6 +71,7 @@ function load(opts = {}) {
       return elements.get(id);
     },
     createElement(tag) { return element(tag); },
+    createTextNode(text) { return { textContent: String(text) }; },
   };
 
   function storage(map) {

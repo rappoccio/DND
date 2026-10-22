@@ -116,7 +116,15 @@ def build_view(app, viewer: Principal, seq: int = 0) -> dict:
         "lighting": _lighting(app, is_dm, hide_map, explored),
         "effects": _effects(app, is_dm, hide_map, explored),
         "log":     list(app.combat_log),
+        # D-M7-4: the table's log, the same for every seat but the DM's lines, which are
+        # omitted for anyone without the DM channel rather than sent and hidden.
+        "session": _session(app, is_dm),
     }
+
+
+def _session(app, is_dm: bool) -> list[dict]:
+    log = getattr(app, "session_log", None)
+    return log.tail(include_dm=is_dm) if log is not None else []
 
 
 # ── Agents ──────────────────────────────────────────────────────────────────

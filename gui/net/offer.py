@@ -345,6 +345,11 @@ def ensure(app) -> None:
     app._offer_key = key
 
 
+# The DM's panel tools that do not act on the turn, so clicking one is not a takeover
+# (D-M5-7, amended by M7). `table` is D-M7-5's Table menu.
+NOT_A_TAKEOVER = frozenset({"reaction_timer", "pause_resume", "table"})
+
+
 def take_over(app) -> None:
     """The DM is about to act from the panel, drag a token, or click the map during a
     player's turn (D-M5-7, D-M5-4.6, M5d Step 0.6).

@@ -78,6 +78,7 @@ from net.mapimg import MapImageCache
 from net.commands import CommandQueue
 from net.events import EventStream, outcome as net_outcome
 from net.submit import SubmitLog
+from net import sessionlog as net_sessionlog
 from net import link as net_link
 # `perform` (D-M5-1) asks `authorize()` for a verb, and reaches it qualified as
 # `net_roster.Action` so that the unqualified name stays unused (see below).
@@ -696,6 +697,11 @@ class App:
         # prompt from them is a line too (D-M5-7); remote submits log themselves.
         self.submit_log = SubmitLog()
         self.prompts.add_observer(self.submit_log.observe)
+        # D-M7-4: the table's log, read by everyone seated. The submit log repeats its
+        # takeover and expiry lines into it, so the rules for those live in one place.
+        self.session_log = net_sessionlog.SessionLog()
+        self.submit_log.announce = lambda event, prompt: net_sessionlog.announce_prompt(
+            self, event, prompt)
 
         # ── Multi-map dungeon state (FLOORS_IMPLEMENTATION_PLAN.md, Phase 3) ─
         # self.dungeon is None outside "dungeon mode"; when set, the app is paging
@@ -2281,6 +2287,7 @@ class App:
             # keep answering for the previous encounter.
             if getattr(self, "_net", None) is not None:
                 self._net.set_roster(self.roster)
+                self.session_log.add("The DM opened another table. Everyone joins again.")
             if getattr(self, "bm", None) is not None:
                 self._sync_roster_tokens()
 
@@ -17220,6 +17227,8 @@ class App:
             self.terrain_placement_dialog.open(self.map_surf, self.bm, self)
         if action_id == "pause_resume":
             self.combat_paused = not self.combat_paused
+            self.session_log.add("The DM paused the game." if self.combat_paused
+                                 else "The DM resumed the game.")
         if action_id == "reaction_timer":
             self._cycle_reaction_timeout()
         if action_id == "end_turn":
@@ -18935,9 +18944,12 @@ class App:
                 _clicked = next((a for a in self._action_menu
                                  if self._action_clicked(a, event)), None)
                 if _clicked is not None:
-                    # D-M5-7: the DM acts; the player's offer ends. Setting the reaction
-                    # timer is not acting on their turn, so it leaves the offer up.
-                    if _clicked != "reaction_timer":
+                    # D-M5-7: the DM acts; the player's offer ends. A DM tool that does
+                    # not act on the turn leaves the offer up: the reaction timer, Pause
+                    # (whose gate withdraws the offer quietly, as nobody took it over),
+                    # and the Table menu (D-M7-5). Otherwise the table would read "the DM
+                    # took over Kira's turn" for a pause.
+                    if _clicked not in net_offer.NOT_A_TAKEOVER:
                         net_offer.take_over(self)
                     self.perform(_clicked, DM_PRINCIPAL_ID, event.pos)
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
