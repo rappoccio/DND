@@ -342,6 +342,32 @@ def show_ladder_menu(app, cell, pos):
     app._ask_actor(actor, "action", f"Ladder to floor {Z}", options, anchor=pos)
 
 
+def show_staircase_menu(app, cell, pos):
+    """Context menu for a staircase end: Ascend / Descend for every staircase ending on
+    ``cell`` (a shared landing offers both, D2). Same actor, adjacency and combat rules
+    as show_ladder_menu; an unfinished staircase offers nothing."""
+    ends = app._staircases_at(cell)
+    if not ends:
+        return
+    actor = app._current_agent_idx() if app.combat_active else app.selected_idx
+
+    if app.combat_active:
+        agent = app.bm.placed_agents[actor] if actor >= 0 else None
+        if agent is not None and not app._cell_adjacent_to_agent(agent, cell):
+            app._combat_log_add("Move adjacent to the staircase to use it.")
+            return
+
+    options = []
+    for st, i in ends:
+        label = app._staircase_option_label(st, i)
+        if label is not None:
+            options.append((label, lambda a=actor, s=st.id, e=i: app._use_staircase(s, e, a)))
+    if not options:
+        app._flash_status(", ".join(st.name for st, _ in ends) + " is unfinished.")
+        return
+    app._ask_actor(actor, "action", "Staircase", options, anchor=pos)
+
+
 # FLAG: Move to C++
 def show_item_pickup_menu(app, cell, items, agent_idx, pos):
     """Show context menu to pick up one of the items at this cell."""

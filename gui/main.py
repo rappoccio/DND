@@ -61,7 +61,8 @@ from menus import board, dm, features, panel, reactions, riders
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import (TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph,
-                             draw_ladder_glyph, door_link_key, edge_door_rect)
+                             draw_ladder_glyph, draw_stair_glyph, door_link_key,
+                             edge_door_rect)
 from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
 from dungeon import Dungeon, MapPage, dungeon_path_for
@@ -5532,6 +5533,54 @@ class App:
         carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
         if self._switch_to_page(page, drop_cell=local, carry=carry):
             self._flash_status(f"Climbed to floor {Z}: {page.id}")
+
+    # ── Staircases (manifest portals; plans/STAIRCASES_PLAN.md) ──────────────
+    def _staircase_ends_here(self):
+        """Every ``(staircase, end_index)`` with an end on the active page; [] without a
+        dungeon. Unfinished staircases are included (they draw, but cannot be used)."""
+        if self.dungeon is None or self.dungeon_page is None:
+            return []
+        return self.dungeon.staircase_ends_on(self.dungeon_page.id)
+
+    def _staircases_at(self, cell):
+        """Every ``(staircase, end_index)`` whose end on the active page is ``cell`` (an
+        rpg.Cell). A shared landing (D2) returns several."""
+        if self.dungeon is None or self.dungeon_page is None:
+            return []
+        return self.dungeon.staircase_ends_at(self.dungeon_page.id, (cell.col, cell.row))
+
+    def _staircase_option_label(self, st, end_index) -> str | None:
+        """"Ascend Staircase 7 (K21) to larders", or None when it cannot be used."""
+        direction = self.dungeon.staircase_direction(st, end_index)
+        if direction is None:
+            return None
+        verb = "Ascend" if direction == "up" else "Descend"
+        label = f" ({st.label})" if st.label else ""
+        return f"{verb} {st.name}{label} to {st.other_end(end_index).page}"
+
+    def _use_staircase(self, sid: int, end_index: int, actor_idx: int):
+        """Carry the acting creature from end ``end_index`` of staircase ``sid`` to its
+        other end, through _switch_to_page (which refuses in combat, D3). Refused with a
+        flash when the end is not on this page or the staircase is unfinished or broken."""
+        if self.dungeon is None or self.dungeon_page is None:
+            self._flash_status("Staircases need a dungeon manifest (open a .dungeon.json).")
+            return False
+        st = self.dungeon.staircase_by_id(sid)
+        if (st is None or end_index not in (0, 1) or end_index >= len(st.ends)
+                or st.ends[end_index].page != self.dungeon_page.id):
+            return False
+        direction = self.dungeon.staircase_direction(st, end_index)
+        if direction is None:
+            self._flash_status(f"{st.name} is unfinished; it leads nowhere yet.")
+            return False
+        other = st.other_end(end_index)
+        page = self.dungeon.page_by_id(other.page)
+        carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
+        if self._switch_to_page(page, drop_cell=other.cell, carry=carry):
+            verb = "Ascended" if direction == "up" else "Descended"
+            self._flash_status(f"{verb} {st.name} to floor {page.z}: {page.id}")
+            return True
+        return False
 
     @staticmethod
     def _ladder_key(lad) -> tuple:
@@ -15983,6 +16032,71 @@ class App:
                               w=(max(cols) - min_col + 1) * cpx,
                               h=(max(rows) - min_row + 1) * cpx)
 
+    def _staircase_cells_here(self):
+        """The active page's staircase ends grouped by cell, fog applied the same way as
+        ladders: ``{(col, row): [(staircase, end_index), ...]}``."""
+        fog = self._fog_active()
+        out = {}
+        for st, i in self._staircase_ends_here():
+            c = st.ends[i].cell
+            if fog and not self._any_explored([c]):
+                continue                                  # never seen: hidden like the floor under it
+            out.setdefault(c, []).append((st, i))
+        return out
+
+    def _draw_staircases(self, cpx: int):
+        """Draw every staircase end on this page with its stair glyph: id(s) and an
+        up/down arrow per usable staircase (an unfinished one draws greyed out)."""
+        for (col, row), ends in self._staircase_cells_here().items():
+            sx, sy = self._cell_to_screen(col, row)
+            dirs = [self.dungeon.staircase_direction(st, i) for st, i in ends]
+            draw_stair_glyph(self.screen, sx, sy, cpx,
+                             directions=tuple(d for d in dirs if d is not None),
+                             ids=[st.id for st, _ in ends], font_sm=self.font_sm)
+
+    def _draw_staircase_hover(self):
+        """Name, label and destination floor of the staircase end under the pointer,
+        as a floating tooltip like the token name's. Not drawn over a token."""
+        if self._modal_active() or not self.bm or not self.map_rect:
+            return
+        mx, my = pygame.mouse.get_pos()
+        if mx >= self._panel_x():
+            return
+        cell = self._screen_to_cell(mx, my)
+        if cell is None or self._agent_at(cell) >= 0:
+            return
+        ends = self._staircase_cells_here().get((cell.col, cell.row))
+        if not ends:
+            return
+        lines = []
+        for st, i in ends:
+            head = st.name + (f" ({st.label})" if st.label else "")
+            direction = self.dungeon.staircase_direction(st, i)
+            if direction is None:
+                lines.append(f"{head}: unfinished")
+            else:
+                page = self.dungeon.page_by_id(st.other_end(i).page)
+                lines.append(f"{head}: {direction} to floor {page.z}, {page.id}")
+        surfs = [self.font_md.render(t, True, (240, 240, 240)) for t in lines]
+        pad = 5
+        box_w = max(s.get_width() for s in surfs) + pad * 2
+        box_h = sum(s.get_height() for s in surfs) + pad * 2
+        bx = mx + 14
+        by = my - box_h - 6
+        if bx + box_w > self._panel_x():
+            bx = self._panel_x() - box_w - 2
+        if by < 0:
+            by = my + 18
+        box = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+        box.fill((20, 20, 26, 230))
+        self.screen.blit(box, (bx, by))
+        pygame.draw.rect(self.screen, (120, 220, 255),
+                         pygame.Rect(bx, by, box_w, box_h), 2, border_radius=4)
+        y = by + pad
+        for t in surfs:
+            self.screen.blit(t, (bx + pad, y))
+            y += t.get_height()
+
     def _draw_hatching(self, pattern: str, x: float, y: float, w: float, h: float, color: tuple):
         """Draw a hatching pattern on the screen within bounds."""
         screen_x = int(x + self.map_rect.x + self.pan_x)
@@ -16221,6 +16335,9 @@ class App:
 
         # ── Ladders (vertical portals; beneath all agents) ────────────────
         self._draw_ladders(cpx)
+
+        # ── Staircase ends (manifest portals; beneath all agents) ─────────
+        self._draw_staircases(cpx)
 
         # ── Paladin aura rings (beneath all agents) ───────────────────────
         self._draw_paladin_auras(cpx)
@@ -18687,6 +18804,8 @@ class App:
                                 dm.show_door_menu(self, cell, event.pos)
                             elif hit < 0 and self._ladder_at(cell) >= 0:
                                 dm.show_ladder_menu(self, cell, event.pos)
+                            elif hit < 0 and self._staircases_at(cell):
+                                dm.show_staircase_menu(self, cell, event.pos)
                             else:
                                 # When paused, allow dragging any agent; otherwise only the current
                                 # combatant — or the legendary creature performing an out-of-turn Dash.
@@ -18712,6 +18831,8 @@ class App:
                             dm.show_door_menu(self, cell, event.pos)
                         elif hit < 0 and self._ladder_at(cell) >= 0:
                             dm.show_ladder_menu(self, cell, event.pos)
+                        elif hit < 0 and self._staircases_at(cell):
+                            dm.show_staircase_menu(self, cell, event.pos)
                         elif hit >= 0 and not self.jump_overlay_active:
                             pt = self.bm.placed_agents[hit]
                             self.drag_idx    = hit
@@ -19139,6 +19260,7 @@ class App:
             self._draw_safe_target_highlights()
             self._draw_hover_cursor()                       # always-on map cursor (in & out of combat)
             self._draw_agent_hover_name()                   # token name shown only under the pointer
+            self._draw_staircase_hover()                    # staircase name/label/destination
             self._draw_panel()                              # config panel (hosts the Floor-nav block)
             net_offer.ensure(self)                          # D-M5-2: the offer, from the menu just built
             self._draw_cursor_cell_info()                   # debug: cell under cursor

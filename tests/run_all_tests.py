@@ -196,6 +196,7 @@ test_scripts = [
     "test_teleportation.py",
     "test_floors.py",
     "test_staircases.py",
+    "test_staircase_use.py",
     "test_visibility.py",
     "test_light_effects.py",
     "test_heavily_obscured.py",

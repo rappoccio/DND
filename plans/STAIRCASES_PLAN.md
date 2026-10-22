@@ -1,6 +1,6 @@
 # Staircases
 
-**Status 2026-10-22: Step 0 frozen (D1–D6 decided). Step 1 (manifest) done; step 2 next.** Came out of laddering
+**Status 2026-10-22: Step 0 frozen (D1–D6 decided). Steps 1 (manifest) and 2 (use) done; step 3 next.** Came out of laddering
 Castle Ravenloft: every stair there is faked with ladder pairs, and the pairs keep colliding.
 
 ## Status and handoff (2026-10-22)
@@ -14,13 +14,19 @@ Castle Ravenloft: every stair there is faked with ladder pairs, and the pairs ke
   None (unfinished or broken), `staircase_end_global(end)`. `remove_page` unfinishes or
   drops staircases. Keys are written only once a dungeon has had a staircase.
   Tests: `tests/test_staircases.py` (10), registered in `run_all_tests.py`; suite 191/0.
-- **Next: step 2 (use + players).** Not started. Starting points in `gui/main.py`:
-  `_use_ladder` (~5613, the model for the transition via `_switch_to_page`),
-  `_ladder_at`; `gui/menus/dm.py` `show_ladder_menu` (~320, model for the Ascend /
-  Descend menu and the adjacency rule); `gui/net/view.py` ~564 (ladders in the player
-  view, where staircase ends go); the player-side ladder submit path. The marker is new
-  drawing code beside the ladder marker. Combat refusal follows the ladder rule (D3).
-- **Then:** step 3 (editor), step 4 (Ravenloft conversion).
+- **Step 2 (use + players): done.** `gui/main.py`: `_staircase_ends_here`,
+  `_staircases_at(cell)`, `_staircase_option_label`, `_use_staircase(sid, end, actor)`
+  (through `_switch_to_page`, so refused in combat), `_staircase_cells_here` (fog as for
+  ladders), `_draw_staircases`, `_draw_staircase_hover`; the map click opens
+  `dm.show_staircase_menu` after the ladder check. Glyph: `draw_stair_glyph` in
+  `terrain_dialogs.py` (for the editor too). `net/view.py` sends `terrain.staircases`
+  (`id`, `name`, `cell`, `direction`; DM also gets `label`, `target_page`).
+  **Player submit** is the ladder's: the menu is an `_ask_actor` prompt owned by the
+  creature's controller, so the bus authorizes the answer. A player cannot *open* it
+  from the browser; that waits on MULTIPLAYER M5f (Interact), as for ladders and doors.
+  Tests: `tests/test_staircase_use.py` (5); suite 192/0.
+- **Next: step 3 (editor).** Not started.
+- **Then:** step 4 (Ravenloft conversion).
 
 ## Decided (user, 2026-10-22)
 
@@ -156,6 +162,7 @@ Each step lands with its own tests (container, `./test.sh`).
    *Tests:* carries a creature both ways; neighbouring and shared ends don't interfere;
    refused in combat; unfinished is unusable; player view lists ends under fog; player
    submit validated.
+   **Done 2026-10-22** (`tests/test_staircase_use.py`, 5 tests; suite 192/0).
 3. **Editor:** the Staircase tool (two-phase), undo, the Staircases… list. *Tests:*
    place A, finish B on Z ± 1 (refused otherwise), delete removes both ends, edit/undo.
 4. **Ravenloft:** run the conversion, then label by hand. *Tests:* the conversion keeps

@@ -163,6 +163,42 @@ def draw_ladder_glyph(screen, x, y, size, going_up=True, font_sm=None, w=None, h
                             [(cx, bot + 1), (cx - arr, bot - arr), (cx + arr, bot - arr)])
 
 
+def draw_stair_glyph(screen, x, y, size, directions=("up",), ids=(), font_sm=None):
+    """Draw a staircase end (a manifest portal, not a ladder) over the cell at (x, y).
+
+    Three stepped treads, the staircase id(s) in the corner, and one arrow per direction
+    in ``directions`` ("up" / "down"); a shared landing (D2) shows both. An unfinished
+    staircase passes no direction and draws greyed out. Used by the map render and the
+    terrain editor so a staircase looks the same wherever it is drawn."""
+    pad = max(2, size // 8)
+    usable = bool(directions)
+    tread = (150, 160, 190) if usable else (120, 120, 120)
+    back = pygame.Surface((max(1, size - 2 * pad), max(1, size - 2 * pad)), pygame.SRCALPHA)
+    back.fill((40, 50, 90, 110) if usable else (60, 60, 60, 90))
+    screen.blit(back, (x + pad, y + pad))
+    # Stepped profile, rising left to right.
+    inner = size - 2 * pad
+    step = max(2, inner // 3)
+    for i in range(3):
+        sx = x + pad + i * step
+        sy = y + size - pad - (i + 1) * step
+        pygame.draw.rect(screen, tread, pygame.Rect(sx, sy, step, (i + 1) * step), 1)
+    arr = max(3, size // 7)
+    arr_col = (120, 220, 255)
+    cx = x + size - pad - arr - 1
+    if "up" in directions:
+        top = y + pad + 1
+        pygame.draw.polygon(screen, arr_col,
+                            [(cx, top), (cx - arr, top + arr), (cx + arr, top + arr)])
+    if "down" in directions:
+        bot = y + size - pad - 1
+        pygame.draw.polygon(screen, arr_col,
+                            [(cx, bot), (cx - arr, bot - arr), (cx + arr, bot - arr)])
+    if font_sm is not None and ids and size >= 18:
+        txt = font_sm.render("/".join(str(i) for i in ids), True, (235, 235, 245))
+        screen.blit(txt, (x + pad + 1, y + pad))
+
+
 class TemporaryTerrainPlacementDialog:
     """Modal dialog for placing temporary terrain effects during combat."""
 

@@ -572,6 +572,23 @@ def _terrain(app, is_dm: bool, hide_map: bool, explored) -> dict:
             rec["target"] = [int(v) for v in lad.get("target", (0, 0, 0))]
         ladders.append(rec)
     out["ladders"] = ladders
+
+    # Staircase ends on this page (plans/STAIRCASES_PLAN.md), under the ladders' fog rule.
+    # Which way a stair goes is visible from its foot; the book key and the page it lands
+    # on are DM information, like a ladder's target.
+    staircases = []
+    for st, i in getattr(app, "_staircase_ends_here", list)():
+        c, r = st.ends[i].cell
+        if not _visible(explored, hide_map, c, r):
+            continue
+        rec = {"id": int(st.id), "name": st.name, "cell": [int(c), int(r)],
+               "direction": app.dungeon.staircase_direction(st, i)}
+        if is_dm:
+            other = st.other_end(i)
+            rec["label"] = st.label
+            rec["target_page"] = other.page if other is not None else None
+        staircases.append(rec)
+    out["staircases"] = staircases
     return out
 
 
