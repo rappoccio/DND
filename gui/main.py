@@ -1033,7 +1033,8 @@ class App:
         # transport for the same reason the image cache does: it is the seam, not the
         # server. `GET /state` is its first caller; D-M4-3's `_pump_net()` in the blocking
         # modals and M5's `submit` are the other two.
-        self._net_commands = CommandQueue()
+        # A read whose requester timed out is dropped unrun (D-M7-2).
+        self._net_commands = CommandQueue(skip_abandoned=True)
         # M5a: `submit`s get a queue of their own, drained by `run()` beside the event
         # handler and never by `_pump_net()` — a submit is input, and may do anything a
         # click may, including open a modal (see `net.submit`).

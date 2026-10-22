@@ -44,12 +44,11 @@ reads under the GIL, not C++ invariants mid-mutation, which is the distinction N
 tightening draws, and `sync_tokens` rebinds `_tokens` rather than mutating it, so a
 concurrent `_rebuild_ownership()` here iterates a dict nothing will touch again.
 
-Two costs, both liveness and neither safety. A request can see a **stale ownership answer**
-for the one frame between a `Controller ▸` reassignment and the next `sync_tokens` — the
-same window the DM's own screen has. And a DM seating a principal by hand in the same
-instant as a join can make `players()` iterate a dict that grew under it, which is a 500 on
-that one join and a retry. Hardening the roster against that needs a lock it does not have
-and is written down rather than bundled here.
+One cost, liveness and not safety: a request can see a **stale ownership answer** for the
+one frame between a `Controller ▸` reassignment and the next `sync_tokens`, the same window
+the DM's own screen has. The race this paragraph used to name (a DM seating a principal by
+hand in the same instant as a join, which could 500 the join) is closed: since M7 the
+roster holds a lock around every read and write of its tables (D-M7-2).
 
 **F6, tested rather than assumed**: `web.run_app` installs signal handlers and dies off the
 main thread with `set_wakeup_fd only works in main thread of the main interpreter`. The

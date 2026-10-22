@@ -8286,7 +8286,7 @@ its callers, and the C++ fog and edge bindings. Baseline suite: 188 / 0 at `0eda
 | # | Step | Done |
 | --- | ---- | :--: |
 | M7.1 | The party's fog gate (D-M7-1), with a byte-level test with the terrain editor open | ☑ |
-| M7.2 | The roster lock and the cancelled-command skip (D-M7-2) | ☐ |
+| M7.2 | The roster lock and the cancelled-command skip (D-M7-2). *The skip is the read queue's only: a submit that timed out is still decided, as Step 0.5 promises, and `test_submit` caught the first version.* | ☑ |
 | M7.3 | Limits (D-M7-3), plus the serialization measurement (D-M7-7) | ☐ |
 | M7.4 | The session log, on the wire and in the client (D-M7-4) | ☐ |
 | M7.5 | The Table menu: kick, rotate, lock, restore, log (D-M7-5) | ☐ |

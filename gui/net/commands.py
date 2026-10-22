@@ -57,9 +57,17 @@ class CommandQueue:
     protect state that does not exist, on the one object the frame loop touches every tick.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, skip_abandoned: bool = False) -> None:
+        """``skip_abandoned`` drops a command whose caller has stopped waiting (D-M7-2).
+
+        Right for the read queue, where a command only builds an answer. Wrong for the
+        submit queue: a submit that timed out is still input, and Step 0.5 defines its
+        `timeout` as "queued, and may still be decided". So that queue keeps the default.
+        """
+        self._skip_abandoned = skip_abandoned
         self._pending: collections.deque = collections.deque()
         self.ran = 0            # total commands executed — the frame tick's liveness probe
+        self.skipped = 0        # commands dropped because their caller had stopped waiting
 
     # ── The net thread's half ───────────────────────────────────────────────
 
@@ -92,6 +100,12 @@ class CommandQueue:
                 fn, loop, future = self._pending.popleft()
             except IndexError:
                 break
+            if self._skip_abandoned and future is not None and future.done():
+                # Its caller timed out and cancelled it (D-M7-2): nobody is waiting for
+                # this answer, so building it would only spend the frame. Not counted
+                # against the budget, which rations work done.
+                self.skipped += 1
+                continue
             ran += 1
             try:
                 result = fn(app)

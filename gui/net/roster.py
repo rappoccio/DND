@@ -24,7 +24,9 @@ import enum
 import hashlib
 import hmac
 import json
+import functools
 import secrets
+import threading
 import time
 from dataclasses import dataclass, replace
 from typing import Callable, Iterable
@@ -121,6 +123,27 @@ class TokenInfo:
     faction:    int
 
 
+# `_decide`'s third answer: the principal is seated and the target is a prompt, so the
+# answer is the prompt bus's.
+_ASK_THE_BUS = object()
+
+
+def _locked(method):
+    """Run ``method`` under the roster's lock (D-M7-2).
+
+    Two threads use a roster: the pygame thread seats players and syncs tokens, and the net
+    thread mints seats in ``POST /join`` and verifies every request. Single dict reads were
+    safe under the GIL, but ``players()`` iterating ``_principals`` while a join grew it
+    was not, and that was a 500 on the join. The lock is reentrant, because locked methods
+    call each other, and no method holds it across a call out of the roster.
+    """
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapper
+
+
 class SessionRoster:
     """Principals, credentials, ownership, and ``authorize()`` — the single chokepoint.
 
@@ -131,6 +154,7 @@ class SessionRoster:
 
     def __init__(self, join_code: str | None = None,
                  autosave_slots: int = DEFAULT_AUTOSAVE_SLOTS):
+        self._lock = threading.RLock()
         # The signing key: process-local, never serialized. Regenerating it invalidates
         # every outstanding credential at once, which is A5's panic button.
         self._signing_key: bytes = secrets.token_bytes(32)
@@ -155,22 +179,27 @@ class SessionRoster:
     # ── Principals ──────────────────────────────────────────────────────────
 
     @property
+    @_locked
     def principals(self) -> list[Principal]:
         """Every seated principal, DM first, then players in insertion order."""
         return list(self._principals.values())
 
+    @_locked
     def players(self) -> list[Principal]:
         return [p for p in self._principals.values() if p.role is Role.PLAYER]
 
+    @_locked
     def get(self, principal_id: str) -> Principal | None:
         return self._principals.get(principal_id)
 
+    @_locked
     def display_name(self, principal_id: str) -> str:
         """A label for the UI. Falls back to the raw id so an orphaned controller is
         visible to the DM rather than silently rendering as the DM's own token."""
         p = self._principals.get(principal_id)
         return p.display_name if p else principal_id
 
+    @_locked
     def add_principal(self, display_name: str, role: Role = Role.PLAYER,
                       auth: AuthBlock | None = None) -> Principal:
         """Mint a new seat. The id is opaque and random — never derived from the display
@@ -184,12 +213,14 @@ class SessionRoster:
         self._rebuild_ownership()
         return p
 
+    @_locked
     def rename_principal(self, principal_id: str, display_name: str) -> None:
         p = self._principals.get(principal_id)
         if p is None:
             return
         self._principals[principal_id] = replace(p, display_name=display_name)
 
+    @_locked
     def remove_principal(self, principal_id: str) -> None:
         """Unseat a principal. The DM's seat cannot be removed. Tokens they controlled are
         NOT rewritten here — an unknown controller loads as DM-controlled (A1), which is
@@ -206,14 +237,17 @@ class SessionRoster:
         one table-wide code is safe because each join mints a distinct principal."""
         return "".join(secrets.choice(_JOIN_CODE_ALPHABET) for _ in range(_JOIN_CODE_LEN))
 
+    @_locked
     def rotate_join_code(self) -> str:
         self.join_code = self.generate_join_code()
         return self.join_code
 
+    @_locked
     def check_join_code(self, code: str) -> bool:
         """Constant-time compare, case-insensitive: the code is typed by a human."""
         return hmac.compare_digest((code or "").strip().upper(), self.join_code.upper())
 
+    @_locked
     def mint_credential(self, principal_id: str,
                         ttl_seconds: float = CREDENTIAL_TTL_SECONDS) -> str | None:
         """Issue a bearer credential for a seated principal. Returns the wire string, or
@@ -225,11 +259,13 @@ class SessionRoster:
                                                  principal_id=principal_id,
                                                  exp=time.time() + ttl_seconds))
 
+    @_locked
     def encode_credential(self, cred: Credential) -> str:
         """The wire form of a credential: the three claims, then a signature over them."""
         payload = f"{cred.kid}.{cred.principal_id}.{cred.exp:.0f}"
         return f"{payload}.{self._sign(payload)}"
 
+    @_locked
     def verify_credential(self, credential: str,
                           now: float | None = None) -> Principal | None:
         """Steps 3–5 of the request order: verify the signature, the expiry and the
@@ -259,14 +295,17 @@ class SessionRoster:
         parts = (credential or "").split(".")
         return parts[0] if len(parts) == 4 else None
 
+    @_locked
     def revoke_kid(self, kid: str) -> None:
         self._revoked_kids.add(kid)
 
+    @_locked
     def revoke_credential(self, credential: str) -> None:
         kid = self.credential_kid(credential)
         if kid:
             self._revoked_kids.add(kid)
 
+    @_locked
     def revoke_all(self) -> None:
         """A5's panic button: a new signing key invalidates every credential at once,
         without needing to have kept a list of them."""
@@ -279,6 +318,7 @@ class SessionRoster:
 
     # ── Ownership (derived, never stored twice) ─────────────────────────────
 
+    @_locked
     def sync_tokens(self, tokens: Iterable[TokenInfo]) -> None:
         """Refresh the ownership cache from the live agent records.
 
@@ -289,6 +329,7 @@ class SessionRoster:
         self._tokens = {t.agent_idx: t for t in tokens}
         self._rebuild_ownership()
 
+    @_locked
     def _rebuild_ownership(self) -> None:
         owned: dict[str, list[int]] = {}
         for idx, t in sorted(self._tokens.items()):
@@ -296,12 +337,14 @@ class SessionRoster:
             owned.setdefault(pid, []).append(idx)
         self._owned = owned
 
+    @_locked
     def controlled_by(self, principal_id: str) -> list[int]:
         """Live agent indices this principal controls. A1: ``controller`` on the agent
         record is the sole persisted truth; this is a cache, rebuilt on load and on any
         roster or agent-list change. Never persisted — indices are basis-dependent."""
         return list(self._owned.get(principal_id, ()))
 
+    @_locked
     def controller_of(self, agent_idx: int) -> str:
         """The principal id controlling this token, folding an unknown id to the DM."""
         t = self._tokens.get(agent_idx)
@@ -309,6 +352,7 @@ class SessionRoster:
             return DM_PRINCIPAL_ID
         return t.controller
 
+    @_locked
     def owns(self, principal_id: str, agent_idx: int) -> bool:
         return self.controller_of(agent_idx) == principal_id
 
@@ -328,6 +372,24 @@ class SessionRoster:
         # the one pre-auth route and does not call here.
         if principal is None:
             return False
+        # The policy reads run under the lock. Only the prompt-bus hook runs outside it,
+        # because it calls out of the roster (D-M7-2).
+        with self._lock:
+            verdict = self._decide(principal, action, target)
+        if verdict is not _ASK_THE_BUS:
+            return verdict
+        # The prompt bus (M1) owns prompt state; the roster must not reach into it, so
+        # it asks through the hook. With no bus installed there are no live prompts,
+        # and a player is denied — the safe direction.
+        lookup = self.prompt_lookup
+        if lookup is None:
+            return False
+        owner, live = lookup(target.prompt_id)
+        return bool(live) and owner == principal.id
+
+    def _decide(self, principal: Principal, action: Action, target: Target):
+        """``authorize()``'s policy, under the lock. Returns a bool, or ``_ASK_THE_BUS``
+        when only the prompt bus can finish the answer."""
         # A principal whose seat is gone (unseated mid-session, or a stale record) is
         # denied everything, even while holding a signature-valid credential.
         seated = self._principals.get(principal.id)
@@ -367,18 +429,13 @@ class SessionRoster:
                 return False
             if is_dm:
                 return True                   # NN4: the DM answers any prompt at any time
-            # The prompt bus (M1) owns prompt state; the roster must not reach into it, so
-            # it asks through the hook. With no bus installed there are no live prompts,
-            # and a player is denied — the safe direction.
-            if self.prompt_lookup is None:
-                return False
-            owner, live = self.prompt_lookup(target.prompt_id)
-            return bool(live) and owner == seated.id
+            return _ASK_THE_BUS
 
         return False                          # closed enum: an unhandled action denies
 
     # ── Persistence ─────────────────────────────────────────────────────────
 
+    @_locked
     def to_dict(self) -> dict:
         """The on-disk shape. No seats list (A1), no credentials and no signing key
         (A3/A5) — the only ownership record on disk is each agent's ``controller``."""
