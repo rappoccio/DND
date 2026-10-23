@@ -334,17 +334,32 @@ def show_fog_menu(app, pos):
     (D-M7-6), everything, or back to fully fogged."""
     def _reveal_all_fog():
         app.bm.reveal_all_fog()
-    def _reset_fog():
-        app.bm.clear_fog()
-        app._mark_fog_dirty()   # re-reveal whatever the party can currently see
     items = []
     cell = app._screen_to_cell(*pos)
     if cell is not None:
         items += [("Reveal this room", lambda c=cell: set_room_fog(app, c, revealed=True)),
                   ("Fog this room", lambda c=cell: set_room_fog(app, c, revealed=False))]
     items += [("Reveal all fog", _reveal_all_fog),
-              ("Reset fog", _reset_fog)]
+              ("Reset fog", lambda: reset_fog(app))]
     app._ask_dm("action", "Fog of war", items, anchor=pos)
+
+
+def reset_fog(app):
+    """Re-fog the whole current floor, then re-reveal what the party can see right now
+    (so tokens are not left standing in the dark). Shared by the right-click fog menu
+    and the panel's Reset Fog button; the cleared mask is written out on the next save."""
+    app.bm.clear_fog()
+    app._mark_fog_dirty()
+    app._flash_status("Fog reset")
+    app.session_log.add("The DM reset the fog of war.")
+
+
+def confirm_reset_fog(app, pos):
+    """The panel's Reset Fog button: one confirm step, since a stray click would
+    otherwise throw away everything the party has explored on this floor."""
+    app._ask_dm("action", "Reset fog on this floor?",
+                [("Reset fog", lambda: reset_fog(app)), ("Cancel", lambda: None)],
+                anchor=pos)
 
 
 def set_room_fog(app, cell, revealed: bool) -> int:

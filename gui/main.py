@@ -1511,9 +1511,13 @@ class App:
                                        "Walls: ON" if self._walls_enabled else "Walls: OFF",
                                        (90, 80, 110), (125, 110, 150), font=self.font_md)
         toggle_fog_y = toggle_walls_y + B + self._BTN_GAP
-        self.btn_toggle_fog = Button(pygame.Rect(px, toggle_fog_y, W, B),
+        self.btn_toggle_fog = Button(pygame.Rect(px, toggle_fog_y, HW, B),
                                      "Fog: ON" if self.show_fog else "Fog: OFF",
                                      (70, 90, 105), (100, 125, 145), font=self.font_md)
+        # Re-fog the whole current floor (confirm first). Shares the fog row.
+        self.btn_reset_fog = Button(pygame.Rect(px + HW + 4, toggle_fog_y, HW, B),
+                                    "Reset Fog",
+                                    (70, 90, 105), (100, 125, 145), font=self.font_md)
         toggle_anim_y = toggle_fog_y + B + self._BTN_GAP
         self.btn_toggle_animate = Button(pygame.Rect(px, toggle_anim_y, W, B),
                                          "Animate: ON" if self.animate_moves else "Animate: OFF",
@@ -1581,7 +1585,8 @@ class App:
         self.btn_generate_dungeon.rect.update(px, gen_y + off, W, B)
         self.btn_dungeon.rect.update(px, dung_y + off, W, B)
         self.btn_toggle_walls.rect.update(px, toggle_walls_y + off, W, B)
-        self.btn_toggle_fog.rect.update(px, toggle_fog_y + off, W, B)
+        self.btn_toggle_fog.rect.update(px, toggle_fog_y + off, SW, B)
+        self.btn_reset_fog.rect.update(px + SW + 4, toggle_fog_y + off, SW, B)
         self.btn_toggle_animate.rect.update(px, toggle_anim_y + off, W, B)
         self.btn_set_grid.rect.update(px, set_grid_y + off, W, B)
         self.btn_quit.rect.update(px, quit_y + off, W, B)
@@ -18710,6 +18715,7 @@ class App:
 
         # ── Toggle Fog of War button ───────────────────────────────────────
         self.btn_toggle_fog.draw(self.screen)
+        self.btn_reset_fog.draw(self.screen)
 
         # ── Toggle move animation (M4b B-7) ────────────────────────────────
         self.btn_toggle_animate.draw(self.screen)
@@ -19597,6 +19603,10 @@ class App:
                 # Toggle Fog of War (grey never-seen cells + hide enemy tokens in them)
                 if _hit(self.btn_toggle_fog):
                     self._set_fog(not self.show_fog)
+
+                # Reset Fog — re-fog the whole current floor (asks to confirm)
+                if _hit(self.btn_reset_fog):
+                    board.confirm_reset_fog(self, event.pos)
 
                 # Toggle move animation: off lands moves at once (M4b B-7)
                 if _hit(self.btn_toggle_animate):
