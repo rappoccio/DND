@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "entry_page_id": "main_floor_ravenloft",
+  "pages": [
+    {
+      "id": "main_floor_ravenloft",
+      "png": "main_floor_ravenloft.png",
+      "encounter_base": "main_floor_ravenloft_agents.json",
+      "origin": [
+        0,
+        0,
+        0
+      ],
+      "cols": 66,
+      "rows": 46
+    },
+    {
+      "id": "court_of_the_count_ravenloft",
+      "png": "court_of_the_count_ravenloft.png",
+      "encounter_base": "main_floor_ravenloft_court_of_the_count_ravenloft_agents.json",
+      "origin": [
+        0,
+        0,
+        1
+      ],
+      "cols": 31,
+      "rows": 60
+    }
+  ]
+}

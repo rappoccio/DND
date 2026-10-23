@@ -1,0 +1,1985 @@
+{
+  "version": 1,
+  "entry_page_id": "main_floor_ravenloft",
+  "pages": [
+    {
+      "id": "dungeons_and_catacombs_ravenloft",
+      "png": "dungeons_and_catacombs_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_dungeons_and_catacombs_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        -2
+      ],
+      "cols": 76,
+      "rows": 62,
+      "rooms": [
+        {
+          "key": "K79",
+          "name": "Western Stair",
+          "cell": [
+            19,
+            14
+          ]
+        },
+        {
+          "key": "K80",
+          "name": "Center Stair",
+          "cell": [
+            20,
+            17
+          ]
+        },
+        {
+          "key": "K83",
+          "name": "Spiral Stair",
+          "cell": [
+            23,
+            17
+          ]
+        },
+        {
+          "key": "K78",
+          "name": "Brazier Room",
+          "cell": [
+            21,
+            22
+          ]
+        },
+        {
+          "key": "K77",
+          "name": "Observation Balcony",
+          "cell": [
+            20,
+            29
+          ]
+        },
+        {
+          "key": "K76",
+          "name": "Torture Chamber",
+          "cell": [
+            20,
+            35
+          ]
+        },
+        {
+          "key": "K74",
+          "name": "North Dungeon",
+          "cell": [
+            30,
+            27
+          ]
+        },
+        {
+          "key": "K73",
+          "name": "Dungeon Hall",
+          "cell": [
+            28,
+            34
+          ]
+        },
+        {
+          "key": "K75",
+          "name": "South Dungeon",
+          "cell": [
+            30,
+            42
+          ]
+        },
+        {
+          "key": "K81",
+          "name": "Tunnel",
+          "cell": [
+            32,
+            14
+          ]
+        },
+        {
+          "key": "K82",
+          "name": "Marble Slide",
+          "cell": [
+            33,
+            20
+          ]
+        },
+        {
+          "key": "K18",
+          "name": "High Tower Staircase",
+          "cell": [
+            41,
+            32
+          ]
+        },
+        {
+          "key": "K21",
+          "name": "South Tower Stair",
+          "cell": [
+            36,
+            34
+          ]
+        },
+        {
+          "key": "K84",
+          "name": "Catacombs",
+          "cell": [
+            53,
+            28
+          ]
+        },
+        {
+          "key": "K85",
+          "name": "Sergei's Tomb",
+          "cell": [
+            52,
+            6
+          ]
+        },
+        {
+          "key": "K86",
+          "name": "Strahd's Tomb",
+          "cell": [
+            52,
+            53
+          ]
+        },
+        {
+          "key": "K87",
+          "name": "Guardians",
+          "cell": [
+            63,
+            30
+          ]
+        },
+        {
+          "key": "K88",
+          "name": "Tomb of King Barov and Queen Ravenovia",
+          "cell": [
+            69,
+            30
+          ]
+        }
+      ]
+    },
+    {
+      "id": "larders_of_ill_omen_ravenloft",
+      "png": "larders_of_ill_omen_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_larders_of_ill_omen_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        -1
+      ],
+      "cols": 76,
+      "rows": 62,
+      "rooms": [
+        {
+          "key": "K79",
+          "name": "Western Stair",
+          "cell": [
+            21,
+            11
+          ]
+        },
+        {
+          "key": "K72",
+          "name": "Chamberlain's Office",
+          "cell": [
+            28,
+            11
+          ]
+        },
+        {
+          "key": "K83",
+          "name": "Spiral Stair",
+          "cell": [
+            23,
+            20
+          ]
+        },
+        {
+          "key": "K83a",
+          "name": "Spiral Stair Landing",
+          "cell": [
+            24,
+            16
+          ]
+        },
+        {
+          "key": "K70",
+          "name": "Kingsmen Hall",
+          "cell": [
+            28,
+            17
+          ]
+        },
+        {
+          "key": "K71",
+          "name": "Kingsmen Quarters",
+          "cell": [
+            33,
+            17
+          ]
+        },
+        {
+          "key": "K66",
+          "name": "Butler's Quarters",
+          "cell": [
+            33,
+            21
+          ]
+        },
+        {
+          "key": "K65",
+          "name": "Kitchen",
+          "cell": [
+            39,
+            21
+          ]
+        },
+        {
+          "key": "K67",
+          "name": "Hall of Bones",
+          "cell": [
+            28,
+            26
+          ]
+        },
+        {
+          "key": "K62",
+          "name": "Servants' Hall",
+          "cell": [
+            38,
+            26
+          ]
+        },
+        {
+          "key": "K61",
+          "name": "Elevator Trap",
+          "cell": [
+            35,
+            30
+          ]
+        },
+        {
+          "key": "K63",
+          "name": "Wine Cellar",
+          "cell": [
+            47,
+            26
+          ]
+        },
+        {
+          "key": "K69",
+          "name": "Guards' Quarters",
+          "cell": [
+            22,
+            35
+          ]
+        },
+        {
+          "key": "K68",
+          "name": "Guards' Run",
+          "cell": [
+            28,
+            35
+          ]
+        },
+        {
+          "key": "K64",
+          "name": "Guards' Stair",
+          "cell": [
+            31,
+            38
+          ]
+        },
+        {
+          "key": "K21",
+          "name": "South Tower Stair",
+          "cell": [
+            35,
+            34
+          ]
+        },
+        {
+          "key": "K18",
+          "name": "High Tower Staircase",
+          "cell": [
+            41,
+            35
+          ]
+        },
+        {
+          "key": "K18a",
+          "name": "High Tower Shaft",
+          "cell": [
+            41,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": "main_floor_ravenloft",
+      "png": "main_floor_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        0
+      ],
+      "cols": 76,
+      "rows": 62,
+      "rooms": [
+        {
+          "key": "K7",
+          "name": "Entry",
+          "cell": [
+            23,
+            25
+          ]
+        },
+        {
+          "key": "K8",
+          "name": "Great Entry",
+          "cell": [
+            29,
+            26
+          ]
+        },
+        {
+          "key": "K9",
+          "name": "Guests' Hall",
+          "cell": [
+            29,
+            32
+          ]
+        },
+        {
+          "key": "K10",
+          "name": "Dining Hall",
+          "cell": [
+            24,
+            33
+          ]
+        },
+        {
+          "key": "K11",
+          "name": "South Archers' Post",
+          "cell": [
+            17,
+            34
+          ]
+        },
+        {
+          "key": "K12",
+          "name": "Turret Post",
+          "cell": [
+            14,
+            12
+          ]
+        },
+        {
+          "key": "K12",
+          "name": "Turret Post",
+          "cell": [
+            14,
+            39
+          ]
+        },
+        {
+          "key": "K13",
+          "name": "Turret Corridor",
+          "cell": [
+            24,
+            12
+          ]
+        },
+        {
+          "key": "K13",
+          "name": "Turret Corridor",
+          "cell": [
+            22,
+            39
+          ]
+        },
+        {
+          "key": "K14",
+          "name": "Hall of Faith",
+          "cell": [
+            40,
+            26
+          ]
+        },
+        {
+          "key": "K15",
+          "name": "Chapel",
+          "cell": [
+            53,
+            26
+          ]
+        },
+        {
+          "key": "K16",
+          "name": "North Chapel Access",
+          "cell": [
+            46,
+            21
+          ]
+        },
+        {
+          "key": "K17",
+          "name": "South Chapel Access",
+          "cell": [
+            46,
+            30
+          ]
+        },
+        {
+          "key": "K18",
+          "name": "High Tower Staircase",
+          "cell": [
+            41,
+            35
+          ]
+        },
+        {
+          "key": "K18a",
+          "name": "High Tower Shaft",
+          "cell": [
+            41,
+            32
+          ]
+        },
+        {
+          "key": "K19",
+          "name": "Grand Landing",
+          "cell": [
+            23,
+            16
+          ]
+        },
+        {
+          "key": "K20",
+          "name": "Heart of Sorrow",
+          "cell": [
+            35,
+            21
+          ]
+        },
+        {
+          "key": "K20a",
+          "name": "",
+          "cell": [
+            38,
+            18
+          ]
+        },
+        {
+          "key": "K21",
+          "name": "South Tower Stair",
+          "cell": [
+            35,
+            34
+          ]
+        },
+        {
+          "key": "K22",
+          "name": "Archers' Post",
+          "cell": [
+            17,
+            18
+          ]
+        },
+        {
+          "key": "K23",
+          "name": "Servants' Entrance",
+          "cell": [
+            44,
+            13
+          ]
+        },
+        {
+          "key": "K24",
+          "name": "Servants' Quarters",
+          "cell": [
+            42,
+            9
+          ]
+        },
+        {
+          "key": "K29",
+          "name": "Creaky Landing",
+          "cell": [
+            43,
+            22
+          ]
+        },
+        {
+          "key": "K31a",
+          "name": "Elevator Shaft",
+          "cell": [
+            35,
+            31
+          ]
+        },
+        {
+          "key": "K64",
+          "name": "Guards' Stair",
+          "cell": [
+            31,
+            38
+          ]
+        },
+        {
+          "key": "K83",
+          "name": "Spiral Stair",
+          "cell": [
+            24,
+            21
+          ]
+        }
+      ]
+    },
+    {
+      "id": "court_of_the_count_ravenloft",
+      "png": "court_of_the_count_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_court_of_the_count_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        1
+      ],
+      "cols": 76,
+      "rows": 62,
+      "rooms": [
+        {
+          "key": "K12",
+          "name": "Turret Post",
+          "cell": [
+            14,
+            12
+          ]
+        },
+        {
+          "key": "K12",
+          "name": "Turret Post",
+          "cell": [
+            14,
+            39
+          ]
+        },
+        {
+          "key": "K13",
+          "name": "Turret Corridor",
+          "cell": [
+            22,
+            12
+          ]
+        },
+        {
+          "key": "K13",
+          "name": "Turret Corridor",
+          "cell": [
+            22,
+            39
+          ]
+        },
+        {
+          "key": "K22",
+          "name": "Archers' Post",
+          "cell": [
+            17,
+            18
+          ]
+        },
+        {
+          "key": "K22",
+          "name": "Archers' Post",
+          "cell": [
+            17,
+            34
+          ]
+        },
+        {
+          "key": "K32",
+          "name": "Maid in Hell",
+          "cell": [
+            25,
+            17
+          ]
+        },
+        {
+          "key": "K33",
+          "name": "King's Apartment Stair",
+          "cell": [
+            29,
+            15
+          ]
+        },
+        {
+          "key": "K83",
+          "name": "Spiral Stair",
+          "cell": [
+            24,
+            22
+          ]
+        },
+        {
+          "key": "K25",
+          "name": "Audience Hall",
+          "cell": [
+            23,
+            30
+          ]
+        },
+        {
+          "key": "K26",
+          "name": "Guards' Post",
+          "cell": [
+            28,
+            27
+          ]
+        },
+        {
+          "key": "K27",
+          "name": "King's Hall",
+          "cell": [
+            36,
+            26
+          ]
+        },
+        {
+          "key": "K20",
+          "name": "Heart of Sorrow",
+          "cell": [
+            36,
+            22
+          ]
+        },
+        {
+          "key": "K29",
+          "name": "Creaky Landing",
+          "cell": [
+            43,
+            21
+          ]
+        },
+        {
+          "key": "K28",
+          "name": "King's Balcony",
+          "cell": [
+            46,
+            26
+          ]
+        },
+        {
+          "key": "K34",
+          "name": "Servants' Upper Floor",
+          "cell": [
+            41,
+            10
+          ]
+        },
+        {
+          "key": "K30",
+          "name": "King's Accountant",
+          "cell": [
+            30,
+            33
+          ]
+        },
+        {
+          "key": "K31",
+          "name": "Trapworks",
+          "cell": [
+            35,
+            28
+          ]
+        },
+        {
+          "key": "K31a",
+          "name": "Elevator Shaft",
+          "cell": [
+            35,
+            31
+          ]
+        },
+        {
+          "key": "K21",
+          "name": "South Tower Stair",
+          "cell": [
+            35,
+            34
+          ]
+        },
+        {
+          "key": "K64",
+          "name": "Guards' Stair",
+          "cell": [
+            31,
+            38
+          ]
+        },
+        {
+          "key": "K18",
+          "name": "High Tower Staircase",
+          "cell": [
+            41,
+            35
+          ]
+        },
+        {
+          "key": "K18a",
+          "name": "High Tower Shaft",
+          "cell": [
+            41,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rooms_of_weeping_ravenloft",
+      "png": "rooms_of_weeping_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_rooms_of_weeping_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        2
+      ],
+      "cols": 76,
+      "rows": 62,
+      "rooms": [
+        {
+          "key": "K45",
+          "name": "Hall of Heroes",
+          "cell": [
+            23,
+            17
+          ]
+        },
+        {
+          "key": "K42",
+          "name": "King's Bedchamber",
+          "cell": [
+            19,
+            26
+          ]
+        },
+        {
+          "key": "K43",
+          "name": "Bath Chamber",
+          "cell": [
+            19,
+            32
+          ]
+        },
+        {
+          "key": "K44",
+          "name": "Closet",
+          "cell": [
+            17,
+            36
+          ]
+        },
+        {
+          "key": "K37",
+          "name": "Study",
+          "cell": [
+            27,
+            25
+          ]
+        },
+        {
+          "key": "K36",
+          "name": "Dining Hall of the Count",
+          "cell": [
+            26,
+            34
+          ]
+        },
+        {
+          "key": "K35",
+          "name": "Guardian Vermin",
+          "cell": [
+            31,
+            32
+          ]
+        },
+        {
+          "key": "K38",
+          "name": "False Treasury",
+          "cell": [
+            34,
+            26
+          ]
+        },
+        {
+          "key": "K39",
+          "name": "Hall of Webs",
+          "cell": [
+            39,
+            26
+          ]
+        },
+        {
+          "key": "K40",
+          "name": "Belfry",
+          "cell": [
+            46,
+            26
+          ]
+        },
+        {
+          "key": "K41",
+          "name": "Treasury",
+          "cell": [
+            44,
+            20
+          ]
+        },
+        {
+          "key": "K31a",
+          "name": "Elevator Shaft",
+          "cell": [
+            35,
+            31
+          ]
+        },
+        {
+          "key": "K31b",
+          "name": "Shaft Access",
+          "cell": [
+            36,
+            29
+          ]
+        },
+        {
+          "key": "K21",
+          "name": "South Tower Stair",
+          "cell": [
+            35,
+            34
+          ]
+        },
+        {
+          "key": "K64",
+          "name": "Guards' Stair",
+          "cell": [
+            31,
+            38
+          ]
+        },
+        {
+          "key": "K18",
+          "name": "High Tower Staircase",
+          "cell": [
+            41,
+            35
+          ]
+        },
+        {
+          "key": "K18a",
+          "name": "High Tower Shaft",
+          "cell": [
+            41,
+            32
+          ]
+        },
+        {
+          "key": "K83",
+          "name": "Spiral Stair",
+          "cell": [
+            23,
+            21
+          ]
+        },
+        {
+          "key": "K20",
+          "name": "Heart of Sorrow",
+          "cell": [
+            37,
+            22
+          ]
+        },
+        {
+          "key": "K46",
+          "name": "Parapets",
+          "cell": [
+            22,
+            12
+          ]
+        },
+        {
+          "key": "K46",
+          "name": "Parapets",
+          "cell": [
+            14,
+            26
+          ]
+        },
+        {
+          "key": "K46",
+          "name": "Parapets",
+          "cell": [
+            22,
+            39
+          ]
+        },
+        {
+          "key": "K46",
+          "name": "Parapets",
+          "cell": [
+            52,
+            17
+          ]
+        }
+      ]
+    },
+    {
+      "id": "spires_map6_ravenloft",
+      "png": "spires_map6_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_spires_map6_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        3
+      ],
+      "cols": 76,
+      "rows": 62,
+      "rooms": [
+        {
+          "key": "K53",
+          "name": "Rooftop",
+          "cell": [
+            22,
+            17
+          ]
+        },
+        {
+          "key": "K53",
+          "name": "Rooftop",
+          "cell": [
+            22,
+            33
+          ]
+        },
+        {
+          "key": "K52",
+          "name": "Smokestack",
+          "cell": [
+            32,
+            25
+          ]
+        },
+        {
+          "key": "K20",
+          "name": "Heart of Sorrow",
+          "cell": [
+            36,
+            18
+          ]
+        },
+        {
+          "key": "K49",
+          "name": "Lounge",
+          "cell": [
+            31,
+            33
+          ]
+        },
+        {
+          "key": "K47",
+          "name": "Portrait of Strahd",
+          "cell": [
+            34,
+            31
+          ]
+        },
+        {
+          "key": "K21",
+          "name": "South Tower Stair",
+          "cell": [
+            37,
+            32
+          ]
+        },
+        {
+          "key": "K50",
+          "name": "Guest Room",
+          "cell": [
+            35,
+            38
+          ]
+        },
+        {
+          "key": "K51",
+          "name": "Closet",
+          "cell": [
+            38,
+            37
+          ]
+        },
+        {
+          "key": "K18",
+          "name": "High Tower Staircase",
+          "cell": [
+            41,
+            35
+          ]
+        },
+        {
+          "key": "K18a",
+          "name": "High Tower Shaft",
+          "cell": [
+            42,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": "spires_map7_ravenloft",
+      "png": "spires_map7_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_spires_map7_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        4
+      ],
+      "cols": 76,
+      "rows": 62,
+      "rooms": [
+        {
+          "key": "K20",
+          "name": "Heart of Sorrow",
+          "cell": [
+            37,
+            19
+          ]
+        },
+        {
+          "key": "K54",
+          "name": "Familiar Room",
+          "cell": [
+            30,
+            34
+          ]
+        },
+        {
+          "key": "K56",
+          "name": "Cauldron",
+          "cell": [
+            34,
+            34
+          ]
+        },
+        {
+          "key": "K55",
+          "name": "Element Room",
+          "cell": [
+            34,
+            38
+          ]
+        },
+        {
+          "key": "K48",
+          "name": "Offstair",
+          "cell": [
+            35,
+            31
+          ]
+        },
+        {
+          "key": "K18",
+          "name": "High Tower Staircase",
+          "cell": [
+            40,
+            35
+          ]
+        },
+        {
+          "key": "K18a",
+          "name": "High Tower Shaft",
+          "cell": [
+            42,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": "spires_map8_ravenloft",
+      "png": "spires_map8_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_spires_map8_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        5
+      ],
+      "cols": 76,
+      "rows": 62,
+      "rooms": [
+        {
+          "key": "K20",
+          "name": "Heart of Sorrow",
+          "cell": [
+            36,
+            19
+          ]
+        },
+        {
+          "key": "K58",
+          "name": "Bridge",
+          "cell": [
+            36,
+            27
+          ]
+        },
+        {
+          "key": "K57",
+          "name": "Tower Roof",
+          "cell": [
+            32,
+            36
+          ]
+        },
+        {
+          "key": "K18",
+          "name": "High Tower Staircase",
+          "cell": [
+            40,
+            34
+          ]
+        },
+        {
+          "key": "K18a",
+          "name": "High Tower Shaft",
+          "cell": [
+            41,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tower_peaks_map9_10_ravenloft",
+      "png": "tower_peaks_map9_10_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_tower_peaks_map9_10_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        6
+      ],
+      "cols": 76,
+      "rows": 62,
+      "rooms": [
+        {
+          "key": "K60",
+          "name": "North Tower Peak",
+          "cell": [
+            36,
+            18
+          ]
+        },
+        {
+          "key": "K59",
+          "name": "High Tower Peak",
+          "cell": [
+            39,
+            31
+          ]
+        },
+        {
+          "key": "K18a",
+          "name": "High Tower Shaft",
+          "cell": [
+            41,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": "north_tower_roof_map9_ravenloft",
+      "png": "north_tower_roof_map9_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_north_tower_roof_map9_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        7
+      ],
+      "cols": 76,
+      "rows": 62,
+      "rooms": [
+        {
+          "key": "K60a",
+          "name": "North Tower Roof",
+          "cell": [
+            36,
+            20
+          ]
+        }
+      ]
+    }
+  ],
+  "staircases": [
+    {
+      "id": 1,
+      "name": "Staircase 1",
+      "label": "K79/K72",
+      "ends": [
+        {
+          "page": "dungeons_and_catacombs_ravenloft",
+          "cell": [
+            25,
+            10
+          ]
+        },
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            25,
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Staircase 2",
+      "label": "K83",
+      "ends": [
+        {
+          "page": "dungeons_and_catacombs_ravenloft",
+          "cell": [
+            23,
+            17
+          ]
+        },
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            23,
+            17
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Staircase 4",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "dungeons_and_catacombs_ravenloft",
+          "cell": [
+            37,
+            33
+          ]
+        },
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            37,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Staircase 5",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "dungeons_and_catacombs_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        },
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Staircase 6",
+      "label": "K83",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            25,
+            22
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            25,
+            22
+          ]
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Staircase 7",
+      "label": "K64",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            32,
+            36
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            32,
+            36
+          ]
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Staircase 8",
+      "label": "K20a",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            36,
+            17
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            36,
+            16
+          ]
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Staircase 9",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            35,
+            33
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            35,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Staircase 10",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            39,
+            32
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            39,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Staircase 11",
+      "label": "K63/K23",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            44,
+            19
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            44,
+            19
+          ]
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Staircase 12",
+      "label": "side stair W",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            21,
+            20
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            21,
+            20
+          ]
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Staircase 13",
+      "label": "K83",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            22,
+            22
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            22,
+            22
+          ]
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Staircase 14",
+      "label": "side stair E",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            27,
+            20
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            27,
+            20
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Staircase 15",
+      "label": "K64",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            33,
+            41
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            33,
+            41
+          ]
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Staircase 16",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            37,
+            33
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            37,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Staircase 17",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Staircase 18",
+      "label": "K20",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            39,
+            23
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            41,
+            18
+          ]
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Staircase 19",
+      "label": "K24",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            41,
+            8
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            41,
+            8
+          ]
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Staircase 20",
+      "label": "east stair",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            45,
+            18
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            45,
+            18
+          ]
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Staircase 21",
+      "label": "K13",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            17,
+            14
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            17,
+            14
+          ]
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Staircase 22",
+      "label": "K83",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            25,
+            22
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            25,
+            23
+          ]
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Staircase 23",
+      "label": "K64",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            32,
+            36
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            32,
+            36
+          ]
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Staircase 24",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            36,
+            33
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            36,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Staircase 25",
+      "label": "K20",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            41,
+            21
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            38,
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Staircase 26",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            39,
+            32
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            39,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Staircase 27",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            37,
+            32
+          ]
+        },
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            37,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Staircase 28",
+      "label": "K20",
+      "ends": [
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            39,
+            15
+          ]
+        },
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            38,
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "name": "Staircase 29",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        },
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            39,
+            29
+          ]
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "name": "Staircase 30",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            36,
+            29
+          ]
+        },
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            36,
+            29
+          ]
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Staircase 31",
+      "label": "K20",
+      "ends": [
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            39,
+            16
+          ]
+        },
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            36,
+            24
+          ]
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Staircase 32",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            39,
+            33
+          ]
+        },
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Staircase 33",
+      "label": "K20",
+      "ends": [
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            35,
+            24
+          ]
+        },
+        {
+          "page": "spires_map8_ravenloft",
+          "cell": [
+            37,
+            24
+          ]
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Staircase 34",
+      "label": "K21/K57",
+      "ends": [
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            37,
+            33
+          ]
+        },
+        {
+          "page": "spires_map8_ravenloft",
+          "cell": [
+            35,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Staircase 35",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            39,
+            29
+          ]
+        },
+        {
+          "page": "spires_map8_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "name": "Staircase 36",
+      "label": "K20 to K60",
+      "ends": [
+        {
+          "page": "spires_map8_ravenloft",
+          "cell": [
+            35,
+            25
+          ]
+        },
+        {
+          "page": "tower_peaks_map9_10_ravenloft",
+          "cell": [
+            39,
+            20
+          ]
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "name": "Staircase 37",
+      "label": "K18 to K59",
+      "ends": [
+        {
+          "page": "spires_map8_ravenloft",
+          "cell": [
+            39,
+            33
+          ]
+        },
+        {
+          "page": "tower_peaks_map9_10_ravenloft",
+          "cell": [
+            43,
+            30
+          ]
+        }
+      ]
+    }
+  ],
+  "next_staircase_id": 39
+}

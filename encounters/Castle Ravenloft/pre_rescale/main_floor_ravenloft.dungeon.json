@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "entry_page_id": "main_floor_ravenloft",
+  "pages": [
+    {
+      "id": "main_floor_ravenloft",
+      "png": "main_floor_ravenloft_32px.png",
+      "encounter_base": "main_floor_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -5,
+        0
+      ],
+      "cols": 68,
+      "rows": 48
+    },
+    {
+      "id": "court_of_the_count_ravenloft",
+      "png": "court_of_the_count_ravenloft_32px.png",
+      "encounter_base": "main_floor_ravenloft_court_of_the_count_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -4,
+        1
+      ],
+      "cols": 68,
+      "rows": 46
+    },
+    {
+      "id": "rooms_of_weeping_ravenloft",
+      "png": "rooms_of_weeping_ravenloft_32px.png",
+      "encounter_base": "main_floor_ravenloft_rooms_of_weeping_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -5,
+        2
+      ],
+      "cols": 68,
+      "rows": 47
+    },
+    {
+      "id": "larders_of_ill_omen_ravenloft",
+      "png": "larders_of_ill_omen_ravenloft_32px.png",
+      "encounter_base": "main_floor_ravenloft_larders_of_ill_omen_ravenloft_agents.json",
+      "origin": [
+        2,
+        7,
+        -1
+      ],
+      "cols": 48,
+      "rows": 35
+    },
+    {
+      "id": "dungeons_and_catacombs_ravenloft",
+      "png": "dungeons_and_catacombs_ravenloft_32px.png",
+      "encounter_base": "main_floor_ravenloft_dungeons_and_catacombs_ravenloft_agents.json",
+      "origin": [
+        0,
+        0,
+        -2
+      ],
+      "cols": 62,
+      "rows": 61
+    }
+  ]
+}

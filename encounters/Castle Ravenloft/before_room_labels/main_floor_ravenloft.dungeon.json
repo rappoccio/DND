@@ -1,0 +1,885 @@
+{
+  "version": 1,
+  "entry_page_id": "main_floor_ravenloft",
+  "pages": [
+    {
+      "id": "dungeons_and_catacombs_ravenloft",
+      "png": "dungeons_and_catacombs_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_dungeons_and_catacombs_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        -2
+      ],
+      "cols": 76,
+      "rows": 62
+    },
+    {
+      "id": "larders_of_ill_omen_ravenloft",
+      "png": "larders_of_ill_omen_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_larders_of_ill_omen_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        -1
+      ],
+      "cols": 76,
+      "rows": 62
+    },
+    {
+      "id": "main_floor_ravenloft",
+      "png": "main_floor_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        0
+      ],
+      "cols": 76,
+      "rows": 62
+    },
+    {
+      "id": "court_of_the_count_ravenloft",
+      "png": "court_of_the_count_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_court_of_the_count_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        1
+      ],
+      "cols": 76,
+      "rows": 62
+    },
+    {
+      "id": "rooms_of_weeping_ravenloft",
+      "png": "rooms_of_weeping_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_rooms_of_weeping_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        2
+      ],
+      "cols": 76,
+      "rows": 62
+    },
+    {
+      "id": "spires_map6_ravenloft",
+      "png": "spires_map6_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_spires_map6_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        3
+      ],
+      "cols": 76,
+      "rows": 62
+    },
+    {
+      "id": "spires_map7_ravenloft",
+      "png": "spires_map7_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_spires_map7_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        4
+      ],
+      "cols": 76,
+      "rows": 62
+    },
+    {
+      "id": "spires_map8_ravenloft",
+      "png": "spires_map8_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_spires_map8_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        5
+      ],
+      "cols": 76,
+      "rows": 62
+    },
+    {
+      "id": "tower_peaks_map9_10_ravenloft",
+      "png": "tower_peaks_map9_10_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_tower_peaks_map9_10_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        6
+      ],
+      "cols": 76,
+      "rows": 62
+    },
+    {
+      "id": "north_tower_roof_map9_ravenloft",
+      "png": "north_tower_roof_map9_ravenloft_frame.png",
+      "encounter_base": "main_floor_ravenloft_north_tower_roof_map9_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -7,
+        7
+      ],
+      "cols": 76,
+      "rows": 62
+    }
+  ],
+  "staircases": [
+    {
+      "id": 1,
+      "name": "Staircase 1",
+      "label": "K79/K72",
+      "ends": [
+        {
+          "page": "dungeons_and_catacombs_ravenloft",
+          "cell": [
+            25,
+            10
+          ]
+        },
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            25,
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Staircase 2",
+      "label": "K83",
+      "ends": [
+        {
+          "page": "dungeons_and_catacombs_ravenloft",
+          "cell": [
+            23,
+            17
+          ]
+        },
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            23,
+            17
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Staircase 4",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "dungeons_and_catacombs_ravenloft",
+          "cell": [
+            37,
+            33
+          ]
+        },
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            37,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Staircase 5",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "dungeons_and_catacombs_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        },
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Staircase 6",
+      "label": "K83",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            25,
+            22
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            25,
+            22
+          ]
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Staircase 7",
+      "label": "K64",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            32,
+            36
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            32,
+            36
+          ]
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Staircase 8",
+      "label": "K20a",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            36,
+            17
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            36,
+            16
+          ]
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Staircase 9",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            35,
+            33
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            35,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Staircase 10",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            39,
+            32
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            39,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Staircase 11",
+      "label": "K63/K23",
+      "ends": [
+        {
+          "page": "larders_of_ill_omen_ravenloft",
+          "cell": [
+            44,
+            19
+          ]
+        },
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            44,
+            19
+          ]
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Staircase 12",
+      "label": "side stair W",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            21,
+            20
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            21,
+            20
+          ]
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Staircase 13",
+      "label": "K83",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            22,
+            22
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            22,
+            22
+          ]
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Staircase 14",
+      "label": "side stair E",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            27,
+            20
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            27,
+            20
+          ]
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Staircase 15",
+      "label": "K64",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            33,
+            41
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            33,
+            41
+          ]
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Staircase 16",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            37,
+            33
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            37,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Staircase 17",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Staircase 18",
+      "label": "K20",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            39,
+            23
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            41,
+            18
+          ]
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Staircase 19",
+      "label": "K24",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            41,
+            8
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            41,
+            8
+          ]
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Staircase 20",
+      "label": "east stair",
+      "ends": [
+        {
+          "page": "main_floor_ravenloft",
+          "cell": [
+            45,
+            18
+          ]
+        },
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            45,
+            18
+          ]
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Staircase 21",
+      "label": "K13",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            17,
+            14
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            17,
+            14
+          ]
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Staircase 22",
+      "label": "K83",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            25,
+            22
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            25,
+            23
+          ]
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Staircase 23",
+      "label": "K64",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            32,
+            36
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            32,
+            36
+          ]
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Staircase 24",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            36,
+            33
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            36,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Staircase 25",
+      "label": "K20",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            41,
+            21
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            38,
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Staircase 26",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "court_of_the_count_ravenloft",
+          "cell": [
+            39,
+            32
+          ]
+        },
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            39,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Staircase 27",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            37,
+            32
+          ]
+        },
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            37,
+            32
+          ]
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Staircase 28",
+      "label": "K20",
+      "ends": [
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            39,
+            15
+          ]
+        },
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            38,
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "name": "Staircase 29",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "rooms_of_weeping_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        },
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            39,
+            29
+          ]
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "name": "Staircase 30",
+      "label": "K21",
+      "ends": [
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            36,
+            29
+          ]
+        },
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            36,
+            29
+          ]
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Staircase 31",
+      "label": "K20",
+      "ends": [
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            39,
+            16
+          ]
+        },
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            36,
+            24
+          ]
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Staircase 32",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "spires_map6_ravenloft",
+          "cell": [
+            39,
+            33
+          ]
+        },
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Staircase 33",
+      "label": "K20",
+      "ends": [
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            35,
+            24
+          ]
+        },
+        {
+          "page": "spires_map8_ravenloft",
+          "cell": [
+            37,
+            24
+          ]
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Staircase 34",
+      "label": "K21/K57",
+      "ends": [
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            37,
+            33
+          ]
+        },
+        {
+          "page": "spires_map8_ravenloft",
+          "cell": [
+            35,
+            33
+          ]
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Staircase 35",
+      "label": "K18",
+      "ends": [
+        {
+          "page": "spires_map7_ravenloft",
+          "cell": [
+            39,
+            29
+          ]
+        },
+        {
+          "page": "spires_map8_ravenloft",
+          "cell": [
+            39,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "name": "Staircase 36",
+      "label": "K20 to K60",
+      "ends": [
+        {
+          "page": "spires_map8_ravenloft",
+          "cell": [
+            35,
+            25
+          ]
+        },
+        {
+          "page": "tower_peaks_map9_10_ravenloft",
+          "cell": [
+            39,
+            20
+          ]
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "name": "Staircase 37",
+      "label": "K18 to K59",
+      "ends": [
+        {
+          "page": "spires_map8_ravenloft",
+          "cell": [
+            39,
+            33
+          ]
+        },
+        {
+          "page": "tower_peaks_map9_10_ravenloft",
+          "cell": [
+            43,
+            30
+          ]
+        }
+      ]
+    }
+  ],
+  "next_staircase_id": 39
+}

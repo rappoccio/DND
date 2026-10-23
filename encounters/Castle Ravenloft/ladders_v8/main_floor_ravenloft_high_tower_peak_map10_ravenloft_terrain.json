@@ -1,0 +1,42 @@
+{
+  "regions": [],
+  "walls_enabled": true,
+  "doors": [],
+  "ladders": [
+    {
+      "cells": [
+        [
+          4,
+          5
+        ]
+      ],
+      "target": [
+        25,
+        23,
+        -2
+      ]
+    },
+    {
+      "cells": [
+        [
+          7,
+          8
+        ]
+      ],
+      "target": [
+        29,
+        28,
+        5
+      ]
+    }
+  ],
+  "manual_grid": {
+    "cell_px": 16,
+    "anchor": [
+      0,
+      0
+    ],
+    "square_ft": 10
+  },
+  "explored": []
+}

@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "entry_page_id": "main_floor_ravenloft",
+  "pages": [
+    {
+      "id": "main_floor_ravenloft",
+      "png": "main_floor_ravenloft_32px.png",
+      "encounter_base": "main_floor_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -5,
+        0
+      ],
+      "cols": 68,
+      "rows": 48
+    },
+    {
+      "id": "court_of_the_count_ravenloft",
+      "png": "court_of_the_count_ravenloft_32px.png",
+      "encounter_base": "main_floor_ravenloft_court_of_the_count_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -4,
+        1
+      ],
+      "cols": 68,
+      "rows": 46
+    },
+    {
+      "id": "rooms_of_weeping_ravenloft",
+      "png": "rooms_of_weeping_ravenloft_32px.png",
+      "encounter_base": "main_floor_ravenloft_rooms_of_weeping_ravenloft_agents.json",
+      "origin": [
+        -15,
+        -5,
+        2
+      ],
+      "cols": 68,
+      "rows": 47
+    },
+    {
+      "id": "larders_of_ill_omen_ravenloft",
+      "png": "larders_of_ill_omen_ravenloft_32px.png",
+      "encounter_base": "main_floor_ravenloft_larders_of_ill_omen_ravenloft_agents.json",
+      "origin": [
+        2,
+        7,
+        -1
+      ],
+      "cols": 48,
+      "rows": 35
+    },
+    {
+      "id": "dungeons_and_catacombs_ravenloft",
+      "png": "dungeons_and_catacombs_ravenloft_32px.png",
+      "encounter_base": "main_floor_ravenloft_dungeons_and_catacombs_ravenloft_agents.json",
+      "origin": [
+        0,
+        0,
+        -2
+      ],
+      "cols": 63,
+      "rows": 62
+    },
+    {
+      "id": "spires_map6_ravenloft",
+      "png": "spires_map6_ravenloft.png",
+      "encounter_base": "main_floor_ravenloft_spires_map6_ravenloft_agents.json",
+      "origin": [
+        -4,
+        -1,
+        3
+      ],
+      "cols": 51,
+      "rows": 40
+    },
+    {
+      "id": "spires_map7_ravenloft",
+      "png": "spires_map7_ravenloft.png",
+      "encounter_base": "main_floor_ravenloft_spires_map7_ravenloft_agents.json",
+      "origin": [
+        13,
+        5,
+        4
+      ],
+      "cols": 20,
+      "rows": 30
+    },
+    {
+      "id": "spires_map8_ravenloft",
+      "png": "spires_map8_ravenloft.png",
+      "encounter_base": "main_floor_ravenloft_spires_map8_ravenloft_agents.json",
+      "origin": [
+        12,
+        5,
+        5
+      ],
+      "cols": 21,
+      "rows": 29
+    },
+    {
+      "id": "north_tower_peak_map9_ravenloft",
+      "png": "north_tower_peak_map9_ravenloft.png",
+      "encounter_base": "main_floor_ravenloft_north_tower_peak_map9_ravenloft_agents.json",
+      "origin": [
+        16,
+        8,
+        6
+      ],
+      "cols": 11,
+      "rows": 10
+    },
+    {
+      "id": "north_tower_roof_map9_ravenloft",
+      "png": "north_tower_roof_map9_ravenloft.png",
+      "encounter_base": "main_floor_ravenloft_north_tower_roof_map9_ravenloft_agents.json",
+      "origin": [
+        16,
+        8,
+        7
+      ],
+      "cols": 11,
+      "rows": 10
+    },
+    {
+      "id": "high_tower_peak_map10_ravenloft",
+      "png": "high_tower_peak_map10_ravenloft.png",
+      "encounter_base": "main_floor_ravenloft_high_tower_peak_map10_ravenloft_agents.json",
+      "origin": [
+        22,
+        20,
+        6
+      ],
+      "cols": 10,
+      "rows": 10
+    }
+  ]
+}

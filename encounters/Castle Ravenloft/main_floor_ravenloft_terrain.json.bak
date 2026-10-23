@@ -1,0 +1,15 @@
+{
+  "regions": [],
+  "walls_enabled": false,
+  "doors": [],
+  "ladders": [],
+  "manual_grid": {
+    "cell_px": 16,
+    "anchor": [
+      135,
+      214
+    ],
+    "square_ft": 10
+  },
+  "explored": []
+}
