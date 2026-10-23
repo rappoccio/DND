@@ -8899,6 +8899,36 @@
     "selective_targeting": false
   },
   {
+    "name": "RahadinDeathlyChoir",
+    "description": "Any creature within 10 feet of Rahadin hears the screams of the thousands he has killed. As a bonus action, Rahadin forces each such creature to make a DC 16 Wisdom saving throw, taking 16 (3d10) Psychic damage on a failed save, or half as much on a successful one.",
+    "type": "Harm",
+    "geometry": "Sphere",
+    "attack_type": "Save",
+    "save_ability": "SaveWis",
+    "casting_time": "BonusAction",
+    "range": 0,
+    "radius": 10,
+    "width": 0,
+    "length": 0,
+    "duration": 99,
+    "magic_damage_types": [
+      {
+        "type": "Psychic",
+        "num_dice": 3,
+        "die_size": 10
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "enchantment",
+    "moves_with_caster": true,
+    "selective_targeting": false
+  },
+  {
     "name": "Zone of Truth",
     "description": "You create a magical zone that guards against deception in a 15-foot-radius Sphere centered on a point within range. Until the spell ends, a creature that enters the spell's area for the first time on a turn or starts its turn there makes a Charisma saving throw. On a failed save, a creature can't speak a deliberate lie while in the radius. You know whether a creature succeeds or fails on this save. An affected creature is aware of the spell and can avoid answering questions to which it would normally respond with a lie. Such a creature can be evasive yet must be truthful.",
     "type": "Harm",

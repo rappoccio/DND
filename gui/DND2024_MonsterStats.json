@@ -66190,5 +66190,144 @@
         "has_lair": false
       }
     }
+  },
+  "Rahadin": {
+    "name": "Rahadin",
+    "size": "Medium",
+    "stats": {
+      "str": 14,
+      "dex": 22,
+      "con": 17,
+      "intel": 15,
+      "wis": 16,
+      "cha": 18,
+      "hp_max": 135,
+      "hp_cur": 135,
+      "ac": 18,
+      "speed_walk": 35,
+      "speed_fly": 0,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 4,
+      "num_attacks": 3,
+      "save_prof_str": false,
+      "save_prof_dex": false,
+      "save_prof_con": true,
+      "save_prof_intel": false,
+      "save_prof_wis": true,
+      "save_prof_cha": false,
+      "temp_hp": 0,
+      "is_npc": true,
+      "magic_resistances": [],
+      "physical_resistances": [],
+      "magic_immunities": [],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [],
+      "physical_vulnerabilities": [],
+      "spellcasting_ability": "cha"
+    },
+    "weapons": {
+      "main_hand": {
+        "name": "Scimitar",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "finesse": true,
+        "bonus_damage": 6,
+        "physical_damage_types": [
+          {
+            "type": "Slashing",
+            "num_dice": 1,
+            "die_size": 6
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None"
+      },
+      "off_hand": "",
+      "ranged": {
+        "name": "Poisoned Dart",
+        "type": "ranged",
+        "reach_ft": 5,
+        "normal_range_ft": 20,
+        "long_range_ft": 60,
+        "proficient": true,
+        "bonus_damage": 6,
+        "physical_damage_types": [
+          {
+            "type": "Piercing",
+            "num_dice": 1,
+            "die_size": 4
+          }
+        ],
+        "magic_damage_types": [
+          {
+            "type": "Poison",
+            "num_dice": 2,
+            "die_size": 4
+          }
+        ],
+        "conditions": [],
+        "mastery": "None"
+      }
+    },
+    "meta": {
+      "type": "Humanoid (Elf)",
+      "cr": "10",
+      "alignment": "Lawful Evil",
+      "source": "Curse of Strahd",
+      "traits": [
+        "Deathly Choir",
+        "Fey Ancestry",
+        "Mask of the Wild"
+      ],
+      "languages": [
+        "Common",
+        "Elvish"
+      ],
+      "senses": {
+        "darkvision": 60
+      },
+      "passive_perception": 21,
+      "immunities_conditions": [],
+      "save_dc": 16,
+      "saving_throws": [
+        "Constitution",
+        "Wisdom"
+      ],
+      "action_notes": "Multiattack: three Scimitar attacks, or two Poisoned Dart attacks",
+      "bonus_action": "Deathly Choir (RahadinDeathlyChoir)",
+      "reaction": null,
+      "legendary": {
+        "resistance": null,
+        "resistance_in_lair": null,
+        "actions": null,
+        "actions_in_lair": null,
+        "has_lair": false
+      }
+    },
+    "spell_indices": [
+      "RahadinDeathlyChoir",
+      "Misty Step",
+      "Phantom Steed",
+      "Magic Weapon",
+      "Nondetection"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "RahadinDeathlyChoir"
+      ],
+      "3": [
+        "Misty Step",
+        "Phantom Steed"
+      ],
+      "1": [
+        "Magic Weapon",
+        "Nondetection"
+      ]
+    }
   }
 }
