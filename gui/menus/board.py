@@ -179,8 +179,42 @@ def show_agent_menu(app, hit, pos):
                   ("Edit Items",   _open_items),
                   ("Set Teams…",   app._open_team_picker),
                   (_on_deck_label, _toggle_on_deck)]
-    # Evoker Wizards only: manage the set of creatures safe from their AoEs.
     _hs = app.combat.get_agent_stats(app.bm, hit)
+    # Spell slots: DM sets each level's remaining count (0..max) by hand.
+    if any(_hs.spell_slots_max):
+        def _spell_slots_menu(h=hit, pos=pos):
+            st = app.combat.get_agent_stats(app.bm, h)
+            smax, scur = list(st.spell_slots_max), list(st.spell_slots_remaining)
+            def _set_all(full, hh=h):
+                s = app.combat.get_agent_stats(app.bm, hh)
+                s.spell_slots_remaining = (list(s.spell_slots_max) if full
+                                           else [0] * len(s.spell_slots_max))
+                app.combat.set_agent_stats(app.bm, hh, s)
+                app._combat_log_add(f"{app._agent_name(hh)}: all spell slots "
+                                    f"{'restored' if full else 'expended'}.")
+            def _level_menu(lvl, hh=h, p=pos, parent=None):
+                def _set(n, h2=hh):
+                    s = app.combat.get_agent_stats(app.bm, h2)
+                    slots = list(s.spell_slots_remaining)
+                    slots[lvl - 1] = n
+                    s.spell_slots_remaining = slots
+                    app.combat.set_agent_stats(app.bm, h2, s)
+                    app._combat_log_add(f"{app._agent_name(h2)}: level {lvl} spell slots "
+                                        f"set to {n}/{s.spell_slots_max[lvl - 1]}.")
+                cur = scur[lvl - 1]
+                opts = [(("✓ " if n == cur else "") + str(n), (lambda nn=n: _set(nn)))
+                        for n in range(smax[lvl - 1] + 1)]
+                app._ask_dm("action", f"{app._agent_name(hh)}: level {lvl} slots",
+                            opts, anchor=p, actor_idx=hh, parent=parent)
+            opts = [(f"Level {lvl}: {scur[lvl - 1]}/{smax[lvl - 1]} ▸",
+                     (lambda lv=lvl: _level_menu(lv, parent=app.prompts.answering)))
+                    for lvl in range(1, len(smax) + 1) if smax[lvl - 1] > 0]
+            opts += [("Restore all", lambda: _set_all(True)),
+                     ("Expend all",  lambda: _set_all(False))]
+            app._ask_dm("action", f"{app._agent_name(h)}: spell slots", opts,
+                        anchor=pos, actor_idx=h, parent=app.prompts.answering)
+        _menu_opts.append(("Spell Slots…", _spell_slots_menu))
+    # Evoker Wizards only: manage the set of creatures safe from their AoEs.
     if (_hs.character_class == rpg.CharacterClass.Wizard and
             _hs.wizard_subclass == rpg.WizardSubclass.Evoker):
         _menu_opts.append(("Edit Safe Targets", _edit_safe_targets))

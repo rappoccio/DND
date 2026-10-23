@@ -143,12 +143,14 @@ def test_board_menus_build_with_every_submenu():
     freshly built root, which is the exact path the Agents bug would have taken.
 
     The probe is made a level-10 Fiend Warlock so Fiendish Resilience, the one
-    conditional submenu, is on the menu."""
+    conditional submenu, is on the menu. It is given spell slots so Spell Slots… is too."""
     app = _app()
     stats = app.combat.get_agent_stats(app.bm, 0)
     stats.character_class = rpg.CharacterClass.Warlock
     stats.warlock_subclass = rpg.WarlockSubclass.Fiend
     stats.char_level = 10
+    stats.spell_slots_max = [0, 0, 0, 0, 2, 0, 0, 0, 0]
+    stats.spell_slots_remaining = [0, 0, 0, 0, 2, 0, 0, 0, 0]
     app.combat.set_agent_stats(app.bm, 0, stats)
     pos = (100, 100)
 
@@ -156,9 +158,10 @@ def test_board_menus_build_with_every_submenu():
     root = app.prompts.live
     _assert_rows("board.show_agent_menu", root)
     subs = [o.label for o in root.options if o.label.endswith("▸")
-            or o.label == "Fiendish Resilience"]
+            or o.label in ("Fiendish Resilience", "Spell Slots…")]
     assert "Fiendish Resilience" in subs, "the Fiend probe did not reach its submenu"
-    assert len(subs) == 3, f"expected three submenus, found {subs}"
+    assert "Spell Slots…" in subs, "the caster probe did not reach Spell Slots…"
+    assert len(subs) == 4, f"expected four submenus, found {subs}"
     app.prompts.cancel()
 
     for label in subs:
@@ -179,6 +182,48 @@ def test_board_menus_build_with_every_submenu():
     _assert_rows("board.show_on_deck_recall_menu", app.prompts.live)
     app.prompts.cancel()
     print(f"✅ test_board_menus_build_with_every_submenu passed ({len(subs)} submenus)")
+
+
+def test_spell_slots_menu_sets_remaining():
+    """Spell Slots… › Level N › count writes that level's remaining slots; Restore all
+    and Expend all set every level at once. A non-caster gets no Spell Slots… row."""
+    app = _app()
+    pos = (100, 100)
+    board.show_agent_menu(app, 0, pos)
+    assert "Spell Slots…" not in [o.label for o in app.prompts.live.options], \
+        "a slotless agent offered Spell Slots…"
+    app.prompts.cancel()
+
+    stats = app.combat.get_agent_stats(app.bm, 0)
+    stats.spell_slots_max = [4, 3, 2, 0, 0, 0, 0, 0, 0]
+    stats.spell_slots_remaining = [4, 3, 2, 0, 0, 0, 0, 0, 0]
+    app.combat.set_agent_stats(app.bm, 0, stats)
+    remaining = lambda: list(app.combat.get_agent_stats(app.bm, 0).spell_slots_remaining)
+
+    def _open_slots():
+        board.show_agent_menu(app, 0, pos)
+        assert app.prompts.choose_label("Spell Slots…").ok
+        return app.prompts.live
+
+    slots = _open_slots()
+    _assert_rows("Spell Slots…", slots)
+    labels = [o.label for o in slots.options]
+    assert labels == ["Level 1: 4/4 ▸", "Level 2: 3/3 ▸", "Level 3: 2/2 ▸",
+                      "Restore all", "Expend all"], labels
+    assert app.prompts.choose_label("Level 2: 3/3 ▸").ok
+    lvl = app.prompts.live
+    assert lvl.parent_id == slots.id, "the level submenu did not name its parent"
+    assert [o.label for o in lvl.options] == ["0", "1", "2", "✓ 3"]
+    assert app.prompts.choose_label("1").ok
+    assert remaining()[:3] == [4, 1, 2], remaining()
+
+    _open_slots()
+    assert app.prompts.choose_label("Expend all").ok
+    assert remaining() == [0] * 9, remaining()
+    _open_slots()
+    assert app.prompts.choose_label("Restore all").ok
+    assert remaining()[:3] == [4, 3, 2], remaining()
+    print("✅ test_spell_slots_menu_sets_remaining passed")
 
 
 def _as(app, cls, level, **fields):
@@ -316,6 +361,7 @@ def main():
     tests = [test_every_app_attribute_a_menu_names_exists,
              test_every_solo_builder_builds_its_prompt,
              test_board_menus_build_with_every_submenu,
+             test_spell_slots_menu_sets_remaining,
              test_panel_feature_menus_build_choose_and_cancel,
              test_on_deck_row_deploys_its_group_on_click,
              test_the_seam_did_not_move]
