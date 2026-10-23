@@ -281,34 +281,29 @@ def _staircase_menu(app, sid, anchor):
                 parent=app.prompts.answering)
 
 
-def show_door_menu(app, cell, pos):
-    """Context menu for a door cell: Open/Close (object interaction) and Pick Lock
-    (an action). Knock is cast as a normal spell at the cell, not from here.
+def door_is_near(app, actor, door) -> bool:
+    """True if creature ``actor`` can reach ``door``: adjacent to any of a cell door's
+    cells (a wide door is reachable from any of them), or standing in a cell either side
+    of an edge door."""
+    agent = app.bm.placed_agents[actor]
+    if door.edges:
+        o, n = agent.origin, agent.size
+        return any(o.col <= c.col < o.col + n and o.row <= c.row < o.row + n
+                   for c in door_touch_cells(door))
+    return any(app._cell_adjacent_to_agent(agent, c) for c in door.cells)
 
-    During combat the acting creature must be adjacent; out of combat the DM acts
-    freely (pick-lock uses the currently selected agent)."""
-    di = app._door_index_at(cell, pos)
-    if di < 0:
-        return
-    door = app.bm.doors[di]
-    actor = app._current_agent_idx() if app.combat_active else app.selected_idx
 
-    if app.combat_active:
-        if actor < 0:
-            return
-        agent = app.bm.placed_agents[actor]
-        # A wide door is reachable from any of its cells, not just the clicked one; an
-        # edge door from standing in a cell either side of it.
-        if door.edges:
-            o, n = agent.origin, agent.size
-            near = any(o.col <= c.col < o.col + n and o.row <= c.row < o.row + n
-                       for c in door_touch_cells(door))
-        else:
-            near = any(app._cell_adjacent_to_agent(agent, c) for c in door.cells)
-        if not near:
-            app._combat_log_add("Move adjacent to the door to interact with it.")
-            return
+def doors_near(app, actor) -> list:
+    """The doors creature ``actor`` stands next to, in ``bm.doors`` order."""
+    if not 0 <= actor < len(app.bm.placed_agents):
+        return []
+    return [d for d in app.bm.doors if door_is_near(app, actor, d)]
 
+
+def door_options(app, actor, door) -> list:
+    """The (label, callback) rows of the door menu for ``door``, acted on by ``actor``:
+    Open/Close (object interaction), Pick Lock and Break Down (actions), and passage
+    through an open, linked door."""
     options = []
     door_id = door.id
     if door.broken:
@@ -344,7 +339,29 @@ def show_door_menu(app, cell, pos):
     if link is not None and door.open:
         options.append((f"Go through door (to floor {link[2]})",
                         lambda a=actor, d=door_id: app._use_door_link(d, a)))
+    return options
 
+
+def show_door_menu(app, cell, pos):
+    """Context menu for a door cell: Open/Close (object interaction) and Pick Lock
+    (an action). Knock is cast as a normal spell at the cell, not from here.
+
+    During combat the acting creature must be adjacent; out of combat the DM acts
+    freely (pick-lock uses the currently selected agent)."""
+    di = app._door_index_at(cell, pos)
+    if di < 0:
+        return
+    door = app.bm.doors[di]
+    actor = app._current_agent_idx() if app.combat_active else app.selected_idx
+
+    if app.combat_active:
+        if actor < 0:
+            return
+        if not door_is_near(app, actor, door):
+            app._combat_log_add("Move adjacent to the door to interact with it.")
+            return
+
+    options = door_options(app, actor, door)
     if options:
         # Out of combat `actor` is the selected token (or -1), and controller_of folds
         # an unknown index to the DM — which is the right owner for DM-side authoring.

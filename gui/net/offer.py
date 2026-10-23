@@ -30,6 +30,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from actions import GROUP_BONUS, GROUP_SESSION, METAMAGIC_VALUE_BY_ID
+from menus import dm as dm_menus
 from net import move as net_move, picks as net_picks
 from net.roster import DM_PRINCIPAL_ID
 from prompts import Option
@@ -46,6 +47,11 @@ PLAYABLE = frozenset({I, C_I})
 # The offer's Move row's section. Move is not an `ActionMenu` id, so it has no
 # `Action.group`; the player's screen draws it under its own "Movement" heading (QOL Q4).
 GROUP_MOVEMENT = "movement"
+
+# The offer's door rows: one per door the actor stands next to, drawn under Movement.
+# Like Move, not an `ActionMenu` id; choosing one opens the door menu the DM gets by
+# clicking the door, owned by the player. The id carries the door's own id.
+DOOR_PREFIX = "door_"
 
 # The pick rows whose arms `net/picks.WIRED` projects (M5d). `CLASS` keeps their class;
 # this is what makes them playable. A row goes in only with every arm it can reach.
@@ -209,12 +215,14 @@ def offered(app, actor: int, owner: str) -> list[Option]:
     should not hold a reference that could.
 
     Move comes first (D-M5-4). It is not an `ActionMenu` id and its callback is not
-    `perform`: it opens the Move prompt, which `net/move.py` owns.
+    `perform`: it opens the Move prompt, which `net/move.py` owns. The door rows follow
+    it, one per door within reach (`door_rows`).
 
     Each row carries the DM panel's section and colour (QOL Q4), and the rows come in the
     order the panel draws them, so the player's screen lays the turn out as the DM's does.
     """
     out: list[Option] = [replace(net_move.option(app, actor, owner), group=GROUP_MOVEMENT)]
+    out += door_rows(app, actor)
     for act in app._action_menu.values():
         # The one filter for DM tools. It is the group test, not the DM rows of `CLASS`,
         # so that a session tool added later is withheld whether or not anyone
@@ -234,6 +242,30 @@ def offered(app, actor: int, owner: str) -> list[Option]:
             out.append(Option(act.id, act.label, enabled=False,
                               disabled_reason=REASONS.get(cls, _REASON_UNKNOWN), **look))
     return _dm_order(app, out)
+
+
+def door_rows(app, actor: int) -> list[Option]:
+    """One row per door within reach of `actor`. Its label names what the door menu will
+    lead with, so a re-post follows the door opening or closing; the menu itself is
+    `menus.dm.door_options`, asked of the actor's controller."""
+    doors = dm_menus.doors_near(app, actor)
+    rows = []
+    for n, door in enumerate(doors, 1):
+        state = ("broken" if door.broken else "open" if door.open
+                 else "locked" if (door.locked or door.arcane_lock) else "closed")
+        label = f"Door ({state})" if len(doors) == 1 else f"Door {n} ({state})"
+        rows.append(Option(f"{DOOR_PREFIX}{door.id}", label, group=GROUP_MOVEMENT,
+                           on_choose=lambda d=door.id: _door_menu(app, actor, d)))
+    return rows
+
+
+def _door_menu(app, actor: int, door_id: int) -> None:
+    door = app._door_by_id(door_id)
+    if door is None:
+        return
+    options = dm_menus.door_options(app, actor, door)
+    if options:
+        app._ask_actor(actor, "action", "Door", options)
 
 
 def _color(app, action_id: str) -> str | None:

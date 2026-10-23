@@ -20,6 +20,7 @@ what it offers, when, to whom, and that the DM console neither sees it nor loses
   · each row carries the DM's section and colour (QOL Q4)   (test_the_offer_carries_the_dm_look)
   · the rows come in the DM panel's draw order (QOL Q4)     (test_the_offer_is_in_the_dm_draw_order)
   · the client draws the DM's sections and colours (Q4)     (test_the_offer_in_the_client)
+  · a door beside the token is on the offer, and opens      (test_a_door_beside_the_token)
 
 The scene is `test_combat_panel.py`'s, through `test_action_menu.py`'s `_app`: Aria is a
 Fighter 5 with Skarn adjacent, and Kira, a player, controls her.
@@ -504,6 +505,43 @@ def test_end_turn_moves_the_offer():
     print("✅ test_end_turn_moves_the_offer")
 
 
+def test_a_door_beside_the_token():
+    """A door next to Aria puts a Door row under Movement on Kira's offer. Choosing it asks
+    Kira the door menu; Open opens the door, and the fresh offer says so. A door out of
+    reach puts no row on the offer."""
+    from helpers import can_place_agent
+    import rpg_battle_map as rpg
+    app, kira, wen = _aria_turn()
+    aria = _idx(app, "Aria")
+    o = app.bm.placed_agents[aria].origin
+    far = next(rpg.Cell(c, r) for r in range(app.bm.grid_rows) for c in range(app.bm.grid_cols)
+               if max(abs(c - o.col), abs(r - o.row)) > 3
+               and can_place_agent(app.bm, rpg.Cell(c, r), 1))
+    app.bm.add_door(far, False, False, 15, False)
+    _frame(app)
+    assert not any(o_.id.startswith(net_offer.DOOR_PREFIX) for o_ in _offer(app).options)
+
+    near = next(rpg.Cell(o.col + dc, o.row + dr) for dc in (-1, 0, 1) for dr in (-1, 0, 1)
+                if (dc or dr) and can_place_agent(app.bm, rpg.Cell(o.col + dc, o.row + dr), 1))
+    did = app.bm.add_door(near, False, False, 15, False)
+    _frame(app)
+    offer = _offer(app)
+    rows = {o_.id: o_ for o_ in offer.options}
+    row = rows[f"{net_offer.DOOR_PREFIX}{did}"]
+    assert row.label == "Door (closed)" and row.enabled and row.group == "movement", row
+    assert app.prompts.submit(offer.id, Response(option=row.id), kira.id).ok
+
+    menu = app.prompts.live
+    assert menu is not None and menu.title == "Door" and menu.owner == kira.id, menu
+    pick = next(o_ for o_ in menu.options if o_.label == "Open door")
+    assert app.prompts.submit(menu.id, Response(option=pick.id), kira.id).ok
+    assert app._door_by_id(did).open, "the door did not open"
+    _frame(app)
+    rows = {o_.id: o_ for o_ in _offer(app).options}
+    assert rows[f"{net_offer.DOOR_PREFIX}{did}"].label == "Door (open)"
+    print("✅ test_a_door_beside_the_token")
+
+
 if __name__ == "__main__":
     # `_start_combat` truncates the live session's logs in the cwd; put them back.
     _saved = _preserve_cwd_logs()
@@ -522,6 +560,7 @@ if __name__ == "__main__":
         test_the_offer_carries_the_dm_look()
         test_the_offer_is_in_the_dm_draw_order()
         test_the_offer_in_the_client()
+        test_a_door_beside_the_token()
     finally:
         _restore_cwd_logs(_saved)
     print("\n✅ All offer tests passed!")
