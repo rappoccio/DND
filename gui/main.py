@@ -19390,6 +19390,18 @@ class App:
             on_map = not self._panel_rect().collidepoint(
                 *getattr(event, 'pos', (-1, -1)))
 
+            # Right-click a door during combat → door menu, even from the acting creature's
+            # own square. An edge door borders the cell the creature stands in, so a left
+            # click on its line would land on the token and start a drag; the right button
+            # keeps left-drag free for moving through and out of doorways. Ahead of the
+            # other right-click menus, which skip once this one is up.
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and on_map \
+                    and self.combat_active and not self.context_menu.visible \
+                    and not self._target_pick_armed():
+                cell = self._screen_to_cell(*event.pos)
+                if cell is not None and self._door_index_at(cell, event.pos) >= 0:
+                    dm.show_door_menu(self, cell, event.pos)
+
             # Right-click on a placed agent → context menu (disabled during combat)
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and on_map \
                     and not self.combat_active:
