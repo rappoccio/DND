@@ -5013,6 +5013,38 @@ class App:
             self._combat_log_add(
                 f"{name} ×{len(idxs)} removed from On Deck — will roll Initiative at combat start.")
 
+    def _mob_clearable(self, idx: int) -> bool:
+        """Whether the DM may clear `idx` off the board mid-combat: a non-party creature
+        that is down (0 HP, dying or dead), still in play and not an On Deck reserve."""
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return False
+        pt = self.bm.placed_agents[idx]
+        if pt.removed_from_play or pt.faction == PC_FACTION or self.bm.is_agent_on_deck(idx):
+            return False
+        return pt.conditions.dead or self.combat.get_agent_stats(self.bm, idx).hp_cur <= 0
+
+    def _clear_mob(self, idx: int):
+        """Clear a downed mob from the board at the DM's discretion, so others can take its
+        square. Tombstoned (removed_from_play) like a dismissed summon: it stays in
+        placedAgents_ and the initiative list so indices stay valid, but no longer occupies
+        its cell, takes a turn or renders."""
+        if not self._mob_clearable(idx):
+            return
+        is_cur = idx == self._current_agent_idx()
+        if is_cur and self.combat_paused:
+            self._combat_log_add("Resume combat to clear the acting creature.")
+            self._flush_combat_log()
+            return
+        self._drop_concentration_for_agent(idx)
+        self.bm.set_agent_removed_from_play(idx, True)
+        self._combat_log_add(f"The DM clears {self.bm.placed_agents[idx].name} from the board.")
+        if self.selected_idx == idx:
+            self.selected_idx = -1
+        self._mark_fog_dirty()
+        if is_cur:
+            self._advance_turn()
+        self._flush_combat_log()
+
     # ── Thief's Reflexes (Rogue Thief L17) ─────────────────────────────────
     def _apply_thief_reflexes(self):
         """Insert a second initiative entry at (Initiative - 10) for each Thief L17+ so it takes
@@ -19379,6 +19411,20 @@ class App:
                     if hit >= 0 and self.bm.is_agent_on_deck(hit) \
                             and not self.bm.is_agent_removed_from_play(hit):
                         board.show_on_deck_recall_menu(self, hit, event.pos)
+
+            # During combat, right-click a downed mob (0 HP, dying or a corpse) → Clear mob,
+            # so a PC can take its square. A corpse is skipped by _agent_at, and a live
+            # creature may stand on one, so fall back to the body under the cursor.
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and on_map \
+                    and self.combat_active and not self.context_menu.visible \
+                    and not self._target_pick_armed():
+                cell = self._screen_to_cell(*event.pos)
+                if cell is not None:
+                    hit = self._agent_at(cell)
+                    if not self._mob_clearable(hit):
+                        hit = self._corpse_at(cell)
+                    if self._mob_clearable(hit):
+                        board.show_clear_mob_menu(self, hit, event.pos)
 
             # Right-click a dropped weapon (no agent on the cell) → DM delete menu.
             # Works during combat too, so the DM can clean up the battlefield.

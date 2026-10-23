@@ -1,16 +1,17 @@
 """The right-click menus on the board — what the DM gets by right-clicking the map.
 
-Three builders, one per thing a right-click can land on:
+Four builders, one per thing a right-click can land on:
 
   · **a placed agent, out of combat** — the DM menu: edit the token's name, sprite,
     stats, gear and spells, its teams and On Deck state, the Evoker and Fiend extras,
     and two submenus (NPC automation, and who controls the token).
   · **an On Deck reserve, in combat** — recall just that one mob.
+  · **a downed mob, in combat** — clear it off the board so a PC can take its square.
   · **an empty cell, with fog on** — reveal all fog, or reset it.
 
-A dropped item is the fourth target, and its menu is `dm.show_item_context_menu`.
+A dropped item is the fifth target, and its menu is `dm.show_item_context_menu`.
 
-All three end in `_ask_dm`, for the same reason `dm.py`'s builders do: the owner is
+All four end in `_ask_dm`, for the same reason `dm.py`'s builders do: the owner is
 pinned to the DM, never derived from whoever holds the token, so seating a player on a
 creature cannot hand them its authoring menu.
 
@@ -355,6 +356,15 @@ def show_on_deck_recall_menu(app, hit, pos):
         app._deploy_on_deck_idxs([h], label)
     app._ask_dm("action", f"{nm}: On Deck reserve",
                  [(f"Recall '{nm}' from On Deck", _recall_one)],
+                 anchor=pos, actor_idx=hit)
+
+
+def show_clear_mob_menu(app, hit, pos):
+    """In combat, clear a downed mob off the board at the DM's discretion, freeing its
+    square for a PC. `hit` has already passed `App._mob_clearable`."""
+    nm = app.bm.placed_agents[hit].name
+    app._ask_dm("action", f"{nm}: downed",
+                 [(f"Clear mob '{nm}'", lambda h=hit: app._clear_mob(h))],
                  anchor=pos, actor_idx=hit)
 
 

@@ -340,6 +340,46 @@ def test_on_deck_row_deploys_its_group_on_click():
     print("✅ test_on_deck_row_deploys_its_group_on_click passed")
 
 
+def test_clear_mob_frees_a_downed_foes_square():
+    """In combat, right-clicking a downed foe offers Clear mob, and clearing it tombstones
+    the body so a PC can take its square. Skarn (a foe next to Aria) is dropped to 0 HP but
+    left dying, the case that still blocks. A downed PC gets no such menu, and clearing
+    a creature off its turn leaves the current actor's turn alone."""
+    from helpers import can_place_agent
+    app = App(MAP_PATH, seed=SEED)
+    _build_scene(app)
+    app._start_combat()
+    app.combat.stop_recording()
+    aria = _goto(app, "Aria")
+    skarn, brannor = _idx(app, "Skarn"), _idx(app, "Brannor")
+    for i in (skarn, brannor):
+        s = app.combat.get_agent_stats(app.bm, i)
+        s.hp_cur = 0
+        app.combat.set_agent_stats(app.bm, i, s)
+    cell = rpg.Cell(4, 3)
+    assert not can_place_agent(app.bm, cell, 1), "a dying Skarn should still block his square"
+
+    def _right_click(idx):
+        app.prompts.cancel()
+        pt = app.bm.placed_agents[idx]
+        sx, sy = app._cell_to_screen(pt.origin.col, pt.origin.row)
+        half = int(app.bm.cell_pixel_size * app.map_scale) // 2
+        post_click(app, (sx + half, sy + half), button=3)
+        return app.prompts.live
+
+    p = _right_click(brannor)
+    assert p is None or not any(o.label.startswith("Clear mob") for o in p.options), \
+        "a downed PC was offered Clear mob"
+    p = _right_click(skarn)
+    assert p is not None, "right-clicking the downed Skarn opened no menu"
+    _assert_rows("board.show_clear_mob_menu", p)
+    assert app.prompts.choose_label("Clear mob 'Skarn'").ok, "could not choose Clear mob"
+    assert app.bm.is_agent_removed_from_play(skarn), "Clear mob did not tombstone Skarn"
+    assert can_place_agent(app.bm, cell, 1), "Skarn's square is still blocked after the clear"
+    assert app._current_agent_idx() == aria, "clearing Skarn took the turn away from Aria"
+    print("✅ test_clear_mob_frees_a_downed_foes_square passed")
+
+
 def test_the_seam_did_not_move():
     """`_ask_actor` and `_ask_dm` stay on `App`: they hold the owner defaulting and the
     anchor, which is where authorization lives. Every relocated builder reaches them
@@ -364,6 +404,7 @@ def main():
              test_spell_slots_menu_sets_remaining,
              test_panel_feature_menus_build_choose_and_cancel,
              test_on_deck_row_deploys_its_group_on_click,
+             test_clear_mob_frees_a_downed_foes_square,
              test_the_seam_did_not_move]
     failed = 0
     for t in tests:
