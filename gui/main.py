@@ -4711,6 +4711,10 @@ class App:
         if not self.bm.placed_agents:
             return
         self._mark_fog_dirty()   # combat start: reveal from the party's opening positions
+        # Reveal now, not next frame, so the bench below reads the party's opening sight;
+        # then creatures in rooms nobody has seen sit On Deck until their room is revealed.
+        self._refresh_fog()
+        self._bench_unrevealed_enemies()
         order = list(self.combat.roll_initiative(self.bm))
         if not order:
             return
@@ -15298,11 +15302,8 @@ class App:
         """Bring on-deck enemies off deck once the party uncovers their room.
 
         The user rule: "all enemies in a room with the fog at least partially cleared
-        come off deck." Rooms come from the carved terrain metadata (`_terrain_rooms`,
-        cells as [c, r]); an enemy sitting in a room with ANY explored cell wakes. An
-        enemy on a cell no carved room claims (a drawn map) uses the engine's room flood,
-        bounded by walls, edge walls and doors; only where that flood finds no closed room
-        does it fall back to the enemy's own footprint. No-op unless the DM is running fog."""
+        come off deck." What counts as the room is `_agents_in_revealed_rooms`.
+        No-op unless the DM is running fog."""
         if not self.show_fog:
             return
         bm = self.bm
@@ -15312,6 +15313,45 @@ class App:
                     and bm.is_agent_on_deck(i)]
         if not reserves:
             return
+        to_deploy = self._agents_in_revealed_rooms(reserves)
+        if not to_deploy:
+            return
+        # Group by name so same-type reserves share one initiative and the log reads well.
+        by_name: dict[str, list[int]] = {}
+        for i in to_deploy:
+            by_name.setdefault(bm.placed_agents[i].name, []).append(i)
+        for name, idxs in by_name.items():
+            self._deploy_on_deck_idxs(idxs, name)
+
+    def _bench_unrevealed_enemies(self):
+        """At Begin Combat under fog, put every non-party creature whose room the party
+        has not seen any of On Deck, so it rolls no initiative now and joins when its room
+        is revealed (`_deploy_fog_revealed_enemies`). The user rule: "combat should only
+        begin when the door is opened into a room". Encounters that start their enemies
+        On Deck never reach this; it covers the ones that don't."""
+        if not self.show_fog:
+            return
+        bm = self.bm
+        live = [i for i, pt in enumerate(bm.placed_agents)
+                if not pt.removed_from_play and pt.faction != PC_FACTION
+                and not bm.is_agent_on_deck(i)
+                and self.combat.get_agent_stats(bm, i).hp_cur > 0]
+        if not live:
+            return
+        seen = set(self._agents_in_revealed_rooms(live))
+        for i in live:
+            if i not in seen:
+                bm.set_agent_on_deck(i, True)
+
+    def _agents_in_revealed_rooms(self, idxs):
+        """The subset of `idxs` standing in a room the party has seen any of.
+
+        Rooms come from the carved terrain metadata (`_terrain_rooms`, cells as [c, r]);
+        an agent in a room with ANY explored cell counts. An agent on a cell no carved
+        room claims (a drawn map) uses the engine's room flood, bounded by walls, edge
+        walls and doors; only where that flood finds no closed room does it fall back to
+        the agent's own footprint."""
+        bm = self.bm
         Cell = rpg.Cell
         rooms = getattr(self, "_terrain_rooms", None) or []
         # cell -> room index, so each enemy finds its room in O(footprint).
@@ -15353,8 +15393,8 @@ class App:
                 flood_room[(c.col, c.row)] = fid
             return flood_seen[fid]
 
-        to_deploy = []
-        for i in reserves:
+        out = []
+        for i in idxs:
             pt = bm.placed_agents[i]
             fp = [(pt.origin.col + dc, pt.origin.row + dr)
                   for dc in range(pt.size) for dr in range(pt.size)]
@@ -15368,15 +15408,8 @@ class App:
                 else:
                     revealed = any(bm.is_explored(Cell(c, r)) for c, r in fp)
             if revealed:
-                to_deploy.append(i)
-        if not to_deploy:
-            return
-        # Group by name so same-type reserves share one initiative and the log reads well.
-        by_name: dict[str, list[int]] = {}
-        for i in to_deploy:
-            by_name.setdefault(bm.placed_agents[i].name, []).append(i)
-        for name, idxs in by_name.items():
-            self._deploy_on_deck_idxs(idxs, name)
+                out.append(i)
+        return out
 
     def _fog_active(self) -> bool:
         """True when the fog overlay + enemy-hide gate should be applied.

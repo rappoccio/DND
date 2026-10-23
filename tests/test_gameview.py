@@ -194,6 +194,10 @@ def test_initiative_never_names_a_hidden_creature():
     """An initiative order is a list of integers, and a creature the agent list does not
     explain is an ambusher announced by arithmetic."""
     def check(app, kira, _spectator):
+        # Begin Combat benches a creature whose room nobody has seen; this test is about
+        # the viewer's filter for one that is in the order anyway (it walked into the fog,
+        # or the fight began before fog went up), so keep Skarn in it.
+        app._bench_unrevealed_enemies = lambda: None
         app._start_combat()
         app.combat.stop_recording()
 
@@ -223,6 +227,7 @@ def test_turn_agent_never_names_a_hidden_creature():
         view = build_view(app, kira)
         assert view["combat"]["turn_agent"] is None, "no combat, so nobody's turn"
 
+        app._bench_unrevealed_enemies = lambda: None   # Skarn in the order: see above
         app._start_combat()
         app.combat.stop_recording()
         order = [e.agent_idx for e in app.initiative_order]

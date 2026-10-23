@@ -852,6 +852,26 @@ def test_reserves_wake_by_drawn_room():
         assert bm.is_explored(rpg.Cell(6, 3)), "the test needs the wall seen"
         app._deploy_fog_revealed_enemies()
         assert bm.is_agent_on_deck(skarn), "a wall seen from outside woke the room behind it"
+
+        # Begin Combat under fog: a creature in an unseen room is not On Deck to start
+        # with, and still rolls no initiative; it joins when its door opens.
+        app, bm, rpg, skarn = scene()
+        bm.set_agent_on_deck(skarn, False)
+        gnasher = next(i for i, pt in enumerate(bm.placed_agents) if pt.name == "Gnasher")
+        for r in range(rows):
+            bm.set_edge_wall(rpg.Cell(6, r), rpg.EdgeSide.East, True)
+        door = bm.add_edge_door(edges=[edge], open=False)
+        bm.set_explored_cells([])
+        app._start_combat()
+        rolled = {e.agent_idx for e in app.initiative_order}
+        assert skarn not in rolled and bm.is_agent_on_deck(skarn), "an unseen room rolled initiative"
+        assert gnasher in rolled, "an enemy in the party's room was left out"
+        bm.open_door(door)
+        app._mark_fog_dirty()
+        app._refresh_fog()
+        assert skarn in {e.agent_idx for e in app.initiative_order}, \
+            "opening the door did not bring its room into initiative"
+        app._end_combat()
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print("✅ test_reserves_wake_by_drawn_room")
