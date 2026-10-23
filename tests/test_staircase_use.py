@@ -120,6 +120,26 @@ def test_carries_both_ways():
     print("  ✅ Ascend and Descend carry the creature to the other end, both ways")
 
 
+def test_blocked_landing():
+    """A landing drawn on dark stair art is often a wall cell. The creature lands on the
+    nearest open cell instead of being skipped by the load (and so lost from both pages)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon(tmp)
+        with open(os.path.join(tmp, "U_terrain.json"), "w") as f:
+            f.write('{"regions": [{"type": "Wall", "x": %d, "y": %d, "width": %d, '
+                    '"height": %d, "multiplier": 0.0}], "walls_enabled": false, '
+                    '"manual_grid": %s}'
+                    % (6 * CELL, 5 * CELL, CELL, CELL, str(GRID).replace("'", '"')))
+        st = app.dungeon.new_staircase("M", (2, 2))
+        app.dungeon.finish_staircase(st.id, "U", (6, 5))
+        idx = _place(app, "Aria", 2, 3)
+        assert app._use_staircase(st.id, 0, idx)
+        assert app.bm.is_blocked(rpg.Cell(6, 5), 1)
+        page, (c, r) = _where(app, "Aria")
+        assert page == "U" and (c, r) != (6, 5) and max(abs(c - 6), abs(r - 5)) == 1, (c, r)
+    print("  ✅ a blocked landing puts the creature on the nearest open cell")
+
+
 def test_neighbouring_and_shared_ends():
     with tempfile.TemporaryDirectory() as tmp:
         app = _dungeon(tmp)
@@ -238,7 +258,7 @@ def test_zoom_kept_across_floors():
 
 def main():
     pygame.init()
-    tests = [test_carries_both_ways, test_neighbouring_and_shared_ends,
+    tests = [test_carries_both_ways, test_blocked_landing, test_neighbouring_and_shared_ends,
              test_refused_in_combat_and_unfinished, test_player_view_under_fog,
              test_player_submit_validated, test_zoom_kept_across_floors]
     failed = 0

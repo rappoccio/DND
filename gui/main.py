@@ -2827,23 +2827,34 @@ class App:
         except (OSError, json.JSONDecodeError):
             doc = {"agents": [], "map_items": []}
         agents = doc.setdefault("agents", [])
-        occupied = {(a.get("col"), a.get("row")) for a in agents}
+
+        def _footprint(c, r, size):
+            return {(c + dc, r + dr) for dc in range(size) for dr in range(size)}
+
+        occupied = set()
+        for a in agents:
+            occupied |= _footprint(a.get("col"), a.get("row"), a.get("size", 1) or 1)
         cols, rows = self.bm.grid_cols, self.bm.grid_rows
         start_c, start_r = (drop_cell if drop_cell is not None else (0, 0))
 
-        def _free_spot():
-            # Spiral-ish scan outward from the drop cell for the first open cell.
+        def _free_spot(size):
+            # Spiral-ish scan outward from the drop cell for the first cell the engine
+            # will actually place on: a landing drawn on dark stair art is often a wall
+            # cell, and _load_agents silently skips a blocked agent — which, since the
+            # source page was already saved without it, would lose the creature.
             for radius in range(0, max(cols, rows) + 1):
-                for r in range(max(0, start_r - radius), min(rows, start_r + radius + 1)):
-                    for c in range(max(0, start_c - radius), min(cols, start_c + radius + 1)):
-                        if (c, r) not in occupied:
+                for r in range(max(0, start_r - radius), min(rows - size + 1, start_r + radius + 1)):
+                    for c in range(max(0, start_c - radius), min(cols - size + 1, start_c + radius + 1)):
+                        if (not (_footprint(c, r, size) & occupied)
+                                and not self.bm.is_blocked(rpg.Cell(c, r), size)):
                             return c, r
             return start_c, start_r
 
         for rec in records:
-            c, r = _free_spot()
+            size = rec.get("size", 1) or 1
+            c, r = _free_spot(size)
             rec["col"], rec["row"] = c, r
-            occupied.add((c, r))
+            occupied |= _footprint(c, r, size)
             agents.append(rec)
         doc.setdefault("map_items", [])
         with open(self._save_path, "w") as f:
