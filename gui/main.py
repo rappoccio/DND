@@ -101,6 +101,8 @@ from prompts import (PromptBus, Option, ContextMenuRenderer, SpellGridRenderer,
 # D-M5-7: the reaction deadline's choices, in the order the session-row button cycles them.
 # None is "no limit". The default is the frozen 60 s.
 REACTION_TIMEOUT_DEFAULT_S = 60
+# Room flood cap for waking On Deck enemies on drawn maps (matches the DM's Reveal this room).
+_ROOM_FLOOD_CAP = 4000
 REACTION_TIMEOUT_CHOICES_S = (15, 30, 60, 120, None)
 
 # S3 (M2b): §4's three rows, as the only place row membership is written down. The
@@ -15298,8 +15300,9 @@ class App:
         The user rule: "all enemies in a room with the fog at least partially cleared
         come off deck." Rooms come from the carved terrain metadata (`_terrain_rooms`,
         cells as [c, r]); an enemy sitting in a room with ANY explored cell wakes. An
-        enemy on a cell no room claims falls back to its own footprint (deploys once any
-        cell it occupies is explored). No-op unless the DM is actually running fog."""
+        enemy on a cell no carved room claims (a drawn map) uses the engine's room flood,
+        bounded by walls, edge walls and doors; only where that flood finds no closed room
+        does it fall back to the enemy's own footprint. No-op unless the DM is running fog."""
         if not self.show_fog:
             return
         bm = self.bm
@@ -15326,14 +15329,44 @@ class App:
                     for c in rooms[ri].get("cells", []))
             return room_seen[ri]
 
+        # Maps with no carved room metadata (drawn maps: Ravenloft's edge walls and edge
+        # doors) get their rooms from the engine's room flood, which stops at wall cells,
+        # wall edges and doors of either kind. Only the room's floor counts as "seen": the
+        # flood also returns the blocking cells round it, and a wall cell the party saw
+        # from the corridor outside says nothing about what is behind it.
+        flood_room: dict[tuple[int, int], int] = {}     # floor cell -> flood id
+        flood_seen: list[bool] = []
+
+        def _flood_revealed(cell) -> bool | None:
+            """Whether the drawn room around `cell` has an explored floor cell; None when
+            the flood finds no closed room (capped), so the caller uses the footprint."""
+            if cell in flood_room:
+                return flood_seen[flood_room[cell]]
+            cells = bm.room_cells(Cell(*cell), _ROOM_FLOOD_CAP)
+            if len(cells) >= _ROOM_FLOOD_CAP:
+                return None
+            floor = [c for c in cells
+                     if bm.door_at(c) < 0 and not bm.is_blocked(c, 1)]
+            fid = len(flood_seen)
+            flood_seen.append(any(bm.is_explored(c) for c in floor))
+            for c in floor:
+                flood_room[(c.col, c.row)] = fid
+            return flood_seen[fid]
+
         to_deploy = []
         for i in reserves:
             pt = bm.placed_agents[i]
             fp = [(pt.origin.col + dc, pt.origin.row + dr)
                   for dc in range(pt.size) for dr in range(pt.size)]
             ri = next((cell_room[cell] for cell in fp if cell in cell_room), None)
-            revealed = (_room_revealed(ri) if ri is not None
-                        else any(bm.is_explored(Cell(c, r)) for c, r in fp))
+            if ri is not None:
+                revealed = _room_revealed(ri)
+            else:
+                flooded = [_flood_revealed(cell) for cell in fp]
+                if any(f is not None for f in flooded):
+                    revealed = any(flooded)
+                else:
+                    revealed = any(bm.is_explored(Cell(c, r)) for c, r in fp)
             if revealed:
                 to_deploy.append(i)
         if not to_deploy:

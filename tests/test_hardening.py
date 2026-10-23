@@ -789,6 +789,74 @@ def test_reveal_and_fog_a_room():
     print("✅ test_reveal_and_fog_a_room")
 
 
+def test_reserves_wake_by_drawn_room():
+    """An On Deck enemy on a drawn map (no carved room metadata) comes off deck when the
+    party sees any floor of its room, and not before. The room is bounded by edge walls
+    and an edge door; while that door is shut the party's sight does not reach in, and a
+    wall cell seen from outside does not count as seeing the room behind it."""
+    import shutil
+    import tempfile
+    from constants import PC_FACTION
+    tmp = tempfile.mkdtemp()
+    try:
+        def scene():
+            app, _, bm, rpg = _blank_map(tmp)
+            idx = {pt.name: i for i, pt in enumerate(bm.placed_agents)}
+            skarn = idx["Skarn"]                  # (9, 9), east of the wall, far from the door
+            bm.set_agent_on_deck(skarn, True)
+            app._terrain_rooms = []
+            return app, bm, rpg, skarn
+
+        # Edge walls east of column 6, with a shut edge door at row 5.
+        app, bm, rpg, skarn = scene()
+        rows = int(bm.grid_rows)
+        for r in range(rows):
+            bm.set_edge_wall(rpg.Cell(6, r), rpg.EdgeSide.East, True)
+        edge = rpg.Edge()
+        edge.cell, edge.side = rpg.Cell(6, 5), rpg.EdgeSide.East
+        door = bm.add_edge_door(edges=[edge], open=False)
+        bm.set_explored_cells([])
+        bm.reveal_fog_for_faction(PC_FACTION)
+        assert not any(bm.is_explored(rpg.Cell(c, r)) for c in range(7, 11) for r in range(rows)), \
+            "the party saw through a shut edge door"
+        app._deploy_fog_revealed_enemies()
+        assert bm.is_agent_on_deck(skarn), "woke behind a shut edge door"
+
+        # One far floor cell of its room seen: the whole room wakes, Skarn included.
+        bm.set_explored(rpg.Cell(7, 0), True)
+        app._deploy_fog_revealed_enemies()
+        assert not bm.is_agent_on_deck(skarn), "a seen room left its reserve On Deck"
+
+        # Through the door, by the party's own sight once it opens.
+        app, bm, rpg, skarn = scene()
+        for r in range(rows):
+            bm.set_edge_wall(rpg.Cell(6, r), rpg.EdgeSide.East, True)
+        door = bm.add_edge_door(edges=[edge], open=False)
+        bm.set_explored_cells([])
+        bm.open_door(door)
+        bm.reveal_fog_for_faction(PC_FACTION)
+        assert not bm.is_explored(rpg.Cell(9, 9))   # Skarn's own cell is still unseen
+        app._deploy_fog_revealed_enemies()
+        assert not bm.is_agent_on_deck(skarn), "an opened edge door did not wake the room"
+
+        # A thick wall of Wall cells down column 6 with a shut door cell: the party sees
+        # the wall from the west, and that wall is in the flood's result, but it is not
+        # the room's floor.
+        app, bm, rpg, skarn = scene()
+        for r in range(rows):
+            if r != 5:
+                bm.set_terrain_type(rpg.Cell(6, r), rpg.TerrainType.Wall)
+        bm.add_door(cells=[rpg.Cell(6, 5)], open=False)
+        bm.set_explored_cells([])
+        bm.reveal_fog_for_faction(PC_FACTION)
+        assert bm.is_explored(rpg.Cell(6, 3)), "the test needs the wall seen"
+        app._deploy_fog_revealed_enemies()
+        assert bm.is_agent_on_deck(skarn), "a wall seen from outside woke the room behind it"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("✅ test_reserves_wake_by_drawn_room")
+
+
 if __name__ == "__main__":
     test_the_roster_survives_racing_threads()
     test_the_bus_hook_runs_outside_the_lock()
@@ -812,4 +880,5 @@ if __name__ == "__main__":
     test_rename_and_the_log_viewer()
     test_room_cells_stop_at_the_room()
     test_reveal_and_fog_a_room()
+    test_reserves_wake_by_drawn_room()
     print("\n✅ All hardening tests passed!")
