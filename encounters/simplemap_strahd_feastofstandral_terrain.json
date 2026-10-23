@@ -1,6 +1,6 @@
 {
   "regions": [],
-  "walls_enabled": false,
+  "walls_enabled": true,
   "doors": [],
   "ladders": [],
   "manual_grid": {

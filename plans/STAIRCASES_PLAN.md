@@ -1,6 +1,6 @@
 # Staircases
 
-**Status 2026-10-22: Step 0 frozen (D1–D6 decided). Steps 1–3 done; step 4 converted (37 staircases), hand labels pending.** Came out of laddering
+**Status 2026-10-22: Step 0 frozen (D1–D6 decided). Steps 1–3 done; step 4 converted (37 staircases) and labelled.** Came out of laddering
 Castle Ravenloft: every stair there is faked with ladder pairs, and the pairs keep colliding.
 
 ## Status and handoff (2026-10-22)
@@ -48,7 +48,28 @@ Castle Ravenloft: every stair there is faked with ladder pairs, and the pairs ke
   Castle Ravenloft 2026-10-22 with `--keep tower_peaks_map9_10_ravenloft:39,20` (K60 →
   roof): 74 ladders → Staircases 1–37, 2 ladders left. Tests:
   `tests/test_ladders_to_staircases.py` (7); suite 194/0.
-- **Next:** label Staircases 1–37 (K21, K83, …) from Dungeon Configuration → Staircases….
+- **Labels: done 2026-10-22** (written straight into the manifest; snapshot before in
+  `encounters/Castle Ravenloft/staircases_v1/`). K21: 4 9 16 24 27 30 34 (34 = K21/K57) ·
+  K18: 5 10 17 26 29 32 35 37 (37 = K18 to K59) · K20: 18 25 28 31 33 36 (36 = K20 to K60) ·
+  K83: 2 6 13 22 · K64: 7 15 23 · 1 K79/K72 · 3 north stair · 8 K20a · 11 K63/K23 ·
+  12/14 side stair W/E · 19 K24 · 20 east stair · 21 K13.
+- **Helix pass: done 2026-10-23** (supersedes the shared-landing pass, which the user
+  rejected: a spiral can't go up and down from one square). Snapshot before: `staircases_v3/`.
+  Each spiral is a screw: a staircase's two ends are the **same (c, r)** on both floors, and
+  on each floor the arriving and leaving ends sit on **opposite treads**, alternating floor
+  by floor. Handedness read from the drawings (on screen, y down): K18, K21, K64 climb
+  counter-clockwise; K20, K83 clockwise (the user's "K18/K21 clockwise, K20 counter" is the
+  same thing mirrored). Squares: K18 W (39,31) / E (44,32); K21 (37,33) / (34,34), then
+  K47 up (36,29), K48→K57 (35,31); K20 E (41,18–19) / W (31,19), K60 arrives W (32,20);
+  K64 (32,36) / (31,39); K83 Z−2 top E (25,18), then (25,22) / (22,22), Map 5 arrives E at
+  the door. K23 (11, 20) back on its two flights. No square holds two ends.
+  Close-ups: `.tmp_claude/ravenloft/helix/new_<stair>.png`.
+- **User offsets applied 2026-10-23 09:15** (snapshot before: `staircases_v4/`). Ends of a
+  helix need not stack: they sit at different heights on the spiral, so a staircase's two
+  ends may have different (c, r). Staircase 3 deleted (36 left; ids 1–2, 4–37). The Z+6
+  K60 → roof ladder removed; staircase 36 now ends there at (39,20). The roof's ladder was
+  removed too (2026-10-23 09:25): Ravenloft has no ladders now and no way onto the roof.
+- **Next:** the user checks it in the game.
 
 ## Decided (user, 2026-10-22)
 

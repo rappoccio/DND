@@ -572,6 +572,7 @@ class App:
         self.font_sm = pygame.font.SysFont("sans", FONT_SM)
         self.font_md = pygame.font.SysFont("sans", FONT_MD)
         self.font_lg = pygame.font.SysFont("sans", FONT_LG, bold=True)
+        self.font_room = pygame.font.SysFont("sans", 12)   # the DM's room-key layer
         self._letter_fonts = {}   # size -> bold SysFont, for on-token placeholder glyphs
 
         # ── Load C++ battle map + image + overlay (re-entrant) ────────────
@@ -791,6 +792,12 @@ class App:
 
         # ── Visualization toggles ─────────────────────────────────────────
         self.show_lighting_overlay = False  # Toggle for lighting visualization
+        # The DM's room keys ("K10") from the dungeon manifest's per-page "rooms". DM-only:
+        # the player screen is served the page PNG, never this screen. On by default; the
+        # Dungeon Configuration menu's Show/Hide Room Labels flips it for the session.
+        self.show_room_labels = True
+        self._room_label_hits: list = []     # [(screen Rect, RoomLabel)] from the last draw
+        self._room_label_surfs: dict = {}    # key -> outlined text surface (cached)
 
         # ── Fog of war (see FOG_OF_WAR_PLAN.md) ───────────────────────────
         # Persistent explored mask lives in the C++ BattleMap; the GUI just re-runs
@@ -2399,6 +2406,11 @@ class App:
                 self._sync_roster_tokens()
 
     def _on_save_path_chosen(self, path: str):
+        # A dungeon's pages own their files; Save As there writes one multi-floor encounter
+        # file instead of re-pointing the page at a new base (see _save_dungeon_encounter).
+        if self.dungeon is not None and self.dungeon_page is not None:
+            self._save_dungeon_encounter(path)
+            return
         # Capture the previous sidecar locations so lighting/effects (which have no GUI
         # re-serialization path) can be carried forward to the new encounter base.
         old_lighting = self._lighting_path
@@ -2428,6 +2440,13 @@ class App:
         except Exception as e:
             self._flash_status(f"Could not read {os.path.basename(path)}: {e}")
             return
+        # A dungeon page owns its scene: its terrain (grid, walls, doors), lighting and
+        # sidecar file names. Loading an encounter there brings in the creatures only.
+        # Re-pointing the page at the encounter's base would load that file's grid and
+        # walls now, and save this page's scene under the encounter's name later.
+        if self.dungeon is not None and self.dungeon_page is not None:
+            self._import_encounter_onto_page(path)
+            return
         self._set_encounter_base(path)
         self._load_agents(path)
         # Re-load the rest of the scene from the new base (terrain resets even if the
@@ -2437,6 +2456,227 @@ class App:
         self._load_spell_effects()
         # Last: the resume check compares against the agent list _load_agents just built.
         self._load_combat_state()
+
+    # ── Multi-floor encounter files (a dungeon's Save As / Load) ──────────────
+    # One encounter file can hold creatures for many pages: each agent and map item
+    # carries "page" (the page id) and "z" (its floor, for reading the file). Conditions
+    # carry "page" too, with agent_idx / caster_idx indexing the file's whole agent list.
+    # The pages' own *_agents.json files stay the live state; this file is an export
+    # that Load distributes back. An agent without "page" (any single-map encounter)
+    # goes to the page that is showing.
+
+    def _page_agents_path(self, page: MapPage) -> str:
+        """A dungeon page's own ``_agents.json``, resolved like _switch_to_page does."""
+        enc = page.encounter_base
+        return enc if (not enc or os.path.isabs(enc)) else os.path.join(self._dungeon_dir(), enc)
+
+    def _save_dungeon_encounter(self, path: str):
+        """Save Encounter As on a dungeon: write every page's creatures, map items and
+        conditions to ``path``, each tagged with its page. Nothing is re-pointed, and no
+        terrain / lighting / effects sidecar is written beside ``path``. Refused when
+        ``path`` is one of the pages' own files or the manifest."""
+        target = os.path.abspath(path)
+        own = {os.path.abspath(self._page_agents_path(p)) for p in self.dungeon.pages}
+        if self._dungeon_manifest_path:
+            own.add(os.path.abspath(self._dungeon_manifest_path))
+        if target in own:
+            self._flash_status(f"{os.path.basename(path)} belongs to the dungeon; "
+                               "save the encounter under another name")
+            return
+        self._save_agents()                          # the page that is showing, up to date
+        out_agents, out_items, out_conds = [], [], []
+        pages_used = 0
+        for page in self.dungeon.pages:
+            try:
+                with open(self._page_agents_path(page)) as f:
+                    doc = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                continue
+            agents = [a for a in (doc.get("agents") or []) if isinstance(a, dict)]
+            base = len(out_agents)
+            for a in agents:
+                rec = dict(a)
+                rec["page"], rec["z"] = page.id, int(page.z)
+                out_agents.append(rec)
+            for m in doc.get("map_items") or []:
+                if isinstance(m, dict):
+                    rec = dict(m)
+                    rec["page"], rec["z"] = page.id, int(page.z)
+                    out_items.append(rec)
+            for cd in doc.get("active_conditions") or []:
+                if not isinstance(cd, dict):
+                    continue
+                rec = dict(cd)
+                rec["page"] = page.id
+                rec["agent_idx"] = int(rec.get("agent_idx", -1)) + base
+                caster = int(rec.get("caster_idx", -1))
+                rec["caster_idx"] = caster + base if caster >= 0 else -1
+                out_conds.append(rec)
+            if agents:
+                pages_used += 1
+        atomic_write_json(path, {"agents": out_agents, "map_items": out_items,
+                                 "active_conditions": out_conds})
+        self._flash_status(f"Saved {len(out_agents)} creature(s) on {pages_used} page(s) "
+                           f"to {os.path.basename(path)}")
+
+    @staticmethod
+    def _nearest_unoccupied(col, row, size, occupied, cols, rows):
+        """Nearest (col, row) to the given one where a size×size footprint misses every
+        cell in ``occupied`` and stays on a cols×rows grid (unbounded when 0). Used for
+        pages that are not showing, whose terrain is not loaded."""
+        def ok(c, r):
+            if c < 0 or r < 0 or (cols and c + size > cols) or (rows and r + size > rows):
+                return False
+            return all((c + dc, r + dr) not in occupied
+                       for dc in range(size) for dr in range(size))
+        if ok(col, row):
+            return col, row
+        for radius in range(1, max(cols, rows, 64) + 1):
+            for dc in range(-radius, radius + 1):
+                for dr in range(-radius, radius + 1):
+                    if max(abs(dc), abs(dr)) == radius and ok(col + dc, row + dr):
+                        return col + dc, row + dr
+        return None
+
+    def _import_encounter_onto_page(self, path: str):
+        """Load Encounter on a dungeon: add the file's creatures, map items and conditions
+        to the pages' own encounters. A record tagged with a page goes to that page; an
+        untagged one (a single-map encounter) goes to the page that is showing; one
+        tagged with a page this dungeon lacks is skipped. Every page keeps its terrain,
+        grid, lighting, effects and file names, and the chosen file is never written.
+
+        On the page that is showing, each creature keeps its saved cell when it is free,
+        else takes the nearest free cell (an off-grid cell is pulled onto the grid
+        first), like Load PCs; one that fits nowhere is dropped. On other pages, whose
+        terrain is not loaded, a creature keeps its cell unless another creature holds
+        it, then takes the nearest unoccupied cell on that page's grid."""
+        if self.combat_active:
+            self._flash_status("Finish combat before loading an encounter")
+            return
+        try:
+            with open(path) as f:
+                src = json.load(f)
+        except Exception as e:                       # noqa: BLE001 — surface read/parse errors
+            self._flash_status(f"Could not read {os.path.basename(path)}: {e}")
+            return
+        incoming = [a for a in (src.get("agents") or []) if isinstance(a, dict)]
+        items = [m for m in (src.get("map_items") or []) if isinstance(m, dict)]
+        conds = [c for c in (src.get("active_conditions") or []) if isinstance(c, dict)]
+        if not incoming and not items:
+            self._flash_status(f"No creatures in {os.path.basename(path)}")
+            return
+
+        here = self.dungeon_page.id
+        pages = {p.id: p for p in self.dungeon.pages}
+
+        def page_of(rec):
+            pid = rec.get("page")
+            return here if pid in (None, "") else (pid if pid in pages else None)
+
+        def clean(rec):
+            rec = dict(rec)
+            rec.pop("page", None)
+            rec.pop("z", None)
+            return rec
+
+        # Group by page, remembering each agent's index in the source file.
+        by_page: dict[str, list[tuple[int, dict]]] = {}
+        unknown = 0
+        for i, a in enumerate(incoming):
+            pid = page_of(a)
+            if pid is None:
+                unknown += 1
+                continue
+            by_page.setdefault(pid, []).append((i, a))
+        items_by_page: dict[str, list[dict]] = {}
+        for m in items:
+            pid = page_of(m)
+            if pid is not None:
+                items_by_page.setdefault(pid, []).append(clean(m))
+
+        new_index: dict[int, tuple[str, int]] = {}  # source index -> (page, index there)
+        added = dropped = 0
+        docs: dict[str, dict] = {}
+
+        # The page that is showing: persist it, merge with live terrain, reload below.
+        if here in by_page or here in items_by_page:
+            self._save_agents()
+        for pid in set(by_page) | set(items_by_page):
+            try:
+                with open(self._page_agents_path(pages[pid])) as f:
+                    doc = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                doc = {"agents": [], "map_items": []}
+            doc.setdefault("agents", [])
+            doc.setdefault("map_items", [])
+            docs[pid] = doc
+            agents = doc["agents"]
+            if pid == here:
+                reserved: set[tuple[int, int]] = set()
+                cols, rows = self.bm.grid_cols, self.bm.grid_rows
+            else:
+                page = pages[pid]
+                cols, rows = int(page.cols or 0), int(page.rows or 0)
+                occupied = set()
+                for a in agents:
+                    sz = max(1, int(a.get("size", 1)))
+                    for dc in range(sz):
+                        for dr in range(sz):
+                            occupied.add((int(a.get("col", 0)) + dc, int(a.get("row", 0)) + dr))
+            for i, a in by_page.get(pid, []):
+                rec = clean(a)
+                size = max(1, int(rec.get("size", 1)))
+                col, row = int(rec.get("col", 0)), int(rec.get("row", 0))
+                if pid == here:
+                    col = min(max(col, 0), max(0, cols - size))
+                    row = min(max(row, 0), max(0, rows - size))
+                    spot = self._merge_free_cell(col, row, size, reserved)
+                    spot = None if spot is None else (spot.col, spot.row)
+                    claim = reserved
+                else:
+                    spot = self._nearest_unoccupied(col, row, size, occupied, cols, rows)
+                    claim = occupied
+                if spot is None:
+                    dropped += 1
+                    continue
+                rec["col"], rec["row"] = spot
+                for dc in range(size):
+                    for dr in range(size):
+                        claim.add((spot[0] + dc, spot[1] + dr))
+                new_index[i] = (pid, len(agents))
+                agents.append(rec)
+                added += 1
+            doc["map_items"].extend(items_by_page.get(pid, []))
+
+        # Conditions follow their creature; one whose caster landed elsewhere is dropped,
+        # as _save_agents drops a condition whose caster is off the map.
+        for cd in conds:
+            target = new_index.get(int(cd.get("agent_idx", -1)))
+            if target is None:
+                continue
+            caster = int(cd.get("caster_idx", -1))
+            rec = clean(cd)
+            rec["agent_idx"] = target[1]
+            if caster >= 0:
+                c = new_index.get(caster)
+                if c is None or c[0] != target[0]:
+                    continue
+                rec["caster_idx"] = c[1]
+            docs[target[0]].setdefault("active_conditions", []).append(rec)
+
+        for pid, doc in docs.items():
+            atomic_write_json(self._page_agents_path(pages[pid]), doc)
+        if here in docs:
+            self._load_agents()
+
+        hit = sorted({pid for pid, _ in new_index.values()})
+        msg = f"Added {added} creature(s) from {os.path.basename(path)}"
+        msg += f" to {hit[0]}" if len(hit) == 1 else f" on {len(hit)} pages"
+        if dropped:
+            msg += f" ({dropped} didn't fit)"
+        if unknown:
+            msg += f" ({unknown} for pages this dungeon lacks, skipped)"
+        self._flash_status(msg)
 
     # ─────────────────────────────────────────────────────────────────────
     #  Multi-map dungeons — active-map switching & paging (Phase 3)
@@ -2499,6 +2739,11 @@ class App:
             # last edited and travel with their encounter base, so nothing to do.
 
         # ── 2. Swap the PNG + engine map (skip if we're re-entering the same page) ─
+        # A load resets the view to Fit; remember the on-screen cell size and pan so the
+        # new floor opens at the same zoom (restored in step 5).
+        keep_view = None
+        if not already_here and self.dungeon_page is not None:
+            keep_view = (self.bm.cell_pixel_size * self.map_scale, self.pan_x, self.pan_y)
         if not already_here:
             self._load_map_png(_resolve(page.png))
         self._apply_page_origin(page)
@@ -2515,6 +2760,24 @@ class App:
         # ── 4. Inject carried agents onto the target (incremental) ─────────────
         if carried_records:
             self._inject_carried_agents(carried_records, drop_cell)
+
+        # ── 5. Same zoom as the floor we left: match the on-screen cell size (floors
+        #       may differ in PNG size, so the fit scale alone would not), then centre
+        #       the arrival cell, or keep the old pan when there is none ─────────────
+        if keep_view is not None:
+            old_cell_px, old_pan_x, old_pan_y = keep_view
+            new_cell_px = self.bm.cell_pixel_size * self.base_map_scale
+            if old_cell_px > 0 and new_cell_px > 0:
+                self._apply_zoom(old_cell_px / new_cell_px)
+            if drop_cell is not None:
+                c, r = drop_cell
+                x0, y0 = self._cell_to_screen(c, r)
+                x1, y1 = self._cell_to_screen(c + 1, r + 1)
+                self.pan_x += self._panel_x() // 2 - (x0 + x1) // 2
+                self.pan_y += self.screen.get_height() // 2 - (y0 + y1) // 2
+            else:
+                self.pan_x, self.pan_y = old_pan_x, old_pan_y
+            self._clamp_pan()
 
         self._mark_fog_dirty()
         return True
@@ -16319,6 +16582,95 @@ class App:
             self.screen.blit(t, (bx + pad, y))
             y += t.get_height()
 
+    # ── Room labels: the DM's room keys ("K10"), from the manifest page's "rooms" ──
+    def _room_labels_here(self) -> list:
+        """The active dungeon page's room labels; [] without a dungeon."""
+        if self.dungeon is None or self.dungeon_page is None:
+            return []
+        return list(getattr(self.dungeon_page, "rooms", None) or [])
+
+    def _toggle_room_labels(self):
+        self.show_room_labels = not self.show_room_labels
+        if self.show_room_labels and not self._room_labels_here():
+            self._flash_status("This page has no room labels")
+
+    def _room_label_surf(self, key: str):
+        """The key as light text with a 1px dark outline, so it reads on wall and floor
+        alike. Cached per key: the layer redraws every frame."""
+        surf = self._room_label_surfs.get(key)
+        if surf is None:
+            fg = self.font_room.render(key, True, (255, 236, 170))
+            bg = self.font_room.render(key, True, (15, 15, 20))
+            surf = pygame.Surface((fg.get_width() + 2, fg.get_height() + 2), pygame.SRCALPHA)
+            for dx, dy in ((0, 1), (2, 1), (1, 0), (1, 2), (0, 0), (2, 0), (0, 2), (2, 2)):
+                surf.blit(bg, (dx, dy))
+            surf.blit(fg, (1, 1))
+            self._room_label_surfs[key] = surf
+        return surf
+
+    def _draw_room_labels(self, cpx: int):
+        """Each room key centred on its cell. Drawn whatever the fog (the DM's screen
+        shows fogged floor too), and recorded for the hover tooltip."""
+        self._room_label_hits = []
+        if not self.show_room_labels:
+            return
+        for room in self._room_labels_here():
+            col, row = room.cell
+            if not (0 <= col < self.bm.grid_cols and 0 <= row < self.bm.grid_rows):
+                continue
+            sx, sy = self._cell_to_screen(col, row)
+            surf = self._room_label_surf(room.key)
+            rect = surf.get_rect(center=(sx + cpx // 2, sy + cpx // 2))
+            self.screen.blit(surf, rect.topleft)
+            self._room_label_hits.append((rect, room))
+
+    def _room_label_at(self, pos):
+        """The room label whose text is under ``pos``, the last-drawn one on an overlap."""
+        for rect, room in reversed(self._room_label_hits):
+            if rect.collidepoint(pos):
+                return room
+        return None
+
+    def _room_label_tooltip(self, pos):
+        """The tooltip for a pointer at ``pos`` ("K10. Dining Hall"), or None: off the
+        map, not over a key, or over a token or staircase, which keep their own."""
+        if not self.show_room_labels or pos[0] >= self._panel_x():
+            return None
+        room = self._room_label_at(pos)
+        if room is None:
+            return None
+        cell = self._screen_to_cell(*pos)
+        if cell is not None and (self._agent_at(cell) >= 0
+                                 or self._staircase_cells_here().get((cell.col, cell.row))):
+            return None
+        return room.title
+
+    def _draw_room_label_hover(self):
+        """"K10. Dining Hall" as a floating tooltip over a room key. A token or a
+        staircase under the pointer keeps its own tooltip instead."""
+        if not self.show_room_labels or self._modal_active() or not self.bm or not self.map_rect:
+            return
+        mx, my = pygame.mouse.get_pos()
+        text = self._room_label_tooltip((mx, my))
+        if text is None:
+            return
+        label = self.font_md.render(text, True, (240, 240, 240))
+        pad = 5
+        box_w = label.get_width() + pad * 2
+        box_h = label.get_height() + pad * 2
+        bx = mx + 14
+        by = my - box_h - 6
+        if bx + box_w > self._panel_x():
+            bx = self._panel_x() - box_w - 2
+        if by < 0:
+            by = my + 18
+        box = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+        box.fill((20, 20, 26, 230))
+        self.screen.blit(box, (bx, by))
+        pygame.draw.rect(self.screen, (255, 236, 170),
+                         pygame.Rect(bx, by, box_w, box_h), 2, border_radius=4)
+        self.screen.blit(label, (bx + pad, by + pad))
+
     def _draw_hatching(self, pattern: str, x: float, y: float, w: float, h: float, color: tuple):
         """Draw a hatching pattern on the screen within bounds."""
         screen_x = int(x + self.map_rect.x + self.pan_x)
@@ -16560,6 +16912,9 @@ class App:
 
         # ── Staircase ends (manifest portals; beneath all agents) ─────────
         self._draw_staircases(cpx)
+
+        # ── Room keys (DM-only label layer; beneath all agents) ───────────
+        self._draw_room_labels(cpx)
 
         # ── Paladin aura rings (beneath all agents) ───────────────────────
         self._draw_paladin_auras(cpx)
@@ -19464,6 +19819,7 @@ class App:
             self._draw_hover_cursor()                       # always-on map cursor (in & out of combat)
             self._draw_agent_hover_name()                   # token name shown only under the pointer
             self._draw_staircase_hover()                    # staircase name/label/destination
+            self._draw_room_label_hover()                   # "K10. Dining Hall" under the pointer
             self._draw_zoom_control()                       # − 100% + Fit, bottom-right of the map
             self._draw_panel()                              # config panel (hosts the Floor-nav block)
             net_offer.ensure(self)                          # D-M5-2: the offer, from the menu just built

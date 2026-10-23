@@ -240,6 +240,8 @@ def show_dungeon_menu(app):
             ("Add Page…",         app._dungeon_add_page_browser),
             ("Align Floor",       lambda: app.floor_align.start(app)),
             ("Staircases…",       lambda: show_staircases_menu(app)),
+            ("Hide Room Labels" if app.show_room_labels else "Show Room Labels",
+                                  app._toggle_room_labels),
             ("Save Dungeon",      app._dungeon_save),
             ("Open Dungeon…",     app._dungeon_open_browser),
             ("Close Dungeon",     app._dungeon_close),

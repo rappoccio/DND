@@ -215,11 +215,32 @@ def test_player_submit_validated():
     print("  ✅ only the creature's controller can answer Ascend / Descend")
 
 
+def test_zoom_kept_across_floors():
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon(tmp)
+        st = app.dungeon.new_staircase("M", (2, 2))
+        app.dungeon.finish_staircase(st.id, "U", (6, 5))
+        idx = _place(app, "Aria", 2, 3)
+        app._zoom_by(app.ZOOM_BTN_STEP)
+        app._zoom_by(app.ZOOM_BTN_STEP)
+        zoom = app.view_zoom
+        assert zoom > 1.0
+        assert app._use_staircase(st.id, 0, idx)
+        assert app.dungeon_page.id == "U"
+        assert abs(app.view_zoom - zoom) < 1e-6, (app.view_zoom, zoom)
+        # The arrival cell is centred in the map view.
+        x0, y0 = app._cell_to_screen(6, 5)
+        x1, y1 = app._cell_to_screen(7, 6)
+        assert abs((x0 + x1) // 2 - app._panel_x() // 2) <= 2
+        assert abs((y0 + y1) // 2 - app.screen.get_height() // 2) <= 2
+    print("  ✅ the zoom survives a floor change, centred on the landing")
+
+
 def main():
     pygame.init()
     tests = [test_carries_both_ways, test_neighbouring_and_shared_ends,
              test_refused_in_combat_and_unfinished, test_player_view_under_fog,
-             test_player_submit_validated]
+             test_player_submit_validated, test_zoom_kept_across_floors]
     failed = 0
     for t in tests:
         try:

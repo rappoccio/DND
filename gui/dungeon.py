@@ -45,6 +45,15 @@ page abutting the bottom edge. ``+Z`` is *up* a floor.
       "next_staircase_id": <int>            # the id the next staircase gets
     }
 
+A page may also carry ``"rooms"``: the DM's room keys, drawn as the toggleable room-label
+layer on the DM screen and never sent to players. Optional, and written only when the
+page has some, so a manifest without them round-trips unchanged:
+
+    "rooms": [{"key": "K10", "name": "Dining Hall", "cell": [col, row]}, ...]
+
+A room may have several entries with the same key (a long corridor or a parapet that
+wraps the castle gets one label per stretch).
+
 Ladders and inter-map door staples live in the per-encounter ``_terrain.json`` files
 (Phases 4–5), NOT here, and door-staple adjacency is derived from page origins.
 Staircases are the exception (``plans/STAIRCASES_PLAN.md``): each one spans two pages,
@@ -72,6 +81,37 @@ _DIR_DELTAS = {
 
 
 @dataclass
+class RoomLabel:
+    """One room key on a page, e.g. ``K10`` / ``Dining Hall`` at a local cell."""
+
+    key: str
+    name: str = ""
+    cell: tuple[int, int] = (0, 0)
+
+    @property
+    def title(self) -> str:
+        """``"K10. Dining Hall"``, or the bare key when the room has no name."""
+        return f"{self.key}. {self.name}" if self.name else self.key
+
+    def to_dict(self) -> dict:
+        return {"key": self.key, "name": self.name,
+                "cell": [int(self.cell[0]), int(self.cell[1])]}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Optional["RoomLabel"]:
+        """``None`` for an entry with no key or no usable cell, so one bad row in a
+        hand-edited manifest drops that label and not the dungeon."""
+        try:
+            key = str(d["key"]).strip()
+            cell = (int(d["cell"][0]), int(d["cell"][1]))
+        except (KeyError, TypeError, ValueError, IndexError):
+            return None
+        if not key:
+            return None
+        return cls(key=key, name=str(d.get("name", "") or "").strip(), cell=cell)
+
+
+@dataclass
 class MapPage:
     """One PNG "page" placed on the shared dungeon grid.
 
@@ -86,6 +126,7 @@ class MapPage:
     origin: list[int] = field(default_factory=lambda: [0, 0, 0])
     cols: int = 0
     rows: int = 0
+    rooms: list[RoomLabel] = field(default_factory=list)
 
     # ── Global-grid geometry ────────────────────────────────────────────────
     @property
@@ -125,7 +166,7 @@ class MapPage:
 
     # ── Serialization ───────────────────────────────────────────────────────
     def to_dict(self) -> dict:
-        return {
+        d = {
             "id": self.id,
             "png": self.png,
             "encounter_base": self.encounter_base,
@@ -133,6 +174,9 @@ class MapPage:
             "cols": int(self.cols),
             "rows": int(self.rows),
         }
+        if self.rooms:
+            d["rooms"] = [r.to_dict() for r in self.rooms]
+        return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "MapPage":
@@ -146,6 +190,8 @@ class MapPage:
             origin=[int(origin[0]), int(origin[1]), int(origin[2])],
             cols=int(d.get("cols", 0)),
             rows=int(d.get("rows", 0)),
+            rooms=[r for r in (RoomLabel.from_dict(rd) for rd in d.get("rooms", []) or [])
+                   if r is not None],
         )
 
 
