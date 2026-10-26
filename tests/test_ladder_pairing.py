@@ -176,9 +176,10 @@ def test_ladders_from_before_the_edit_are_not_repaired():
 
 
 def _drag(ed, a, b):
-    """Press on cell ``a``, move to and release on cell ``b`` (an editor at zoom 1)."""
+    """Press on cell ``a``, move to and release on cell ``b`` (an editor at zoom 1).
+    The editor's grid is in fit-scale px; this map is a little too tall to fit unscaled."""
     import pygame
-    v, h = ed.bm.v_line_positions, ed.bm.h_line_positions
+    v, h, _ = ed._grid()
     pa = ((v[a[0]] + v[a[0] + 1]) // 2, (h[a[1]] + h[a[1] + 1]) // 2)
     pb = ((v[b[0]] + v[b[0] + 1]) // 2, (h[b[1]] + h[b[1] + 1]) // 2)
     ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=pa))

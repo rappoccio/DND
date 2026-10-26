@@ -416,6 +416,10 @@ class TerrainEditorDialog:
         self.view_zoom = 1.0
         self.view_pan = [0, 0]
         self._pan_drag = None   # last mouse pos while middle-button panning
+        # map-surface px per image px. The engine's grid lines are image px; map_surf is
+        # the app's fit-scale copy, smaller than the image when the map is too big for
+        # the window. Every grid position the editor uses goes through ``_grid``.
+        self.grid_scale = 1.0
         self._viewport = None
         self._canvas = None     # map-space scratch surface the editor draws onto
         self.on_regions_changed = None
@@ -465,7 +469,7 @@ class TerrainEditorDialog:
     def open(self, map_surf, terrain_regions, bm=None, ladders=None, door_links=None,
              on_regions_changed=None, edge_overrides=None, edges_enabled=False,
              on_edges_changed=None, edge_review=None, edge_review_source="",
-             dungeon=None, page_id=None, ask_text=None):
+             dungeon=None, page_id=None, ask_text=None, grid_scale=1.0):
         """Open the terrain editor with existing terrain data.
 
         ``ladders`` is the app's live ladder list (Python-only cell objects); the editor
@@ -478,8 +482,10 @@ class TerrainEditorDialog:
         edit so the app can re-detect. ``edge_review`` is the app's live list of edges
         carried from another floor that still need a decision (drawn blue). ``dungeon``
         and ``page_id`` enable the Staircase tool: its edits go straight into
-        ``dungeon.staircases``, and the app writes the manifest when the editor closes."""
+        ``dungeon.staircases``, and the app writes the manifest when the editor closes.
+        ``grid_scale`` is map_surf's size over the image's (the app's fit scale)."""
         self.active = True
+        self.grid_scale = grid_scale
         self.edge_review = edge_review if edge_review is not None else []
         self.edge_review_source = edge_review_source or ""
         self.on_regions_changed = on_regions_changed
@@ -797,6 +803,16 @@ class TerrainEditorDialog:
                 return i
         return -1
 
+    def _grid(self):
+        """(v, h, size): the grid lines and cell size in map-surface px. The engine
+        keeps them in image px, which only match map_surf at fit scale 1.0."""
+        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        s = self.grid_scale
+        if s == 1.0:
+            return v, h, self.bm.cell_pixel_size
+        return ([int(x * s) for x in v], [int(y * s) for y in h],
+                int(self.bm.cell_pixel_size * s))
+
     def _pos_to_cell(self, pos):
         """Convert an editor map position to a grid Cell (or None).
 
@@ -807,8 +823,7 @@ class TerrainEditorDialog:
         if not self.bm or not self.bm.v_line_positions or not self.bm.h_line_positions:
             return None
         x, y = pos
-        v = self.bm.v_line_positions
-        h = self.bm.h_line_positions
+        v, h, _ = self._grid()
         col = bisect.bisect_right(v, x) - 1
         row = bisect.bisect_right(h, y) - 1
         if 0 <= col < self.bm.grid_cols and 0 <= row < self.bm.grid_rows:
@@ -1203,7 +1218,7 @@ class TerrainEditorDialog:
 
     def _nearest_vertex(self, pos):
         """(i, j): the grid-line crossing nearest ``pos`` (map px)."""
-        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        v, h, _ = self._grid()
         i = min(range(len(v)), key=lambda k: abs(v[k] - pos[0]))
         j = min(range(len(h)), key=lambda k: abs(h[k] - pos[1]))
         return i, j
@@ -1225,7 +1240,7 @@ class TerrainEditorDialog:
         cell = self._pos_to_cell(pos)
         if cell is None:
             return None
-        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        v, h, _ = self._grid()
         c, r = cell.col, cell.row
         x, y = pos
         sides = [(x - v[c], (c - 1, r, "E")), (v[c + 1] - x, (c, r, "E")),
@@ -1237,7 +1252,7 @@ class TerrainEditorDialog:
 
     def _edges_in_box(self, rect):
         """Every edge whose midpoint lies in ``rect`` (map px, edges inclusive)."""
-        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        v, h, _ = self._grid()
         inside = lambda x, y: rect.left <= x <= rect.right and rect.top <= y <= rect.bottom
         keys = []
         for c in range(self.bm.grid_cols):
@@ -1380,7 +1395,7 @@ class TerrainEditorDialog:
                                    if (int(e[0]), int(e[1]), e[2]) not in inbox]
 
     def _edge_segment(self, key):
-        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        v, h, _ = self._grid()
         c, r, s = key
         if s == "E":
             return (v[c + 1], h[r]), (v[c + 1], h[r + 1])
@@ -1466,8 +1481,7 @@ class TerrainEditorDialog:
 
         if self.bm and self.bm.v_line_positions and self.bm.h_line_positions:
             # Snap to actual grid lines from BattleMap
-            v_lines = self.bm.v_line_positions
-            h_lines = self.bm.h_line_positions
+            v_lines, h_lines, _ = self._grid()
 
             # Find snapped X: grid line at or before x, and after x+w
             snapped_x = 0
@@ -1507,8 +1521,7 @@ class TerrainEditorDialog:
         # Apply terrain type to actual grid cells in BattleMap
         if self.bm and self.selected_type in self.terrain_type_map:
             terrain_type = self.terrain_type_map[self.selected_type]
-            v_lines = self.bm.v_line_positions
-            h_lines = self.bm.h_line_positions
+            v_lines, h_lines, _ = self._grid()
 
             if v_lines and h_lines:
                 # Find grid cells within the selection using binary search
@@ -1546,7 +1559,7 @@ class TerrainEditorDialog:
         """The detector's result, as on the main map: blocked cells shaded, edge walls red."""
         if not self.bm:
             return
-        v, h = self.bm.v_line_positions, self.bm.h_line_positions
+        v, h, _ = self._grid()
         if not v or not h:
             return
         shade = pygame.Surface(canvas.get_size(), pygame.SRCALPHA)
@@ -1647,9 +1660,7 @@ class TerrainEditorDialog:
 
         # Draw doors (source of truth is BattleMap.doors; editor mutates bm directly)
         if self.bm:
-            v = self.bm.v_line_positions
-            h = self.bm.h_line_positions
-            size = self.bm.cell_pixel_size
+            v, h, size = self._grid()
             for door in self.bm.doors:
                 if door.edges and v and h:
                     x, y, w, hh = edge_door_rect(door, lambda c, r: (v[c], h[r]), size)

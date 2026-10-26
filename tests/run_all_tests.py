@@ -91,6 +91,7 @@ test_scripts = [
     # the file looks identical to one that works until the encounter is reloaded.
     "test_lighting_editor.py",
     "test_editor_zoom_pan.py",
+    "test_editor_fit_scale.py",
     "test_dm_zoom_pan.py",
     "test_ladder_pairing.py",
     "test_floor_align.py",

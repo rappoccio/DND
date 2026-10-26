@@ -3002,7 +3002,8 @@ class App:
                                  page_id=self.dungeon_page.id if self.dungeon_page else None,
                                  ask_text=lambda text, commit, title, allow_empty:
                                      self.name_prompt.show(text, commit, title=title,
-                                                           allow_empty=allow_empty))
+                                                           allow_empty=allow_empty),
+                                 grid_scale=self.base_map_scale)
 
     def _close_terrain_editor(self):
         """Esc in the terrain editor: take its edits, save them, give new / removed
