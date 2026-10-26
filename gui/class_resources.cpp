@@ -375,9 +375,10 @@ void Agent::Stats::applyClassResources(CharacterClass cls, int level) {
       sw.long_rest_regen = 1;
       resources["Second Wind"] = sw;
 
-      // Action Surge (L1+): 1 use at L1, 2 at L17, regains on long rest
+      // Action Surge (L1+): 1 use at L1, 2 at L17, regains on a short or long rest
       int as_uses = (level >= 17) ? 2 : 1;
       Resource as("Action Surge", as_uses, 0);
+      as.short_rest_regen = as_uses;
       as.long_rest_regen = as_uses;
       resources["Action Surge"] = as;
 

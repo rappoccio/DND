@@ -314,6 +314,31 @@ def test_second_wind_restore_short_rest():
     print("✅ test_second_wind_restore_short_rest passed")
 
 
+def test_action_surge_restores_on_short_rest():
+    """2024 Action Surge is once per Short OR Long Rest: CombatEngine.apply_short_rest refills it
+    (L1: 1 use, L17: 2 uses). It used to carry only a long-rest regen and stayed spent."""
+    for level, uses in ((1, 1), (17, 2)):
+        bm = setup_battle_map()
+        engine = setup_combat_engine()
+        fighter_idx = add_agent_to_battle(engine, bm, create_test_agent("Fighter", 5, 5))
+
+        s = engine.get_agent_stats(bm, fighter_idx)
+        s.set_class_level(rpg.CharacterClass.Fighter, level)
+        s.initialize_class_resources(rpg.CharacterClass.Fighter, level)
+        surge = s.get_resource("Action Surge")
+        assert surge.max == uses, f"L{level} Fighter should have {uses} Action Surge, got {surge.max}"
+        surge.current = 0
+        s.resources["Action Surge"] = surge
+        engine.set_agent_stats(bm, fighter_idx, s)
+
+        engine.apply_short_rest(bm)
+
+        surge = engine.get_agent_stats(bm, fighter_idx).get_resource("Action Surge")
+        assert surge.current == uses, \
+            f"L{level}: short rest should restore Action Surge to {uses}, got {surge.current}"
+    print("✅ test_action_surge_restores_on_short_rest passed")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Psi Warrior
 # ─────────────────────────────────────────────────────────────────────────────
@@ -786,6 +811,7 @@ if __name__ == "__main__":
     test_second_wind_resource()
     test_second_wind_heal_range()
     test_second_wind_restore_short_rest()
+    test_action_surge_restores_on_short_rest()
     test_psionic_energy_dice()
     test_psionic_strike_adds_force_damage()
     test_protective_field_reduces_damage()

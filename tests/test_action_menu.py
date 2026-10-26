@@ -1491,6 +1491,39 @@ def test_every_action_carries_an_economy_from_the_vocabulary():
     print("✅ test_every_action_carries_an_economy_from_the_vocabulary passed")
 
 
+def test_wild_magic_bonus_cast_offers_action_spells():
+    """Surge band 6: for its minute, the Bonus Action spell menu also offers Action-cast spells
+    (as Quickened does). It used to list only the Bonus-Action spells."""
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Sorcerer, 5,
+                    sorcerer_subclass=rpg.SorcererSubclass.WildMagic)
+    app.combat.set_agent_spells(app.bm, cyra, [_spell(app, "Fire Bolt"),
+                                               _spell(app, "Fireball"),
+                                               _spell(app, "Misty Step")])
+    s = app.combat.get_agent_stats(app.bm, cyra)
+    s.spell_slots_remaining = list(s.spell_slots_max)
+    app.combat.set_agent_stats(app.bm, cyra, s)
+
+    seen = []
+    app._ask_actor = lambda idx, kind, title, pairs, **kw: seen.append([l for l, _ in pairs])
+
+    def bonus_menu():
+        seen.clear()
+        app._start_cast_spell("bonus")
+        assert len(seen) == 1, seen
+        return " | ".join(seen[0])
+
+    got = bonus_menu()
+    assert "Misty Step" in got and "Fireball" not in got and "Fire Bolt" not in got, got
+
+    s = app.combat.get_agent_stats(app.bm, cyra)
+    s.wild_magic_bonus_cast_turns = 10
+    app.combat.set_agent_stats(app.bm, cyra, s)
+    got = bonus_menu()
+    assert "Misty Step" in got and "Fireball" in got and "Fire Bolt" in got, got
+    print("✅ test_wild_magic_bonus_cast_offers_action_spells passed")
+
+
 def test_ids_are_unique():
     """The panel keys widgets by id and `_handle_events` dispatches on it; a duplicate
     would make one of the two unreachable in a way no golden could show."""
@@ -1562,6 +1595,7 @@ if __name__ == "__main__":
         test_cunning_action_is_all_three_or_none()
         test_the_two_telekinetic_options_are_two_widgets()
         test_every_action_carries_an_economy_from_the_vocabulary()
+        test_wild_magic_bonus_cast_offers_action_spells()
         test_ids_are_unique()
     finally:
         _restore_cwd_logs(_saved)

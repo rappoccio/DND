@@ -186,6 +186,11 @@ void bindCombatSpells(py::class_<CombatEngine>& engine) {
              &CombatEngine::clearAllConcentration,
              py::arg("battle_map"),
              "Drop concentration for every concentrating agent (e.g. on End Combat).")
+        .def("clear_wild_magic_surge_effects",
+             &CombatEngine::clearWildMagicSurgeEffects,
+             py::arg("battle_map"),
+             "End every lingering Wild Magic Surge effect on every agent (End Combat): shield\n"
+             "(and its +2 AC), regen, bonus-action casting, teleport, skip-next-turn, extra action.")
         .def("can_countercharm", &CombatEngine::canCountercharm,
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("save_target_idx"), py::arg("action"),
              "True iff reactor (L7+ Bard, reaction free, alive, within 30ft+LoS of the save target — or the\n"

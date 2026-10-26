@@ -3638,6 +3638,25 @@ void CombatEngine::clearAllConcentration(BattleMap& bm)
     }
 }
 
+void CombatEngine::clearWildMagicSurgeEffects(BattleMap& bm) noexcept
+{
+    for (int i = 0; i < static_cast<int>(bm.placedAgents().size()); ++i) {
+        Agent::Stats st = bm.getAgentStats(i);
+        if (st.wild_magic_shield_turns == 0 && st.wild_magic_regen_turns == 0 &&
+            st.wild_magic_bonus_cast_turns == 0 && st.wild_magic_teleport_bonus_turns == 0 &&
+            !st.wild_magic_skip_next_turn && !st.wild_magic_extra_action)
+            continue;
+        if (st.wild_magic_shield_turns > 0) st.ac_temporary_modifications -= 2;  // band 2's +2 AC
+        st.wild_magic_shield_turns         = 0;
+        st.wild_magic_regen_turns          = 0;
+        st.wild_magic_bonus_cast_turns     = 0;
+        st.wild_magic_teleport_bonus_turns = 0;
+        st.wild_magic_skip_next_turn       = false;
+        st.wild_magic_extra_action         = false;
+        bm.setAgentStats(i, st);
+    }
+}
+
 void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCondition& cond) noexcept
 {
     const auto& agents = bm.placedAgents();

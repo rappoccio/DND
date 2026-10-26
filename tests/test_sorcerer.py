@@ -1086,6 +1086,32 @@ def test_wild_magic_surge_band10_teleport_bonus():
     print("✅ test_wild_magic_surge_band10_teleport_bonus passed")
 
 
+def test_wild_magic_surge_effects_cleared_on_end_combat():
+    """End Combat (clear_wild_magic_surge_effects) ends every lingering surge band: the 1-minute
+    windows (2/3/6/10) and the one-shot flags (7/8). The shield's +2 AC comes off with it, and an
+    agent with no surge effect is untouched."""
+    bm, engine, sorc, tgt = _setup(3)
+    ac_before = engine.calculate_ac(bm, sorc)
+    tgt_ac = engine.calculate_ac(bm, tgt)
+    for band in (2, 3, 6, 7, 8, 10):
+        assert engine.apply_wild_magic_surge_effect(bm, sorc, band) is True
+    assert engine.calculate_ac(bm, sorc) == ac_before + 2
+
+    engine.clear_wild_magic_surge_effects(bm)
+
+    s = engine.get_agent_stats(bm, sorc)
+    assert s.wild_magic_shield_turns == 0 and s.wild_magic_regen_turns == 0
+    assert s.wild_magic_bonus_cast_turns == 0 and s.wild_magic_teleport_bonus_turns == 0
+    assert s.wild_magic_skip_next_turn is False and s.wild_magic_extra_action is False
+    assert engine.calculate_ac(bm, sorc) == ac_before, "the shield's +2 AC ends with it"
+    assert engine.calculate_ac(bm, tgt) == tgt_ac
+
+    # Idempotent: a second clear must not take another 2 AC off.
+    engine.clear_wild_magic_surge_effects(bm)
+    assert engine.calculate_ac(bm, sorc) == ac_before
+    print("✅ test_wild_magic_surge_effects_cleared_on_end_combat passed")
+
+
 def test_wild_magic_surge_band9_drop_weapons():
     """Band 9 drops the caster's equipped weapons onto the ground."""
     bm, engine, sorc, tgt = _setup(3)
@@ -2619,6 +2645,7 @@ if __name__ == "__main__":
     test_wild_magic_surge_band8_extra_action()
     test_wild_magic_surge_band6_bonus_casting()
     test_wild_magic_surge_band10_teleport_bonus()
+    test_wild_magic_surge_effects_cleared_on_end_combat()
     test_wild_magic_surge_band9_drop_weapons()
     test_wild_magic_surge_gating()
     test_pending_advantage_on_d20()

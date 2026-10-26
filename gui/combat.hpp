@@ -1771,6 +1771,11 @@ public:
     // Drop concentration for every concentrating agent (e.g. on End Combat).
     void clearAllConcentration(BattleMap& bm);
 
+    // End every lingering Wild Magic Surge effect on every agent (End Combat): the 1-minute
+    // bands (2 shield — its +2 AC comes off too, 3 regen, 6 bonus-cast, 10 teleport) and the
+    // one-shot flags (7 skip-next-turn, 8 extra action). A minute never outlasts the fight.
+    void clearWildMagicSurgeEffects(BattleMap& bm) noexcept;
+
     // Warlock Magical Cunning (L2+): recover expended Pact Magic slots up to ceil(max/2)
     // — or all of them at L20 (Eldritch Master) — once per long rest. Returns true if used.
     bool useMagicalCunning(BattleMap& bm, int agent_idx);

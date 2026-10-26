@@ -4947,6 +4947,7 @@ class App:
         self._effect_meta         = {}
         self._spell_metadata      = {}
         self.combat.clear_all_concentration(self.bm)  # drop lingering concentration on all agents
+        self.combat.clear_wild_magic_surge_effects(self.bm)  # 1-minute surge bands end with the fight
         self.combat.stop_recording()                  # finish the replay event log
         self.bm.clear_terrain_effects()
         self.bm.clear_spell_effects()
@@ -9929,6 +9930,9 @@ class App:
         # folds in Quickened and spends the 2 SP on cast (_apply_armed_metamagic).
         quickened_armed = (slot == "bonus" and
                            rpg.MetamagicOption.Quickened in self._armed_metamagic_options(idx))
+        # Wild Magic Surge band 6 does the same for its 1-minute window, at no SP cost.
+        wild_bonus_cast = (slot == "bonus" and
+                           self.combat.get_agent_stats(self.bm, idx).wild_magic_bonus_cast_turns > 0)
 
         # Build spell menu from available spells. Each spell contributes ONE top-level row;
         # leveled player spells with more than one castable level open a follow-up popup to
@@ -9948,8 +9952,10 @@ class App:
                 continue  # Skip bonus-action spells from the action menu
             elif slot == "bonus" and sp.casting_time != rpg.CastingTime.BonusAction:
                 # The bonus menu normally shows only Bonus-Action spells; with Quickened armed it
-                # also offers Action-cast spells (which then cast as a Bonus Action via Quickened).
-                if not (quickened_armed and sp.casting_time == rpg.CastingTime.Action):
+                # also offers Action-cast spells (which then cast as a Bonus Action via Quickened),
+                # and so does a Wild Magic bonus-cast surge.
+                if not ((quickened_armed or wild_bonus_cast)
+                        and sp.casting_time == rpg.CastingTime.Action):
                     continue  # Skip non-bonus-action spells from the bonus menu
 
             if sp_level == 0:
