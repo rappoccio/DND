@@ -4721,6 +4721,79 @@ class App:
             self._combat_log_add(f"{agent.name}: Jump out of range ({jump_dist}ft > {max_cells * 5}ft max)")
 
     def _start_combat(self):
+        """Begin Combat: ask each eligible Wild Magic Sorcerer whether to spend Tides of
+        Chaos on Initiative, then roll initiative and enter combat mode.
+
+        The asks are prompts, so they are answered later (a remote player answers in the
+        browser); combat begins from the last answer's callback. With no one to ask it
+        begins at once, exactly as before. The asks go one at a time because a prompt with
+        no parent supersedes whatever is live. A Start click while asks are pending does
+        not start a second combat: it re-asks the current question if something else on
+        the console superseded it, and is otherwise ignored."""
+        if not self.bm.placed_agents:
+            return
+        pending = getattr(self, "_tides_start", None)
+        if pending is not None:
+            if not pending["prompt"].is_live:
+                # Re-asked against today's board: an agent who has since left it, or lost
+                # the use, is skipped rather than asked about.
+                still = set(self._tides_initiative_candidates())
+                self._ask_tides_initiative([i for i in pending["queue"] if i in still])
+            return
+        self._tides_initiative_armed = []
+        queue = self._tides_initiative_candidates()
+        if queue:
+            self._ask_tides_initiative(queue)
+        else:
+            self._begin_combat()
+
+    def _tides_initiative_candidates(self) -> list:
+        """PCs who may spend Tides of Chaos on Initiative: a living, deployed L3+ Wild Magic
+        Sorcerer with a use left (the engine's `arm_tides_for_initiative` check). NPCs are
+        never asked."""
+        CC, SS = rpg.CharacterClass, rpg.SorcererSubclass
+        out = []
+        for i, pt in enumerate(self.bm.placed_agents):
+            if pt.faction != PC_FACTION or self.bm.is_agent_on_deck(i):
+                continue
+            s = self.combat.get_agent_stats(self.bm, i)
+            if s.hp_cur <= 0 or not s.has_class(CC.Sorcerer):
+                continue
+            if s.sorcerer_subclass != SS.WildMagic or s.class_level(CC.Sorcerer) < 3:
+                continue
+            tides = s.get_resource("Tides of Chaos")
+            if tides is not None and tides.current >= 1:
+                out.append(i)
+        return out
+
+    def _ask_tides_initiative(self, queue: list):
+        """Ask ``queue[0]`` about Tides of Chaos on Initiative, then the rest; begin combat
+        after the last answer. A reaction prompt, so a seated player's question carries the
+        table's reaction timer and expiry counts as No: an absent player cannot hold up the
+        start of combat. Cancel is No too."""
+        if not queue:
+            self._tides_start = None
+            self._begin_combat()
+            return
+        idx, rest = queue[0], queue[1:]
+        answered = []
+
+        def answer(use: bool):
+            if answered:
+                return
+            answered.append(use)
+            if use and self.combat.arm_tides_for_initiative(self.bm, idx):
+                self._tides_initiative_armed.append(idx)
+            self._ask_tides_initiative(rest)
+
+        prompt = self._ask_actor(
+            idx, "reaction",
+            f"{self._agent_name(idx)}: Use Tides of Chaos for Advantage on Initiative?",
+            [("Yes", lambda: answer(True)), ("No", lambda: answer(False))],
+            on_cancel=lambda: answer(False))
+        self._tides_start = {"queue": queue, "prompt": prompt}
+
+    def _begin_combat(self):
         """Roll initiative and enter combat mode."""
         if not self.bm.placed_agents:
             return
@@ -4774,6 +4847,9 @@ class App:
             f.write(f"=== COMBAT REPLAY LOG ===\n")
             f.write(f"Checked replay:  python3 replay.py <map_image> [replay_log.txt]\n")
             f.write(f"\nSEED: {self.combat_seed}\n")
+            # Tides of Chaos spent on Initiative, armed before the roll: replay.py re-arms
+            # them so its initiative draws the same extra d20s.
+            f.write(f"TIDES_INITIATIVE: {list(getattr(self, '_tides_initiative_armed', []))}\n")
             f.write(f"INITIATIVE: {[(self.bm.placed_agents[e.agent_idx].name, e.total) for e in order]}\n")
             f.write(f"\n=== EVENTS (JSON) ===\n")
         # Begin recording every engine mutation through the wrapper.

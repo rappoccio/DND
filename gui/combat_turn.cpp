@@ -55,6 +55,25 @@ namespace {
 //  Initiative
 // ─────────────────────────────────────────────────────────────────────────────
 
+int CombatEngine::rollInitiativeD20(const BattleMap& bm, int agent_idx, const Agent::Stats& s)
+{
+    auto& armed = ctx_.tides_on_initiative_;
+    const auto it = std::find(armed.begin(), armed.end(), agent_idx);
+    const bool tides = it != armed.end();
+    if (tides) {
+        armed.erase(it);
+        log_("{} uses Tides of Chaos on Initiative", agentName(bm, agent_idx));
+    }
+    // Roll Initiative at Advantage: Feral Instinct (Barbarian L7), Assassinate (Assassin Rogue
+    // L3+) or Tides of Chaos. Advantage does not stack, so any of them is one extra d20.
+    if (tides ||
+        (s.hasClass(CharacterClass::Barbarian) && s.classLevel(CharacterClass::Barbarian) >= 7) ||
+        (s.hasClass(CharacterClass::Rogue) &&
+         s.rogue_subclass == AssassinPath && s.classLevel(CharacterClass::Rogue) >= 3))
+        return std::max(roll(20), roll(20));
+    return roll(20);
+}
+
 std::vector<InitiativeEntry> CombatEngine::rollInitiative(const BattleMap& bm)
 {
     auto agents = bm.placedAgents();
@@ -70,14 +89,7 @@ std::vector<InitiativeEntry> CombatEngine::rollInitiative(const BattleMap& bm)
 
         InitiativeEntry e;
         e.agent_idx = i;
-        // Roll Initiative at Advantage: Feral Instinct (Barbarian L7) or Assassinate (Assassin Rogue L3+).
-        if ((s.hasClass(CharacterClass::Barbarian) && s.classLevel(CharacterClass::Barbarian) >= 7) ||
-            (s.hasClass(CharacterClass::Rogue) &&
-             s.rogue_subclass == AssassinPath && s.classLevel(CharacterClass::Rogue) >= 3)) {
-            e.d20 = std::max(roll(20), roll(20));
-        } else {
-            e.d20 = roll(20);
-        }
+        e.d20 = rollInitiativeD20(bm, i, s);
         e.modifier  = s.initiativeModifier();
         e.total     = e.d20 + e.modifier;
         entries.push_back(e);
@@ -108,12 +120,7 @@ InitiativeEntry CombatEngine::rollInitiativeFor(const BattleMap& bm, int agent_i
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
         return e;
     Agent::Stats s = bm.getAgentStats(agent_idx);
-    if ((s.hasClass(CharacterClass::Barbarian) && s.classLevel(CharacterClass::Barbarian) >= 7) ||
-        (s.hasClass(CharacterClass::Rogue) &&
-         s.rogue_subclass == AssassinPath && s.classLevel(CharacterClass::Rogue) >= 3))
-        e.d20 = std::max(roll(20), roll(20));
-    else
-        e.d20 = roll(20);
+    e.d20 = rollInitiativeD20(bm, agent_idx, s);
     e.modifier = s.initiativeModifier();
     e.total    = e.d20 + e.modifier;
 

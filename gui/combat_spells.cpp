@@ -4254,6 +4254,34 @@ bool CombatEngine::activateTidesOfChaos(BattleMap& bm, int idx) noexcept
     return true;
 }
 
+bool CombatEngine::armTidesForInitiative(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.classLevel(CharacterClass::Sorcerer) < 3) {
+        log_("{} cannot use Tides of Chaos (not a L3+ Wild Magic Sorcerer)", agentName(bm, idx));
+        return false;
+    }
+
+    auto& armed = ctx_.tides_on_initiative_;
+    if (std::find(armed.begin(), armed.end(), idx) != armed.end()) return true;  // already spent
+
+    Resource* tides = stats.getResource("Tides of Chaos");
+    if (!tides || tides->current < 1) {
+        log_("{} has no Tides of Chaos use left (recharges on a long rest or a Wild Magic Surge)",
+             agentName(bm, idx));
+        return false;
+    }
+
+    tides->current -= 1;
+    bm.setAgentStats(idx, stats);
+    armed.push_back(idx);
+    return true;
+}
+
 WildMagicSurgeOffer CombatEngine::offerWildMagicSurge(BattleMap& bm, int idx) noexcept
 {
     WildMagicSurgeOffer offer;                   // surged == false → no surge

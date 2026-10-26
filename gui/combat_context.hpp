@@ -78,6 +78,11 @@ struct CombatContext {
     int pending_advantage_{0};
     int consumePendingAdvantage() noexcept { int a = pending_advantage_; pending_advantage_ = 0; return a; }
 
+    // Agents who spent Tides of Chaos for Advantage on their coming Initiative roll. Per agent,
+    // not pending_advantage_: every combatant's Initiative is rolled in one pass, and the
+    // one-shot would land on whoever rolled first. Cleared entry by entry as each roll uses it.
+    std::vector<int> tides_on_initiative_;
+
     // Overchannel (Evoker Wizard L14): while true, rollDamageDice returns each die at its maximum
     // face instead of rolling. Scoped tightly inside executeSpell (set before the damage rolls,
     // cleared right after) so no unrelated roll is ever maximized.
@@ -128,6 +133,7 @@ struct CombatContext {
             {"agent_portent_round_used", portent_rounds},
             {"resolving_sentinel_guard", resolving_sentinel_guard_},
             {"turn_counter", turnCounter_},
+            {"tides_on_initiative", tides_on_initiative_},
         };
     }
 
@@ -148,6 +154,7 @@ struct CombatContext {
         }
         ctx.resolving_sentinel_guard_ = j.value("resolving_sentinel_guard", false);
         ctx.turnCounter_ = j.value("turn_counter", 0);
+        ctx.tides_on_initiative_ = j.value("tides_on_initiative", std::vector<int>{});
         return ctx;
     }
 };

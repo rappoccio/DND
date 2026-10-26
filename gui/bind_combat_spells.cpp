@@ -83,6 +83,12 @@ void bindCombatSpells(py::class_<CombatEngine>& engine) {
              "Tides of Chaos (Wild Magic Sorcerer L3+): spend the use to grant Advantage on the\n"
              "caster's next D20 Test. Returns True if spent. Recharges on a long rest or when a\n"
              "Wild Magic Surge fires (see maybe_wild_magic_surge).")
+        .def("arm_tides_for_initiative",
+             &CombatEngine::armTidesForInitiative,
+             py::arg("battle_map"), py::arg("idx"),
+             "Tides of Chaos spent on the caster's coming Initiative roll instead: same check and\n"
+             "spend as activate_tides_of_chaos, but the Advantage is held for this agent and used\n"
+             "by roll_initiative / roll_initiative_for. Returns True if spent.")
         .def("maybe_wild_magic_surge",
              &CombatEngine::maybeWildMagicSurge,
              py::arg("battle_map"), py::arg("idx"),

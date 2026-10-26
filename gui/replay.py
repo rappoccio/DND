@@ -39,6 +39,7 @@ class CheckedReplayer:
         self.bm = None
         self.combat = None
         self.seed = None
+        self.tides_initiative = []
         self.events = []
 
     def log(self, *a):
@@ -54,6 +55,8 @@ class CheckedReplayer:
                 line = line.strip()
                 if line.startswith("SEED:"):
                     self.seed = int(line.split(":", 1)[1])
+                elif line.startswith("TIDES_INITIATIVE:"):
+                    self.tides_initiative = json.loads(line.split(":", 1)[1])
                 elif line.startswith("{"):
                     try:
                         self.events.append(json.loads(line))
@@ -74,7 +77,10 @@ class CheckedReplayer:
         if not load_agents_from_json(agents_json, self.bm, self.combat, sprites_dir=""):
             print(f"ERROR: could not load agents from {agents_json}")
             return False
-        # Match the recording: initiative is rolled (consuming RNG) before recording starts.
+        # Match the recording: Tides of Chaos spent on Initiative is armed first (the advantage
+        # draws a second d20), then initiative is rolled (consuming RNG) before recording starts.
+        for idx in self.tides_initiative:
+            self.combat.arm_tides_for_initiative(self.bm, idx)
         self.combat.roll_initiative(self.bm)
         # Mirror _start_combat's RNG-free Bard Superior Inspiration top-up so replay state matches.
         self.combat.apply_superior_inspiration(self.bm)

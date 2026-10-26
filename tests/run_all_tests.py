@@ -313,6 +313,8 @@ test_scripts = [
 
     # Sorcerer features
     "test_sorcerer.py",
+    # Tides of Chaos spent for Advantage on Initiative, asked at Begin Combat.
+    "test_tides_initiative.py",
 
     # Bard features
     "test_bard.py",

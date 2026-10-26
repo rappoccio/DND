@@ -246,6 +246,11 @@ public:
     // their next D20 Test (via grantPendingAdvantage). One use, regained on a long rest OR when a
     // Wild Magic Surge fires (see maybeWildMagicSurge). Returns true if the use was spent.
     bool activateTidesOfChaos(BattleMap& bm, int idx) noexcept;
+    // The same use, spent instead on the caster's coming Initiative roll (2024: Initiative is
+    // a D20 Test). Same eligibility check and resource spend as activateTidesOfChaos, but the
+    // Advantage is held for this agent alone and used by rollInitiative / rollInitiativeFor.
+    // Call before rolling. Returns true if the use was spent.
+    bool armTidesForInitiative(BattleMap& bm, int idx) noexcept;
 
     // Clockwork L14 Trance of Order (Bonus Action). For 1 minute (10 rounds): attacks against this
     // sorcerer can't benefit from Advantage, and they treat their own d20 of 9-or-lower as a 10 on
@@ -2004,6 +2009,10 @@ private:
     // Cross-cutting scratch state (RNG, logger, GUI hooks, one-shot pending-roll modifiers,
     // NPC-turn visual event stream) — see combat_context.hpp (COMBAT_REFACTOR_PLAN.md R3).
     CombatContext ctx_;
+
+    // One agent's Initiative d20: at Advantage for Feral Instinct (Barbarian L7+), Assassinate
+    // (Assassin L3+) or an armed Tides of Chaos, which this consumes.
+    int rollInitiativeD20(const BattleMap& bm, int agent_idx, const Agent::Stats& s);
 
     // Per-agent turn overrides.  Empty = everyone gets exactly 1 turn/round.
     // Only agents with turns != 1 are stored here (optimises the common case).
