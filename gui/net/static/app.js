@@ -458,15 +458,18 @@ function rosterRow(agent, idx, total) {
   return row;
 }
 
+/* `view.log` arrives oldest first. Stick to the bottom only if the player was already
+   there, so reading back up the log isn't yanked away on the next push. */
 function drawLog() {
   const list = el("log");
+  const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 4;
   list.textContent = "";
   for (const line of view.log.slice(-60)) {
     const row = document.createElement("li");
     row.textContent = line;
     list.append(row);
   }
-  list.scrollTop = list.scrollHeight;
+  if (atBottom) list.scrollTop = list.scrollHeight;
 }
 
 /* D-M7-4: the table's log. Each line is `{n, at, text}`, plus `dm` on the lines only the

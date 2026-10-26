@@ -115,7 +115,7 @@ def build_view(app, viewer: Principal, seq: int = 0) -> dict:
         "terrain": _terrain(app, is_dm, hide_map, explored),
         "lighting": _lighting(app, is_dm, hide_map, explored),
         "effects": _effects(app, is_dm, hide_map, explored),
-        "log":     list(app.combat_log),
+        "log":     list(app.combat_log_wire),
         # D-M7-4: the table's log, the same for every seat but the DM's lines, which are
         # omitted for anyone without the DM channel rather than sent and hidden.
         "session": _session(app, is_dm),

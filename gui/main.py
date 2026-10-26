@@ -16,6 +16,7 @@ import math
 import random
 import shutil
 import time
+from collections import deque
 
 os.environ.setdefault('SDL_AUDIODRIVER', 'dummy')
 
@@ -985,6 +986,7 @@ class App:
         self.spell_hover_cell     = None  # cell under mouse during AoE targeting
         self.spell_anchor_cell    = None  # first click of a two-click wall (Rectangle) cast
         self.combat_log           = []    # list[str], newest first
+        self.combat_log_wire      = deque(maxlen=200)  # every line, oldest first, for net views
         self.move_remaining_walk   = 0     # feet remaining this turn (walk)
         self.move_remaining_fly    = 0     # feet remaining this turn (fly)
         self.move_remaining_swim   = 0     # feet remaining this turn (swim)
@@ -4761,6 +4763,7 @@ class App:
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""
         self.combat_log                = []
+        self.combat_log_wire.clear()
         # Initialize combat log file
         self._combat_log_file = "combat_log.txt"
         # Initialize replay log file. Header carries the seed; the RecordingCombat
@@ -5865,6 +5868,8 @@ class App:
         self.combat_log.insert(0, msg)
         if len(self.combat_log) > 10:
             self.combat_log.pop()
+        # The player views' copy: uncapped by the DM panel's 10, oldest first.
+        self.combat_log_wire.append(msg)
         # Print to console
         print(msg)
         # Write to combat log file

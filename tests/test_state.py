@@ -264,16 +264,16 @@ def test_the_command_returns_data_the_caller_owns():
 
     A command that returned a live `App` structure would hand the net thread a reference
     into game state and make NN1 a question of what a handler happens not to read. `log` is
-    the field where the obvious implementation gets it wrong: `app.combat_log` is a list
-    sitting right there, and `build_view` copies it.
+    the field where the obvious implementation gets it wrong: `app.combat_log_wire` is a
+    deque sitting right there, and `build_view` copies it.
     """
     with _server(pump=True) as s:
         s.publish()
         view = build_view(s.app, s.kira)
         before = list(view["log"])
-        s.app.combat_log.append("a line written after the view was built")
+        s.app.combat_log_wire.append("a line written after the view was built")
         assert view["log"] == before, \
-            "the view aliased app.combat_log — the net thread is holding game state"
+            "the view aliased app.combat_log_wire — the net thread is holding game state"
         print("✅ test_the_command_returns_data_the_caller_owns")
 
 

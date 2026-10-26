@@ -36,6 +36,7 @@ Covered here:
   · D-M4-1: the map image is keyed per viewer                (test_map_names_an_image_keyed_per_viewer)
   · a spectator gets a view and controls nothing             (test_spectator_gets_a_view)
   · an unseated principal is refused outright                (test_unseated_principal_refused)
+  · a burst of log lines reaches a player whole, oldest first (test_log_burst_reaches_a_player_whole)
 """
 
 import os
@@ -569,6 +570,22 @@ def test_map_names_an_image_keyed_per_viewer():
     print("✅ test_map_names_an_image_keyed_per_viewer")
 
 
+def test_log_burst_reaches_a_player_whole():
+    """The DM panel keeps only the newest 10 lines; a player's `log` must not. A surge or a
+    multiattack can log more than 10 lines between two pushes, and every one of them has to
+    cross, in the order the DM's log printed them."""
+    def check(app, kira, _spectator):
+        app._combat_log_file = os.path.join(tempfile.mkdtemp(), "combat_log.txt")
+        lines = [f"burst line {i:02d}" for i in range(15)]
+        for line in lines:
+            app._combat_log_add(line)
+        log = build_view(app, kira)["log"]
+        assert log[-15:] == lines, f"the player's log was {log[-15:]}, not the 15 logged"
+        assert len(app.combat_log) == 10, "the DM panel's own cap changed"
+    _run(check)
+    print("✅ test_log_burst_reaches_a_player_whole")
+
+
 def test_view_envelope_shape():
     """Ground rules 1 and 5: every frame carries a `v` and a `t`, and `seq` is the
     caller's (D-M3-1) rather than something this module invents."""
@@ -602,5 +619,6 @@ if __name__ == "__main__":
     test_fog_crosses_as_row_runs()
     test_row_runs_split_on_a_gap()
     test_map_names_an_image_keyed_per_viewer()
+    test_log_burst_reaches_a_player_whole()
     test_view_envelope_shape()
     print("\nAll GameView tests passed! 🎉")
