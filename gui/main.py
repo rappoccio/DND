@@ -15565,7 +15565,7 @@ class App:
         cols = bm.grid_cols
         rows = bm.grid_rows
         fog_surf = pygame.Surface((self.map_rect.width, self.map_rect.height), pygame.SRCALPHA)
-        FOG_COL  = (24, 24, 28, 245)   # dark opaque grey (see plan)
+        FOG_COL  = (0, 0, 0, 255)      # pure black, fully opaque (net/mapimg.py MASK_RGB)
         Cell = rpg.Cell
         for r in range(rows):
             if r >= len(h_lines) - 1:

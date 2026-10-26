@@ -142,7 +142,7 @@ def test_unexplored_is_one_flat_colour():
 def test_fog_col_alpha_would_have_leaked():
     """The trap D-M4-1 exists to name, made into a failing counter-example.
 
-    ``main.py``'s ``FOG_COL`` is ``(24, 24, 28, 245)``. This composites the same fog at
+    ``main.py``'s ``FOG_COL`` was ``(24, 24, 28, 245)``. This composites a fog at
     that alpha, stretches the contrast the way anyone looking at their own traffic would,
     and shows the floor plan coming back. The frozen mask, given the identical treatment,
     stays a single flat value — which is the assertion that would fail the day someone

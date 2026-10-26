@@ -10,11 +10,11 @@ traffic would otherwise have the level.
 
 The four rules this module exists to keep, all frozen:
 
-  · **The mask is opaque — alpha 255.** It is deliberately *not* ``main.py``'s
-    ``FOG_COL = (24, 24, 28, 245)``. Ten of 255 is ≈4% of the art passing through, which is
-    invisible at a glance on a DM screen and recoverable by a contrast stretch on a
-    high-contrast floor plan. Reusing the constant is the obvious implementation and it is
-    the wrong one; ``MASK_RGB`` shares only its colour, for a fog that looks the same.
+  · **The mask is opaque — alpha 255.** ``main.py``'s ``FOG_COL`` was once
+    ``(24, 24, 28, 245)``: ten of 255 is ≈4% of the art passing through, invisible at a
+    glance on a DM screen and recoverable by a contrast stretch on a high-contrast floor
+    plan. The DM's fog is now opaque black too (2026-10-26), but the mask's alpha is the
+    wire's rule, not a copy of the DM's; ``MASK_RGB`` shares only its colour.
   · **Cell geometry is raw image px.** ``v_lines`` / ``h_lines`` are ``BattleMap``'s line
     positions *unscaled*: ``map_scale`` is a screen-space concern with no meaning on the
     wire, and multiplying by it here is how the mask ends up a few pixels off the cells it
@@ -62,7 +62,7 @@ from PIL import Image, ImageDraw
 
 # The DM's fog colour, at the alpha the wire requires. See the module docstring: sharing
 # the RGB keeps a player's fog looking like the DM's; sharing the alpha would leak.
-MASK_RGB = (24, 24, 28)
+MASK_RGB = (0, 0, 0)
 
 # Measured in the container on the largest page in the tree — `wachterhaus.png`,
 # 1084x1504, a 98x91 grid, 8918 cells (see the M4 write-up for the table). The encode *is*
