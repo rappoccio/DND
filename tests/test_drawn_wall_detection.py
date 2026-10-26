@@ -685,6 +685,9 @@ def test_a_map_click_near_the_line_finds_an_edge_door():
         assert app._door_index_at(C(4, 3), near) == 0
         assert app._door_index_at(C(5, 3), (x + cpx + 2, y + cpx // 2)) == 0, "from either side"
         assert app._door_index_at(C(4, 3), (x + cpx // 2, y + cpx // 2)) == -1, "not mid-cell"
+        assert app._edge_door_at_pos(near) == 0, "the slab itself, whatever stands beside it"
+        assert app._edge_door_at_pos((x + cpx - cpx // 3, y + cpx // 2)) == -1, \
+            "a click well inside the neighbouring cell is not the door"
         assert app._door_index_at(C(5, 3)) == 0 and app._door_index_at(C(6, 3)) == -1
         # The DM's menu needs the actor standing beside the line.
         from menus import dm

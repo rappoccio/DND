@@ -175,8 +175,38 @@ def test_ladders_from_before_the_edit_are_not_repaired():
     print("✅ test_ladders_from_before_the_edit_are_not_repaired passed")
 
 
+def _drag(ed, a, b):
+    """Press on cell ``a``, move to and release on cell ``b`` (an editor at zoom 1)."""
+    import pygame
+    v, h = ed.bm.v_line_positions, ed.bm.h_line_positions
+    pa = ((v[a[0]] + v[a[0] + 1]) // 2, (h[a[1]] + h[a[1] + 1]) // 2)
+    pb = ((v[b[0]] + v[b[0] + 1]) // 2, (h[b[1]] + h[b[1] + 1]) // 2)
+    ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=pa))
+    ed.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=pb, rel=(0, 0), buttons=(1, 0, 0)))
+    ed.handle(pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=pb))
+
+
+def test_dragging_a_ladder_moves_it_and_its_return():
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon_app(tmp)
+        _edit(app, (3, 5), (6, 6))
+        app._open_terrain_editor()
+        ed = app.terrain_editor
+        ed.selected_type = "Ladder"
+        _drag(ed, (3, 5), (4, 7))
+        assert ed.ladders[0] == {"cells": [(4, 7)], "target": [4, 7, 1]}
+        _drag(ed, (4, 7), (6, 6))       # onto another ladder: refused
+        assert [lad["cells"] for lad in ed.ladders] == [[(4, 7)], [(6, 6)]]
+        app._close_terrain_editor()
+        f1 = sorted(_terrain(tmp, "f1")["ladders"], key=lambda lad: lad["cells"])
+        assert f1 == [{"cells": [[4, 7]], "target": [4, 7, 0]},
+                      {"cells": [[6, 6]], "target": [6, 6, 0]}], f"f1 ladders: {f1}"
+    print("✅ test_dragging_a_ladder_moves_it_and_its_return passed")
+
+
 def main():
-    tests = [test_a_placed_ladder_gets_a_return_ladder,
+    tests = [test_dragging_a_ladder_moves_it_and_its_return,
+             test_a_placed_ladder_gets_a_return_ladder,
              test_a_down_ladder_pairs_too,
              test_offset_pages_pair_by_global_cell,
              test_removing_a_ladder_removes_its_return,

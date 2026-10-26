@@ -6190,9 +6190,28 @@ class App:
             return None   # an edge door is never on the page border, so never a staple
         return self._door_links.get(door_link_key(door.cells))
 
-    # How close to a grid line (as a fraction of the cell) a click must land to pick
-    # the edge door on it.
-    EDGE_DOOR_PICK = 0.35
+    # Extra screen px around an edge door's drawn slab that still counts as a click on it,
+    # so a thin bar at low zoom stays easy to hit.
+    EDGE_DOOR_PICK_PAD = 4
+
+    def _door_visible(self, door) -> bool:
+        """True when ``door`` is drawn: no fog, or the party has seen one of its cells
+        (either side of an edge door). Same rule as _draw_doors."""
+        return not self._fog_active() or self._any_explored(
+            [(c.col, c.row) for c in (door.cells or door_touch_cells(door))])
+
+    def _edge_door_at_pos(self, pos):
+        """Index into bm.doors of the visible edge door whose drawn slab is under screen
+        ``pos``, or -1. The slab is what the DM sees, so it is what a click picks."""
+        cpx = int(self.bm.cell_pixel_size * self.map_scale)
+        pad = self.EDGE_DOOR_PICK_PAD
+        for i, door in enumerate(self.bm.doors):
+            if not door.edges or not self._door_visible(door):
+                continue
+            x, y, w, h = edge_door_rect(door, self._cell_to_screen, cpx)
+            if pygame.Rect(x - pad, y - pad, w + 2 * pad, h + 2 * pad).collidepoint(pos):
+                return i
+        return -1
 
     def _knock_cell(self, di, cell):
         """The cell to aim Knock at so the engine finds door ``di``: ``cell`` for a cell
@@ -6207,8 +6226,8 @@ class App:
 
     def _door_index_at(self, cell, pos=None):
         """Index into bm.doors for the door a click at screen ``pos`` in ``cell`` means:
-        a door on the cell, else an edge door on the cell side nearest the click, if
-        the click is within EDGE_DOOR_PICK of that side. -1 when there is none.
+        a door on the cell, else the edge door whose drawn slab is under the click.
+        -1 when there is none.
 
         With no ``pos`` (a remote pick), the first edge door on the cell's east, south,
         west or north side, which is the door the engine's Knock finds from that cell."""
@@ -6223,19 +6242,7 @@ class App:
                 if di >= 0:
                     return di
             return -1
-        v, h = self.bm.v_line_positions, self.bm.h_line_positions
-        if c + 1 >= len(v) or r + 1 >= len(h):
-            return -1
-        ix = (pos[0] - self.pan_x) / self.map_scale
-        iy = (pos[1] - self.pan_y) / self.map_scale
-        w, ht = v[c + 1] - v[c], h[r + 1] - h[r]
-        sides = [((ix - v[c]) / w, (c - 1, r, "E")), ((v[c + 1] - ix) / w, (c, r, "E")),
-                 ((iy - h[r]) / ht, (c, r - 1, "S")), ((h[r + 1] - iy) / ht, (c, r, "S"))]
-        d, (ec, er, s) = min(sides, key=lambda t: t[0])
-        if d > self.EDGE_DOOR_PICK or ec < 0 or er < 0:
-            return -1
-        return self.bm.door_at_edge(rpg.Cell(ec, er),
-                                    rpg.EdgeSide.East if s == "E" else rpg.EdgeSide.South)
+        return self._edge_door_at_pos(pos)
 
     def _use_door_link(self, door_id: int, actor_idx: int):
         """Step through a linked door to the abutting page, carrying the acting (or
@@ -19494,8 +19501,10 @@ class App:
                         if net_picks.is_pick_prompt(self, self.prompts.live):
                             net_offer.take_over(self)
                         if not self.resolve_pick(cell, event.pos):
-                            if hit < 0 and self._door_index_at(cell, event.pos) >= 0:
-                                # No pending action and an empty door cell: offer door interaction.
+                            if self._edge_door_at_pos(event.pos) >= 0 or (
+                                    hit < 0 and self._door_index_at(cell, event.pos) >= 0):
+                                # No pending action and a click on a door (an edge door's
+                                # slab wins over the creature beside it): door interaction.
                                 dm.show_door_menu(self, cell, event.pos)
                             elif hit < 0 and self._ladder_at(cell) >= 0:
                                 dm.show_ladder_menu(self, cell, event.pos)
@@ -19524,7 +19533,8 @@ class App:
                     else:
                         # Normal mode: door interaction, drag any agent, or deselect.
                         # But disable dragging if jump overlay is active (use jump instead)
-                        if hit < 0 and self._door_index_at(cell, event.pos) >= 0:
+                        if self._edge_door_at_pos(event.pos) >= 0 or (
+                                hit < 0 and self._door_index_at(cell, event.pos) >= 0):
                             dm.show_door_menu(self, cell, event.pos)
                         elif hit < 0 and self._ladder_at(cell) >= 0:
                             dm.show_ladder_menu(self, cell, event.pos)

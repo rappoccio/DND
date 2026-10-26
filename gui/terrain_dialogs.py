@@ -451,6 +451,11 @@ class TerrainEditorDialog:
         self.stair_moving = False
         self.stair_message = ""
         self._stair_undo = []
+        # Drag-to-move for ladders and staircase ends: a press on one starts it, the
+        # release on another cell moves it there, and a release where it started is the
+        # ordinary click. {"kind": "ladder"|"stair", "key": ladder index | (id, end),
+        # "start": (c, r), "cur": (c, r)} while the button is held, else None.
+        self.portal_drag = None
 
     ZOOM_MIN = 0.5
     ZOOM_MAX = 6.0
@@ -498,6 +503,7 @@ class TerrainEditorDialog:
         self.stair_moving = False
         self.stair_message = ""
         self._stair_undo = []
+        self.portal_drag = None
         self.stair_finish_id = self._default_finish_id() if self._stairs_ok() else None
         self.reset_view()
 
@@ -617,19 +623,27 @@ class TerrainEditorDialog:
                 if event.button == 3:
                     self.stair_selected = None
                     self.stair_moving = False
+                    self.portal_drag = None
                     return
                 cell = self._pos_to_cell(pos)
                 if cell is not None:
                     shift = bool(pygame.key.get_mods() & pygame.KMOD_SHIFT)
-                    self._stair_click(cell, place=shift)
+                    if not (shift or self.stair_moving or self._start_stair_drag(cell)):
+                        self._stair_click(cell, place=shift)
                 return
             if event.button == 1 and self.selected_type == "Ladder":
                 # A ladder is a single-cell portal: click places one (target auto-filled
                 # to the same global X,Y one floor up/down); clicking an existing one
-                # removes it (toggle, like a single-cell door).
+                # removes it (toggle, like a single-cell door); dragging one moves it.
                 cell = self._pos_to_cell(pos)
                 if cell is not None:
-                    self._place_ladder(cell)
+                    idx = self._ladder_index_at(cell.col, cell.row)
+                    if idx >= 0:
+                        c = (int(cell.col), int(cell.row))
+                        self.portal_drag = {"kind": "ladder", "key": idx,
+                                            "start": c, "cur": c}
+                    else:
+                        self._place_ladder(cell)
                 return
             if event.button == 1 and self.selected_type == "Door" and self._edge_doors():
                 self.door_edge_drag = (pos, pos)
@@ -657,7 +671,11 @@ class TerrainEditorDialog:
                 self.selected_region_idx = -1
 
         elif event.type == pygame.MOUSEMOTION:
-            if self.edge_drag is not None:
+            if self.portal_drag is not None:
+                cell = self._pos_to_cell(pos)
+                if cell is not None:
+                    self.portal_drag["cur"] = (int(cell.col), int(cell.row))
+            elif self.edge_drag is not None:
                 self.edge_drag = (self.edge_drag[0], self.edge_drag[1], pos)
             elif self.door_edge_drag is not None:
                 self.door_edge_drag = (self.door_edge_drag[0], pos)
@@ -674,6 +692,12 @@ class TerrainEditorDialog:
                 )
 
         elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1 and self.portal_drag is not None:
+                cell = self._pos_to_cell(pos)
+                if cell is not None:
+                    self.portal_drag["cur"] = (int(cell.col), int(cell.row))
+                self._finish_portal_drag()
+                return
             if self.edge_drag is not None and event.button == self.edge_drag[0]:
                 self.edge_drag = (self.edge_drag[0], self.edge_drag[1], pos)
                 self._finish_edge_drag()
@@ -875,6 +899,64 @@ class TerrainEditorDialog:
                 return i
         return -1
 
+    def _finish_portal_drag(self):
+        """Release of a ladder / staircase-end drag: move it to the cell under the
+        pointer, or treat a release where it started as the ordinary click."""
+        drag, self.portal_drag = self.portal_drag, None
+        start, cur = drag["start"], drag["cur"]
+        if drag["kind"] == "ladder":
+            idx = drag["key"]
+            if idx >= len(self.ladders):
+                return
+            if cur == start:
+                self.ladders.pop(idx)       # a click on a ladder still removes it
+            elif self._ladder_index_at(*cur) < 0:
+                self._move_ladder(idx, cur)
+            return
+        if cur == start:
+            self._stair_click(rpg.Cell(*start))
+            return
+        sid, i = drag["key"]
+        st = self.dungeon.staircase_by_id(sid)
+        if st is None:
+            return
+        self._stair_snapshot()
+        st.ends[i].cell = cur
+        self.stair_selected = (sid, i)
+        self.stair_moving = False
+        self.stair_message = f"Moved {st.name}'s end {'AB'[i]} to {cur}."
+
+    def _start_stair_drag(self, cell):
+        """Press on a staircase end: start dragging it (the selected end when the cell is
+        a shared landing that holds it, else the first). False when the cell has none."""
+        if not self._stairs_ok():
+            return False
+        c = (int(cell.col), int(cell.row))
+        keys = [(st.id, i) for st, i in self.dungeon.staircase_ends_at(self.page_id, c)]
+        if not keys:
+            return False
+        key = self.stair_selected if self.stair_selected in keys else keys[0]
+        self.portal_drag = {"kind": "stair", "key": key, "start": c, "cur": c}
+        return True
+
+    def _ladder_target(self, col, row, dz):
+        """Global (X, Y, Z) of the cell ``dz`` floors from local (col, row) here."""
+        ox = int(getattr(self.bm, "origin_col", 0) or 0)
+        oy = int(getattr(self.bm, "origin_row", 0) or 0)
+        z = int(getattr(self.bm, "z_level", 0) or 0)
+        return [ox + col, oy + row, z + dz]
+
+    def _move_ladder(self, idx, cell):
+        """Move ladder ``idx`` to local ``cell`` (col, row), keeping its direction: the
+        target follows to the same global X,Y. The close pairs it like a remove + add, so
+        the return ladder on the other floor moves with it."""
+        lad = self.ladders[idx]
+        z = int(getattr(self.bm, "z_level", 0) or 0)
+        dz = int(lad.get("target", [0, 0, z + 1])[2]) - z
+        col, row = int(cell[0]), int(cell[1])
+        lad["cells"] = [(col, row)]
+        lad["target"] = self._ladder_target(col, row, dz)
+
     def _place_ladder(self, cell):
         """Place a single-cell ladder at ``cell`` (or remove one already there).
 
@@ -886,12 +968,9 @@ class TerrainEditorDialog:
         if existing >= 0:
             self.ladders.pop(existing)   # toggle: click an existing ladder to remove it
             return
-        ox = int(getattr(self.bm, "origin_col", 0) or 0)
-        oy = int(getattr(self.bm, "origin_row", 0) or 0)
-        z = int(getattr(self.bm, "z_level", 0) or 0)
-        dz = 1 if self.ladder_up else -1
         self.ladders.append({"cells": [(col, row)],
-                             "target": [ox + col, oy + row, z + dz]})
+                             "target": self._ladder_target(col, row,
+                                                           1 if self.ladder_up else -1)})
 
     # ── Staircase tool ───────────────────────────────────────────────────
     def _stairs_ok(self):
@@ -1102,7 +1181,8 @@ class TerrainEditorDialog:
             lines.append((f"Selected: {st.name}{label}, end {'AB'[i]} on floor {z}, {to}",
                           (90, 230, 255)))
         lines.append(("Click an end to select it (again: the next one on a shared cell); "
-                      "Shift+click places on an end", (170, 170, 170)))
+                      "drag an end to move it; Shift+click places on an end",
+                      (170, 170, 170)))
         lines.append(("[F] new / finish  [M] move end  [N] rename  [L] label  "
                       "[Del] delete staircase  [Ctrl+Z] undo  [Right click] deselect",
                       (170, 170, 170)))
@@ -1599,6 +1679,18 @@ class TerrainEditorDialog:
                                       going_up=(tz > z_here), font_sm=self.font_sm)
             if self._stairs_ok() and v and h:
                 self._draw_staircases(canvas, v, h, size)
+            # Where a dragged ladder / staircase end will land.
+            drag = self.portal_drag
+            if drag is not None and drag["cur"] != drag["start"] and v and h:
+                c, r = drag["cur"]
+                if c < len(v) and r < len(h):
+                    blocked = (drag["kind"] == "ladder"
+                               and self._ladder_index_at(c, r) >= 0)
+                    colour = (230, 80, 80) if blocked else (255, 140, 60)
+                    ghost = pygame.Surface((size, size), pygame.SRCALPHA)
+                    ghost.fill((*colour, 90))
+                    canvas.blit(ghost, (v[c], h[r]))
+                    pygame.draw.rect(canvas, colour, pygame.Rect(v[c], h[r], size, size), 3)
             # Preview the in-progress door span while dragging.
             if self.door_edge_drag is not None:
                 for key in self._door_edge_keys(*self.door_edge_drag):
@@ -1651,7 +1743,7 @@ class TerrainEditorDialog:
             lad_surf = self.font_sm.render(f"Ladder travels: {dir_str}", True, (220, 200, 120))
             screen.blit(lad_surf, (10, y + 10))
             keys_surf = self.font_sm.render(
-                "[U] toggle up/down  (click places; click again removes)",
+                "[U] toggle up/down  (click places; click again removes; drag one to move it)",
                 True, (170, 170, 170))
             screen.blit(keys_surf, (10, y + 28))
         elif self.selected_type == "Door":

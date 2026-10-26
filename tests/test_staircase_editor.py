@@ -270,11 +270,44 @@ def test_without_a_dungeon():
     print("  ✅ without a dungeon the tool says so and places nothing")
 
 
+def _drag(ed, a, b):
+    """Press on cell ``a``, move to and release on cell ``b`` (an editor at zoom 1)."""
+    v, h = ed.bm.v_line_positions, ed.bm.h_line_positions
+    pa = (v[a[0]] + CELL // 2, h[a[1]] + CELL // 2)
+    pb = (v[b[0]] + CELL // 2, h[b[1]] + CELL // 2)
+    ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=pa))
+    ed.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=pb, rel=(0, 0), buttons=(1, 0, 0)))
+    ed.handle(pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=pb))
+
+
+def test_drag_moves_an_end():
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon(tmp)
+        d = app.dungeon
+        st = d.new_staircase("M", (2, 2))
+        d.finish_staircase(st.id, "U", (6, 5))
+        ed = _editor(app)
+        _drag(ed, (2, 2), (5, 4))
+        assert _ends(st) == [("M", (5, 4)), ("U", (6, 5))]
+        assert ed.stair_selected == (st.id, 0) and ed.portal_drag is None
+        _drag(ed, (5, 4), (5, 4))                           # a release in place is a click:
+        assert _ends(st) == [("M", (5, 4)), ("U", (6, 5))]  # it selects, moves nothing
+        _drag(ed, (7, 7), (1, 1))                           # a drag from an empty cell places
+        assert len(d.staircases) == 2 and _ends(d.staircases[1]) == [("M", (7, 7))]
+        _key(app, pygame.K_z, mod=pygame.KMOD_CTRL)         # undo the placement…
+        _key(app, pygame.K_z, mod=pygame.KMOD_CTRL)         # …then the drag
+        assert _ends(d.staircase_by_id(st.id)) == [("M", (2, 2)), ("U", (6, 5))]
+        _drag(ed, (2, 2), (3, 3))
+        _key(app, pygame.K_ESCAPE)
+        assert _ends(_on_disk(app).staircase_by_id(st.id)) == [("M", (3, 3)), ("U", (6, 5))]
+    print("  ✅ dragging an end moves it, undoes, and is written on close")
+
+
 def main():
     pygame.init()
     tests = [test_two_phase_placement, test_finish_refused_off_adjacent_floor,
              test_delete_removes_both_ends, test_edit_and_undo, test_shared_landing,
-             test_staircases_list, test_without_a_dungeon]
+             test_staircases_list, test_without_a_dungeon, test_drag_moves_an_end]
     failed = 0
     for t in tests:
         try:
