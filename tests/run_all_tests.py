@@ -124,6 +124,8 @@ test_scripts = [
     "test_sprites.py",
     # The player board's zoom and pan (QOL Q1).
     "test_viewport.py",
+    # Doors, ladders and staircases on the player board.
+    "test_terrain_glyphs.py",
     # The combined initiative/health table and the turn highlight (QOL Q3).
     "test_roster.py",
     # Drag to move on the player board (QOL Q5).

@@ -879,6 +879,9 @@ function drawBoard() {
 
   drawFog(cell, map.cols, map.rows);
   drawGrid(cell, map.cols, map.rows);
+  drawDoors(cell);
+  drawLadders(cell);
+  drawStaircases(cell);
   drawReachable(cell);
   drawAoe(cell);
   for (const agent of displayed()) {
@@ -1063,6 +1066,204 @@ function drawGrid(cell, cols, rows) {
     ctx.lineTo(cols * cell, row * cell + 0.5);
   }
   ctx.stroke();
+}
+
+// ── Doors, ladders, staircases: `terrain_dialogs.py`'s glyphs ───────────────
+//
+// `view.terrain` as sent: the server has already dropped what this viewer has never seen
+// (view.py `_terrain`), so every record here is drawn and none is computed (NN2). The
+// shapes and colours are `draw_door_glyph`, `draw_ladder_glyph` and `draw_stair_glyph`,
+// copied. A change there is a change here.
+
+const DOOR_WOOD = "rgb(110, 70, 35)";
+const DOOR_EDGE = "rgb(70, 45, 20)";
+const DOOR_KNOB = "rgb(210, 180, 60)";
+const DOOR_OPEN_FRAME = "rgb(120, 200, 120)";
+const DOOR_OPEN_SLAB = "rgba(139, 90, 43, 0.51)";
+const DOOR_BROKEN_FRAME = "rgb(150, 70, 45)";
+const DOOR_SHARD = "rgb(120, 75, 40)";
+const DOOR_LOCK = "rgb(230, 200, 60)";
+
+/* The world rect [x, y, w, h] a door covers: an edge door's bar, a third of a cell thick
+   and centred on its grid line (`edge_door_rect`), or a cell door's bounding box. */
+function doorRect(door, cell) {
+  if (door.edges && door.edges.length) {
+    const t = Math.max(4, Math.floor(cell / 3));
+    const c0 = Math.min(...door.edges.map((e) => e[0]));
+    const r0 = Math.min(...door.edges.map((e) => e[1]));
+    const n = door.edges.length;
+    if (door.edges[0][2] === "E") return [(c0 + 1) * cell - t / 2, r0 * cell, t, n * cell];
+    return [c0 * cell, (r0 + 1) * cell - t / 2, n * cell, t];
+  }
+  if (!door.cells || !door.cells.length) return null;
+  const cols = door.cells.map((c) => c[0]);
+  const rows = door.cells.map((c) => c[1]);
+  const c0 = Math.min(...cols), r0 = Math.min(...rows);
+  return [c0 * cell, r0 * cell, (Math.max(...cols) - c0 + 1) * cell,
+          (Math.max(...rows) - r0 + 1) * cell];
+}
+
+function drawDoors(cell) {
+  const doors = (view.terrain && view.terrain.doors) || [];
+  for (const door of doors) {
+    const rect = doorRect(door, cell);
+    if (rect) drawDoor(door, ...rect);
+  }
+}
+
+function drawDoor(door, x, y, w, h) {
+  const short = Math.min(w, h);
+  const pad = Math.max(2, Math.floor(short / 8));
+  const fx = x + pad, fy = y + pad, fw = w - 2 * pad, fh = h - 2 * pad;
+  ctx.lineWidth = 2;
+  if (door.broken) {
+    // Smashed off its hinges: a splintered frame, no lock to draw.
+    ctx.strokeStyle = DOOR_BROKEN_FRAME;
+    ctx.strokeRect(fx, fy, fw, fh);
+    const shard = Math.max(3, Math.floor(short / 4));
+    ctx.strokeStyle = DOOR_SHARD;
+    ctx.beginPath();
+    ctx.moveTo(fx, fy);
+    ctx.lineTo(fx + shard, fy + fh / 2 - shard / 2);
+    ctx.lineTo(fx, fy + fh);
+    ctx.moveTo(fx + fw, fy);
+    ctx.lineTo(fx + fw - shard, fy + fh / 2 + shard / 2);
+    ctx.lineTo(fx + fw, fy + fh);
+    ctx.stroke();
+  } else if (door.open) {
+    // Open: a faint frame and a thin ajar slab hinged on the left.
+    ctx.strokeStyle = DOOR_OPEN_FRAME;
+    ctx.strokeRect(fx, fy, fw, fh);
+    ctx.fillStyle = DOOR_OPEN_SLAB;
+    ctx.fillRect(fx, fy, Math.max(3, Math.floor(short / 4)), fh);
+  } else {
+    // Closed: a solid wooden slab with a centre plank line and a knob.
+    ctx.fillStyle = DOOR_WOOD;
+    ctx.fillRect(fx, fy, fw, fh);
+    ctx.strokeStyle = DOOR_EDGE;
+    ctx.strokeRect(fx, fy, fw, fh);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(fx + fw / 2, fy);
+    ctx.lineTo(fx + fw / 2, fy + fh);
+    ctx.stroke();
+    const knob = Math.max(2, Math.floor(short / 14));
+    // A slab too narrow for an off-centre knob (an edge door's bar) centres it.
+    const kx = fw >= knob * 6 ? fx + fw - knob * 3 : fx + fw / 2;
+    ctx.fillStyle = DOOR_KNOB;
+    ctx.beginPath();
+    ctx.arc(kx, fy + fh / 2, knob, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (door.locked) {
+    // A player is not told whether a lock is arcane (that is DM information), so every
+    // lock is the plain gold padlock.
+    const cx = x + w / 2, cy = y + h / 2;
+    const bw = Math.max(6, Math.floor(short / 4)), bh = Math.max(5, Math.floor(short / 5));
+    ctx.fillStyle = DOOR_LOCK;
+    ctx.fillRect(cx - bw / 2, cy, bw, bh);
+    ctx.strokeStyle = "rgb(30, 30, 30)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - bw / 2, cy, bw, bh);
+    ctx.strokeStyle = DOOR_LOCK;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, bw / 2, Math.PI, 0);
+    ctx.stroke();
+  }
+}
+
+const LADDER_BACK = "rgba(90, 60, 30, 0.35)";
+const LADDER_RAIL = "rgb(170, 130, 70)";
+
+/* A ladder's rails and rungs over its cells' bounding box. No direction arrow: where a
+   ladder goes is DM information (view.py strips `target`), so a player sees only that
+   there is one. */
+function drawLadders(cell) {
+  const ladders = (view.terrain && view.terrain.ladders) || [];
+  for (const lad of ladders) {
+    if (!lad.cells || !lad.cells.length) continue;
+    const cols = lad.cells.map((c) => c[0]);
+    const rows = lad.cells.map((c) => c[1]);
+    const x = Math.min(...cols) * cell, y = Math.min(...rows) * cell;
+    const w = (Math.max(...cols) + 1) * cell - x, h = (Math.max(...rows) + 1) * cell - y;
+    const short = Math.min(w, h);
+    const pad = Math.max(2, Math.floor(short / 6));
+    ctx.fillStyle = LADDER_BACK;
+    ctx.fillRect(x + pad, y + pad, w - 2 * pad, h - 2 * pad);
+    const gap = Math.max(4, Math.floor((w - 2 * pad) / 3));
+    const lx = x + (w - gap) / 2, rx = x + (w + gap) / 2;
+    const top = y + pad, bot = y + h - pad;
+    ctx.strokeStyle = LADDER_RAIL;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(lx, top); ctx.lineTo(lx, bot);
+    ctx.moveTo(rx, top); ctx.lineTo(rx, bot);
+    const rungs = Math.max(2, Math.floor((h - 2 * pad) / Math.max(4, Math.floor(short / 4))));
+    for (let i = 0; i <= rungs; i++) {
+      const ry = top + (bot - top) * i / rungs;
+      ctx.moveTo(lx, ry); ctx.lineTo(rx, ry);
+    }
+    ctx.stroke();
+  }
+}
+
+const STAIR_BACK = "rgba(40, 50, 90, 0.43)";
+const STAIR_BACK_DEAD = "rgba(60, 60, 60, 0.35)";
+const STAIR_TREAD = "rgb(150, 160, 190)";
+const STAIR_TREAD_DEAD = "rgb(120, 120, 120)";
+const STAIR_ARROW = "rgb(120, 220, 255)";
+
+/* Each staircase end: three treads, the id(s) in the corner and an arrow per direction.
+   Ends sharing a cell (a landing, D2) draw as one glyph with both arrows, like the DM's. */
+function drawStaircases(cell) {
+  const ends = (view.terrain && view.terrain.staircases) || [];
+  const byCell = new Map();
+  for (const st of ends) {
+    const key = `${st.cell[0]},${st.cell[1]}`;
+    if (!byCell.has(key)) byCell.set(key, { cell: st.cell, dirs: [], ids: [] });
+    const g = byCell.get(key);
+    if (st.direction) g.dirs.push(st.direction);
+    g.ids.push(st.id);
+  }
+  for (const g of byCell.values()) {
+    const x = g.cell[0] * cell, y = g.cell[1] * cell;
+    const pad = Math.max(2, Math.floor(cell / 8));
+    const usable = g.dirs.length > 0;
+    ctx.fillStyle = usable ? STAIR_BACK : STAIR_BACK_DEAD;
+    ctx.fillRect(x + pad, y + pad, cell - 2 * pad, cell - 2 * pad);
+    const step = Math.max(2, Math.floor((cell - 2 * pad) / 3));
+    ctx.strokeStyle = usable ? STAIR_TREAD : STAIR_TREAD_DEAD;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      ctx.strokeRect(x + pad + i * step, y + cell - pad - (i + 1) * step, step, (i + 1) * step);
+    }
+    const arr = Math.max(3, Math.floor(cell / 7));
+    const cx = x + cell - pad - arr - 1;
+    ctx.fillStyle = STAIR_ARROW;
+    if (g.dirs.includes("up")) {
+      const top = y + pad + 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, top); ctx.lineTo(cx - arr, top + arr); ctx.lineTo(cx + arr, top + arr);
+      ctx.closePath();
+      ctx.fill();
+    }
+    if (g.dirs.includes("down")) {
+      const bot = y + cell - pad - 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, bot); ctx.lineTo(cx - arr, bot - arr); ctx.lineTo(cx + arr, bot - arr);
+      ctx.closePath();
+      ctx.fill();
+    }
+    if (g.ids.length && cell >= 18) {
+      ctx.fillStyle = "rgb(235, 235, 245)";
+      ctx.font = `${FONT_SM}px sans-serif`;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(g.ids.join("/"), x + pad + 1, y + pad);
+      ctx.textBaseline = "alphabetic";
+    }
+  }
 }
 
 // ── Tokens (M4b.5, B-8): `_draw_one_agent`'s look ───────────────────────────
