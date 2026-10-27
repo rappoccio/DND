@@ -217,7 +217,8 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
                                       int target_ac,
                                       bool advantage,
                                       bool disadvantage,
-                                      int exhaustion_level)
+                                      int exhaustion_level,
+                                      bool target_blade_warded)
 {
     AttackResult r;
     r.disadvantage = disadvantage;
@@ -232,6 +233,8 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     // Bane — the mirror: a baned creature subtracts a fresh 1d4 from every attack roll. Kept
     // as its own piece on the to-hit line, and stacks with Bless if both are somehow active.
     int bane_d4  = attacker.baned ? roll(4) : 0;
+    // Blade Ward — the TARGET's ward: the attacker subtracts a fresh 1d4 from the roll.
+    int ward_d4  = target_blade_warded ? roll(4) : 0;
     r.target_ac    = target_ac;
 
     // Check if portent die is pending (need to apply after advantage/disadvantage logic)
@@ -293,7 +296,7 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
 
     r.critical   = (r.d20 >= attacker.crit_threshold);
     r.fumble     = (r.d20 == 1);
-    r.total_roll = r.d20 + r.attack_mod - (2 * exhaustion_level) + roll_bonus + bless_d4 - bane_d4;
+    r.total_roll = r.d20 + r.attack_mod - (2 * exhaustion_level) + roll_bonus + bless_d4 - bane_d4 - ward_d4;
     r.hit        = r.critical || (!r.fumble && r.total_roll >= target_ac);
 
     // Always surface the full to-hit math on one line: the natural d20 (with the adv/dis dice
@@ -303,6 +306,7 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     if (roll_bonus)       extra += std::format(" {:+}(bonus)", roll_bonus);
     if (bless_d4)         extra += std::format(" {:+}(bless)", bless_d4);
     if (bane_d4)          extra += std::format(" {:+}(bane)", -bane_d4);
+    if (ward_d4)          extra += std::format(" {:+}(blade ward)", -ward_d4);
     if (exhaustion_level) extra += std::format(" {:+}(exhaustion)", -2 * exhaustion_level);
     const char* outcome = r.critical ? "CRITICAL HIT"
                         : r.fumble    ? "MISS (nat 1)"
@@ -733,7 +737,9 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
     int target_ac = (bm && target_idx >= 0)
                         ? calculateAC(*bm, target_idx)
                         : target.getStats().base_ac;
-    AttackResult r = rollToHit(w, attacker.getStats(), target_ac, advantage, disadvantage, attacker.getConditions().exhaustion_level);
+    AttackResult r = rollToHit(w, attacker.getStats(), target_ac, advantage, disadvantage,
+                               attacker.getConditions().exhaustion_level,
+                               target.getStats().blade_warded);
     r.hp_before = target.getStats().hp_cur;
 
     if (r.hit) {

@@ -193,6 +193,8 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     if (!bm.moveAgent(idx, newOrigin, type))
         return false;
 
+    if (newOrigin != oldOrigin) detonateBoomingBlade(bm, idx);
+
     // NPC turn playback: record the route actually taken (no-op unless an automated turn is
     // recording) so the GUI can slide the token along it instead of teleporting.
     recordNpcMove(idx, bm.lastMovePath());
@@ -297,6 +299,8 @@ bool CombatEngine::jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_run
     if (!bm.jumpAgent(idx, newOrigin, is_running))
         return false;
 
+    if (newOrigin != oldOrigin) detonateBoomingBlade(bm, idx);
+
     // Check for spell effects along the jump path
     std::vector<Cell> pathCells = getCellsAlongPath(oldOrigin, newOrigin);
 
@@ -320,6 +324,17 @@ bool CombatEngine::jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_run
     updateDarknessBlinding(bm, idx);
 
     return true;
+}
+
+void CombatEngine::detonateBoomingBlade(BattleMap& bm, int idx) noexcept
+{
+    // Collect first: triggerDelayedEffect removes the condition (and may drop the mover unconscious).
+    std::vector<int> ids;
+    for (const auto& c : conditions_.all())
+        if (c.agent_idx == idx && c.delayed_trigger && c.condition_name == "BoomingBlade")
+            ids.push_back(c.condition_id);
+    for (int id : ids)
+        (void)triggerDelayedEffect(bm, id);
 }
 
 bool CombatEngine::teleportAgent(BattleMap& bm, int idx, int target_col, int target_row) noexcept

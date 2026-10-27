@@ -1655,7 +1655,7 @@ def test_wish_is_one_choice_prompt_over_the_bus():
     assert (browser.kind, browser.expects, browser.render) == \
         ("action", "choice", SPELL_BROWSER_RENDER), browser
     assert [o.label for o in browser.options] == expected, len(browser.options)
-    assert len(expected) == 390 and "Wish" not in expected, len(expected)
+    assert len(expected) == 392 and "Wish" not in expected, len(expected)
     assert browser.to_wire()["options"][0].keys() == {"id", "label", "enabled"}
     nine, three = _slots(app, aria, 9), _slots(app, aria, 3)
     _choose_label(app, kira, browser, "Fireball")
@@ -1740,7 +1740,7 @@ def test_greater_divine_intervention_offers_wish():
     _choose_label(app, kira, di, "Wish")
     assert app.action_used and not app.combat.can_use_divine_intervention(app.bm, aria)
     wish = _until_title(app, kira, "Wish — duplicate a spell")
-    assert len(wish.options) == 390, len(wish.options)
+    assert len(wish.options) == 392, len(wish.options)
     _choose_label(app, kira, wish, "Fireball")
     _until_pick(app, kira)
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))

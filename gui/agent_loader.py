@@ -75,6 +75,7 @@ def dict_to_stats(stats_dict):
     stats.longstrider_bonus = int(stats_dict.get("longstrider_bonus", 0))
     stats.expeditious_retreat = bool(stats_dict.get("expeditious_retreat", False))
     stats.attackers_disadvantage = bool(stats_dict.get("attackers_disadvantage", False))
+    stats.blade_warded = bool(stats_dict.get("blade_warded", False))
     stats.has_foresight = bool(stats_dict.get("has_foresight", False))
     stats.barkskin_ac_bonus = int(stats_dict.get("barkskin_ac_bonus", 0))
     stats.enfeebled = bool(stats_dict.get("enfeebled", False))

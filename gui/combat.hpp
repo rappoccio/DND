@@ -392,6 +392,11 @@ public:
     // is_running: true for running jump (full strength), false for standing jump (half strength).
     bool jumpAgent(BattleMap& bm, int idx, Cell newOrigin, bool is_running) noexcept;
 
+    // Booming Blade: a sheathed creature that willingly moves (walk/fly/swim/jump — not forced
+    // movement or teleportation) takes the stored Thunder damage and the spell ends. Called by
+    // moveAgent/jumpAgent after a successful move.
+    void detonateBoomingBlade(BattleMap& bm, int idx) noexcept;
+
     // Teleport an agent to a new location (checks that destination is not blocked by terrain).
     // Returns true if successful, false if destination is blocked or out of bounds.
     bool teleportAgent(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
@@ -893,7 +898,8 @@ public:
                                           int target_ac,
                                           bool advantage = false,
                                           bool disadvantage = false,
-                                          int exhaustion_level = 0);
+                                          int exhaustion_level = 0,
+                                          bool target_blade_warded = false);
 
     // ── G5b feats — caster resistance-ignore / treat-1-as-2 (Elemental Adept + Poisoner) ──
     // effectiveMagicDamageMult: the target's multiplier for `type`, but Resistance (0 < m < 1) is

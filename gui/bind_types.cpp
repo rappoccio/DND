@@ -288,6 +288,7 @@ void bindTypes(py::module_& m) {
         .def_readwrite("save_advantage_mask", &Agent::Stats::save_advantage_mask)
         .def_readwrite("blessed", &Agent::Stats::blessed)   // Bless: +1d4 to attacks & saves
         .def_readwrite("baned", &Agent::Stats::baned)       // Bane:  -1d4 to attacks & saves
+        .def_readwrite("blade_warded", &Agent::Stats::blade_warded)  // Blade Ward: attackers -1d4
         // Haste (Phase 2): +2 AC, Adv on DEX saves, doubled Speed, one extra limited action/turn.
         .def_readwrite("hasted", &Agent::Stats::hasted)
         .def_readwrite("haste_speed_bonus", &Agent::Stats::haste_speed_bonus)

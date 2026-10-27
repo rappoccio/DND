@@ -343,6 +343,9 @@ test_scripts = [
     # Bane (mirror of Bless: −1d4 to attacks & saves on a failed CHA save, dies with concentration)
     "test_bane.py",
 
+    # Blade Ward (attackers −1d4, concentration) and Booming Blade (weapon attack + Thunder on move)
+    "test_blade_ward_booming_blade.py",
+
     # Haste (SPELLS_TO_WIRE Phase 2: +2 AC, Adv DEX saves, doubled speed, extra action, end-lethargy)
     "test_haste.py",
 

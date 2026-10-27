@@ -818,6 +818,34 @@
     "school": "evocation"
   },
   {
+    "name": "Blade Ward",
+    "description": "Whenever a creature makes an attack roll against you before the spell ends, the attacker subtracts 1d4 from the attack roll.",
+    "type": "Help",
+    "geometry": "Single",
+    "attack_type": "Automatic",
+    "save_ability": "SaveDex",
+    "range": 0,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 10,
+    "conditions": [
+      {
+        "condition_name": "BladeWarded",
+        "requires_save": false,
+        "save_repeat_turns": -1
+      }
+    ],
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": true,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "abjuration"
+  },
+  {
     "name": "Bless",
     "description": "You bless up to three creatures within range. Whenever a target makes an attack roll or a saving throw before the spell ends, the target adds 1d4 to the attack roll or save.",
     "type": "Help",
@@ -953,6 +981,27 @@
     "requires_los": false,
     "check_los_on_center": true,
     "school": "illusion"
+  },
+  {
+    "name": "Booming Blade",
+    "description": "You brandish the weapon used in the spell's casting and make a melee attack with it against one creature within 5 feet of you. On a hit, the target suffers the weapon attack's normal effects and then becomes sheathed in booming energy until the start of your next turn. If the target willingly moves 5 feet or more before then, the target takes 1d8 Thunder damage, and the spell ends. At 5th level, the melee attack deals an extra 1d8 Thunder damage to the target on a hit, and the damage the target takes for moving increases to 2d8. Both damage rolls increase by 1d8 at 11th level (2d8 and 3d8) and again at 17th level (3d8 and 4d8).",
+    "type": "Harm",
+    "geometry": "Single",
+    "attack_type": "Automatic",
+    "save_ability": "SaveDex",
+    "range": 5,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 1,
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": true,
+    "check_los_on_center": true,
+    "school": "evocation"
   },
   {
     "name": "Burning Hands",

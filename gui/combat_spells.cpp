@@ -258,6 +258,12 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
         mod -= bane_d4;
         log_("Bane: -{} to spell attack", bane_d4);
     }
+    // Blade Ward — the target's ward subtracts a fresh 1d4 from the attack roll against it.
+    if (agents[static_cast<std::size_t>(tgt_idx)].agent->getStats().blade_warded) {
+        int ward_d4 = roll(4);
+        mod -= ward_d4;
+        log_("Blade Ward: -{} to spell attack against {}", ward_d4, agentName(bm, tgt_idx));
+    }
     int total   = d20_val + mod;
     th.d20        = d20_val;
     th.attack_mod = mod;
@@ -1113,6 +1119,136 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             continue;
         }
 
+        // Booming Blade: a melee weapon attack against a creature within 5 ft, run through the full
+        // weapon-attack pipeline (executeAction: advantage, Sneak Attack, riders, defender reactions,
+        // and the damage itself), so the "target suffers the weapon attack's normal effects". On a hit
+        // the target also takes the cantrip's scaling Thunder dice (L5+), then is sheathed until the
+        // start of the caster's next turn: a delayed-effect condition that moveAgent/jumpAgent detonate
+        // for (tier+1)d8 Thunder when it willingly moves. Self-contained — it skips the post-switch
+        // damage handling, which executeAction has already done for the weapon damage.
+        if (sp.name == "Booming Blade") {
+            const PlacedAgent& tgt_pa = agents[static_cast<std::size_t>(tgt_idx)];
+            const int csz = caster_pa.agent->getSize(), tsz = tgt_pa.agent->getSize();
+            const int gap = std::max(
+                std::max({caster_pa.origin.col - (tgt_pa.origin.col + tsz - 1),
+                          tgt_pa.origin.col - (caster_pa.origin.col + csz - 1), 0}),
+                std::max({caster_pa.origin.row - (tgt_pa.origin.row + tsz - 1),
+                          tgt_pa.origin.row - (caster_pa.origin.row + csz - 1), 0}));
+            int widx = -1;
+            for (std::size_t wi = 0; wi < caster_pa.weapons.size(); ++wi) {
+                const Weapon& w = caster_pa.weapons[wi];
+                if (w.type == WeaponType::Melee &&
+                    (!w.physicalDamageRolls.empty() || w.damage_dice_count > 0)) {
+                    widx = static_cast<int>(wi);
+                    break;
+                }
+            }
+            tr.hp_after = tgt_stats.hp_cur;
+            if (gap > 1) {
+                tr.log_message = agentName(bm, tgt_idx) + " is not within 5 ft — Booming Blade fails";
+            } else if (widx < 0) {
+                tr.log_message = agentName(bm, action.caster_idx) + " has no melee weapon — Booming Blade fails";
+            } else {
+                Attack atk;
+                atk.attacker_idx = action.caster_idx;
+                atk.target_idx   = tgt_idx;
+                atk.weapon_idx   = widx;
+                const AttackResult ar = executeAction(bm, atk);
+                tgt_stats      = bm.getAgentStats(tgt_idx);   // executeAction applied the weapon damage
+                tr.d20         = ar.d20;
+                tr.attack_mod  = ar.attack_mod;
+                tr.total_roll  = ar.total_roll;
+                tr.target_ac   = ar.target_ac;
+                tr.critical    = ar.critical;
+                tr.hit         = ar.valid && ar.hit;
+                tr.total_damage = ar.valid && ar.hit ? ar.total_damage : 0;
+
+                // Cantrip scaling by character level: +1d8 Thunder on hit at 5, 2d8 at 11, 3d8 at 17;
+                // the movement detonation is one die more (1d8 → 2d8 → 3d8 → 4d8).
+                const int lvl  = caster_stats.totalLevel();
+                const int tier = lvl >= 17 ? 3 : lvl >= 11 ? 2 : lvl >= 5 ? 1 : 0;
+                int thunder = 0;
+                if (tr.hit && tier > 0 && tgt_stats.hp_cur > 0) {
+                    const int ndice = tr.critical ? tier * 2 : tier;
+                    int rolled = 0;
+                    for (int i = 0; i < ndice; ++i) {
+                        const int d = roll(8);
+                        tr.dice_results.push_back(d);
+                        rolled += d;
+                    }
+                    thunder = static_cast<int>(static_cast<float>(rolled) *
+                        effectiveMagicDamageMult(caster_stats, tgt_stats, Thunder, true, &bm, tgt_idx));
+                    thunder = applyBastionWard(bm, tgt_idx, tgt_stats, std::max(0, thunder));
+                    const int overflow = std::max(0, thunder - tgt_stats.temp_hp);
+                    tgt_stats.temp_hp  = std::max(0, tgt_stats.temp_hp - thunder);
+                    tgt_stats.hp_cur   = std::max(0, tgt_stats.hp_cur - overflow);
+                    bm.setAgentStats(tgt_idx, tgt_stats);
+                    tr.total_damage += thunder;
+                    log_("Booming Blade: +{}d8 Thunder on the hit = {} dmg", ndice, thunder);
+                    if (thunder > 0) {
+                        if (checkConcentrationOnDamage(bm, tgt_idx, thunder, action.caster_idx)) {
+                            tr.concentration_checked = true;
+                            tr.concentration_lost    = true;
+                        }
+                        processDamageTaken(bm, tgt_idx, thunder, magicTypeBit(Thunder));
+                        if (tgt_stats.hp_cur <= 0) {
+                            Agent::Conditions tc = bm.getAgentConditions(tgt_idx);
+                            if (!tc.unconscious && !tc.dead) {
+                                applyUnconscious(bm, tgt_idx);
+                                grantDarkOnesBlessing(bm, tgt_idx, action.caster_idx);
+                            }
+                        }
+                    }
+                }
+
+                // Sheathe a target that is still standing. Replaces any earlier sheath from this
+                // caster (a re-cast refreshes it rather than stacking two detonations).
+                if (tr.hit && tgt_stats.hp_cur > 0) {
+                    std::vector<int> stale;
+                    for (const auto& ac : conditions_.all())
+                        if (ac.agent_idx == tgt_idx && ac.caster_idx == action.caster_idx &&
+                            ac.condition_name == "BoomingBlade")
+                            stale.push_back(ac.condition_id);
+                    for (int cid : stale) removeAgentCondition(bm, cid);
+
+                    ActiveAgentCondition c;
+                    c.agent_idx           = tgt_idx;
+                    c.caster_idx          = action.caster_idx;
+                    c.spell_idx           = action.spell_idx;
+                    c.condition_name      = "BoomingBlade";
+                    c.turns_remaining     = 1;    // ticked off as the caster's next turn begins
+                    c.save_repeat_turns   = -1;   // no repeated save
+                    c.delayed_trigger     = true;
+                    c.delay_dice          = tier + 1;
+                    c.delay_die_size      = 8;
+                    c.delay_damage_type   = Thunder;
+                    c.delay_requires_save = false;
+                    c.delay_label         = "Booming Blade";
+                    (void)addAgentCondition(bm, c);
+                    log_("Booming Blade: {} is sheathed in booming energy ({}d8 Thunder if it moves)",
+                         agentName(bm, tgt_idx), tier + 1);
+                }
+
+                tgt_stats      = bm.getAgentStats(tgt_idx);
+                tr.hp_after    = tgt_stats.hp_cur;
+                tr.target_down = (tgt_stats.hp_cur <= 0);
+                if (!ar.valid)
+                    tr.log_message = "the attack could not be made";
+                else if (!tr.hit)
+                    tr.log_message = std::format("miss (roll {} {:+} = {} vs AC {})",
+                                                 tr.d20, tr.total_roll - tr.d20, tr.total_roll, tr.target_ac);
+                else
+                    tr.log_message = std::format("HIT (roll {} {:+} = {} vs AC {}){} {} dmg{}{}",
+                                                 tr.d20, tr.total_roll - tr.d20, tr.total_roll, tr.target_ac,
+                                                 tr.critical ? " CRIT!" : "", tr.total_damage,
+                                                 thunder > 0 ? std::format(" (incl. {} Thunder)", thunder) : "",
+                                                 tr.target_down ? " — DOWN" : " — sheathed");
+            }
+            log_("Booming Blade: {}", tr.log_message);
+            result.target_results.push_back(tr);
+            continue;
+        }
+
         // Sanctuary ward: a damaging (Harm) spell aimed at a warded enemy forces the caster to
         // make a WIS save or lose the spell against that target (RAW: areas of effect are NOT
         // blocked — only directly-targeted Single/Multiple Harm spells gate here).
@@ -1538,6 +1674,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 // Roll attack using spellcasting ability mod, not normal attack bonus
                 int d20_val = roll(20);
                 int mod = rules::spellAttackMod(caster_stats);
+                if (tgt_stats.blade_warded) {   // Blade Ward: -1d4 to attacks against the target
+                    int ward_d4 = roll(4);
+                    mod -= ward_d4;
+                    log_("Blade Ward: -{} to True Strike against {}", ward_d4, agentName(bm, tgt_idx));
+                }
                 int total_roll = d20_val + mod;
                 int target_ac = calculateAC(bm, tgt_idx);
                 bool is_critical = (d20_val >= caster_stats.crit_threshold);
@@ -3675,6 +3816,13 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     if (n == "Baned") {
         Agent::Stats st = bm.getAgentStats(cond.agent_idx);
         st.baned = false;
+        bm.setAgentStats(cond.agent_idx, st);
+        return;
+    }
+    // Blade Ward — clear the attackers' -1d4 on every end path (concentration drop, expiry, Dispel).
+    if (n == "BladeWarded") {
+        Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+        st.blade_warded = false;
         bm.setAgentStats(cond.agent_idx, st);
         return;
     }

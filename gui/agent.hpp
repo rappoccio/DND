@@ -136,6 +136,10 @@ namespace rpg {
       // roll and saving throw. Reaches rollToHit/rollSpellAttack (const Agent::Stats&) and
       // saveModFor. Set in addAgentCondition("Baned"), cleared in clearSpellConditionEffect.
       bool baned{false};
+      // Blade Ward — while set, any creature making an attack roll against this one subtracts a
+      // fresh 1d4 from it (weapon and spell attacks alike). Set in addAgentCondition("BladeWarded"),
+      // cleared in clearSpellConditionEffect.
+      bool blade_warded{false};
 
       // ── Haste (Phase 2) ───────────────────────────────────────────────
       // While set, the creature has +2 AC (folded into ac_temporary_modifications),

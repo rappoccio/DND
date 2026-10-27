@@ -85,7 +85,7 @@ namespace {
     X(speed_fly_remaining) X(speed_climb_remaining) X(speed_burrow_remaining) \
     X(prof_bonus) X(save_prof_str) X(save_prof_dex) X(save_prof_con) \
     X(save_prof_intel) X(save_prof_wis) X(save_prof_cha) X(save_advantage_mask) \
-    X(blessed) X(baned) X(hasted) X(haste_speed_bonus) X(haste_action_available) \
+    X(blessed) X(baned) X(blade_warded) X(hasted) X(haste_speed_bonus) X(haste_action_available) \
     X(aid_hp_bonus) X(longstrider_bonus) X(expeditious_retreat) \
     X(attackers_disadvantage) X(has_foresight) X(barkskin_ac_bonus) X(enfeebled) \
     X(size_damage_dice) X(immune_charm) X(mind_blank_psychic_saved) \

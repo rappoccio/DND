@@ -10354,6 +10354,10 @@ class App:
             else:  # Automatic
                 if tr.total_healing:
                     msg = f"{cast_name}→{tgt_name}: {result.spell_name} HEAL {tr.total_healing}"
+                elif tr.log_message:
+                    # Weapon-attack cantrips (Booming Blade, True Strike) and blocked casts carry
+                    # their own outcome line (roll vs AC, hit/miss, damage).
+                    msg = f"{cast_name}→{tgt_name}: {result.spell_name} {tr.log_message}"
                 else:
                     # Check for damage modifiers (immunity > vulnerability > resistance > normal)
                     immunity_msg = self._get_immunity_message(spell, tgt_agent, tr)
@@ -12570,6 +12574,7 @@ class App:
                     "longstrider_bonus":       s.longstrider_bonus,
                     "expeditious_retreat":     s.expeditious_retreat,
                     "attackers_disadvantage":  s.attackers_disadvantage,
+                    "blade_warded":            s.blade_warded,
                     "has_foresight":           s.has_foresight,
                     "barkskin_ac_bonus":       s.barkskin_ac_bonus,
                     "enfeebled":               s.enfeebled,

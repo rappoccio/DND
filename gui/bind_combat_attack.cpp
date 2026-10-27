@@ -51,6 +51,7 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              py::arg("weapon"), py::arg("attacker_stats"),
              py::arg("target_ac"), py::arg("advantage") = false,
              py::arg("disadvantage") = false, py::arg("exhaustion_level") = 0,
+             py::arg("target_blade_warded") = false,
              "Roll d20 + modifier vs AC.  Does not apply damage.")
         .def("resolve_attack",
              // Wrapper keeps the 6-arg Python API stable — the engine-internal bm/target_idx

@@ -1145,6 +1145,12 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 Agent::Stats st = bm.getAgentStats(cond.agent_idx);
                 st.baned = true;
                 bm.setAgentStats(cond.agent_idx, st);
+            } else if (cond.condition_name == "BladeWarded") {
+                // Blade Ward — attack rolls against this creature take a fresh -1d4. Flag lives on
+                // Stats so rollToHit/rollSpellAttack see it. Cleared via clearSpellConditionEffect.
+                Agent::Stats st = bm.getAgentStats(cond.agent_idx);
+                st.blade_warded = true;
+                bm.setAgentStats(cond.agent_idx, st);
             } else if (cond.condition_name == "Hasted") {
                 // Haste (Phase 2) — +2 AC, Advantage on DEX saves, doubled walk Speed, and an
                 // extra limited action each turn (refilled in beginTurn). Idempotent: never stack

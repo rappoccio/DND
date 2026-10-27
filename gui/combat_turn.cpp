@@ -3453,15 +3453,16 @@ NpcAttackAnalysis CombatEngine::npcAnalyzeAttack(const BattleMap& bm, int attack
         return hits / 20.0;
     };
     double p_hit = 0.0;
-    // Bless adds a fresh 1d4, Bane subtracts one; average over whichever dice are live. When
-    // neither is active the loops collapse to a single net-0 term (b=0, n=0).
+    // Bless adds a fresh 1d4, Bane subtracts one, the target's Blade Ward subtracts another;
+    // average over whichever dice are live. None active → a single net-0 term.
     {
         double wsum = 0.0;
         for (int b = as.blessed ? 1 : 0; b <= (as.blessed ? 4 : 0); ++b)
-            for (int bn = as.baned ? 1 : 0; bn <= (as.baned ? 4 : 0); ++bn) {
-                p_hit += advFold(singleDieHit(b - bn), adv, dis);
-                wsum  += 1.0;
-            }
+            for (int bn = as.baned ? 1 : 0; bn <= (as.baned ? 4 : 0); ++bn)
+                for (int wd = ts.blade_warded ? 1 : 0; wd <= (ts.blade_warded ? 4 : 0); ++wd) {
+                    p_hit += advFold(singleDieHit(b - bn - wd), adv, dis);
+                    wsum  += 1.0;
+                }
         p_hit /= wsum;
     }
     out.p_hit = p_hit;
@@ -3587,14 +3588,16 @@ double CombatEngine::npcSpellHitChance(const BattleMap& bm, int caster_idx, int 
         }
         return hits / 20.0;
     };
-    // Bless adds a fresh 1d4 to the spell attack, Bane subtracts one; average over whichever
-    // dice are live. Neither active → single net-0 term.
+    // Bless adds a fresh 1d4 to the spell attack, Bane subtracts one, the target's Blade Ward
+    // subtracts another; average over whichever dice are live. None active → single net-0 term.
+    const bool warded = agents[static_cast<std::size_t>(target_idx)].agent->getStats().blade_warded;
     double p = 0.0, wsum = 0.0;
     for (int b = cs.blessed ? 1 : 0; b <= (cs.blessed ? 4 : 0); ++b)
-        for (int bn = cs.baned ? 1 : 0; bn <= (cs.baned ? 4 : 0); ++bn) {
-            p    += advFold(singleDieHit(b - bn), adv, dis);
-            wsum += 1.0;
-        }
+        for (int bn = cs.baned ? 1 : 0; bn <= (cs.baned ? 4 : 0); ++bn)
+            for (int wd = warded ? 1 : 0; wd <= (warded ? 4 : 0); ++wd) {
+                p    += advFold(singleDieHit(b - bn - wd), adv, dis);
+                wsum += 1.0;
+            }
     return p / wsum;
 }
 
