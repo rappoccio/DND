@@ -172,7 +172,8 @@ inline int cantripTier(const Agent::Stats& s) noexcept
     return lvl >= 17 ? 3 : lvl >= 11 ? 2 : lvl >= 5 ? 1 : 0;
 }
 
-inline int spellAttackMod(const Agent::Stats& s) noexcept
+// Modifier of the caster's spellcasting ability (no proficiency).
+inline int spellcastingAbilityMod(const Agent::Stats& s) noexcept
 {
     auto abilityScore = [&]() -> int {
         switch (s.spellcasting_ability) {
@@ -186,7 +187,12 @@ inline int spellAttackMod(const Agent::Stats& s) noexcept
     }();
     int m = (abilityScore - 10) / 2;
     if (abilityScore < 10 && (abilityScore - 10) % 2 != 0) --m;
-    return s.prof_bonus + m;
+    return m;
+}
+
+inline int spellAttackMod(const Agent::Stats& s) noexcept
+{
+    return s.prof_bonus + spellcastingAbilityMod(s);
 }
 
 inline int spellSaveDc(const Agent::Stats& s) noexcept

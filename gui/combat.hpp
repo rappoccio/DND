@@ -929,6 +929,11 @@ public:
     int rollSpellTypeDamage(const Agent::Stats& caster, MagicDamage_t type,
                             int num_dice, int die_size, std::vector<int>& out_dice, bool from_spell,
                             int* empower_budget = nullptr) noexcept;
+    // sorcerousBurstBonusDice: Sorcerous Burst's "roll an 8 on a d8, add another d8". Every 8 in
+    // out_dice[first..] (and on each bonus die) adds a d8, up to the caster's spellcasting ability
+    // modifier per cast. Appends the bonus dice to `out_dice`; returns their sum.
+    int sorcerousBurstBonusDice(const Agent::Stats& caster, MagicDamage_t type,
+                              std::vector<int>& out_dice, std::size_t first) noexcept;
 
     // rollDamageDice: roll `num_dice` d`die_size`, append each die to `out_dice`, return the sum.
     // boost1to2 treats a rolled 1 as a 2 (Elemental Adept), on both initial and rerolled dice.

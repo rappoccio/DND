@@ -365,6 +365,9 @@ test_scripts = [
     # monster level-0 pseudo-spells don't scale, True Strike's Radiant rider
     "test_cantrip_scaling.py",
 
+    # Sorcerous Burst's bonus d8 on an 8, capped at the spellcasting ability modifier
+    "test_sorcerous_burst.py",
+
     # Divine Intervention D0 (Cleric L10 free-cast resource; L20 Greater-DI 2d4 Wish lock)
     "test_divine_intervention.py",
 

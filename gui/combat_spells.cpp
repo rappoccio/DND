@@ -139,6 +139,28 @@ int CombatEngine::rollSpellTypeDamage(const Agent::Stats& caster, MagicDamage_t 
     return rollDamageDice(num_dice, die_size, out_dice, boost, empower_budget);
 }
 
+int CombatEngine::sorcerousBurstBonusDice(const Agent::Stats& caster, MagicDamage_t type,
+                                        std::vector<int>& out_dice, std::size_t first) noexcept
+{
+    int budget = std::max(0, rules::spellcastingAbilityMod(caster));
+    int pending = 0;
+    for (std::size_t i = first; i < out_dice.size(); ++i)
+        if (out_dice[i] == 8) ++pending;
+    int sum = 0, added = 0;
+    while (pending > 0 && budget > 0) {
+        --pending; --budget;
+        std::vector<int> extra;
+        const int d = rollSpellTypeDamage(caster, type, 1, 8, extra, true, nullptr);
+        out_dice.push_back(d);
+        sum += d;
+        ++added;
+        if (d == 8) ++pending;   // an 8 on a bonus d8 adds another, still within the cap
+    }
+    if (added > 0)
+        log_("Sorcerous Burst: {} extra d8 (+{} damage)", added, sum);
+    return sum;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Casting
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1360,8 +1382,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     for (const auto& roll_info : sp.magic_damage_rolls) {
                         int n_dice = tr.critical ? roll_info.num_dice * 2 : roll_info.num_dice;
                         // Elemental Adept: treat a 1 as a 2 on the caster's chosen elements (spells).
+                        const std::size_t first_die = dice.size();
                         int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, n_dice,
                                                               roll_info.die_size, dice, true, &empower_budget);
+                        if (sp.name == "Sorcerous Burst" && roll_info.die_size == 8)
+                            type_damage += sorcerousBurstBonusDice(caster_stats, roll_info.type, dice, first_die);
                         // Draconic Elemental Affinity (L6): add CHA mod to first matching-type roll this turn.
                         if (draconic_affinity_available &&
                             static_cast<int>(roll_info.type) == caster_stats.draconic_affinity_type) {
@@ -1487,8 +1512,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 std::vector<int> dice;
                 int dmg = 0;
                 for (const auto& roll_info : sp.magic_damage_rolls) {
+                    const std::size_t first_die = dice.size();
                     int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, roll_info.num_dice,
                                                           roll_info.die_size, dice, true, nullptr);
+                    if (sp.name == "Sorcerous Burst" && roll_info.die_size == 8)
+                        type_damage += sorcerousBurstBonusDice(caster_stats, roll_info.type, dice, first_die);
                     type_damage += roll_info.bonus;
                     type_damage = empowerEvocation(type_damage);  // Empowered Evocation still applies
                     float multiplier = effectiveMagicDamageMult(caster_stats, tgt_stats, roll_info.type, true, &bm, tgt_idx);
