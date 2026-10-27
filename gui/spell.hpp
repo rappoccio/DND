@@ -85,6 +85,7 @@ namespace rpg {
 
       int level{0};              // 0 = cantrip (unlimited); 1-9 = slot level required
       int upcast_dice_bonus{0};  // extra dice per slot level above spell.level
+      int cantrip_dice_per_tier{0};  // cantrips only: extra dice per tier (character level 5/11/17)
 
       // N/day usage tracking (for NPCs)
       // uses_max = 0 means unlimited (use slot system); uses_max > 0 means N/day

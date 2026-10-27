@@ -797,6 +797,7 @@ _DEFAULT_SPELL: dict = {
     "terrain_color":         None,   # RGB tuple (R, G, B) for terrain, None = brown default
     "level":                 0,      # 0=cantrip/unlimited, 1-9=requires spell slot
     "upcast_dice_bonus":     0,      # extra dice per slot level above spell.level
+    "cantrip_dice_per_tier": 0,      # cantrips: extra dice per tier (char level 5/11/17)
 }
 
 
@@ -978,6 +979,7 @@ def _dict_to_spell(d: dict):
         s.ends_conditions = list(d.get("ends_conditions", []))
     s.level = int(d.get("level", 0))
     s.upcast_dice_bonus = int(d.get("upcast_dice_bonus", 0))
+    s.cantrip_dice_per_tier = int(d.get("cantrip_dice_per_tier", 0))
     s.num_targets = int(d.get("num_targets", 1))
     s.targets_per_upcast_level = int(d.get("targets_per_upcast_level", 0))
     s.effects_on_begin_turn = d.get("effects_on_begin_turn", True)

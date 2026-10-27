@@ -493,7 +493,16 @@ A batch of Barbarian features (`combat_resources.cpp`/`combat.cpp`), modeled on 
   `upcast_dice_bonus * (slot_level - level)`. Tests: `test_chromatic_orb.py` (10 cases). See memory
   `chromatic_orb_leap.md`.
 - **Sorcerous Burst "explode on 8" (DEFERRED).** RAW: each d8 that rolls an 8 lets you add another d8 (up
-  to your spellcasting modifier). Modeled as a flat 1d8 (no explosion / no level scaling for the cantrip).
+  to your spellcasting modifier). Modeled as plain d8s (no explosion); the cantrip's character-level
+  scaling (+1d8 at 5/11/17) is applied since 2026-10-27.
+- **Shillelagh — not implemented [TODO] [needs C++] (2026-10-27).** The `spells.json` entry is an empty
+  `Automatic` spell: casting it does nothing. RAW (2024): for 1 minute a held Club or Quarterstaff uses
+  the spellcasting ability for attack and damage rolls, its damage die becomes a d8, and the damage may be
+  Force instead of the weapon's type; the spell ends if recast or the weapon is let go. Its character-level
+  scaling is also missing: the die becomes d10 at level 5, d12 at 11 and 2d6 at 17 (use
+  `rules::cantripTier`). Needs a caster buff condition that rewrites the weapon's die/ability while active
+  (Bonus Action cast), torn down on expiry or recast. Found while implementing cantrip scaling
+  (`plans/CANTRIP_SCALING_HANDOFF.md`).
 - **Ray of Enfeeblement — no direct damage (RAW).** 2024 RoE deals **no** damage; it's a debuff (target
   has Disadvantage on STR-based d20 Tests and subtracts 1d8 from its damage rolls; Con save each turn to
   end). The empty damage array is correct. The debuff itself is **not modeled** (no "subtract 1d8 from

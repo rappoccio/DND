@@ -164,6 +164,14 @@ inline int damageAbilityMod(const Weapon& w, const Agent::Stats& s) noexcept
     return base;
 }
 
+// Cantrip damage tier by character level (total across classes): 0 below 5, then one more at
+// 5, 11 and 17. A class-less stat block (totalLevel() == 0) stays at tier 0.
+inline int cantripTier(const Agent::Stats& s) noexcept
+{
+    const int lvl = s.totalLevel();
+    return lvl >= 17 ? 3 : lvl >= 11 ? 2 : lvl >= 5 ? 1 : 0;
+}
+
 inline int spellAttackMod(const Agent::Stats& s) noexcept
 {
     auto abilityScore = [&]() -> int {

@@ -864,6 +864,21 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
+    // Cantrip scaling by character level: cantrip_dice_per_tier more dice at levels 5, 11 and 17,
+    // on the same primary rolls the upcast block grows. Opt-in per spell, because monster
+    // pseudo-spells (breath weapons, auras) are stored as level 0 too and must not scale.
+    if (sp.level == 0 && sp.cantrip_dice_per_tier > 0) {
+        const int extra = sp.cantrip_dice_per_tier * rules::cantripTier(caster_stats);
+        if (extra > 0) {
+            if (!sp.magic_damage_rolls.empty())
+                for (auto& r : sp.magic_damage_rolls) r.num_dice += extra;
+            else if (!sp.physical_damage_rolls.empty())
+                for (auto& r : sp.physical_damage_rolls) r.num_dice += extra;
+            log_("Cantrip scaling: {} at character level {} (+{} dice)",
+                 sp.name, caster_stats.totalLevel(), extra);
+        }
+    }
+
     // Concentration management: check if casting a concentration spell
     if (sp.requires_concentration) {
         Agent::Conditions cond = bm.getAgentConditions(action.caster_idx);
@@ -1165,8 +1180,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                 // Cantrip scaling by character level: +1d8 Thunder on hit at 5, 2d8 at 11, 3d8 at 17;
                 // the movement detonation is one die more (1d8 → 2d8 → 3d8 → 4d8).
-                const int lvl  = caster_stats.totalLevel();
-                const int tier = lvl >= 17 ? 3 : lvl >= 11 ? 2 : lvl >= 5 ? 1 : 0;
+                const int tier = rules::cantripTier(caster_stats);
                 int thunder = 0;
                 if (tr.hit && tier > 0 && tgt_stats.hp_cur > 0) {
                     const int ndice = tr.critical ? tier * 2 : tier;
@@ -1751,6 +1765,24 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                             tr.total_damage = std::max(0, modified_damage);
                         }
 
+                        // Cantrip scaling: +1d6 Radiant on the hit at character level 5, 2d6 at 11,
+                        // 3d6 at 17 (doubled on a crit, like the weapon dice).
+                        int radiant = 0;
+                        const int ts_tier = rules::cantripTier(caster_stats);
+                        if (ts_tier > 0) {
+                            const int ndice = tr.critical ? ts_tier * 2 : ts_tier;
+                            int rolled = 0;
+                            for (int i = 0; i < ndice; ++i) {
+                                const int d = roll(6);
+                                tr.dice_results.push_back(d);
+                                rolled += d;
+                            }
+                            radiant = std::max(0, static_cast<int>(static_cast<float>(rolled) *
+                                effectiveMagicDamageMult(caster_stats, tgt_stats, Radiant, true, &bm, tgt_idx)));
+                            tr.total_damage += radiant;
+                            log_("True Strike: +{}d6 Radiant on the hit = {} dmg", ndice, radiant);
+                        }
+
                         int overflow = std::max(0, tr.total_damage - tgt_stats.temp_hp);
                         tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - tr.total_damage);
                         tgt_stats.hp_cur = std::max(0, tgt_stats.hp_cur - overflow);
@@ -1784,6 +1816,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         } else {
                             damage_notation += " - " + std::to_string(-ability_mod);
                         }
+                        if (ts_tier > 0)
+                            damage_notation += " + " + std::to_string(tr.critical ? ts_tier * 2 : ts_tier) +
+                                               "d6 Radiant (" + std::to_string(radiant) + ")";
 
                         // Build log message in the standard AttackRoll format (for GUI display)
                         std::string crit_str = tr.critical ? " CRIT!" : "";

@@ -1638,6 +1638,9 @@ void bindTypes(py::module_& m) {
              "Spell level: 0 = cantrip (unlimited casts); 1-9 = requires a spell slot of that level.")
         .def_readwrite("upcast_dice_bonus", &Spell::upcast_dice_bonus,
              "Extra dice added to damage when cast at a higher slot level. Calculated as upcast_dice_bonus * (slot_level - spell_level).")
+        .def_readwrite("cantrip_dice_per_tier", &Spell::cantrip_dice_per_tier,
+             "Cantrips only: extra damage dice per character-level tier (one tier each at total level 5, 11 and 17). "
+             "0 = the cantrip does not scale (monster level-0 pseudo-spells).")
         .def_readwrite("uses_max", &Spell::uses_max,
              "Maximum uses per day for NPCs. 0 = unlimited (use slot system); > 0 = N/day uses.")
         .def_readwrite("uses_remaining", &Spell::uses_remaining,

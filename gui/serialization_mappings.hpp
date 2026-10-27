@@ -79,7 +79,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     terrain_difficulty, slip_save_dc, slip_distance_feet, light_level,
     requires_concentration, moves_with_caster, requires_los, check_los_on_center,
     requires_sight, selective_targeting, grants_advantage_aura,
-    level, upcast_dice_bonus, uses_max, uses_remaining, recharge_min, expended,
+    level, upcast_dice_bonus, cantrip_dice_per_tier, uses_max, uses_remaining, recharge_min, expended,
     resource_name, resource_cost, opens_doors, dispels_magic,
     instant_kill_threshold, condition_hp_threshold,
     hp_pool, pool_is_temp_hp, heal_to_full, revives_dead, animates_dead,

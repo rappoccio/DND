@@ -109,6 +109,7 @@ static Spell spellFromJson(const json& j) noexcept {
     spell.targets_per_upcast_level = j.value("targets_per_upcast_level", 0);
     spell.level = j.value("level", 0);
     spell.upcast_dice_bonus = j.value("upcast_dice_bonus", 0);
+    spell.cantrip_dice_per_tier = j.value("cantrip_dice_per_tier", 0);
     spell.requires_concentration = j.value("requires_concentration", false);
     spell.requires_los = j.value("requires_los", false);
     spell.check_los_on_center = j.value("check_los_on_center", true);

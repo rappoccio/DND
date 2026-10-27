@@ -12471,6 +12471,7 @@ class App:
             "terrain_color":         metadata.get("terrain_color"),
             "level":                 s.level,
             "upcast_dice_bonus":     s.upcast_dice_bonus,
+            "cantrip_dice_per_tier": s.cantrip_dice_per_tier,
             "requires_concentration": s.requires_concentration,
             "requires_los":          s.requires_los,
             "check_los_on_center":   s.check_los_on_center,

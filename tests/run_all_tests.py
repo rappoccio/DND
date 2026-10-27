@@ -361,6 +361,10 @@ test_scripts = [
     # Mind Blank, Foresight (buff/debuff Stats flags + condition apply/clear + mechanic hooks)
     "test_spells_tier1.py",
 
+    # Cantrip damage scaling by character level (5/11/17): opt-in cantrip_dice_per_tier,
+    # monster level-0 pseudo-spells don't scale, True Strike's Radiant rider
+    "test_cantrip_scaling.py",
+
     # Divine Intervention D0 (Cleric L10 free-cast resource; L20 Greater-DI 2d4 Wish lock)
     "test_divine_intervention.py",
 
