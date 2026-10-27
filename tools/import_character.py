@@ -96,6 +96,9 @@ KNOWN_FEATS = {
     "Heavy Armor Master", "Medium Armor Master", "Durable", "Speedy", "Athlete",
     "Skulker", "Telekinetic", "Weapon Master", "Resilient", "Elemental Adept", "Poisoner",
     "Weapon Mastery",
+    # Fighting Style feats the engine implements (Protection is not yet).
+    "Archery", "Defense", "Dueling", "Great Weapon Fighting", "Thrown Weapon Fighting",
+    "Unarmed Fighting", "Blind Fighting", "Two-Weapon Fighting", "Interception",
 }
 
 # DDB sometimes prefixes the granted-at level, e.g. "4: Weapon Mastery". Strip that.
