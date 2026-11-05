@@ -118,3 +118,33 @@ def create_armor(ac_base=10):
     armor.ac_base = ac_base
     armor.grants_disadvantage = False
     return armor
+
+
+# ── Fixture campaign (plans/SAVE_LAYOUT_PLAN.md, D12) ───────────────────────
+FIXTURE_MAP = "test-grid"          # library map name in the fixture campaign
+FIXTURE_DUNGEON = "test-dungeon"   # one-map dungeon over FIXTURE_MAP
+
+
+def make_fixture_campaign(root, name="Test Campaign"):
+    """Build a small campaign under ``root`` (a temp dir the caller owns) and return its
+    ``save_layout.Campaign``:
+
+        campaign.json  pcs/  maps/test-grid/{test-grid.png, map.json}
+        test-dungeon/dungeon.json   (one map, test-grid; contents filled in by step 2)
+
+    The library map is TestGrid12x12.png with its terrain as ``map.json``. No dungeon
+    override, encounter or run exists yet; tests add what they need."""
+    import json
+    import shutil
+    import save_layout as sl
+    camp = sl.Campaign.create(root, name)
+    lib = camp.library_map_dir(FIXTURE_MAP)
+    os.makedirs(lib, exist_ok=True)
+    shutil.copyfile(TEST_MAP_PATH, os.path.join(lib, FIXTURE_MAP + ".png"))
+    shutil.copyfile(TERRAIN_CONFIG_PATH, os.path.join(lib, sl.MAP_FILE))
+    dun = camp.dungeon(FIXTURE_DUNGEON)
+    os.makedirs(dun.root, exist_ok=True)
+    with open(dun.manifest_path, "w") as f:
+        json.dump({"version": sl.LAYOUT_VERSION,
+                   "maps": [{"id": FIXTURE_MAP, "map": FIXTURE_MAP}]}, f, indent=2)
+    return camp
