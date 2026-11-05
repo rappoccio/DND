@@ -98,10 +98,10 @@ check("zooming keeps the point under the cursor where it is", () => {
   assert.strictEqual(h.el("zoom-level").textContent, "200%");
 });
 
-check("zoom is clamped to the DM screen's 50%–600%", () => {
+check("zoom is clamped to the DM screen's 50%–1000%", () => {
   const h = laidOut();
   h.ev("zoomAt(100, 250, 250)");
-  assert.strictEqual(h.ev("vp.zoom"), 6);
+  assert.strictEqual(h.ev("vp.zoom"), 10);
   h.ev("zoomAt(0.0001, 250, 250)");
   assert.strictEqual(h.ev("vp.zoom"), 0.5);
 });

@@ -62,6 +62,7 @@ let awaiting = "";                         // the prompt id a submit is out for,
 let ackNote = "";                          // what the last failed ack said, in words
 let promptEndsAt = 0;                      // performance.now() when the prompt is skipped; 0 = never
 let filter = { id: "", text: "" };         // the filter box, for the prompt it was typed into
+let sheet = { id: "", open: false };       // the phone sheet (app.css): open, for the prompt it was opened on
 let attempt = 0;
 let page = { url: "", img: null, objectUrl: "" };   // the map image, re-fetched on a re-key
 let pageFail = { url: "", at: 0 };        // the last key that would not load, and when
@@ -226,6 +227,7 @@ function submit(answer) {
   if (!socket || !prompt || awaiting) return;
   awaiting = prompt.id;
   ackNote = "";
+  sheet.open = false;    // a pick closes the phone sheet, as the prompt clearing will
   drawPrompt();
   socket.send(JSON.stringify(Object.assign({ v: PROTOCOL_VERSION, t: "submit", id: prompt.id },
                                            answer)));
@@ -265,6 +267,7 @@ function drawPrompt() {
   box.hidden = !live && !waiting;
   el("prompt-title").textContent = live ? prompt.title
     : "You are being asked for a decision…";
+  drawSheet(live);
   const list = el("prompt-options");
   list.textContent = "";
   el("prompt-cancel").hidden = !live || prompt.cancellable === false;
@@ -300,6 +303,21 @@ function drawPrompt() {
     list.append(head);
     for (const option of rows) list.append(optionItem(option));
   }
+}
+
+/* The phone sheet's state, set on every draw; app.css acts on it only below 46rem. A list
+   of options is a "menu": it arrives collapsed to the handle and opens on a tap, and a
+   new prompt starts collapsed again. A cell pick, or a decision that is not this
+   player's, is a "strip" that never opens, so the board under it stays tappable. */
+function drawSheet(live) {
+  const box = el("prompt");
+  const menu = !!(live && prompt.expects !== "cell");
+  if (!live || sheet.id !== prompt.id) sheet = { id: live ? prompt.id : "", open: false };
+  box.dataset.mode = menu ? "menu" : "strip";
+  box.dataset.sheet = menu ? (sheet.open ? "open" : "closed") : "";
+  const toggle = el("prompt-toggle");
+  toggle.setAttribute("aria-expanded", menu && sheet.open ? "true" : "false");
+  el("prompt-toggle-label").textContent = menu ? `${sheet.open ? "▾" : "▸"} ${prompt.title}` : "";
 }
 
 /* The action offer's sections (QOL Q4), in the order this screen draws them, with the DM
@@ -349,10 +367,12 @@ function optionItem(option) {
 function drawTimer() {
   const timer = el("prompt-timer");
   const live = view && prompt && view.you.prompt_id === prompt.id;
-  if (!live || !promptEndsAt) { timer.hidden = true; return; }
+  const badge = el("prompt-toggle-timer");
+  if (!live || !promptEndsAt) { timer.hidden = true; badge.textContent = ""; return; }
   const left = Math.max(0, Math.ceil((promptEndsAt - performance.now()) / 1000));
   timer.textContent = `Skipped in ${left} s if you don't answer`;
   timer.hidden = false;
+  badge.textContent = `${left} s`;     // the collapsed phone sheet still shows time running
 }
 setInterval(drawTimer, 250);
 
@@ -498,7 +518,7 @@ function drawSession() {
 // the wire, and it resets on a reload or when the map changes size.
 
 const ZOOM_MIN = 0.5;          // main.py App.ZOOM_MIN
-const ZOOM_MAX = 6.0;          // main.py App.ZOOM_MAX
+const ZOOM_MAX = 10.0;         // main.py App.ZOOM_MAX
 const ZOOM_STEP = 1.25;        // one press of + or −
 const TAP_SLOP_PX = 6;         // a pointer that moves further than this is a pan, not a tap
 const BOARD_MAX_VH = 0.8;      // the board's height cap, as a share of the window's
@@ -1792,6 +1812,11 @@ el("join-form").addEventListener("submit", async (event) => {
 });
 
 el("prompt-cancel").addEventListener("click", () => submit({ cancel: true }));
+/* The phone sheet's handle opens and closes it; closing never cancels the prompt. */
+el("prompt-toggle").addEventListener("click", () => {
+  sheet.open = !sheet.open;
+  drawPrompt();
+});
 el("animate").checked = animate;
 el("animate").addEventListener("change", (event) => {
   animate = event.target.checked;   // a slide under way lands on the next frame

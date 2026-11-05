@@ -124,6 +124,8 @@ test_scripts = [
     "test_sprites.py",
     # The player board's zoom and pan (QOL Q1).
     "test_viewport.py",
+    # The phone prompt sheet over the board (live play 2026-11-04).
+    "test_prompt_sheet.py",
     # Doors, ladders and staircases on the player board.
     "test_terrain_glyphs.py",
     # The combined initiative/health table and the turn highlight (QOL Q3).
@@ -234,6 +236,8 @@ test_scripts = [
     "test_legendary.py",
     "test_turn_start.py",
     "test_npc_automation.py",
+    # Agents… → Automate NPCs…: one slider for every red creature (live play 2026-11-04).
+    "test_npc_automation_slider.py",
     "test_npc_analysis.py",
     "test_npc_visual_events.py",
     "test_vitality.py",
@@ -367,6 +371,9 @@ test_scripts = [
 
     # Sorcerous Burst's bonus d8 on an 8, capped at the spellcasting ability modifier
     "test_sorcerous_burst.py",
+
+    # Toll the Dead: d12s on a wounded target, nothing on a successful WIS save
+    "test_toll_the_dead.py",
 
     # Divine Intervention D0 (Cleric L10 free-cast resource; L20 Greater-DI 2d4 Wish lock)
     "test_divine_intervention.py",

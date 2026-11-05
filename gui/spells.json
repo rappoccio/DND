@@ -8233,6 +8233,34 @@
     "school": "evocation"
   },
   {
+    "name": "Toll the Dead",
+    "description": "You point at one creature you can see within range, and the single chime of a dolorous bell is audible within 10 feet of the target. The target must succeed on a Wisdom saving throw or take 1d8 Necrotic damage. If the target is missing any of its Hit Points, it instead takes 1d12 Necrotic damage.",
+    "type": "Harm",
+    "geometry": "Single",
+    "attack_type": "Save",
+    "save_ability": "SaveWis",
+    "range": 60,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 1,
+    "magic_damage_types": [
+      {
+        "type": "Necrotic",
+        "num_dice": 1,
+        "die_size": 8
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "cantrip_dice_per_tier": 1,
+    "requires_concentration": false,
+    "requires_los": true,
+    "check_los_on_center": true,
+    "school": "necromancy"
+  },
+  {
     "name": "Time Stop",
     "description": "You briefly stop the flow of time for everyone but yourself. No time passes for other creatures, while you take 1d4 + 1 turns in a row, during which you can use actions and move as normal. This spell ends if one of the actions you use during this period, or any effects that you create during it, affects a creature other than you or an object being worn or carried by someone other than you. In addition, the spell ends if you move to a place more than 1,000 feet from the location where you cast it.",
     "type": "Harm",

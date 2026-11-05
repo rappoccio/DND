@@ -39,10 +39,71 @@ def show_agents_menu(app):
         # A bare method reference, not a call: it has to become a bound lambda here,
         # because the function it names is now this module's and takes `app`.
         ("Create PC…",  lambda: show_pc_class_menu(app)),
+        ("Automate NPCs…", lambda: show_npc_automation_dialog(app)),
         ("Clear",       app._clear_agents),
     ]
     app._ask_dm("action", "Agents", items,
                  anchor=(app.btn_agents.rect.x, app.btn_agents.rect.y))
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  Automate NPCs (live play 2026-11-04): one slider sets every red
+#  creature's NPC automation at once. 0 is Off; 1–5 is the difficulty.
+# ─────────────────────────────────────────────────────────────────────
+NPC_FACTION = 1          # constants.FACTION_NAMES: red
+
+
+def _red_agents(app):
+    """The red creatures still in play: not tombstoned, not dead."""
+    return [i for i, pt in enumerate(app.bm.placed_agents)
+            if app.bm.get_agent_faction(i) == NPC_FACTION
+            and not pt.removed_from_play and not pt.conditions.dead]
+
+
+def _default_npc_level(app):
+    """The session's last slider value; else the most common difficulty among the
+    automated reds; else 1."""
+    last = getattr(app, "_npc_auto_level", None)
+    if last is not None:
+        return last
+    levels = [app.bm.get_agent_npc_automation_difficulty(i) for i in _red_agents(app)
+              if app.bm.is_agent_npc_automated(i)]
+    levels = [lv for lv in levels if 1 <= lv <= 5]
+    if not levels:
+        return 1
+    return max(sorted(set(levels)), key=levels.count)
+
+
+def apply_npc_automation(app, level):
+    """Set every red creature to ``level``: 1–5 automates it at that difficulty, 0 puts
+    it back to manual with its difficulty reset. Returns the number of creatures set."""
+    level = max(0, min(5, int(level)))
+    reds = _red_agents(app)
+    for i in reds:
+        app.bm.set_agent_npc_automated(i, level > 0)
+        app.bm.set_agent_npc_automation_difficulty(i, level)
+    app._npc_auto_level = level
+    n = len(reds)
+    noun = f"{n} red creature{'s' if n != 1 else ''}"
+    app._combat_log_add(f"NPC automation: {noun} at difficulty {level}." if level
+                        else f"NPC automation off: {noun} back to manual.")
+    # The creature on turn: hand it to the driver now, or take it back, rather than
+    # waiting a full round for the turn-start hook.
+    cur = app._current_agent_idx()
+    if cur in reds:
+        if level and not app.bm.is_agent_on_deck(cur):
+            app._npc_drive_idx = cur
+        elif not level and app._npc_drive_idx == cur:
+            app._npc_drive_idx = -1
+    return n
+
+
+def show_npc_automation_dialog(app):
+    def on_close(level):
+        if level is not None:
+            apply_npc_automation(app, level)
+    app._npc_auto_dialog.show(_default_npc_level(app), len(_red_agents(app)), on_close,
+                              app._panel_rect())
 
 
 def show_restore_autosave_menu(app, anchor=None, parent=None):

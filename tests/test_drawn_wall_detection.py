@@ -402,7 +402,7 @@ def test_dialog_redetects_live_and_ok_saves_the_block():
         with open(terrain) as f:
             det = json.load(f)["detection"]
         assert det["mode"] == "dark_fraction" and det["outside_seeds"] == [[0, 0]]
-        assert det["dark_fraction"] == 0.6 and det["edge_fraction"] == 0.3
+        assert det["dark_fraction"] == 1.0 and det["edge_fraction"] == 0.3
         app._load_terrain(terrain)
         assert _blocked(app.bm) == everything - INSIDE
     print("✅ test_dialog_redetects_live_and_ok_saves_the_block passed")

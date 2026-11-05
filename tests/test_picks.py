@@ -1655,7 +1655,7 @@ def test_wish_is_one_choice_prompt_over_the_bus():
     assert (browser.kind, browser.expects, browser.render) == \
         ("action", "choice", SPELL_BROWSER_RENDER), browser
     assert [o.label for o in browser.options] == expected, len(browser.options)
-    assert len(expected) == 392 and "Wish" not in expected, len(expected)
+    assert len(expected) == 393 and "Wish" not in expected, len(expected)
     assert browser.to_wire()["options"][0].keys() == {"id", "label", "enabled"}
     nine, three = _slots(app, aria, 9), _slots(app, aria, 3)
     _choose_label(app, kira, browser, "Fireball")
@@ -1698,7 +1698,7 @@ def test_divine_intervention_from_the_offer():
     expected = [d["name"] for d in app.all_spells
                 if d.get("level", 0) <= 5 and d["name"] in CLERIC_DI_SPELL_NAMES]
     assert browser.render == SPELL_BROWSER_RENDER and browser.owner == kira.id
-    assert [o.label for o in browser.options] == expected and len(expected) == 80, \
+    assert [o.label for o in browser.options] == expected and len(expected) == 81, \
         len(browser.options)
     one = _slots(app, aria, 1)
     _choose_label(app, kira, browser, "Guiding Bolt")
@@ -1734,13 +1734,13 @@ def test_greater_divine_intervention_offers_wish():
     expected = [d["name"] for d in app.all_spells
                 if (d.get("level", 0) <= 5 and d["name"] in CLERIC_DI_SPELL_NAMES)
                 or d["name"] == "Wish"]
-    assert [o.label for o in di.options] == expected and len(expected) == 81, \
+    assert [o.label for o in di.options] == expected and len(expected) == 82, \
         [o.label for o in di.options][-3:]
     nine, three = _slots(app, aria, 9), _slots(app, aria, 3)
     _choose_label(app, kira, di, "Wish")
     assert app.action_used and not app.combat.can_use_divine_intervention(app.bm, aria)
     wish = _until_title(app, kira, "Wish — duplicate a spell")
-    assert len(wish.options) == 392, len(wish.options)
+    assert len(wish.options) == 393, len(wish.options)
     _choose_label(app, kira, wish, "Fireball")
     _until_pick(app, kira)
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))

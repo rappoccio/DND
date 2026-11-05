@@ -121,6 +121,58 @@ header {
    inside the band instead of pushing the board off the screen. */
 .prompt input[type="search"] { width: 100%; box-sizing: border-box; margin: 0 0 6px; }
 .prompt-options { max-height: 50vh; overflow-y: auto; }
+/* The phone sheet's handle; only a phone shows it (below). */
+.prompt-toggle { display: none; }
+
+/* On a phone the stacked prompt pushed the board off the screen, so it becomes a sheet
+   pinned over the bottom of the board. app.js sets `data-mode` — "menu" for a list of
+   options, "strip" for a cell pick or someone else's decision — and, for a menu,
+   `data-sheet` "closed" (just the handle) or "open". A strip never covers more than a
+   line or two, so the highlighted squares stay tappable. */
+@media (max-width: 45.99rem) {
+  #session { padding-bottom: 4.5rem; }   /* room to scroll the page out from under it */
+  #session > .prompt {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    z-index: 10;
+    margin: 0;
+    max-height: 60vh;
+    overflow-y: auto;
+    box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.55);
+  }
+  .prompt[data-mode="menu"] .prompt-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin: 0;
+    padding: 10px 12px;
+    text-align: left;
+  }
+  .prompt-toggle span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis;
+                                    white-space: nowrap; }
+  .prompt-toggle-timer { font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+  /* A choice is waiting: the handle pulses until it is opened. */
+  .prompt[data-sheet="closed"] .prompt-toggle { animation: prompt-pulse 1.6s ease-in-out infinite; }
+  .prompt[data-sheet="open"] .prompt-toggle { margin-bottom: 8px; }
+  /* The handle carries the title and the countdown, so the band drops its own. */
+  .prompt[data-mode="menu"] #prompt-title,
+  .prompt[data-mode="menu"] #prompt-timer { display: none; }
+  .prompt[data-sheet="closed"] > :not(.prompt-toggle):not(#prompt-note) { display: none; }
+  .prompt[data-sheet="open"] .prompt-options { max-height: none; overflow: visible; }
+  .prompt[data-mode="strip"] h2 { margin-bottom: 2px; }
+  .prompt[data-mode="strip"] p { margin: 0; }
+  .prompt[data-mode="strip"] button.secondary { margin-top: 6px; }
+}
+@keyframes prompt-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(240, 192, 64, 0.7); }
+  50%      { box-shadow: 0 0 0 6px rgba(240, 192, 64, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .prompt[data-sheet="closed"] .prompt-toggle { animation: none; }
+}
 
 .board {
   position: relative;

@@ -56,7 +56,7 @@ from helpers import (
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
     compute_summon_loadout, edge_key, edge_from_key, door_touch_cells,
 )
-from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog, WallDetectionDialog
+from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog, WallDetectionDialog, NpcAutomationDialog
 from dialogs_conditions import ConditionsDialog
 from menus import board, dm, features, panel, reactions, riders
 from weapon_dialog import WeaponDialog
@@ -300,6 +300,7 @@ MAGIC_CIRCLE_TYPE_OPTIONS = [
 CLERIC_DI_SPELL_NAMES = {
     # cantrips
     "Guidance", "Light", "Mending", "Resistance", "Sacred Flame", "Spare the Dying", "Thaumaturgy",
+    "Toll the Dead",
     # 1
     "Bane", "Bless", "Command", "Create or Destroy Water", "Cure Wounds", "Detect Evil and Good",
     "Detect Magic", "Detect Poison and Disease", "Guiding Bolt", "Healing Word", "Inflict Wounds",
@@ -614,6 +615,9 @@ class App:
         # Asks how many cells a sampled grid box spanned (manual-grid precision).
         self._grid_span_dialog = GridSpanDialog(self.font_sm, self.font_md)
         self._wall_detect_dialog = WallDetectionDialog(self.font_sm, self.font_md)
+        # Agents… → Automate NPCs…: one slider for every red creature (menus/dm.py).
+        self._npc_auto_dialog = NpcAutomationDialog(self.font_sm, self.font_md)
+        self._npc_auto_level = None     # the slider's last value this session
         self._pending_grid_box = None   # (x0, y0, w, h) in image px, awaiting span input
 
         # Team/faction picker (opened from an agent's right-click menu → "Set Teams…").
@@ -1245,7 +1249,7 @@ class App:
     #  Zoom (Ctrl/Cmd + wheel, +/- keys, 0 to reset)
     # ─────────────────────────────────────────────────────────────────────
     ZOOM_MIN     = 0.5    # user-zoom multiplier floor (relative to fit scale)
-    ZOOM_MAX     = 6.0    # user-zoom multiplier ceiling
+    ZOOM_MAX     = 10.0   # user-zoom multiplier ceiling
     ZOOM_STEP    = 1.15   # per wheel-notch / keypress factor
     ZOOM_BTN_STEP = 1.25  # one press of the on-map + or − (net/static/app.js ZOOM_STEP)
     ZOOM_MAX_DIM = 8000   # hard cap on rendered map dimension (px) — memory guard
@@ -14931,7 +14935,7 @@ class App:
             return
         p.mode = rpg.DetectionMode.DarkFraction
         p.dark_level = int(det.get("dark_level", 100))
-        p.dark_fraction = float(det.get("dark_fraction", 0.6))
+        p.dark_fraction = float(det.get("dark_fraction", 1.0))
         p.edge_walls = bool(det.get("edge_walls", True))
         p.edge_fraction = float(det.get("edge_fraction", 0.3))
         p.edge_halfwidth_px = int(det.get("edge_halfwidth_px", 4))
@@ -19042,7 +19046,7 @@ class App:
                 self.weapons_dialog.active or self.conditions_dialog.active or
                 self.file_browser.active or self.terrain_placement_dialog.active or
                 self.terrain_editor.active or self.lighting_editor.active or
-                self._wall_detect_dialog.visible or
+                self._wall_detect_dialog.visible or self._npc_auto_dialog.visible or
                 self.weapon_selection_dialog.visible or
                 self.armor_selection_dialog.visible or
                 self.spell_selection_dialog.visible or
@@ -19192,6 +19196,11 @@ class App:
                 elif event.key == pygame.K_v:
                     mx, my = pygame.mouse.get_pos()
                     self._paste_agent(self._screen_to_cell(mx, my))
+
+            # ── Automate NPCs dialog: docked over the panel, modal ──
+            if self._npc_auto_dialog.visible:
+                self._npc_auto_dialog.handle(event)
+                continue
 
             # ── Wall Detection dialog: docked over the panel, the map stays live ──
             if self._wall_detect_dialog.visible:
@@ -20077,6 +20086,7 @@ class App:
             self.terrain_editor.draw(self.screen)          # modal — always on top
             self.lighting_editor.draw(self.screen)         # modal — always on top
             self._wall_detect_dialog.draw(self.screen)     # docked over the panel
+            self._npc_auto_dialog.draw(self.screen)        # docked over the panel
             self.terrain_placement_dialog.draw(self.screen)  # modal — always on top
             self.file_browser.draw(self.screen)     # modal — always on top
             self.stats_dialog.draw(self.screen)    # modal — always on top

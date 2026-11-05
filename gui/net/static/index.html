@@ -47,7 +47,14 @@
       <span id="status" class="status">connecting…</span>
     </header>
 
+    <!-- On a phone (below 46rem) the prompt is a sheet pinned over the bottom of the board:
+         collapsed to #prompt-toggle when it arrives, opened by a tap. `data-mode` and
+         `data-sheet` (set by app.js) drive it; wider screens never show the toggle. -->
     <section id="prompt" class="prompt" hidden>
+      <button type="button" id="prompt-toggle" class="prompt-toggle" aria-expanded="false">
+        <span id="prompt-toggle-label"></span>
+        <span id="prompt-toggle-timer" class="prompt-toggle-timer"></span>
+      </button>
       <h2 id="prompt-title"></h2>
       <p id="prompt-timer" class="hint" hidden></p>
       <p id="prompt-hint" class="hint" hidden>Tap a highlighted square.</p>

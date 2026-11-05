@@ -6,7 +6,7 @@ import os
 import pygame
 import rpg_battle_map as rpg
 from constants import *
-from widgets import Button, TextInput, IntStepper
+from widgets import Button, TextInput, IntStepper, IntSlider
 from helpers import _dnd_mod, _mod_str, _calculate_total_ac
 
 class FileBrowser:
@@ -1423,7 +1423,7 @@ class WallDetectionDialog:
     ``settings`` is the terrain file's "detection" block: mode, dark_level,
     dark_fraction, edge_walls, edge_fraction, edge_halfwidth_px, outside_seeds.
     """
-    DEFAULTS = {"mode": "dark_fraction", "dark_level": 100, "dark_fraction": 0.6,
+    DEFAULTS = {"mode": "dark_fraction", "dark_level": 100, "dark_fraction": 1.0,
                 "edge_walls": True, "edge_fraction": 0.3, "edge_halfwidth_px": 4,
                 "outside_seeds": []}
     PAD   = 12
@@ -1632,6 +1632,120 @@ def _wrap_words(text, font, width):
     if cur:
         lines.append(cur)
     return lines
+
+
+class NpcAutomationDialog:
+    """Automate every red creature at once (live play 2026-11-04), from Agents….
+
+    One slider, 0–5: 0 is Off (every red creature back to manual), 1–5 the automation
+    difficulty (NPC_AUTOMATION_PLAN.md; 5 is the NN policy, which plays as 4 until it is
+    trained). Docks over the right panel like WallDetectionDialog. OK / Enter calls
+    ``on_close(level)``, Cancel / Esc ``on_close(None)``.
+    """
+    PAD   = 12
+    HDR_H = 30
+    ROW_H = 34
+    BTN_H = 30
+    W     = 300
+    LO, HI = 0, 5
+
+    def __init__(self, font_sm=None, font_md=None):
+        self.font_sm = font_sm
+        self.font_md = font_md
+        self.visible = False
+        self.rect = None
+        self.slider = None
+        self.red_count = 0
+        self._on_close = None
+        self._ok_rect = self._cancel_rect = None
+        self._frames_since_show = 0
+
+    @staticmethod
+    def level_label(v: int) -> str:
+        return "Off" if v == 0 else f"Level {v}"
+
+    def show(self, level, red_count, on_close, panel_rect):
+        self.visible = True
+        self._frames_since_show = 0
+        self._on_close = on_close
+        self.red_count = red_count
+        x = panel_rect.x + max(0, (panel_rect.w - self.W) // 2)
+        h = self.HDR_H + self.PAD * 3 + self.ROW_H * 2 + 44 + self.BTN_H
+        self.rect = pygame.Rect(x, panel_rect.y + 40, self.W, h)
+        sy = self.rect.y + self.HDR_H + self.PAD + self.ROW_H
+        self.slider = IntSlider(pygame.Rect(self.rect.x + self.PAD, sy,
+                                            self.W - 2 * self.PAD, self.ROW_H - 6),
+                                level, self.LO, self.HI, self.font_md, self.level_label)
+        by = self.rect.bottom - self.PAD - self.BTN_H
+        self._ok_rect     = pygame.Rect(self.rect.right - self.PAD - 96, by, 96, self.BTN_H)
+        self._cancel_rect = pygame.Rect(self.rect.x + self.PAD, by, 96, self.BTN_H)
+
+    @property
+    def level(self) -> int:
+        return self.slider.value if self.slider else 0
+
+    def _dismiss(self, ok):
+        cb = self._on_close
+        self.visible = False
+        self._on_close = None
+        if cb:
+            cb(self.level if ok else None)
+
+    def handle(self, event) -> bool:
+        if not self.visible or not self.rect:
+            return False
+        if event.type == pygame.MOUSEBUTTONDOWN and self._frames_since_show == 0:
+            self._frames_since_show += 1
+            return True
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN:
+                self._dismiss(True)
+            elif event.key == pygame.K_ESCAPE:
+                self._dismiss(False)
+            else:
+                self.slider.handle(event)
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self._ok_rect.collidepoint(*event.pos):
+                self._dismiss(True)
+            elif self._cancel_rect.collidepoint(*event.pos):
+                self._dismiss(False)
+            else:
+                self.slider.handle(event)
+            return True
+        if event.type in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONUP):
+            self.slider.handle(event)
+            return True
+        return True                     # modal: nothing reaches the map behind it
+
+    def draw(self, surf):
+        if not self.visible or not self.rect:
+            return
+        self._frames_since_show += 1
+        pygame.draw.rect(surf, (28, 28, 44), self.rect, border_radius=8)
+        pygame.draw.rect(surf, (110, 90, 170), self.rect, width=2, border_radius=8)
+        hdr = self.font_md.render("Automate NPCs", True, (220, 220, 235))
+        surf.blit(hdr, (self.rect.x + self.PAD, self.rect.y + 7))
+        x = self.rect.x + self.PAD
+        y = self.rect.y + self.HDR_H + self.PAD
+        n = self.red_count
+        what = f"{n} red creature{'s' if n != 1 else ''}"
+        surf.blit(self.font_md.render(what, True, (210, 210, 225)), (x, y + 5))
+        self.slider.draw(surf)
+        hint = ("Off returns every red creature to manual play."
+                if self.level == 0 else
+                "Level 5 is the NN policy; it plays as Level 4 until trained."
+                if self.level == 5 else
+                "Every red creature takes its turns automatically at this level.")
+        hy = self.slider.rect.bottom + 6
+        for line in _wrap_words(hint, self.font_sm, self.rect.w - 2 * self.PAD):
+            surf.blit(self.font_sm.render(line, True, (170, 170, 185)), (x, hy))
+            hy += self.font_sm.get_linesize()
+        pygame.draw.rect(surf, (35, 90, 45), self._ok_rect, border_radius=6)
+        pygame.draw.rect(surf, (90, 45, 45), self._cancel_rect, border_radius=6)
+        for r, t in ((self._ok_rect, "OK"), (self._cancel_rect, "Cancel")):
+            ts = self.font_md.render(t, True, (225, 225, 225))
+            surf.blit(ts, ts.get_rect(center=r.center))
 
 
 class TeamPickerDialog:

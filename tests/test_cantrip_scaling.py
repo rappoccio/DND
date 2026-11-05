@@ -26,7 +26,7 @@ _GUI_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 
 SCALING = ["Acid Splash", "Chill Touch", "Fire Bolt", "Poison Spray", "Produce Flame",
            "Ray of Frost", "Sacred Flame", "Shocking Grasp", "Sorcerous Burst", "Starry Wisp",
-           "Vicious Mockery", "Mind Sliver"]
+           "Vicious Mockery", "Mind Sliver", "Toll the Dead"]
 
 
 def _spell_dicts():
@@ -193,6 +193,51 @@ def test_true_strike_radiant():
         assert len(tr.dice_results) == want, \
             f"True Strike at level {level}: want {want} dice, got {len(tr.dice_results)}"
     print("✅ test_true_strike_radiant passed")
+
+
+def _saved_result(levels, name, aoe=False, evoker=False):
+    """Cast with a DC-3 caster at a foe with 30 in every save; return its TargetResult."""
+    bm, engine, me, foe = _setup(levels)
+    s = engine.get_agent_stats(bm, foe)
+    s.str = s.dex = s.con = s.intel = s.wis = s.cha = 30
+    engine.set_agent_stats(bm, foe, s)
+    c = engine.get_agent_stats(bm, me)
+    c.prof_bonus, c.intel = 0, 1
+    if evoker:
+        c.wizard_subclass = rpg.WizardSubclass.Evoker
+    engine.set_agent_stats(bm, me, c)
+    res = _cast(engine, bm, me, _load_spell(name), [] if aoe else [foe],
+                aoe=(6, 5) if aoe else None)
+    trs = [tr for tr in res.target_results if tr.target_idx == foe]
+    assert trs, f"{name}: the foe should be a target"
+    assert trs[0].saved, f"{name}: the foe should save"
+    return trs[0]
+
+
+def test_save_cantrips_deal_nothing_on_a_save():
+    """A successful save negates a cantrip's damage, single-target and area alike."""
+    for name, aoe in (("Sacred Flame", False), ("Mind Sliver", False),
+                      ("Toll the Dead", False), ("Acid Splash", True)):
+        for _ in range(5):
+            tr = _saved_result(_wiz(5), name, aoe)
+            assert tr.total_damage == 0, f"{name}: a save takes nothing, got {tr.total_damage}"
+    print("✅ test_save_cantrips_deal_nothing_on_a_save passed")
+
+
+def test_potent_cantrip_still_halves_on_a_save():
+    """Evoker L3 Potent Cantrip: a creature that saves takes half (never 0 on 2d8+)."""
+    for _ in range(5):
+        tr = _saved_result(_wiz(5), "Sacred Flame", evoker=True)
+        assert tr.total_damage >= 1, f"Potent Cantrip should halve, got {tr.total_damage}"
+    print("✅ test_potent_cantrip_still_halves_on_a_save passed")
+
+
+def test_breath_weapon_keeps_half_on_a_save():
+    """A monster level-0 pseudo-spell is not a cantrip: a save still takes half."""
+    for _ in range(5):
+        tr = _saved_result(_wiz(1), "BreathFireConeLow", aoe=True)
+        assert tr.total_damage > 0, f"breath on a save should halve, got {tr.total_damage}"
+    print("✅ test_breath_weapon_keeps_half_on_a_save passed")
 
 
 if __name__ == "__main__":

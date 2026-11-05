@@ -166,3 +166,78 @@ class IntStepper:
             pygame.draw.line(surf, COL_TEXT,
                              (cx, self.field.y + 4),
                              (cx, self.field.bottom - 4))
+
+
+class IntSlider:
+    """
+    A horizontal slider over discrete integer stops ``lo``..``hi``: click a stop or drag
+    the knob, and ← / → step it while ``focused``. ``label(v)`` names the value drawn to
+    the right of the track (default: the number). Same interface as IntStepper
+    (``value``, ``handle``, ``draw``); ``handle`` returns True when the value changed.
+    """
+    KNOB_R  = 8
+    LABEL_W = 64   # room at the right of the rect for the value label
+
+    def __init__(self, rect: pygame.Rect, value: int, lo: int, hi: int, font=None,
+                 label=None):
+        self.rect        = rect
+        self.lo, self.hi = lo, hi
+        self.font        = font
+        self.label       = label or str
+        self.focused     = True
+        self._dragging   = False
+        self._value      = max(lo, min(hi, int(value)))
+        self.track = pygame.Rect(rect.x + self.KNOB_R, rect.y,
+                                 rect.w - self.LABEL_W - 2 * self.KNOB_R, rect.h)
+
+    @property
+    def value(self) -> int:
+        return self._value
+
+    @value.setter
+    def value(self, v: int):
+        self._value = max(self.lo, min(self.hi, int(v)))
+
+    def stop_x(self, v: int) -> int:
+        """Screen x of stop ``v`` on the track."""
+        span = max(1, self.hi - self.lo)
+        return self.track.x + round(self.track.w * (v - self.lo) / span)
+
+    def _value_at(self, x: int) -> int:
+        span = max(1, self.hi - self.lo)
+        frac = (x - self.track.x) / max(1, self.track.w)
+        return max(self.lo, min(self.hi, self.lo + round(frac * span)))
+
+    def _hit(self, pos) -> bool:
+        grab = self.track.inflate(2 * self.KNOB_R, 0)
+        return grab.collidepoint(pos)
+
+    def handle(self, event) -> bool:
+        before = self._value
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self._hit(event.pos):
+            self._dragging = True
+            self.value = self._value_at(event.pos[0])
+        elif event.type == pygame.MOUSEMOTION and self._dragging:
+            self.value = self._value_at(event.pos[0])
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._dragging = False
+        elif event.type == pygame.KEYDOWN and self.focused:
+            if event.key == pygame.K_LEFT:
+                self.value = self._value - 1
+            elif event.key == pygame.K_RIGHT:
+                self.value = self._value + 1
+        return self._value != before
+
+    def draw(self, surf: pygame.Surface):
+        cy = self.rect.centery
+        pygame.draw.line(surf, COL_PANEL_BORDER, (self.track.x, cy), (self.track.right, cy), 4)
+        for v in range(self.lo, self.hi + 1):
+            x = self.stop_x(v)
+            pygame.draw.line(surf, COL_LABEL, (x, cy - 5), (x, cy + 5), 1)
+        kx = self.stop_x(self._value)
+        pygame.draw.line(surf, COL_TEXT, (self.track.x, cy), (kx, cy), 4)
+        pygame.draw.circle(surf, COL_BTN_HOVER if self._dragging else COL_TEXT, (kx, cy),
+                           self.KNOB_R)
+        pygame.draw.circle(surf, COL_PANEL_BORDER, (kx, cy), self.KNOB_R, 1)
+        t = self.font.render(self.label(self._value), True, COL_TEXT)
+        surf.blit(t, t.get_rect(midleft=(self.track.right + self.KNOB_R + 8, cy)))

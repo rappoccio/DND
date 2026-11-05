@@ -1641,11 +1641,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                          tr.saved ? "takes no" : "halves");
                 }
             } else {
+                // Toll the Dead: d12s instead of d8s when the target is missing any Hit Points.
+                const bool toll_wounded = sp.name == "Toll the Dead" && tgt_stats.hp_cur < tgt_stats.hp_max;
+                if (toll_wounded)
+                    log_("Toll the Dead: {} is wounded, d12s instead of d8s", agentName(bm, tgt_idx));
                 // Damage spell: roll per-damage-type damage and apply target's multipliers
                 for (const auto& roll_info : sp.magic_damage_rolls) {
+                    const int die_size = (toll_wounded && roll_info.die_size == 8) ? 12 : roll_info.die_size;
                     // Elemental Adept: treat a 1 as a 2 on the caster's chosen elements (spells).
                     int type_damage = rollSpellTypeDamage(caster_stats, roll_info.type, roll_info.num_dice,
-                                                          roll_info.die_size, dice, true, &empower_budget);
+                                                          die_size, dice, true, &empower_budget);
                     type_damage += roll_info.bonus;
                     // Draconic Elemental Affinity (L6): add CHA mod to first matching-type roll this turn.
                     if (draconic_affinity_available &&
@@ -1688,6 +1693,13 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                          tr.saved ? "takes no" : "halves");
                 }
             }
+
+            // A save cantrip deals no damage on a successful save (bar Potent Cantrip's half).
+            // cantrip_dice_per_tier marks a real cantrip: monster level-0 breath weapons and
+            // auras leave it at 0 and keep half on a save.
+            if (sp.level == 0 && sp.cantrip_dice_per_tier > 0 && sp.type == Spell::Harm &&
+                tr.saved && !potent_cantrip)
+                dmg = 0;
 
             tr.dice_results = dice;
 
