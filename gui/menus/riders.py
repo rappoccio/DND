@@ -222,6 +222,33 @@ def offer_divine_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, at
     app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Divine Strike", options)
 
 
+def offer_path_to_the_grave(app, cleric_idx, atk_idx, target_idx, result, state, then):
+    """Grave Cleric Path to the Grave: the cursed target was just hit (by the cleric or an ally it can
+    see), so the cleric may end the curse for +cleric-level Radiant or Necrotic damage. Owned by the
+    CLERIC, who may not be the attacker. `then` resumes the attack's normal rider chain either way;
+    `state["applied"]` tells it to rebuild the HIT line with the extra damage."""
+    agents = app.bm.placed_agents
+    cl_name = agents[cleric_idx].name
+    tgt_name = agents[target_idx].name
+
+    def _apply(radiant):
+        if radiant is not None:
+            dmg = app.combat.detonate_path_to_the_grave(app.bm, cleric_idx, atk_idx, target_idx,
+                                                        radiant, result)
+            state["applied"] = dmg >= 0
+        app._flush_combat_log()
+        then()
+    auto_radiant = app.combat.path_to_the_grave_auto_radiant(
+        app.combat.get_agent_stats(app.bm, target_idx))
+    options = [
+        ("Path to the Grave: Radiant" + (" (best)" if auto_radiant else ""), lambda: _apply(True)),
+        ("Path to the Grave: Necrotic" + ("" if auto_radiant else " (best)"), lambda: _apply(False)),
+        ("Keep the curse", lambda: _apply(None)),
+    ]
+    app._ask_actor(cleric_idx, "reaction", f"{cl_name}: end the curse on {tgt_name} for extra damage?",
+                   options, on_cancel=lambda: _apply(None))
+
+
 def offer_psionic_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
     """After a qualifying hit, offer Psi Warrior Psionic Strike (spend 1 Psionic Energy die → Force).
     Mirrors _offer_divine_strike; the extra die is applied in C++ via apply_psionic_strike_effect.

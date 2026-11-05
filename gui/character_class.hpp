@@ -256,6 +256,7 @@ enum RogueSubclass {
 enum ClericSubclass {
     ClericSubclassNone = 0,
     LifeDomain, LightDomain, TrickeryDomain, WarDomain,
+    GraveDomain,   // Ravenloft: The Horrors Within (appended — keeps saved enum ints stable)
     NumClericSubclass
 };
 

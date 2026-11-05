@@ -817,6 +817,100 @@ bool CombatEngine::applyUncannyDodge(BattleMap& bm, int reactor_idx, AttackResul
     return true;
 }
 
+// Grave Domain Cleric (L6+) Sentinel at Death's Door. The protected creature is the cleric itself or
+// a Bloodied (HP <= half max, judged before this hit lands) ally the cleric can see within 60 ft.
+bool CombatEngine::canSentinelAtDeathsDoor(const BattleMap& bm, int cleric_idx, int target_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (cleric_idx < 0 || cleric_idx >= n || target_idx < 0 || target_idx >= n) return false;
+    if (bm.isAgentOnDeck(cleric_idx)) return false;
+    const Agent::Stats cs = bm.getAgentStats(cleric_idx);
+    if (cs.lacksClass(CharacterClass::Cleric) || cs.cleric_subclass != GraveDomain ||
+        cs.classLevel(CharacterClass::Cleric) < 6 || cs.hp_cur <= 0) return false;
+    const Resource* uses = cs.getResource("Sentinel at Death's Door");
+    if (!uses || uses->current <= 0) return false;
+    if (!canTakeReaction(bm.getAgentConditions(cleric_idx))) return false;
+    if (cleric_idx == target_idx) return true;
+    if (!areAllies(bm, cleric_idx, target_idx)) return false;
+    const Agent::Stats ts = bm.getAgentStats(target_idx);
+    if (bm.getAgentConditions(target_idx).dead || ts.hp_cur * 2 > ts.hp_max) return false;  // Bloodied
+    if (!canPerceiveTarget(bm, cleric_idx, target_idx)) return false;
+    const PlacedAgent& cp = agents[static_cast<std::size_t>(cleric_idx)];
+    const PlacedAgent& tp = agents[static_cast<std::size_t>(target_idx)];
+    return footprintDistance(cp.origin, cp.agent->getSize(), tp.origin, tp.agent->getSize()) * 5 <= 60;
+}
+
+bool CombatEngine::applySentinelAtDeathsDoor(BattleMap& bm, int cleric_idx, const Attack& action,
+                                             const Weapon& w, AttackResult& r)
+{
+    if (!r.hit || r.total_damage <= 0) return false;
+    if (!canSentinelAtDeathsDoor(bm, cleric_idx, action.target_idx)) return false;
+    (void)spendResource(bm, cleric_idx, "Sentinel at Death's Door", 1);
+    Agent::Conditions cc = bm.getAgentConditions(cleric_idx);
+    cc.reaction_used = true;
+    bm.setAgentConditions(cleric_idx, cc);
+
+    if (r.critical) {
+        // Cancel the crit: re-roll the weapon's own damage as a normal hit, keeping the flat extras
+        // resolveAttack added after it (Rage, Combat Inspiration).
+        std::vector<std::pair<std::string, int>> extras;
+        int extra_sum = 0;
+        for (const auto& kv : r.damage_breakdown)
+            if (kv.first != "weapon") { extras.push_back(kv); extra_sum += kv.second; }
+        r.critical      = false;
+        r.magic_damage_types.clear();
+        r.physical_damage_types.clear();
+        r.magic_damage_dealt.fill(0);
+        log_("Sentinel at Death's Door: {}'s Critical Hit becomes a normal hit",
+             agentName(bm, action.attacker_idx));
+        rollDamage(w, bm.getAgentStats(action.attacker_idx), bm.getAgentStats(action.target_idx), r,
+                   action.no_ability_damage, &bm, action.target_idx);
+        r.total_damage += extra_sum;
+        for (auto& kv : extras) r.damage_breakdown.push_back(std::move(kv));
+    }
+    r.crit_canceled  = true;   // also blocks a later auto-crit (melee vs Paralyzed/Unconscious)
+    const int before = r.total_damage;
+    r.total_damage   = before / 2;
+    r.damage_breakdown.push_back({"sentinel at death's door", r.total_damage - before});  // negative
+    log_("Sentinel at Death's Door: {} halves the damage to {} ({} -> {})", agentName(bm, cleric_idx),
+         agentName(bm, action.target_idx), before, r.total_damage);
+    return true;
+}
+
+std::vector<int> CombatEngine::sentinelAtDeathsDoorReactors(const BattleMap& bm, const Attack& action,
+                                                            const AttackResult& r) const
+{
+    std::vector<int> out;
+    if (!r.hit || r.total_damage <= 0) return out;
+    const int n = static_cast<int>(bm.placedAgents().size());
+    for (int i = 0; i < n; ++i)
+        if (i != action.attacker_idx && canSentinelAtDeathsDoor(bm, i, action.target_idx)) out.push_back(i);
+    return out;
+}
+
+bool CombatEngine::maybeSentinelAtDeathsDoorInline(BattleMap& bm, const Attack& action, const Weapon& w,
+                                                   AttackResult& r)
+{
+    // Auto/RL only: the GUI (no decider) gets the suspendable window in advanceAttack.
+    if (!decider_) return false;
+    for (int cleric : sentinelAtDeathsDoorReactors(bm, action, r)) {
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnHit;
+        ctx.reactor_idx = cleric;
+        ctx.source_idx  = action.attacker_idx;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                             "Sentinel at Death's Door (halve the damage)", "SentinelAtDeathsDoor"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) continue;
+        const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
+        if (opt.kind != ReactionOption::Feature || opt.feature != "SentinelAtDeathsDoor") continue;
+        if (applySentinelAtDeathsDoor(bm, cleric, action, w, r)) return true;   // once per hit
+    }
+    return false;
+}
+
 bool CombatEngine::canBeguilingDefenses(const BattleMap& bm, int target_idx) const
 {
     const auto& agents = bm.placedAgents();
@@ -2253,6 +2347,27 @@ FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
         }
         s.onhit_offered = true;   // nothing to offer — don't re-check on a later resume
     }
+    // Sentinel at Death's Door window (after the defender's own OnHit window): each eligible Grave
+    // cleric in turn, until one halves the hit. submitDecision advances sentinel_cursor on resume.
+    if (s.interactive && !s.sentinel_window_built) {
+        s.sentinel_reactors     = sentinelAtDeathsDoorReactors(bm, s.action, s.r);
+        s.sentinel_window_built = true;
+    }
+    while (s.interactive && s.sentinel_cursor < s.sentinel_reactors.size()) {
+        const int cleric = s.sentinel_reactors[s.sentinel_cursor];
+        if (s.r.crit_canceled) break;   // a cleric already used Sentinel on this hit
+        if (!s.r.hit || !canSentinelAtDeathsDoor(bm, cleric, s.action.target_idx)) { ++s.sentinel_cursor; continue; }
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnHit;
+        ctx.reactor_idx = cleric;
+        ctx.source_idx  = s.action.attacker_idx;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                             "Sentinel at Death's Door (halve the damage)", "SentinelAtDeathsDoor"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        s.sentinel_parked = true;
+        pending_decision_ = PendingDecision{true, ctx};   // suspend; GUI resumes via submitDecision
+        return FlowStatus::AwaitingDecision;
+    }
     pending_decision_.active = false;
     last_attack_result_ = applyAttackResult(bm, s);
     s.active = false;
@@ -2626,6 +2741,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Disadvantage: attacker was crit by Slasher");
     }
 
+    // Grave Domain Path to the Grave: a cursed creature has Disadvantage on attack rolls.
+    if (atk_cond.grave_cursed_by >= 0) {
+        dis = true;
+        log_("Disadvantage: attacker is cursed (Path to the Grave)");
+    }
+
     // Attacker frightened: disadvantage on attacks when fear source is in LOS
     if (atk_cond.frightened) {
         for (const auto& ac : conditions_.all()) {
@@ -2937,7 +3058,19 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     // +CHA AC to a hit ally within 10 ft, flipping the hit to a miss (and counter-attacking). Runs in
     // the same pre-damage window; no-ops if the self case above already negated the hit (r.hit false).
     maybeGloriousDefenseInline(bm, action, s.r);
+    // Auto/RL Grave Domain Sentinel at Death's Door: a Grave cleric may halve a hit on itself or a
+    // Bloodied ally (canceling a crit first). Same pre-damage window as Uncanny Dodge.
+    maybeSentinelAtDeathsDoorInline(bm, action, s.w, s.r);
     AttackResult r = applyAttackResult(bm, s);
+    // Auto/RL Grave Domain Path to the Grave: a hit on a cursed creature (by the cleric or an ally it
+    // can see) ends the curse for +cleric-level Radiant/Necrotic damage. Always taken in auto mode;
+    // the GUI (no decider) prompts the cleric instead.
+    if (decider_ && r.hit) {
+        const int pc = pathToTheGraveCleric(bm, action.attacker_idx, action.target_idx);
+        if (pc >= 0)
+            (void)detonatePathToTheGrave(bm, pc, action.attacker_idx, action.target_idx,
+                                         pathToTheGraveAutoRadiant(bm.getAgentStats(action.target_idx)), &r);
+    }
     // Auto/RL Interception (OnAllyAttacked): a nearby ally with the Interception fighting style may
     // spend its reaction to reduce the damage this hit dealt (post-hit heal-back). On-hit only.
     maybeInterceptionInline(bm, action, r);
@@ -3877,6 +4010,26 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
+    // ── Grave Domain — Pull of Death (L3), AUTOMATIC ──────────────────────
+    // Once per turn: an attack-roll hit on a creature already missing HP before this attack.
+    if (r.hit && r.total_damage > 0) {
+        const int pod = pullOfDeathDamage(bm, action.attacker_idx, tgt_stats, r.hp_before);
+        if (pod > 0) {
+            r.total_damage += pod;
+            // Keep the local attacker-conditions copy in step: it is written back later in this
+            // function and would otherwise clobber the once-per-turn mark.
+            updated_atk_cond.pull_of_death_turn = bm.getAgentConditions(action.attacker_idx).pull_of_death_turn;
+            r.damage_breakdown.push_back({"pull of death", pod});
+            r.magic_damage_types.push_back(Necrotic);
+            r.magic_damage_dealt[static_cast<std::size_t>(Necrotic)] += pod;
+            int overflow = std::max(0, pod - tgt_stats.temp_hp);
+            tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - pod);
+            tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+            r.hp_after    = tgt_stats.hp_cur;
+            r.target_down = (r.hp_after <= 0);
+        }
+    }
+
     // ── Hunter (Ranger subclass) on-hit features ──────────────────────────
     const bool is_weapon_atk = (w.type == WeaponType::Melee || w.type == WeaponType::Ranged || w.thrown);
     if (r.hit && atk_stats.hasClass(CharacterClass::Ranger) &&
@@ -4016,7 +4169,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // Automatic critical hit for melee attacks (within 5 ft) against paralyzed or unconscious targets.
     // Uses the pre-attack snapshot so a rider this attack applied (Cunning Strike Knock Out) does not
     // retroactively crit the triggering hit.
-    if (tgt_incapacitated_at_attack && r.hit) {
+    // A crit canceled by Sentinel at Death's Door can't be re-promoted here (its crit effects are void).
+    if (tgt_incapacitated_at_attack && r.hit && !r.crit_canceled) {
         int dc = std::max({atk_pt.origin.col - tgt_pt.origin.col,
                            tgt_pt.origin.col - (atk_pt.origin.col + atk_sz - 1),
                            0});

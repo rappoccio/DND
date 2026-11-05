@@ -21,7 +21,7 @@ reference counts in the combat sources on 2026-07-07.
 | --------- | :-----: | :--------: | --------------------------------------- |
 | Barbarian |   [x]   |    4/4     | L14 GUI buttons only                    |
 | Bard      |   [x]   |    4/4     | Countercharm, Dance/Lore L14 (deferred) |
-| Cleric    |   [x]   |    4/4     | —                                       |
+| Cleric    |   [x]   |    5/5     | —                                       |
 | Druid     |   [x]   |    4/4     | —                                       |
 | Fighter   |   [x]   |    4/4     | —                                       |
 | Monk      |   [x]   |    4/4     | —                                       |
@@ -57,6 +57,7 @@ reference counts in the combat sources on 2026-07-07.
 - [x] Light Domain
 - [x] Trickery Domain
 - [x] War Domain
+- [x] Grave Domain (Ravenloft: The Horrors Within — see `GRAVE_DOMAIN_PLAN.md`)
 
 ## Druid
 - [x] Base chassis + Wild Shape

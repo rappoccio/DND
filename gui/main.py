@@ -148,6 +148,8 @@ _BON_RUN_BAND      = (
     "turn_undead", "radiance", "preserve_life", "divine_intervention",
     # Trickery Cleric: the Invoke Duplicity cluster
     "invoke_duplicity", "move_duplicity", "swap_duplicity",
+    # Grave Cleric: Path to the Grave
+    "path_to_the_grave",
     # Sorcerer, with Boon of Fate, Steady Aim and War Priest inside the stretch
     "dragon_wings", "draconic_resistance", "bend_luck", "boon_of_fate",
     "tides_of_chaos", "innate_sorcery", "trance_of_order", "bastion_of_law",
@@ -754,6 +756,7 @@ class App:
         # is cast at maximum damage. Armed/disarmed from the Evoker's right-click menu. Persistent
         # (stays on until disarmed) since the escalating self-damage is handled by the engine.
         self.overchannel_armed = False
+        self.enhanced_necromancy_armed = False  # Grave Cleric L17: next eligible single-target spell takes a 2nd target
 
         # Sorcerer Metamagic (Phase 2): the sidebar-armed option modifies the NEXT player
         # spell cast (folded in by _apply_armed_metamagic at both cast sites). Radio-style —
@@ -953,6 +956,7 @@ class App:
         self.pending_beguiling_bard    = -1    # the Glamour bard who cast the qualifying Enchantment/Illusion spell
         self.pending_clairvoyant       = False # Great Old One Warlock Clairvoyant Combatant: awaiting enemy target click
         self.pending_vow_of_enmity     = False # Paladin Oath of Vengeance Vow of Enmity: awaiting enemy target click
+        self.pending_path_to_the_grave = False # Grave Cleric Path to the Grave: awaiting a creature target click
         self.pending_inspiring_smite   = False # Paladin Oath of Glory Inspiring Smite: awaiting temp-HP recipient click
         self.pending_telekinetic       = False # Psi Warrior Telekinetic Movement: awaiting target click
         self.pending_flurry_target     = False # Monk Flurry of Blows: awaiting target click
@@ -1784,6 +1788,9 @@ class App:
         self.btn_cbt_swap_duplicity = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Swap w/ Duplicate",
                                           (150, 110, 185), (185, 145, 215), self.font_md)
+        self.btn_cbt_path_to_the_grave = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Path to the Grave",
+                                          (110, 110, 120), (150, 150, 165), self.font_md)
         self.btn_cbt_war_priest = Button(pygame.Rect(px, dummy_y, W, B),
                                           "War Priest (Bonus Attack)",
                                           (200, 120, 90), (235, 150, 115), self.font_md)
@@ -5318,6 +5325,9 @@ class App:
         elif self.pending_vow_of_enmity and hit >= 0:
             # Vow of Enmity: the clicked enemy becomes the Vengeance paladin's sworn foe.
             self._resolve_vow_of_enmity(hit)
+        elif self.pending_path_to_the_grave and hit >= 0:
+            # Path to the Grave: the clicked creature is cursed by the Grave cleric.
+            self._resolve_path_to_the_grave(hit)
         elif self.pending_inspiring_smite and hit >= 0:
             # Inspiring Smite: the clicked creature (within 30 ft) gains temp HP.
             self._resolve_inspiring_smite(hit)
@@ -5458,6 +5468,7 @@ class App:
         self.pending_beguiling           = False
         self.pending_clairvoyant         = False
         self.pending_vow_of_enmity       = False
+        self.pending_path_to_the_grave   = False
         self.pending_inspiring_smite     = False
         self.pending_telekinetic         = False
         self.pending_flurry_target       = False
@@ -5507,6 +5518,7 @@ class App:
         ("pending_grant_inspiration", False), ("pending_mantle_active", False),
         ("pending_beguiling", False), ("pending_clairvoyant", False),
         ("pending_vow_of_enmity", False), ("pending_inspiring_smite", False),
+        ("pending_path_to_the_grave", False),
         ("pending_telekinetic", False), ("pending_flurry_target", False),
         ("pending_vitality_target", False), ("_legendary_target_pick", False),
         ("pending_cleave", None), ("pending_sweep", None),
@@ -5852,6 +5864,61 @@ class App:
         # is the top of the turn a restore lands on.
         if self.autosave_enabled:
             autosave.save(self)
+
+    def _offer_keeper_of_souls_if_pending(self):
+        """Grave Cleric Keeper of Souls (L17). The engine flags keeper_of_souls_pending on the cleric when
+        an enemy dies within 60 ft, from whatever killed it (attack, spell, aura, ongoing damage). Polled
+        once per frame and offered only when nothing else is waiting on an answer, so it never cuts into
+        a parked reaction, a rider prompt or an NPC playback. The prompt belongs to the cleric."""
+        if not self.combat_active or self._npc_anim is not None or self.prompts.live is not None:
+            return
+        if self.combat.pending_decision().active:
+            return
+        agents = self.bm.placed_agents
+        for c in range(len(agents)):
+            cond = self.combat.get_agent_conditions(self.bm, c)
+            if not cond.keeper_of_souls_pending:
+                continue
+            if not self.combat.can_keeper_of_souls(self.bm, c):
+                cond.keeper_of_souls_pending = False
+                self.combat.set_agent_conditions(self.bm, c, cond)
+                continue
+            self._offer_keeper_of_souls(c)
+            return
+
+    def _offer_keeper_of_souls(self, cleric_idx: int):
+        agents = self.bm.placed_agents
+        stats = self.combat.get_agent_stats(self.bm, cleric_idx)
+        res = stats.resources.get("Keeper of Souls")
+        slot = 0 if (res is not None and res.current > 0) else self.combat.keeper_of_souls_slot(stats)
+        cost = "" if slot == 0 else f" — spend a level {slot} slot"
+        amount = 2 * stats.class_level(rpg.CharacterClass.Cleric)
+
+        def _clear():
+            c = self.combat.get_agent_conditions(self.bm, cleric_idx)
+            c.keeper_of_souls_pending = False
+            self.combat.set_agent_conditions(self.bm, cleric_idx, c)
+
+        def _heal(t):
+            if self.combat.use_keeper_of_souls(self.bm, cleric_idx, t, slot) < 0:
+                self._combat_log_add("Keeper of Souls unavailable.")
+            _clear()
+            self._flush_combat_log()
+            self._update_attack_overlay()
+
+        def _skip():
+            _clear()
+            self._combat_log_add(f"{agents[cleric_idx].name}: Keeper of Souls not used.")
+
+        options = []
+        for t in self.combat.keeper_of_souls_targets(self.bm, cleric_idx):
+            ts = self.combat.get_agent_stats(self.bm, t)
+            options.append((f"Heal {agents[t].name} +{amount} ({ts.hp_cur}/{ts.hp_max}){cost}",
+                            (lambda tt=t: _heal(tt))))
+        options.append(("Don't use Keeper of Souls", _skip))
+        self._ask_actor(cleric_idx, "reaction",
+                        f"{agents[cleric_idx].name}: an enemy died — Keeper of Souls?",
+                        options, on_cancel=_skip)
 
     def _drive_npc_turn_if_pending(self):
         """Drive ONE automated NPC turn step this frame (NPC_AUTOMATION_PLAN Step 2). Called once per
@@ -7213,132 +7280,157 @@ class App:
         mastery_offer = self._pending_mastery_offer(
             atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
 
-        # Defer logging until the rider effect is chosen; otherwise log immediately.
-        if has_cunning_strike:
-            riders.offer_cunning_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_stunning_strike:
-            riders.offer_stunning_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_open_hand_rider:
-            riders.offer_open_hand_rider(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_quivering_palm:
-            riders.offer_quivering_palm(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_hand_of_harm:
-            riders.offer_hand_of_harm(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_elemental_move:
-            riders.offer_elemental_move(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_brutal_strike:
-            riders.offer_brutal_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
-        elif has_divine_strike:
-            riders.offer_divine_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
-        elif has_psionic_strike:
-            riders.offer_psionic_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
-        elif has_punch_and_grab:
-            riders.offer_punch_and_grab(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_divine_smite:
-            riders.offer_divine_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
-        elif has_eldritch_smite:
-            riders.offer_eldritch_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
-        elif has_peerless_aim:
-            riders.offer_peerless_aim(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_guided_strike:
-            riders.offer_guided_strike(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_restore_balance_miss:
-            reactions.offer_restore_balance_miss(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_maneuver:
-            riders.offer_maneuver(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_precision:
-            riders.offer_precision_attack(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_reckless_reroll:
-            riders.offer_reckless_reroll(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_homing_strike:
-            riders.offer_homing_strike(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_riposte:
-            reactions.offer_riposte(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_protective_field:
-            reactions.offer_protective_field(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_interception:
-            reactions.offer_interception(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_sentinel_guard:
-            reactions.offer_sentinel_guard(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_soul_of_vengeance:
-            reactions.offer_soul_of_vengeance(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_push:
-            riders.offer_push(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
-        elif has_topple:
-            riders.offer_topple(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
-        elif has_cleave:
-            riders.offer_cleave(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
-        elif has_sudden_strike:
-            riders.offer_sudden_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
-        else:
-            self._combat_log_add(atk_msg)
+        # Grave Domain Path to the Grave: a hit on a creature cursed by a Grave cleric (the attacker
+        # itself, or an ally that cleric can see) lets the cleric end the curse for +cleric-level
+        # Radiant/Necrotic damage. Offered FIRST and on its own prompt, then the normal rider chain
+        # below resumes from the prompt's callback, so no single-choice rider can shadow it.
+        path_state = {"applied": False}
 
-        # Concentration on weapon damage is rolled inside execute_action (C++ owns the CON save and,
-        # on a failure, fully drops the spell's terrain/effects/conditions). Surface the log + sync caches.
-        if result.hit and result.total_damage > 0:
-            self._flush_combat_log()
-            self._sync_spell_effect_cache()
-
-        # FLAG: Move to C++
-        # If target is down, drop their concentration
-        if result.target_down:
-            self._drop_concentration_for_agent(target_idx)
-
-        # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
-        # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_peerless_aim or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_sudden_strike
-        if not has_rider:
-            # Check if more attacks are queued (action or bonus)
-            if has_more_attacks:
-                # More attacks left in this sequence.
-                if self._attack_sequence_slot == "bonus":
-                    # Bonus multi-attack (e.g. Flurry of Blows): single target, no standing
-                    # mid-sequence button, so keep auto-targeting the next strike (unchanged).
-                    stats = self.combat.get_agent_stats(self.bm, atk_idx)
-                    rem = stats.bonus_attacks_remaining
-                    self.pending_attack_slot = ""  # Clear to let _start_attack re-seed
-                    self._start_attack("bonus")
-                    self._combat_log_add(
-                        f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — click a target.")
-                else:
-                    # Action Extra-Attack sequence: DISARM target-selection between attacks so the
-                    # player can move (clicking your own sprite no longer reads as a self-attack).
-                    # The standing "⚔ Attack (N)" button (mid_sequence_action) resumes the sequence;
-                    # the count is preserved, so re-clicking does NOT re-seed to a fresh full set
-                    # (see _start_attack's `attacks_remaining == 0` guard). Requested by the user as
-                    # the general fix for "allow movement mid-attack-sequence".
-                    rem = self.attacks_remaining
-                    self.pending_attack_slot = ""
-                    self._combat_log_add(
-                        f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — "
-                        f"move if you wish, then click Attack to continue.")
+        def _resume():
+            nonlocal atk_msg
+            if path_state["applied"]:
+                # The detonation raised the damage; rebuild the HIT line the chain will log.
+                dmg_parts = self._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+                dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+                atk_msg = (f"{atk_name}→{tgt_name}: "
+                           f"HIT {result.total_damage}{self._damage_breakdown_str(result)} {dmg_type_str}"
+                           f"{' CRIT!' if result.critical else ''}"
+                           f"{' — DOWN' if result.target_down else ''}"
+                           f"{exh_note}")
+            # Defer logging until the rider effect is chosen; otherwise log immediately.
+            if has_cunning_strike:
+                riders.offer_cunning_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_stunning_strike:
+                riders.offer_stunning_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_open_hand_rider:
+                riders.offer_open_hand_rider(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_quivering_palm:
+                riders.offer_quivering_palm(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_hand_of_harm:
+                riders.offer_hand_of_harm(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_elemental_move:
+                riders.offer_elemental_move(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_brutal_strike:
+                riders.offer_brutal_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
+            elif has_divine_strike:
+                riders.offer_divine_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
+            elif has_psionic_strike:
+                riders.offer_psionic_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
+            elif has_punch_and_grab:
+                riders.offer_punch_and_grab(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_divine_smite:
+                riders.offer_divine_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
+            elif has_eldritch_smite:
+                riders.offer_eldritch_smite(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
+            elif has_peerless_aim:
+                riders.offer_peerless_aim(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_guided_strike:
+                riders.offer_guided_strike(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_restore_balance_miss:
+                reactions.offer_restore_balance_miss(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_maneuver:
+                riders.offer_maneuver(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_precision:
+                riders.offer_precision_attack(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_reckless_reroll:
+                riders.offer_reckless_reroll(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_homing_strike:
+                riders.offer_homing_strike(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_riposte:
+                reactions.offer_riposte(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_protective_field:
+                reactions.offer_protective_field(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_interception:
+                reactions.offer_interception(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_sentinel_guard:
+                reactions.offer_sentinel_guard(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_soul_of_vengeance:
+                reactions.offer_soul_of_vengeance(self, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_push:
+                riders.offer_push(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+            elif has_topple:
+                riders.offer_topple(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
+            elif has_cleave:
+                riders.offer_cleave(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
+            elif has_sudden_strike:
+                riders.offer_sudden_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
             else:
-                # Attacks exhausted — mark action used and clear sequence state
-                self.pending_attack_slot = ""
-                self._attack_sequence_slot = ""
-                # Clear the generic extra-attack knobs so they don't leak to the next attack.
-                self.pending_attack_offhand = None
-                self.pending_attack_resource = None
-                # Boon of Dimensional Travel — arm Blink Steps: the Attack action is fully spent.
-                if slot == "action":
-                    self._arm_blink_steps(atk_idx)
+                self._combat_log_add(atk_msg)
 
-            # Restore original weapons if this was an unarmed strike
-            if self._unarmed_strike_original_weapons:
-                idx_to_restore, orig_weapons = self._unarmed_strike_original_weapons
-                self.combat.set_agent_weapons(self.bm, idx_to_restore, orig_weapons)
-                self._unarmed_strike_original_weapons = None
+            # Concentration on weapon damage is rolled inside execute_action (C++ owns the CON save and,
+            # on a failure, fully drops the spell's terrain/effects/conditions). Surface the log + sync caches.
+            if result.hit and result.total_damage > 0:
+                self._flush_combat_log()
+                self._sync_spell_effect_cache()
 
             # FLAG: Move to C++
-            if slot == "action":
-                self.action_used = True
-                # 2024 Berserker Frenzy = extra Nd6 damage (N = Rage damage bonus),
-                # applied engine-side in combat_attack.cpp. No bonus attack in 2024
-                # (that was the 2014 version), so nothing to trigger here.
-            else:
-                self.bonus_used = True
-        # Refresh attack overlay (HP may have changed).
-        self._update_attack_overlay()
+            # If target is down, drop their concentration
+            if result.target_down:
+                self._drop_concentration_for_agent(target_idx)
+
+            # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
+            # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
+            has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_peerless_aim or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_sudden_strike
+            if not has_rider:
+                # Check if more attacks are queued (action or bonus)
+                if has_more_attacks:
+                    # More attacks left in this sequence.
+                    if self._attack_sequence_slot == "bonus":
+                        # Bonus multi-attack (e.g. Flurry of Blows): single target, no standing
+                        # mid-sequence button, so keep auto-targeting the next strike (unchanged).
+                        stats = self.combat.get_agent_stats(self.bm, atk_idx)
+                        rem = stats.bonus_attacks_remaining
+                        self.pending_attack_slot = ""  # Clear to let _start_attack re-seed
+                        self._start_attack("bonus")
+                        self._combat_log_add(
+                            f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — click a target.")
+                    else:
+                        # Action Extra-Attack sequence: DISARM target-selection between attacks so the
+                        # player can move (clicking your own sprite no longer reads as a self-attack).
+                        # The standing "⚔ Attack (N)" button (mid_sequence_action) resumes the sequence;
+                        # the count is preserved, so re-clicking does NOT re-seed to a fresh full set
+                        # (see _start_attack's `attacks_remaining == 0` guard). Requested by the user as
+                        # the general fix for "allow movement mid-attack-sequence".
+                        rem = self.attacks_remaining
+                        self.pending_attack_slot = ""
+                        self._combat_log_add(
+                            f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — "
+                            f"move if you wish, then click Attack to continue.")
+                else:
+                    # Attacks exhausted — mark action used and clear sequence state
+                    self.pending_attack_slot = ""
+                    self._attack_sequence_slot = ""
+                    # Clear the generic extra-attack knobs so they don't leak to the next attack.
+                    self.pending_attack_offhand = None
+                    self.pending_attack_resource = None
+                    # Boon of Dimensional Travel — arm Blink Steps: the Attack action is fully spent.
+                    if slot == "action":
+                        self._arm_blink_steps(atk_idx)
+
+                # Restore original weapons if this was an unarmed strike
+                if self._unarmed_strike_original_weapons:
+                    idx_to_restore, orig_weapons = self._unarmed_strike_original_weapons
+                    self.combat.set_agent_weapons(self.bm, idx_to_restore, orig_weapons)
+                    self._unarmed_strike_original_weapons = None
+
+                # FLAG: Move to C++
+                if slot == "action":
+                    self.action_used = True
+                    # 2024 Berserker Frenzy = extra Nd6 damage (N = Rage damage bonus),
+                    # applied engine-side in combat_attack.cpp. No bonus attack in 2024
+                    # (that was the 2014 version), so nothing to trigger here.
+                else:
+                    self.bonus_used = True
+            # Refresh attack overlay (HP may have changed).
+            self._update_attack_overlay()
+
+        path_cleric = (self.combat.path_to_the_grave_cleric(self.bm, atk_idx, target_idx)
+                       if result.valid and result.hit else -1)
+        if path_cleric >= 0:
+            riders.offer_path_to_the_grave(self, path_cleric, atk_idx, target_idx, result,
+                                           path_state, _resume)
+        else:
+            _resume()
 
     def _pending_mastery_offer(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
         """If a weapon-Mastery on-hit rider (Push/Topple/Cleave) is still pending on this hit, return a
@@ -8714,6 +8806,22 @@ class App:
             self._flush_combat_log()
             self._combat_log_add("Vow of Enmity unavailable (needs Oath of Vengeance, a Channel Oath use, and a target within 30 ft).")
 
+    def _resolve_path_to_the_grave(self, target_idx: int):
+        """Grave Cleric Path to the Grave: curse the clicked creature (within 30 ft, seen) until the
+        start of the cleric's next turn. The engine spends the Channel Divinity use and the Bonus Action."""
+        self.pending_path_to_the_grave = False
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+        if target_idx == idx:
+            self._combat_log_add("Path to the Grave: pick another creature, not yourself.")
+            return
+        ok = self.combat.use_path_to_the_grave(self.bm, idx, target_idx)
+        self._flush_combat_log()
+        if not ok:
+            self._combat_log_add("Path to the Grave unavailable (needs a Channel Divinity use, the "
+                                 "Bonus Action, and a creature you can see within 30 ft).")
+
     def _resolve_inspiring_smite(self, target_idx: int):
         """Paladin Oath of Glory Inspiring Smite: grant the clicked creature (within 30 ft, may be self)
         2d8 + Paladin level temporary HP. Spends one Channel Oath use; only right after a Divine Smite."""
@@ -9562,6 +9670,14 @@ class App:
             7: ["Confusion", "Dimension Door"],
             9: ["Dominate Person", "Modify Memory"],
         },
+        # Grave Domain (Ravenloft: The Horrors Within).
+        "GraveDomain": {
+            3: ["Detect Evil and Good", "False Life", "Gentle Repose", "Ray of Enfeeblement",
+                "Spare the Dying"],
+            5: ["Revivify", "Vampiric Touch"],
+            7: ["Blight", "Death Ward"],
+            9: ["Dispel Evil and Good", "Raise Dead"],
+        },
     }
 
     def _apply_feature_scaling(self, sp, feat: dict, level: int, stats):
@@ -9825,6 +9941,11 @@ class App:
             if self._twinned_single_armed(sp_, idx):
                 self.pending_spell_num_targets = 2
                 hint = "click 2 targets (0/2) — Twinned"
+            elif self._enhanced_necromancy_armed_for(sp_, idx, slot_level_):
+                # Enhanced Necromancy (Grave Cleric L17): the same 2-click collection as Twinned;
+                # the engine spends the Channel Divinity use only if the 2nd target lands.
+                self.pending_spell_num_targets = 2
+                hint = "click 2 targets (0/2) — Enhanced Necromancy"
             elif getattr(sp_, "revives_dead", False):
                 # Raise Dead / Revivify: the target is a corpse, picked via _corpse_at.
                 self.pending_spell_num_targets = 0
@@ -10040,7 +10161,8 @@ class App:
                 # also offers Action-cast spells (which then cast as a Bonus Action via Quickened),
                 # and so does a Wild Magic bonus-cast surge.
                 if not ((quickened_armed or wild_bonus_cast)
-                        and sp.casting_time == rpg.CastingTime.Action):
+                        and sp.casting_time == rpg.CastingTime.Action) and not (
+                        sp.name == "Spare the Dying" and self._grave_return_to_life(stats)):
                     continue  # Skip non-bonus-action spells from the bonus menu
 
             if sp_level == 0:
@@ -10470,7 +10592,8 @@ class App:
                          "SuperiorHuntersDefense": "Superior Hunter's Defense",
                          "DeflectAttacks": "Deflect Attacks",
                          "DefensiveDuelist": "Defensive Duelist", "Parry": "Parry",
-                         "GloriousDefense": "Glorious Defense"}
+                         "GloriousDefense": "Glorious Defense",
+                         "SentinelAtDeathsDoor": "Sentinel at Death's Door"}
                 choices = " / ".join(names.get(f, f) for f in feats) or "Shield"
                 title = (
                     f"{agents[ctx.reactor_idx].name} may react ({choices}) vs "
@@ -11520,6 +11643,24 @@ class App:
             opts.append(rpg.MetamagicOption.Seeking)
         return opts[:2]
 
+    @staticmethod
+    def _grave_return_to_life(stats) -> bool:
+        """Grave Domain Circle of Mortality (L3): Spare the Dying can be cast as a Bonus Action."""
+        return (stats.has_class(rpg.CharacterClass.Cleric)
+                and stats.cleric_subclass == rpg.ClericSubclass.GraveDomain
+                and stats.class_level(rpg.CharacterClass.Cleric) >= 3)
+
+    def _enhanced_necromancy_armed_for(self, sp, caster_idx: int, slot_level: int = 0) -> bool:
+        """True when Enhanced Necromancy is armed and this single-target spell qualifies (a
+        Necromancy spell of level 5 or lower, or a Grave Domain spell) and a Channel Divinity use
+        is left. Corpse-targeted spells (Revivify, Raise Dead) keep their own one-corpse pick."""
+        if not self.enhanced_necromancy_armed or sp.geometry != rpg.SpellGeometry.Single:
+            return False
+        if getattr(sp, "revives_dead", False) or getattr(sp, "animates_dead", False):
+            return False
+        stats = self.combat.get_agent_stats(self.bm, caster_idx)
+        return self.combat.can_enhanced_necromancy(stats, sp, slot_level)
+
     def _twinned_single_armed(self, sp, caster_idx: int) -> bool:
         """True when Twinned Spell is armed for a Single-geometry (single-target) spell, so the
         cast should collect one extra target. Twinned only augments spells that otherwise hit a
@@ -11722,7 +11863,9 @@ class App:
         # Multiple-geometry spells (and a Twinned Single-geometry spell) collect several targets
         # across successive clicks before the cast resolves.
         multi_target = (sp.geometry == rpg.SpellGeometry.Multiple or
-                        self._twinned_single_armed(sp, caster_idx))
+                        self._twinned_single_armed(sp, caster_idx) or
+                        self._enhanced_necromancy_armed_for(sp, caster_idx,
+                                                            self.pending_spell_slot_level))
         if multi_target:
             self.pending_spell_targets.append(target_idx)
 
@@ -11749,6 +11892,7 @@ class App:
         # Chromatic Orb's player-chosen leap chain (empty for every other spell / an un-chained cast).
         action.chromatic_leap_targets = list(self.pending_chromatic_chain)
         action.overchannel   = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
+        action.enhanced_necromancy = self.enhanced_necromancy_armed  # Grave L17 (paid only if eligible)
         self._apply_dispel_selection(action)  # Dispel Magic picker (no-op when nothing was picked)
         self._apply_armed_metamagic(action, caster_idx)  # Sorcerer Metamagic (engine no-ops if inapplicable)
         self._apply_pact_slot_level(caster_idx, sp, action)
@@ -17566,6 +17710,11 @@ class App:
                 if 0 <= idx < len(self.bm.placed_agents):
                     self.pending_clairvoyant = True
                     self._combat_log_add("Clairvoyant Combatant: click an enemy within 60 ft to target.")
+            if action_id == "path_to_the_grave":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_path_to_the_grave = True
+                    self._combat_log_add("Path to the Grave: click a creature within 30 ft to curse it.")
             if action_id == "vow_of_enmity":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
@@ -19473,6 +19622,9 @@ class App:
                 if self.pending_vow_of_enmity and event.key == pygame.K_ESCAPE:
                     net_picks.cancel_vow_of_enmity(self)
                     continue
+                if self.pending_path_to_the_grave and event.key == pygame.K_ESCAPE:
+                    net_picks.cancel_path_to_the_grave(self)
+                    continue
                 if self.pending_inspiring_smite and event.key == pygame.K_ESCAPE:
                     net_picks.cancel_inspiring_smite(self)
                     continue
@@ -20062,6 +20214,7 @@ class App:
             running = self._handle_events()
             net_link.pump_submits(self)         # M5a: remote answers, decided where clicks are; D-M5-7 expiry
             self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
+            self._offer_keeper_of_souls_if_pending()   # Grave Cleric L17: an enemy died nearby
             self._advance_npc_playback()        # NPC turn playback: animate the recorded turn
             self._refresh_fog()                 # fog of war: monotonic reveal when marked stale
             self._pump_net()                    # M4c: answer what the net thread asked for

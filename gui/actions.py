@@ -743,6 +743,12 @@ class ActionMenu:
                 if lvl >= 6:
                     out.append(Action("swap_duplicity", "Swap w/ Duplicate", GROUP_BONUS))
 
+        # ── Grave Cleric: Path to the Grave (Bonus Action, one Channel Divinity use) ──
+        if (cls == CC.Cleric
+                and stats.cleric_subclass == rpg.ClericSubclass.GraveDomain
+                and lvl >= 3 and _res(stats, "Channel Divinity") > 0):
+            out.append(Action("path_to_the_grave", "Path to the Grave", GROUP_BONUS))
+
         # ── the Sorcerer run, plus the two guards drawn inside it ──
         # In DRAW order, not class order: `boon_of_fate` (a feat) and `steady_aim` /
         # `war_priest` (Rogue, Cleric) sit inside this stretch, and the panel's column

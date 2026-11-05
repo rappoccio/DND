@@ -207,6 +207,66 @@ void bindCombatResources(py::class_<CombatEngine>& engine) {
              "the chosen creatures within 30 ft (list order = distribution priority), each restored to\n"
              "no more than half its HP maximum. Undead cannot be healed. Supreme Healing does not affect\n"
              "this (no dice). Spends one Channel Divinity use. Returns a PreserveLifeResult.")
+        .def("can_path_to_the_grave",
+             &CombatEngine::canPathToTheGrave,
+             py::arg("battle_map"), py::arg("cleric_idx"), py::arg("target_idx"),
+             "Grave Domain Path to the Grave (L3+): True iff the cleric has a Channel Divinity use and a\n"
+             "Bonus Action, and can see the living target within 30 ft.")
+        .def("use_path_to_the_grave",
+             &CombatEngine::usePathToTheGrave,
+             py::arg("battle_map"), py::arg("cleric_idx"), py::arg("target_idx"),
+             "Grave Domain Path to the Grave: spend a Channel Divinity use and the Bonus Action to curse\n"
+             "the target until the start of the cleric's next turn (Disadvantage on attack rolls and\n"
+             "saving throws). Returns True if the curse was laid.")
+        .def("path_to_the_grave_cleric",
+             &CombatEngine::pathToTheGraveCleric,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
+             "The cleric who may end its Path to the Grave curse on target_idx to boost a hit by\n"
+             "attacker_idx (the cleric itself or an ally it can see), or -1.")
+        .def("detonate_path_to_the_grave",
+             [](CombatEngine& e, BattleMap& bm, int cleric, int attacker, int target, bool radiant,
+                AttackResult& r) {
+                 return e.detonatePathToTheGrave(bm, cleric, attacker, target, radiant, &r);
+             },
+             py::arg("battle_map"), py::arg("cleric_idx"), py::arg("attacker_idx"), py::arg("target_idx"),
+             py::arg("radiant"), py::arg("result"),
+             "End the Path to the Grave curse early: the hit deals extra Radiant (radiant=True) or\n"
+             "Necrotic damage equal to the cleric's level, added to `result` and the target's HP.\n"
+             "Returns the damage dealt, or -1 when not eligible.")
+        .def("can_sentinel_at_deaths_door",
+             &CombatEngine::canSentinelAtDeathsDoor,
+             py::arg("battle_map"), py::arg("cleric_idx"), py::arg("target_idx"),
+             "Grave Domain Sentinel at Death's Door (L6+): True iff the cleric has a use and its reaction\n"
+             "and the hit creature is the cleric itself or a Bloodied ally it can see within 60 ft.\n"
+             "Offered in the attack flow (OnHit window, after the defender's own reactions).")
+        .def("can_keeper_of_souls",
+             &CombatEngine::canKeeperOfSouls,
+             py::arg("battle_map"), py::arg("cleric_idx"),
+             "Grave Domain Keeper of Souls (L17+): True iff the cleric is up, not Incapacitated, and\n"
+             "has the use or a level 6+ slot to restore it.")
+        .def("keeper_of_souls_targets",
+             &CombatEngine::keeperOfSoulsTargets,
+             py::arg("battle_map"), py::arg("cleric_idx"),
+             "Keeper of Souls recipients: the cleric and the living allies it can see within 60 ft.")
+        .def("keeper_of_souls_slot",
+             &CombatEngine::keeperOfSoulsSlot,
+             py::arg("stats"),
+             "Lowest available level 6+ spell slot (0 = none): the cost of restoring Keeper of Souls.")
+        .def("use_keeper_of_souls",
+             &CombatEngine::useKeeperOfSouls,
+             py::arg("battle_map"), py::arg("cleric_idx"), py::arg("target_idx"), py::arg("slot_level") = 0,
+             "Keeper of Souls: target regains 2 x cleric level HP. slot_level 0 spends the use; 6-9\n"
+             "spends that slot instead. Clears keeper_of_souls_pending. Returns HP restored or -1.")
+        .def("can_enhanced_necromancy",
+             &CombatEngine::canEnhancedNecromancy,
+             py::arg("caster_stats"), py::arg("spell"), py::arg("slot_level") = 0,
+             "Grave Domain Enhanced Necromancy (L17+): True iff a Channel Divinity use can give this\n"
+             "single-target Necromancy (level <= 5) or Grave Domain spell a second target.")
+        .def("path_to_the_grave_auto_radiant",
+             &CombatEngine::pathToTheGraveAutoRadiant,
+             py::arg("target_stats"),
+             "Auto damage-type choice for Path to the Grave: True (Radiant) unless the target takes\n"
+             "more damage from Necrotic.")
         .def("activate_rage",
              &CombatEngine::activateRage,
              py::arg("battle_map"), py::arg("agent_idx"),

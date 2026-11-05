@@ -827,6 +827,9 @@ void bindTypes(py::module_& m) {
         .def_readwrite("forcecage_dc", &Agent::Conditions::forcecage_dc)
         .def_readwrite("forcecage_sealed", &Agent::Conditions::forcecage_sealed)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
+        .def_readwrite("pull_of_death_turn", &Agent::Conditions::pull_of_death_turn)
+        .def_readwrite("grave_cursed_by", &Agent::Conditions::grave_cursed_by)
+        .def_readwrite("keeper_of_souls_pending", &Agent::Conditions::keeper_of_souls_pending)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
         .def_readwrite("sneak_attack_used", &Agent::Conditions::sneak_attack_used)
         .def_readwrite("has_taken_turn_this_combat", &Agent::Conditions::has_taken_turn_this_combat)
@@ -1452,6 +1455,7 @@ void bindTypes(py::module_& m) {
         .value("LightDomain", LightDomain)
         .value("TrickeryDomain", TrickeryDomain)
         .value("WarDomain", WarDomain)
+        .value("GraveDomain", GraveDomain)
         .export_values();
 
     py::enum_<BlessedStrike>(m, "BlessedStrike")
@@ -1761,6 +1765,10 @@ void bindTypes(py::module_& m) {
              "Vistani Curse sub-choice (only read for curse spells): vulnerability → encoded damage\n"
              "type (0..9 magic, 100+i physical); weakness → SaveAbility value; affliction →\n"
              "0=Blinded, 1=Deafened, 2=Both. -1 = unspecified.")
+        .def_readwrite("enhanced_necromancy", &SpellAction::enhanced_necromancy,
+             "Enhanced Necromancy (Grave Domain Cleric L17): give a single-target Necromancy spell of\n"
+             "level <= 5, or a Grave Domain spell, a second target for one Channel Divinity use.\n"
+             "Paid only when eligible and a second target is supplied. Default false.")
         .def_readwrite("overchannel", &SpellAction::overchannel,
              "Overchannel (Evoker Wizard L14): request maximum damage on this cast. Honored only for\n"
              "an Evoker L14+ casting a damaging spell of effective level 1-5; first use per Long Rest\n"
@@ -2263,6 +2271,7 @@ void bindTypes(py::module_& m) {
         .def_readonly("total_roll",   &AttackResult::total_roll)
         .def_readonly("target_ac",    &AttackResult::target_ac)
         .def_readonly("critical",     &AttackResult::critical)
+        .def_readonly("crit_canceled", &AttackResult::crit_canceled)
         .def_readonly("fumble",       &AttackResult::fumble)
         .def_readonly("disadvantage", &AttackResult::disadvantage)
         .def_readonly("advantage",    &AttackResult::advantage)

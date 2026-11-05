@@ -135,8 +135,11 @@ int CombatEngine::applyIndomitableMight(const BattleMap& bm, int saver_idx, Save
 
 bool CombatEngine::curseSaveDisadvantage(const BattleMap& bm, int agent_idx, SaveAbility_t ab) const noexcept
 {
-    (void)bm;
     if (agent_idx < 0) return false;
+    // Grave Domain Path to the Grave: Disadvantage on every saving throw while cursed.
+    if (agent_idx < static_cast<int>(bm.placedAgents().size()) &&
+        bm.getAgentConditions(agent_idx).grave_cursed_by >= 0)
+        return true;
     for (const ActiveAgentCondition& c : conditions_.all()) {
         if (c.agent_idx == agent_idx && c.curse_disadv_ability == static_cast<int>(ab))
             return true;

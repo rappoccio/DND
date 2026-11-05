@@ -2185,7 +2185,7 @@ class StatsDialog:
             "Wizard": ["NONE", "Abjurer", "Diviner", "Evoker", "Illusionist"],
             "Warlock": ["NONE", "Archfey", "Celestial", "Fiend", "GreatOldOne"],
             "Rogue": ["NONE", "ArcaneTrickster", "Assassin", "Soulknife", "Thief"],
-            "Cleric": ["NONE", "LifeDomain", "LightDomain", "TrickeryDomain", "WarDomain"],
+            "Cleric": ["NONE", "LifeDomain", "LightDomain", "TrickeryDomain", "WarDomain", "GraveDomain"],
             "Bard": ["NONE", "Dance", "Glamour", "Lore", "Valor"],
             "Sorcerer": ["NONE", "Aberrant", "Clockwork", "Draconic", "WildMagic"],
             "Ranger": ["NONE", "Hunter", "BeastMaster", "FeyWanderer", "GloomStalker"],

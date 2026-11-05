@@ -71,7 +71,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     aoe_col, aoe_row, aoe_col2, aoe_row2,
     metamagic, metamagic2, careful_targets, transmuted_damage_type,
     damage_type_override, chromatic_leap_targets, free_cast,
-    command_word, curse_choice, overchannel,
+    command_word, curse_choice, overchannel, enhanced_necromancy,
     dispel_condition_ids, dispel_spell_effect_ids, dispel_terrain_ids,
     ward_creature_mask, ward_traps, forcecage_sealed)
 
@@ -79,7 +79,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     AttackResult,
     valid, d20, d20_primary, attack_mod, total_roll, target_ac,
-    critical, fumble, disadvantage, advantage, hit,
+    critical, fumble, disadvantage, advantage, hit, crit_canceled,
     dice_results, damage_mod, total_damage,
     magic_damage_types, physical_damage_types, damage_breakdown, magic_damage_dealt,
     hp_before, hp_after, target_down, push_ft_applied,
@@ -141,6 +141,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     active, interactive, action, w, r, adv, dis, auto_hit,
     unerring_fired, peerless_fired, onhit_offered,
     d20_reactors, d20_cursor, d20_window_built,
+    sentinel_reactors, sentinel_cursor, sentinel_window_built, sentinel_parked,
     can_use_brutal_strike, tgt_incapacitated_at_attack, tgt_unconscious_at_attack,
     consume_vex, consume_sap, consume_distracted, attacker_was_hidden,
     atk_sz, tgt_sz, was_thrown)

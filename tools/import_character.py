@@ -72,7 +72,7 @@ SUBCLASS_ENUMS = {
     "Wizard": ["Abjurer", "Diviner", "Evoker", "Illusionist"],
     "Warlock": ["Archfey", "Celestial", "Fiend", "GreatOldOne"],
     "Rogue": ["ArcaneTrickster", "Assassin", "Soulknife", "Thief"],
-    "Cleric": ["LifeDomain", "LightDomain", "TrickeryDomain", "WarDomain"],
+    "Cleric": ["LifeDomain", "LightDomain", "TrickeryDomain", "WarDomain", "GraveDomain"],
     "Bard": ["Dance", "Glamour", "Lore", "Valor"],
     "Sorcerer": ["Aberrant", "Clockwork", "Draconic", "WildMagic"],
 }

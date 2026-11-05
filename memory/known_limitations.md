@@ -633,6 +633,23 @@ Requires creature summoning system.
 
 </details>
 
+### Grave Domain (Ravenloft: The Horrors Within) — IMPLEMENTED, with these limits (2026-11-04)
+See `plans/GRAVE_DOMAIN_PLAN.md`. Tests `tests/test_grave_domain.py`, `tests/test_grave_domain_gui.py`.
+- **Detect Evil and Good, Gentle Repose, Dispel Evil and Good** are prepared but have no mechanics.
+- **Spare the Dying** now stabilizes for every caster (it previously did nothing). Range stays 15 ft.
+- **Path to the Grave, end-early damage on a spell attack** is taken automatically (GUI too): the
+  spell flow has no post-hit rider prompt. On a weapon hit the GUI prompts the cleric; auto mode takes it.
+  NPC clerics never *lay* the curse (no `runNpcTurn` heuristic).
+- **Sentinel at Death's Door** is weapon attacks only (spell attacks have only a Shield window), and,
+  like Uncanny Dodge, it halves the hit as rolled: riders added after the reaction (Divine Fury,
+  Hunter's Mark, Smite, Pull of Death, a Path detonation) are not halved. Only the cleric's allies are
+  offered (RAW allows any Bloodied creature).
+- **Keeper of Souls** fires only on NPC deaths (`applyUnconscious`'s NPC branch); a hostile PC dying
+  on death saves doesn't trigger it. One prompt per death; a burst of simultaneous deaths queues one.
+- **Enhanced Necromancy**: the GUI toggle is on the DM's right-click menu (like Overchannel), so a
+  remote player can't arm it. Corpse-targeted spells (Revivify, Raise Dead) keep one target in the GUI.
+  Material components are not modelled (agreed, D7).
+
 ### Greater Divine Intervention (L20) offers Wish — FIXED ✅ (2026-10-16)
 F-M5e-12 in `plans/MULTIPLAYER_PLAN.md`. Two GUI bugs, both fixed in one commit, each with a
 failing test first (`tests/test_picks.py`):

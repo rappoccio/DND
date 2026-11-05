@@ -104,6 +104,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -243,6 +244,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_prone | - | - | no
@@ -383,6 +385,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -522,6 +525,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_prone | - | - | no
@@ -666,6 +670,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_prone | - | - | no
@@ -808,6 +813,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_prone | - | - | no
@@ -948,6 +954,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -1088,6 +1095,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -1225,6 +1233,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -1372,6 +1381,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -1513,6 +1523,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -1656,6 +1667,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -1800,6 +1812,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -1941,6 +1954,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -2082,6 +2096,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -2226,6 +2241,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -2364,6 +2380,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -2504,6 +2521,7 @@ btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_prone | - | - | no
@@ -2651,6 +2669,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -2799,6 +2818,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -2942,6 +2962,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -3085,6 +3106,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -3228,6 +3250,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -3371,6 +3394,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
 btn  | -           | btn_cbt_psychic_veil | - | - | no
@@ -3511,6 +3535,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
 btn  | -           | btn_cbt_psychic_veil | - | - | no
@@ -3650,6 +3675,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -3791,6 +3817,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -3931,6 +3958,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -4073,6 +4101,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -4215,6 +4244,7 @@ btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -4364,6 +4394,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -4515,6 +4546,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -4658,6 +4690,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -4805,6 +4838,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -4953,6 +4987,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -5105,6 +5140,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -5244,6 +5280,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -5384,6 +5421,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -5525,6 +5563,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -5666,6 +5705,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -5814,6 +5854,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -5961,6 +6002,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -6109,6 +6151,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -6252,6 +6295,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -6396,6 +6440,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -6537,6 +6582,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -6683,6 +6729,7 @@ btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -6824,6 +6871,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -6967,6 +7015,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
 btn  | -           | btn_cbt_psychic_veil | - | - | no
@@ -7108,6 +7157,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -7253,6 +7303,7 @@ btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -7396,6 +7447,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
 btn  | -           | btn_cbt_psychic_veil | - | - | no
@@ -7544,6 +7596,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -7693,6 +7746,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -7835,6 +7889,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_quivering_palm | - | - | no
@@ -7977,6 +8032,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
 btn  | -           | btn_cbt_psychic_veil | - | - | no
@@ -8116,6 +8172,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
 btn  | -           | btn_cbt_psychic_veil | - | - | no
@@ -8257,6 +8314,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
 btn  | -           | btn_cbt_psychic_veil | - | - | no
@@ -8398,6 +8456,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -8540,6 +8599,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -8680,6 +8740,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -8820,6 +8881,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -8960,6 +9022,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -9102,6 +9165,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -9242,6 +9306,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -9379,6 +9444,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -9524,6 +9590,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -9669,6 +9736,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -9815,6 +9883,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -9961,6 +10030,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no
@@ -10090,6 +10160,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_prone | - | - | no
@@ -10238,6 +10309,7 @@ btn  | -           | btn_cbt_move_duplicity | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
+btn  | -           | btn_cbt_path_to_the_grave | - | - | no
 btn  | -           | btn_cbt_patient_defense | - | - | no
 btn  | -           | btn_cbt_preserve_life | - | - | no
 btn  | -           | btn_cbt_psychic_teleport | - | - | no

@@ -511,6 +511,23 @@ void Agent::Stats::applyClassResources(CharacterClass cls, int level) {
         warding.long_rest_regen = wf;   // no short-rest regen (RAW: Long Rest only)
         resources["Warding Flare"] = warding;
       }
+
+      // Grave Domain — Sentinel at Death's Door (L6+): WIS-mod (min 1) reaction uses per Long Rest.
+      if (cleric_subclass == GraveDomain && level >= 6) {
+        int sd = std::max(1, _mod(wis));
+        Resource sentinel("Sentinel at Death's Door", sd, 0);
+        sentinel.long_rest_regen = sd;   // Long Rest only
+        resources["Sentinel at Death's Door"] = sentinel;
+      }
+
+      // Grave Domain — Keeper of Souls (L17+): once per Short or Long Rest (a level 6+ slot can
+      // restore the use; see useKeeperOfSouls).
+      if (cleric_subclass == GraveDomain && level >= 17) {
+        Resource keeper("Keeper of Souls", 1, 0);
+        keeper.short_rest_regen = 1;
+        keeper.long_rest_regen  = 1;
+        resources["Keeper of Souls"] = keeper;
+      }
       break;
     }
 

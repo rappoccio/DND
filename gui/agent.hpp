@@ -1069,6 +1069,9 @@ namespace rpg {
       bool branches_speed_zeroed{false};    // World Tree Branches of the Tree: target's Speed is 0 until the end of THIS turn (set on a failed save, cleared in turn())
       bool brutal_strike_used_this_turn{false}; // Brutal Strike effect already used this turn
       bool zealot_divine_fury_used{false};  // Zealot Divine Fury bonus already applied this turn
+      bool keeper_of_souls_pending{false};  // Grave Domain Keeper of Souls: an enemy died within 60 ft and the GUI owes this cleric the heal prompt
+      int  grave_cursed_by{-1};             // Grave Domain Path to the Grave: index of the cursing cleric (-1 = not cursed). Disadvantage on attack rolls and saves; ends at the start of that cleric's next turn
+      int  pull_of_death_turn{-1};          // Grave Domain Pull of Death: ctx_.turnCounter_ of the turn it was last used (once per turn, any turn)
       bool fanatical_focus_used{false};     // Zealot Fanatical Focus reroll already used this Rage
       bool brutal_strike_available{false};  // Brutal Strike can be used this attack
       bool hamstrung{false};                // Hamstring Blow effect: speed -15ft (expires start of next turn)

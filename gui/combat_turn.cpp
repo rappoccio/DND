@@ -215,6 +215,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         // the victim tagged with the maneuvering Fighter's index, so expire it as that Fighter's
         // turn begins (Goading Attack, Distracting Strike, Disarming Attack).
         if (c.goaded_by == agent_idx)     { c.goaded_by = -1;                       dirty = true; }
+        // Grave Domain Path to the Grave: the curse lasts until the start of the cleric's next turn.
+        if (c.grave_cursed_by == agent_idx) { c.grave_cursed_by = -1;               dirty = true; }
         if (c.distracted_by == agent_idx) { c.distracted_by = -1;                   dirty = true; }
         if (c.disarmed && c.disarmed_by == agent_idx) {
             c.disarmed = false; c.disarmed_by = -1;                                 dirty = true;

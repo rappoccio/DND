@@ -230,6 +230,20 @@ def show_agent_menu(app, hit, pos):
             _menu_opts.append(
                 ("Overchannel: " + ("Disarm" if app.overchannel_armed else "Arm"),
                  _toggle_overchannel))
+    # Grave Domain Cleric L17: arm/disarm Enhanced Necromancy (a second target for a Channel Divinity use).
+    if (_hs.has_class(rpg.CharacterClass.Cleric) and
+            _hs.cleric_subclass == rpg.ClericSubclass.GraveDomain and
+            _hs.class_level(rpg.CharacterClass.Cleric) >= 17):
+        def _toggle_enhanced_necromancy(h=hit):
+            app.enhanced_necromancy_armed = not app.enhanced_necromancy_armed
+            app._combat_log_add(
+                f"Enhanced Necromancy {'ARMED' if app.enhanced_necromancy_armed else 'disarmed'} — "
+                f"{app.bm.placed_agents[h].name}'s single-target Necromancy (level 5 or lower) and Grave "
+                f"Domain spells "
+                f"{'take a second target for a Channel Divinity use.' if app.enhanced_necromancy_armed else 'target one creature.'}")
+        _menu_opts.append(
+            ("Enhanced Necromancy: " + ("Disarm" if app.enhanced_necromancy_armed else "Arm"),
+             _toggle_enhanced_necromancy))
     # Fiend Warlock L10+: choose the Fiendish Resilience damage resistance.
     if (_hs.character_class == rpg.CharacterClass.Warlock and
             _hs.warlock_subclass == rpg.WarlockSubclass.Fiend and

@@ -53,6 +53,10 @@ struct AttackResult {
     bool disadvantage = false;  // roll was made at disadvantage (long range etc.)
     bool advantage    = false;  // roll was made at advantage (reckless, hidden, invisible, etc.)
     bool hit          = false;
+    bool crit_canceled = false; // Sentinel at Death's Door was used on this hit: crit effects are void.
+                                // A Critical Hit's damage was re-rolled as a normal hit, and no later
+                                // crit-triggered effect applies (the melee auto-crit vs a Paralyzed or
+                                // Unconscious target, crit riders)
 
     // ── Damage (only meaningful when hit == true) ─────────────────────────
     std::vector<int> dice_results;  // individual die values (doubled on crit)
@@ -170,6 +174,10 @@ struct SpellAction {
     // it is ignored. The first use per Long Rest is free; each later use inflicts escalating
     // Necrotic damage on the caster (see executeSpell / Agent::Stats::overchannel_uses).
     bool overchannel = false;
+    // Enhanced Necromancy (Grave Domain Cleric L17): request a second target for a single-target
+    // Necromancy spell of level 5 or lower, or a Grave Domain spell, for one Channel Divinity use.
+    // Honored (and paid) only when eligible and a second target was actually supplied.
+    bool enhanced_necromancy = false;
     // Dispel Magic selection (the GUI's dispel picker): when a dispels_magic cast should end only
     // SPECIFIC ongoing effects the DM chose — rather than everything on the aimed creature/cell —
     // these carry the chosen structure ids (ActiveAgentCondition::condition_id / ActiveSpellEffect::
@@ -725,6 +733,11 @@ struct InFlightAttack {
     std::vector<int> d20_reactors;        // eligible OnD20Seen reactors (Bend Luck / Cutting Words / Silvery Barbs)
     std::size_t      d20_cursor{0};       // next reactor to offer
     bool             d20_window_built{false}; // reactor list computed once, after the roll (before Shield)
+    // ── Sentinel at Death's Door window (Grave clerics may halve the hit; after the defender's OnHit) ──
+    std::vector<int> sentinel_reactors;        // eligible Grave clerics, built once after the defender window
+    std::size_t      sentinel_cursor{0};       // next cleric to offer
+    bool             sentinel_window_built{false};
+    bool             sentinel_parked{false};   // the parked decision belongs to this window
     // Pre-roll snapshots applyAttackResult needs (taken before this attack's own effects mutate state):
     bool can_use_brutal_strike{false};
     bool tgt_incapacitated_at_attack{false};

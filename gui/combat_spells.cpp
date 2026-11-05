@@ -207,6 +207,12 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
         }
     }
 
+    // Grave Domain Path to the Grave: a cursed caster has Disadvantage on attack rolls.
+    if (caster_pa.agent->getConditions().grave_cursed_by >= 0) {
+        caster_dis = true;
+        log_("Disadvantage: caster is cursed (Path to the Grave)");
+    }
+
     // Grappled: caster has disadvantage on spell attacks except against the grappler
     if (caster_pa.agent->getConditions().grappled) {
         if (tgt_idx != caster_pa.agent->getConditions().grappler_idx) {
@@ -940,7 +946,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // identically. If Twinned couldn't be paid for (SP short), it never lands in applied_mm and the
     // extra clicked target is dropped here — so a failed Twinned costs nothing and hits only one.
     if (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple) {
-        const bool twinned = mmApplied(MetamagicTwinned);
+        bool twinned = mmApplied(MetamagicTwinned);
+        // Enhanced Necromancy (Grave Domain L17): one Channel Divinity use buys the same +1 target as
+        // Twinned. Paid only when it is eligible, not already covered by Twinned, and a second
+        // target was actually supplied — so an unpaid request just drops the extra target.
+        if (action.enhanced_necromancy && !twinned && targets.size() > 1 &&
+            canEnhancedNecromancy(caster_stats, sp, action.slot_level) &&
+            spendResource(bm, action.caster_idx, "Channel Divinity", 1)) {
+            twinned = true;
+            log_("{}: Enhanced Necromancy — {} gains a second target (Channel Divinity)",
+                 agentName(bm, action.caster_idx), sp.name);
+        }
         int allowed = getNumTargetsForSpell(sp, action.slot_level, caster_stats.char_level, twinned);
         if (allowed >= 0 && static_cast<int>(targets.size()) > allowed)
             targets.resize(static_cast<std::size_t>(allowed));
@@ -1355,7 +1371,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     int n_dice = sp.healing_type.num_dice;
                     int die_size = sp.healing_type.die_size;
                     for (int i = 0; i < n_dice; ++i) {
-                        int d = life_supreme_heal ? die_size : roll(die_size);
+                        int d = (life_supreme_heal || graveCircleOfMortality(caster_stats, tgt_stats)) ? die_size : roll(die_size);
                         dice.push_back(d);
                         dmg += d;
                     }
@@ -1591,7 +1607,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 int n_dice = sp.healing_type.num_dice;
                 int die_size = sp.healing_type.die_size;
                 for (int i = 0; i < n_dice; ++i) {
-                    int d = life_supreme_heal ? die_size : roll(die_size);
+                    int d = (life_supreme_heal || graveCircleOfMortality(caster_stats, tgt_stats)) ? die_size : roll(die_size);
                     dice.push_back(d);
                     dmg += d;
                 }
@@ -1945,7 +1961,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 int n_dice = sp.healing_type.num_dice;
                 int die_size = sp.healing_type.die_size;
                 for (int i = 0; i < n_dice; ++i) {
-                    int d = life_supreme_heal ? die_size : roll(die_size);
+                    int d = (life_supreme_heal || graveCircleOfMortality(caster_stats, tgt_stats)) ? die_size : roll(die_size);
                     dice.push_back(d);
                     total += d;
                 }
@@ -2065,6 +2081,32 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 tgt_stats.hp_cur  = std::max(0, tgt_stats.hp_cur - overflow);
                 tr.total_damage += wisMod;
                 log_("{}: Potent Spellcasting adds {} damage to {}", agentName(bm, action.caster_idx), wisMod, sp.name);
+            }
+        }
+
+        // Grave Domain — Pull of Death (L3): once per turn, +1d4 (1d6 at L11) Necrotic to the first
+        // damaged target that was already missing HP before this spell.
+        if (tr.total_damage > 0 && sp.type != Spell::Heal) {
+            const int pod = pullOfDeathDamage(bm, action.caster_idx, tgt_stats, tr.hp_before);
+            if (pod > 0) {
+                int overflow = std::max(0, pod - tgt_stats.temp_hp);
+                tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - pod);
+                tgt_stats.hp_cur  = std::max(0, tgt_stats.hp_cur - overflow);
+                tr.total_damage += pod;
+            }
+        }
+
+        // Grave Domain Path to the Grave: a spell-attack hit on a cursed creature ends the curse for
+        // +cleric-level Radiant/Necrotic damage. Taken automatically (both GUI and auto) — the spell
+        // flow has no post-hit rider prompt. The knock-down logic below handles a 0-HP result.
+        if (sp.attack_type == Spell::AttackRoll && tr.hit && sp.type == Spell::Harm) {
+            const int pc = pathToTheGraveCleric(bm, action.caster_idx, tgt_idx);
+            if (pc >= 0) {
+                bm.setAgentStats(tgt_idx, tgt_stats);   // commit the spell's damage first
+                const int pd = detonatePathToTheGrave(bm, pc, action.caster_idx, tgt_idx,
+                                                      pathToTheGraveAutoRadiant(tgt_stats), nullptr, false);
+                if (pd > 0) tr.total_damage += pd;
+                tgt_stats = bm.getAgentStats(tgt_idx);
             }
         }
 
@@ -2441,6 +2483,19 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                 cureCurses(bm, tgt_idx);
             } else if (sp.name == "Greater Restoration") {
                 greaterRestoration(bm, tgt_idx);
+            } else if (sp.name == "Spare the Dying") {
+                // A creature at 0 HP that isn't dead becomes Stable: no more death saves until it
+                // takes damage (which clears `stabilized`) or is healed.
+                Agent::Conditions sc = bm.getAgentConditions(tgt_idx);
+                if (bm.getAgentStats(tgt_idx).hp_cur <= 0 && !sc.dead && !sc.stabilized) {
+                    sc.stabilized           = true;
+                    sc.death_save_failures  = 0;
+                    sc.death_save_successes = 0;
+                    bm.setAgentConditions(tgt_idx, sc);
+                    log_("Spare the Dying: {} is Stable", agentName(bm, tgt_idx));
+                } else {
+                    log_("Spare the Dying: {} isn't dying — no effect", agentName(bm, tgt_idx));
+                }
             }
         }
 

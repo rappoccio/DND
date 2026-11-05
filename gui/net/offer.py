@@ -61,6 +61,7 @@ WIRED = frozenset({
     "gwm_hew", "war_priest", "shove_push", "shove_prone", "telekinetic_feat", "bm_maneuver",
     # M5d.2 — single-creature picks
     "escape_net", "hand_of_healing", "clairvoyant_combatant", "vow_of_enmity",
+    "path_to_the_grave",
     "inspiring_smite", "healing_light", "lay_on_hands", "grant_inspiration",
     "telekinetic_psi", "use_item", "bastion_of_law",
     # M5d.3 — place picks
@@ -121,6 +122,7 @@ CLASS: dict[str, str] = {
     "zealous_presence": I,
     "clairvoyant_combatant": A,
     "vow_of_enmity": A,
+    "path_to_the_grave": A,
     "inspiring_smite": A,
     "avenging_angel": I,
     "elder_champion": I,

@@ -867,6 +867,14 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
         if (ctx.window == ReactionWindow::OnD20Seen) {
             applyD20SeenReaction(bm, ctx, resp);
             ++in_flight_attack_.d20_cursor;
+        } else if (in_flight_attack_.sentinel_parked) {
+            // Sentinel at Death's Door (multi-reactor cursor after the defender's OnHit window).
+            in_flight_attack_.sentinel_parked = false;
+            if (resp.option >= 0 && resp.option < static_cast<int>(ctx.options.size()) &&
+                ctx.options[static_cast<std::size_t>(resp.option)].feature == "SentinelAtDeathsDoor")
+                (void)applySentinelAtDeathsDoor(bm, ctx.reactor_idx, in_flight_attack_.action,
+                                                in_flight_attack_.w, in_flight_attack_.r);
+            ++in_flight_attack_.sentinel_cursor;
         } else {
             applyAttackReaction(bm, ctx, resp);
         }

@@ -647,6 +647,7 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
         bm.setAgentConditions(idx, cond);
         log_("{} drops to 0 HP and dies (NPC — no death saves)", agents[static_cast<std::size_t>(idx)].agent->name());
         resolveDeathBurst(bm, idx);   // detonate on-death AoE after the death is announced (Balor Death Throes)
+        onCreatureDied(bm, idx);      // Keeper of Souls (Grave Domain L17)
         return;
     }
 
@@ -950,6 +951,7 @@ void CombatEngine::releaseAgentInfluence(BattleMap& bm, int agent_idx) noexcept
         clear_ref(c.feint_target_idx);
         clear_ref(c.vex_target_idx);
         clear_ref(c.sundering_target_idx);
+        clear_ref(c.grave_cursed_by);
         clear_marked(c.disarmed_by,        c.disarmed);
         clear_marked(c.crusher_marked_by,  c.crusher_marked);
         clear_marked(c.slasher_marked_by,  c.slasher_marked);

@@ -25,6 +25,7 @@
 #include <cmath>
 #include <fstream>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <vector>
 
@@ -2723,6 +2724,258 @@ int CombatEngine::discipleOfLifeBonus(const Agent::Stats& s, int slot_level) con
         s.cleric_subclass == LifeDomain && s.classLevel(CharacterClass::Cleric) >= 3 && slot_level >= 1)
         return 2 + slot_level;
     return 0;
+}
+
+bool CombatEngine::graveCircleOfMortality(const Agent::Stats& caster,
+                                          const Agent::Stats& target) const noexcept
+{
+    return caster.hasClass(CharacterClass::Cleric) && caster.cleric_subclass == GraveDomain &&
+           caster.classLevel(CharacterClass::Cleric) >= 3 && target.hp_cur <= 0;
+}
+
+int CombatEngine::pullOfDeathDamage(BattleMap& bm, int cleric_idx, const Agent::Stats& target,
+                                    int target_hp_before) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (cleric_idx < 0 || cleric_idx >= static_cast<int>(agents.size())) return 0;
+    const Agent::Stats cs = bm.getAgentStats(cleric_idx);
+    if (cs.lacksClass(CharacterClass::Cleric) || cs.cleric_subclass != GraveDomain ||
+        cs.classLevel(CharacterClass::Cleric) < 3) return 0;
+    if (target_hp_before >= target.hp_max || target_hp_before <= 0) return 0;  // must be missing HP (and alive)
+    Agent::Conditions cc = bm.getAgentConditions(cleric_idx);
+    if (cc.pull_of_death_turn == ctx_.turnCounter_) return 0;                  // once per turn
+    const int die = cs.classLevel(CharacterClass::Cleric) >= 11 ? 6 : 4;
+    const int raw = roll(die);
+    const float mult = target.magic_damage_multipliers[static_cast<std::size_t>(Necrotic)];
+    const int dmg = static_cast<int>(static_cast<float>(raw) * mult);
+    cc.pull_of_death_turn = ctx_.turnCounter_;
+    bm.setAgentConditions(cleric_idx, cc);
+    log_("Pull of Death: +1d{} [{}] Necrotic{} = {}", die, raw,
+         mult != 1.0f ? std::format(" x{:g}", mult) : std::string{}, dmg);
+    return dmg;
+}
+
+bool CombatEngine::canPathToTheGrave(const BattleMap& bm, int cleric_idx, int target_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (cleric_idx < 0 || cleric_idx >= n || target_idx < 0 || target_idx >= n) return false;
+    if (cleric_idx == target_idx) return false;
+    const Agent::Stats cs = bm.getAgentStats(cleric_idx);
+    if (cs.lacksClass(CharacterClass::Cleric) || cs.cleric_subclass != GraveDomain ||
+        cs.classLevel(CharacterClass::Cleric) < 3 || cs.hp_cur <= 0) return false;
+    const Resource* cd = cs.getResource("Channel Divinity");
+    if (!cd || cd->current <= 0) return false;
+    if (!hasBonusAction(bm, cleric_idx)) return false;
+    const Agent::Conditions cc = bm.getAgentConditions(cleric_idx);
+    if (cc.incapacitated || cc.unconscious || cc.dead) return false;
+    const PlacedAgent& tp = agents[static_cast<std::size_t>(target_idx)];
+    if (tp.removed_from_play || bm.getAgentStats(target_idx).hp_cur <= 0) return false;
+    if (!canPerceiveTarget(bm, cleric_idx, target_idx)) return false;
+    const PlacedAgent& cp = agents[static_cast<std::size_t>(cleric_idx)];
+    return footprintDistance(cp.origin, cp.agent->getSize(), tp.origin, tp.agent->getSize()) * 5 <= 30;
+}
+
+bool CombatEngine::usePathToTheGrave(BattleMap& bm, int cleric_idx, int target_idx)
+{
+    if (!canPathToTheGrave(bm, cleric_idx, target_idx)) return false;
+    if (!spendResource(bm, cleric_idx, "Channel Divinity", 1)) return false;
+    (void)spendBonusAction(bm, cleric_idx);
+    // One curse per cleric: lift any earlier one before laying the new curse.
+    const int n = static_cast<int>(bm.placedAgents().size());
+    for (int i = 0; i < n; ++i) {
+        Agent::Conditions c = bm.getAgentConditions(i);
+        if (c.grave_cursed_by == cleric_idx) { c.grave_cursed_by = -1; bm.setAgentConditions(i, c); }
+    }
+    Agent::Conditions tc = bm.getAgentConditions(target_idx);
+    tc.grave_cursed_by = cleric_idx;
+    bm.setAgentConditions(target_idx, tc);
+    log_("{} uses Path to the Grave: {} is cursed (Disadvantage on attacks and saves) until {}'s next turn",
+         agentName(bm, cleric_idx), agentName(bm, target_idx), agentName(bm, cleric_idx));
+    return true;
+}
+
+int CombatEngine::pathToTheGraveCleric(const BattleMap& bm, int attacker_idx, int target_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (attacker_idx < 0 || attacker_idx >= n || target_idx < 0 || target_idx >= n) return -1;
+    const int c = bm.getAgentConditions(target_idx).grave_cursed_by;
+    if (c < 0 || c >= n) return -1;
+    const Agent::Stats cs = bm.getAgentStats(c);
+    if (cs.hp_cur <= 0) return -1;
+    const Agent::Conditions cc = bm.getAgentConditions(c);
+    if (cc.incapacitated || cc.unconscious || cc.dead) return -1;
+    if (attacker_idx != c) {
+        // "you or an ally you can see"
+        if (!areAllies(bm, c, attacker_idx) || !canPerceiveTarget(bm, c, attacker_idx)) return -1;
+    }
+    return c;
+}
+
+bool CombatEngine::pathToTheGraveAutoRadiant(const Agent::Stats& target) const noexcept
+{
+    return target.magic_damage_multipliers[static_cast<std::size_t>(Radiant)] >=
+           target.magic_damage_multipliers[static_cast<std::size_t>(Necrotic)];
+}
+
+int CombatEngine::detonatePathToTheGrave(BattleMap& bm, int cleric_idx, int attacker_idx, int target_idx,
+                                         bool radiant, AttackResult* r, bool standalone)
+{
+    if (pathToTheGraveCleric(bm, attacker_idx, target_idx) != cleric_idx || cleric_idx < 0) return -1;
+    Agent::Conditions tc = bm.getAgentConditions(target_idx);
+    tc.grave_cursed_by = -1;                       // the curse ends
+    bm.setAgentConditions(target_idx, tc);
+
+    const Agent::Stats cs = bm.getAgentStats(cleric_idx);
+    Agent::Stats ts = bm.getAgentStats(target_idx);
+    const MagicDamage_t dtype = radiant ? Radiant : Necrotic;
+    const int raw  = cs.classLevel(CharacterClass::Cleric);
+    const float mult = ts.magic_damage_multipliers[static_cast<std::size_t>(dtype)];
+    const int dmg  = static_cast<int>(static_cast<float>(raw) * mult);
+    log_("{} ends Path to the Grave on {}: +{} {} damage", agentName(bm, cleric_idx),
+         agentName(bm, target_idx), dmg, radiant ? "Radiant" : "Necrotic");
+    if (r) {
+        r->total_damage += dmg;
+        r->damage_breakdown.push_back({"path to the grave", dmg});
+        r->magic_damage_types.push_back(dtype);
+        r->magic_damage_dealt[static_cast<std::size_t>(dtype)] += dmg;
+    }
+    if (dmg <= 0) return 0;
+
+    const bool was_down = ts.hp_cur <= 0;
+    const int hp_left = damageAgent(bm, target_idx, dmg);
+    if (r) { r->hp_after = hp_left; r->target_down = (hp_left <= 0); }
+    if (!standalone) return dmg;
+    checkConcentrationOnDamage(bm, target_idx, dmg, attacker_idx);
+    processDamageTaken(bm, target_idx, dmg, magicTypeBit(dtype));
+    if (!was_down && hp_left <= 0) {
+        const Agent::Conditions dc = bm.getAgentConditions(target_idx);
+        if (!dc.unconscious && !dc.dead) {
+            applyUnconscious(bm, target_idx);
+            grantDarkOnesBlessing(bm, target_idx, attacker_idx);
+        }
+    }
+    return dmg;
+}
+
+bool CombatEngine::canKeeperOfSouls(const BattleMap& bm, int cleric_idx) const
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (cleric_idx < 0 || cleric_idx >= n) return false;
+    const Agent::Stats cs = bm.getAgentStats(cleric_idx);
+    if (cs.lacksClass(CharacterClass::Cleric) || cs.cleric_subclass != GraveDomain ||
+        cs.classLevel(CharacterClass::Cleric) < 17 || cs.hp_cur <= 0) return false;
+    const Agent::Conditions cc = bm.getAgentConditions(cleric_idx);
+    if (cc.incapacitated || cc.unconscious || cc.dead) return false;
+    const Resource* k = cs.getResource("Keeper of Souls");
+    return (k && k->current > 0) || keeperOfSoulsSlot(cs) > 0;
+}
+
+std::vector<int> CombatEngine::keeperOfSoulsTargets(const BattleMap& bm, int cleric_idx) const
+{
+    std::vector<int> out;
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (cleric_idx < 0 || cleric_idx >= n) return out;
+    const PlacedAgent& cp = agents[static_cast<std::size_t>(cleric_idx)];
+    for (int i = 0; i < n; ++i) {
+        const PlacedAgent& p = agents[static_cast<std::size_t>(i)];
+        if (p.removed_from_play || bm.getAgentConditions(i).dead) continue;
+        if (i != cleric_idx) {
+            if (!areAllies(bm, cleric_idx, i) || !canPerceiveTarget(bm, cleric_idx, i)) continue;
+            if (footprintDistance(cp.origin, cp.agent->getSize(), p.origin, p.agent->getSize()) * 5 > 60) continue;
+        }
+        out.push_back(i);
+    }
+    return out;
+}
+
+int CombatEngine::keeperOfSoulsSlot(const Agent::Stats& s) const noexcept
+{
+    for (int lvl = 6; lvl <= 9; ++lvl)
+        if (s.spell_slots_remaining[static_cast<std::size_t>(lvl - 1)] > 0) return lvl;
+    return 0;
+}
+
+int CombatEngine::useKeeperOfSouls(BattleMap& bm, int cleric_idx, int target_idx, int slot_level)
+{
+    if (!canKeeperOfSouls(bm, cleric_idx)) return -1;
+    const auto targets = keeperOfSoulsTargets(bm, cleric_idx);
+    if (std::find(targets.begin(), targets.end(), target_idx) == targets.end()) return -1;
+    Agent::Stats cs = bm.getAgentStats(cleric_idx);
+    if (slot_level == 0) {
+        Resource* k = cs.getResource("Keeper of Souls");
+        if (!k || k->current <= 0) return -1;
+        k->current -= 1;
+    } else {
+        // Restore the use with a level 6+ slot and spend it at once.
+        if (slot_level < 6 || slot_level > 9) return -1;
+        auto& slots = cs.spell_slots_remaining[static_cast<std::size_t>(slot_level - 1)];
+        if (slots <= 0) return -1;
+        slots -= 1;
+    }
+    bm.setAgentStats(cleric_idx, cs);
+    Agent::Conditions cc = bm.getAgentConditions(cleric_idx);
+    cc.keeper_of_souls_pending = false;
+    bm.setAgentConditions(cleric_idx, cc);
+
+    const int amount = 2 * cs.classLevel(CharacterClass::Cleric);
+    const int before = bm.getAgentStats(target_idx).hp_cur;
+    const int after  = healAgent(bm, target_idx, amount);
+    log_("{}: Keeper of Souls — {} regains {} HP{}", agentName(bm, cleric_idx), agentName(bm, target_idx),
+         after - before, slot_level > 0 ? std::format(" (level {} slot)", slot_level) : std::string{});
+    return after - before;
+}
+
+void CombatEngine::onCreatureDied(BattleMap& bm, int dead_idx)
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (dead_idx < 0 || dead_idx >= n) return;
+    const PlacedAgent& dp = agents[static_cast<std::size_t>(dead_idx)];
+    for (int c = 0; c < n; ++c) {
+        if (c == dead_idx || !canKeeperOfSouls(bm, c)) continue;
+        if (areAllies(bm, c, dead_idx) || bm.getAgentFaction(dead_idx) == 0) continue;   // an enemy must die
+        const PlacedAgent& cp = agents[static_cast<std::size_t>(c)];
+        if (footprintDistance(cp.origin, cp.agent->getSize(), dp.origin, dp.agent->getSize()) * 5 > 60) continue;
+        const auto targets = keeperOfSoulsTargets(bm, c);
+        if (decider_) {
+            // Auto: heal the lowest HP% creature that is actually hurt; never spend a slot.
+            const Resource* k = bm.getAgentStats(c).getResource("Keeper of Souls");
+            if (!k || k->current <= 0) continue;
+            int best = -1; float best_frac = 1.0f;
+            for (int t : targets) {
+                const Agent::Stats ts = bm.getAgentStats(t);
+                if (ts.hp_max <= 0 || ts.hp_cur >= ts.hp_max) continue;
+                const float frac = static_cast<float>(ts.hp_cur) / static_cast<float>(ts.hp_max);
+                if (best < 0 || frac < best_frac) { best = t; best_frac = frac; }
+            }
+            if (best >= 0) (void)useKeeperOfSouls(bm, c, best, 0);
+        } else if (!targets.empty()) {
+            Agent::Conditions cc = bm.getAgentConditions(c);
+            cc.keeper_of_souls_pending = true;
+            bm.setAgentConditions(c, cc);
+        }
+    }
+}
+
+bool CombatEngine::canEnhancedNecromancy(const Agent::Stats& caster, const Spell& sp,
+                                         int slot_level) const noexcept
+{
+    if (caster.lacksClass(CharacterClass::Cleric) || caster.cleric_subclass != GraveDomain ||
+        caster.classLevel(CharacterClass::Cleric) < 17) return false;
+    const Resource* cd = caster.getResource("Channel Divinity");
+    if (!cd || cd->current <= 0) return false;
+    if (sp.geometry != Spell::Single) return false;
+    // The Grave Domain Spells table (Ravenloft: The Horrors Within).
+    static constexpr std::string_view kGraveSpells[] = {
+        "Detect Evil and Good", "False Life", "Gentle Repose", "Ray of Enfeeblement", "Spare the Dying",
+        "Revivify", "Vampiric Touch", "Blight", "Death Ward", "Dispel Evil and Good", "Raise Dead"};
+    for (std::string_view n : kGraveSpells)
+        if (sp.name == n) return true;
+    const int lvl = std::max(sp.level, slot_level);
+    return sp.school == Spell::Necromancy && lvl <= 5;
 }
 
 PreserveLifeResult CombatEngine::usePreserveLife(BattleMap& bm, int caster_idx,

@@ -163,7 +163,7 @@ namespace {
     X(multiattack_def_hit_by) X(dreadful_strike_armed) X(dread_ambusher_used) \
     X(sudden_strike_available) X(berserker_frenzy_used) X(vitality_used_this_turn) \
     X(branches_speed_zeroed) X(brutal_strike_used_this_turn) \
-    X(zealot_divine_fury_used) X(fanatical_focus_used) X(brutal_strike_available) \
+    X(zealot_divine_fury_used) X(pull_of_death_turn) X(grave_cursed_by) X(keeper_of_souls_pending) X(fanatical_focus_used) X(brutal_strike_available) \
     X(hamstrung) X(sundering_target_idx) X(staggered_next_save) X(radiant_soul_used) \
     X(sneak_attack_used) X(cunning_strike_available) X(steady_aim) \
     X(stunning_strike_available) X(stunning_strike_used) X(open_hand_rider_available) \

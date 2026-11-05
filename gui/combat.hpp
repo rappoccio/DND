@@ -1819,6 +1819,71 @@ public:
     // to each creature healed. Returns 0 when it does not apply.
     [[nodiscard]] int discipleOfLifeBonus(const Agent::Stats& s, int slot_level) const noexcept;
 
+    // Grave Domain — Circle of Mortality (L3): healing dice from a spell or Channel Divinity aimed at
+    // a creature at 0 HP use their maximum instead of being rolled.
+    [[nodiscard]] bool graveCircleOfMortality(const Agent::Stats& caster,
+                                              const Agent::Stats& target) const noexcept;
+
+    // Grave Domain — Pull of Death (L3): once per turn (any turn), when the cleric deals damage to a
+    // creature that was missing any HP before that damage, by a spell or an attack-roll hit, the
+    // creature takes an extra 1d4 Necrotic (1d6 at Cleric L11). Rolls the die, applies the target's
+    // Necrotic multiplier, marks the once-per-turn use on the cleric and returns the extra damage —
+    // or 0 when it doesn't apply. The caller adds it to the target's HP loss.
+    int pullOfDeathDamage(BattleMap& bm, int cleric_idx, const Agent::Stats& target,
+                          int target_hp_before) noexcept;
+
+    // Grave Domain — Path to the Grave (L3, Channel Divinity, Bonus Action): curse one creature the
+    // cleric can see within 30 ft until the start of the cleric's next turn (Disadvantage on attack
+    // rolls and saving throws). can* is the pure gate; use* spends the Channel Divinity use and the
+    // Bonus Action and lays the curse (replacing any curse that cleric had on another creature).
+    [[nodiscard]] bool canPathToTheGrave(const BattleMap& bm, int cleric_idx, int target_idx) const;
+    bool usePathToTheGrave(BattleMap& bm, int cleric_idx, int target_idx);
+    // The cursing cleric who may end the curse on target_idx to boost a hit by attacker_idx (the
+    // cleric itself, or an ally the cleric can see), or -1 when no detonation is available.
+    [[nodiscard]] int pathToTheGraveCleric(const BattleMap& bm, int attacker_idx, int target_idx) const;
+    // End the curse early: the hit deals extra Radiant (radiant=true) or Necrotic damage equal to the
+    // cleric's level. Applies the damage to the target (and to `r` when given), including a 0-HP
+    // drop. Returns the damage dealt, or -1 when not eligible.
+    // standalone=false (inside executeSpell) only lowers HP: the caller folds the damage into its own
+    // total and runs concentration, on-damage effects and the 0-HP transition itself.
+    int detonatePathToTheGrave(BattleMap& bm, int cleric_idx, int attacker_idx, int target_idx,
+                               bool radiant, AttackResult* r = nullptr, bool standalone = true);
+    // Auto choice of damage type: Radiant unless the target takes more from Necrotic.
+    [[nodiscard]] bool pathToTheGraveAutoRadiant(const Agent::Stats& target) const noexcept;
+
+    // Grave Domain — Sentinel at Death's Door (L6, Reaction, WIS-mod uses per Long Rest): when the
+    // cleric, or a Bloodied ally it can see within 60 ft, is hit by a weapon attack, halve the damage
+    // (round down); a Critical Hit's crit effects are canceled first (the base damage is re-rolled as
+    // a normal hit and r.crit_canceled is set). Scope matches Uncanny Dodge: it halves the hit as
+    // rolled, not riders added after the reaction.
+    [[nodiscard]] bool canSentinelAtDeathsDoor(const BattleMap& bm, int cleric_idx, int target_idx) const;
+    bool applySentinelAtDeathsDoor(BattleMap& bm, int cleric_idx, const Attack& action, const Weapon& w,
+                                   AttackResult& r);
+    bool maybeSentinelAtDeathsDoorInline(BattleMap& bm, const Attack& action, const Weapon& w, AttackResult& r);
+    [[nodiscard]] std::vector<int> sentinelAtDeathsDoorReactors(const BattleMap& bm, const Attack& action,
+                                                                const AttackResult& r) const;
+
+    // Grave Domain — Divine Reaper: Keeper of Souls (L17). When an enemy dies within 60 ft of the
+    // cleric (not Incapacitated), the cleric or one creature it can see within 60 ft regains 2 x cleric
+    // level HP. Once per Short/Long Rest; a level 6+ slot can restore the use (no action).
+    // onCreatureDied is the hook (applyUnconscious's NPC-death branch): auto/RL (decider present)
+    // heals the most-hurt ally at once and never spends a slot; the GUI gets keeper_of_souls_pending.
+    void onCreatureDied(BattleMap& bm, int dead_idx);
+    [[nodiscard]] bool canKeeperOfSouls(const BattleMap& bm, int cleric_idx) const;
+    // Living allies (and the cleric) the cleric can see within 60 ft — the heal's legal recipients.
+    [[nodiscard]] std::vector<int> keeperOfSoulsTargets(const BattleMap& bm, int cleric_idx) const;
+    // Lowest available spell slot of level 6+ (0 = none) — what restoring the use would cost.
+    [[nodiscard]] int keeperOfSoulsSlot(const Agent::Stats& s) const noexcept;
+    // Heal target_idx. slot_level 0 spends the Keeper of Souls use; 6-9 spends that slot instead.
+    // Clears keeper_of_souls_pending. Returns the HP restored, or -1 when not allowed.
+    int useKeeperOfSouls(BattleMap& bm, int cleric_idx, int target_idx, int slot_level = 0);
+
+    // Grave Domain — Divine Reaper: Enhanced Necromancy (L17). True iff this caster may spend a
+    // Channel Divinity use to give `sp` (cast at slot_level; 0 = base) a second target: a
+    // single-target Necromancy spell of level <= 5, or any single-target Grave Domain spell.
+    [[nodiscard]] bool canEnhancedNecromancy(const Agent::Stats& caster, const Spell& sp,
+                                             int slot_level) const noexcept;
+
     // Spend a named class resource (e.g. "War Priest", "Superiority Dice"). Returns true if the
     // agent had >= amount and it was spent. Generic so any feature (War Priest bonus attack, Battle
     // Master maneuvers, …) can pay its cost; the actual attack goes through executeAction.

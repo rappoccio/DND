@@ -269,6 +269,8 @@ test_scripts = [
     "test_class_features.py",
     "test_on_damage.py",
     "test_cleric.py",
+    "test_grave_domain.py",
+    "test_grave_domain_gui.py",
     "test_replay_roundtrip.py",
 
     # Barbarian features

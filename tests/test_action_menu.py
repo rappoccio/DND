@@ -1094,6 +1094,23 @@ def test_the_channel_divinity_cluster_shares_one_resource():
     print("✅ test_the_channel_divinity_cluster_shares_one_resource passed")
 
 
+def test_path_to_the_grave_is_a_bonus_action_option():
+    """Grave Domain Path to the Grave: a Bonus Action that spends a Channel Divinity use — so,
+    unlike the cluster above, it survives a spent Action but not a spent Channel Divinity."""
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Cleric, 3,
+                    cleric_subclass=rpg.ClericSubclass.GraveDomain)
+    assert "path_to_the_grave" in _bonus(app, cyra)
+    app.action_used = True
+    assert "path_to_the_grave" in _bonus(app, cyra), "costs the Bonus Action, not the Action"
+    _set_res(app, cyra, "Channel Divinity", 0)
+    assert "path_to_the_grave" not in _bonus(app, cyra)
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Cleric, 3,
+                    cleric_subclass=rpg.ClericSubclass.LifeDomain)
+    assert "path_to_the_grave" not in _bonus(app, cyra), "Grave Domain only"
+    print("✅ test_path_to_the_grave_is_a_bonus_action_option passed")
+
+
 def test_the_duplicity_cluster_needs_an_illusion_on_the_map():
     """Invoke Duplicity is a resource; Move and Swap are a SCAN of the token list.
 
@@ -1578,6 +1595,7 @@ if __name__ == "__main__":
         test_a_click_on_an_unoffered_bonus_action_does_nothing()
         test_click_reaches_the_handler_for_the_bonus_band()
         test_the_channel_divinity_cluster_shares_one_resource()
+        test_path_to_the_grave_is_a_bonus_action_option()
         test_the_duplicity_cluster_needs_an_illusion_on_the_map()
         test_trickster_transposition_needs_level_six()
         test_the_glamour_cluster_is_nested_inside_bardic_inspiration()
