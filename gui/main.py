@@ -72,6 +72,8 @@ from floor_overlay import FloorAlign
 from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
 # S1: every save that a crash could tear goes through this (MULTIPLAYER_PLAN.md).
 from atomic_io import atomic_write_json
+from scene_store import CampaignStore, LegacyStore
+import save_layout
 import autosave
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
@@ -680,6 +682,8 @@ class App:
         # and the one authorize() chokepoint. Built empty first so _set_encounter_base
         # can re-point it — that call then loads this encounter's session file.
         self.roster = SessionRoster()
+        # Where the scene's terrain and creatures live on disk (gui/scene_store.py).
+        self.store = LegacyStore(self)
         self._set_encounter_base(default_agents)
         # The autosave ring (NN7, gui/autosave.py) writes at every turn start. RPG_AUTOSAVE=0
         # turns it off; the test runner sets that, so a suite's fights don't leave slots
@@ -2394,7 +2398,26 @@ class App:
         # Table metadata, NOT scene data (MULTIPLAYER_PLAN.md M0): who is seated at this
         # table and the join code. Gitignored, and never part of the encounter proper —
         # the encounter records only each token's controller id.
-        _new_session = os.path.join(d, base + "_session.json")
+        self._point_session(os.path.join(d, base + "_session.json"))
+
+    def _point_scene_at(self, page: MapPage):
+        """Point the per-scene paths at a dungeon page: the run's in a campaign (the
+        store says where), else the page's own encounter sidecars."""
+        if isinstance(self.store, CampaignStore):
+            paths = self.store.point_at(page)
+            self._save_path     = paths["agents"]
+            self._terrain_path  = paths["terrain"]
+            self._lighting_path = paths["lighting"]
+            self._effects_path  = paths["effects"]
+            self._combat_path   = paths["combat"]
+            self._point_session(paths["session"])
+            return
+        enc = page.encounter_base
+        self._set_encounter_base(enc if (not enc or os.path.isabs(enc))
+                                 else os.path.join(self._dungeon_dir(), enc))
+
+    def _point_session(self, _new_session: str):
+        """Load the session roster from ``_new_session`` when the table changes."""
         # Re-point the roster at the new base — but ONLY when the base actually moved.
         #
         # `SessionRoster.__init__` mints a fresh signing key (A5), so REPLACING the roster
@@ -2508,9 +2531,10 @@ class App:
         pages_used = 0
         for page in self.dungeon.pages:
             try:
-                with open(self._page_agents_path(page)) as f:
-                    doc = json.load(f)
-            except (OSError, json.JSONDecodeError):
+                doc = self.store.creatures(page)
+            except ValueError:
+                continue
+            if doc is None:
                 continue
             agents = [a for a in (doc.get("agents") or []) if isinstance(a, dict)]
             base = len(out_agents)
@@ -2623,9 +2647,8 @@ class App:
             self._save_agents()
         for pid in set(by_page) | set(items_by_page):
             try:
-                with open(self._page_agents_path(pages[pid])) as f:
-                    doc = json.load(f)
-            except (OSError, json.JSONDecodeError):
+                doc = self.store.creatures(pages[pid]) or {"agents": [], "map_items": []}
+            except ValueError:
                 doc = {"agents": [], "map_items": []}
             doc.setdefault("agents", [])
             doc.setdefault("map_items", [])
@@ -2685,7 +2708,7 @@ class App:
             docs[target[0]].setdefault("active_conditions", []).append(rec)
 
         for pid, doc in docs.items():
-            atomic_write_json(self._page_agents_path(pages[pid]), doc)
+            self.store.write_creatures(doc, pages[pid])
         if here in docs:
             self._load_agents()
 
@@ -2736,17 +2759,12 @@ class App:
 
         already_here = (self.dungeon_page is not None and page.id == self.dungeon_page.id)
 
-        # Manifest paths may be relative (portability); resolve against the manifest's
-        # folder (where its PNGs and encounters live) so the engine gets valid paths.
-        base_dir = self._dungeon_dir()
-
-        def _resolve(p):
-            return p if (not p or os.path.isabs(p)) else os.path.join(base_dir, p)
-
-        # A page whose PNG has been moved/renamed would take the app down inside
-        # _load_map_png — refuse the switch (nothing has changed yet) and say so.
-        if not already_here and not os.path.exists(_resolve(page.png)):
-            self._flash_status(f"Page '{page.id}': map image not found ({page.png})")
+        # The page's image, from the store (the manifest's relative path, or the
+        # campaign's map art). One that has been moved/renamed would take the app down
+        # inside _load_map_png — refuse the switch (nothing has changed yet) and say so.
+        png = self.store.image(page)
+        if not already_here and not (png and os.path.exists(png)):
+            self._flash_status(f"Page '{page.id}': map image not found ({page.png or page.id})")
             return False
 
         # ── 1. Serialize carried agents, then persist the current scene ────────
@@ -2765,17 +2783,23 @@ class App:
         if not already_here and self.dungeon_page is not None:
             keep_view = (self.bm.cell_pixel_size * self.map_scale, self.pan_x, self.pan_y)
         if not already_here:
-            self._load_map_png(_resolve(page.png))
+            self._load_map_png(png)
         self._apply_page_origin(page)
 
         # ── 3. Re-point the sidecars and reload the target scene ───────────────
-        self._set_encounter_base(_resolve(page.encounter_base))
+        self._point_scene_at(page)
         self._load_terrain()
         self._load_lighting()
         self._load_spell_effects()
         self._load_agents()
 
         self.dungeon_page = page
+        # A map the dungeon has never measured (a migrated one-map dungeon) learns its
+        # size from the grid it just loaded with.
+        if isinstance(self.store, CampaignStore) and not (page.cols and page.rows):
+            page.cols = int(getattr(self.bm, "grid_cols", 0) or 0)
+            page.rows = int(getattr(self.bm, "grid_rows", 0) or 0)
+            self.dungeon.save(self._dungeon_manifest_path)
 
         # ── 4. Inject carried agents onto the target (incremental) ─────────────
         if carried_records:
@@ -2835,9 +2859,8 @@ class App:
         if not records:
             return
         try:
-            with open(self._save_path) as f:
-                doc = json.load(f)
-        except (OSError, json.JSONDecodeError):
+            doc = self.store.creatures() or {"agents": [], "map_items": []}
+        except ValueError:
             doc = {"agents": [], "map_items": []}
         agents = doc.setdefault("agents", [])
 
@@ -2870,8 +2893,7 @@ class App:
             occupied |= _footprint(c, r, size)
             agents.append(rec)
         doc.setdefault("map_items", [])
-        with open(self._save_path, "w") as f:
-            json.dump(doc, f, indent=2)
+        self.store.write_creatures(doc)
         self._load_agents()
 
     def _page_step(self, direction: str):
@@ -3107,9 +3129,10 @@ class App:
         """Open the lighting editor primed with the encounter's saved lighting."""
         light_sources = []
         default_light = rpg.VisibilityLevel.Clear
-        if os.path.exists(self._lighting_path):
+        lighting = self.store.lighting_read_path()
+        if os.path.exists(lighting):
             try:
-                with open(self._lighting_path, 'r') as f:
+                with open(lighting, 'r') as f:
                     data = json.load(f)
                     # Convert saved format (with "light_level" string) to dialog format (with "level" enum)
                     saved_sources = data.get("light_sources", [])
@@ -3271,10 +3294,14 @@ class App:
         except Exception as e:                       # noqa: BLE001 — bad file ⇒ keep the scene
             self._flash_status(f"Not a dungeon manifest: {os.path.basename(path)} ({e})")
             return
+        if dungeon.version >= 2:
+            self._open_campaign_dungeon(path)
+            return
         entry = dungeon.entry_page()
         if entry is None:
             self._flash_status("Dungeon manifest has no pages.")
             return
+        self._leave_campaign()
         self.dungeon = dungeon
         self._dungeon_manifest_path = path
         self.dungeon_page = None      # initial load: don't write the outgoing scene back
@@ -3285,6 +3312,40 @@ class App:
             return
         self._flash_status(f"Dungeon: {os.path.basename(path)} — {entry.id}")
 
+    def _open_campaign_dungeon(self, manifest: str, run_name: str = save_layout.DEFAULT_RUN):
+        """Open a dungeon of a campaign (plans/SAVE_LAYOUT_PLAN.md D4/D6) on the map its
+        run was last on, else its entry map. Everything the scene reads and writes then
+        goes through a CampaignStore: map.json, dungeon.json and the run."""
+        try:
+            camp = save_layout.Campaign.open(manifest)
+            layout = camp.dungeon(os.path.basename(os.path.dirname(os.path.abspath(manifest))))
+            dungeon = Dungeon.load(layout.manifest_path)
+            store = CampaignStore(self, layout, run_name)
+        except Exception as e:                       # noqa: BLE001 — bad file ⇒ keep the scene
+            self._flash_status(f"Could not open dungeon {manifest}: {e}")
+            return False
+        page = dungeon.page_by_id(store.run.get("current_map")) or dungeon.entry_page()
+        if page is None:
+            self._flash_status("Dungeon has no maps.")
+            return False
+        old = (self.store, self.dungeon, self.dungeon_page, self._dungeon_manifest_path)
+        self.store = store
+        self.dungeon = dungeon
+        self._dungeon_manifest_path = layout.manifest_path
+        self.dungeon_page = None      # initial load: don't write the outgoing scene back
+        if not self._switch_to_page(page, force=True):
+            self.store, self.dungeon, self.dungeon_page, self._dungeon_manifest_path = old
+            return False
+        for w in filter(None, (layout.calibration_warning(p.id) for p in dungeon.pages)):
+            print(f"Warning: {w}")
+        self._flash_status(f"{camp.name} / {layout.name} — {page.id}")
+        return True
+
+    def _leave_campaign(self):
+        """Back to per-encounter sidecars (opening a loose map or a version 1 dungeon)."""
+        if isinstance(self.store, CampaignStore):
+            self.store = LegacyStore(self)
+
     def _dungeon_close(self):
         """Leave dungeon mode. The manifest stays on disk; the active page's map and
         encounter stay loaded as an ordinary single map."""
@@ -3292,6 +3353,9 @@ class App:
             return
         if self.combat_active:
             self._flash_status("Finish combat before closing the dungeon.")
+            return
+        if isinstance(self.store, CampaignStore):
+            self._flash_status("A campaign's maps always belong to a dungeon.")
             return
         self._save_agents()
         self._save_terrain()
@@ -3978,9 +4042,8 @@ class App:
         # Persist current placements, then merge the PCs into that saved doc and reload.
         self._save_agents()
         try:
-            with open(self._save_path) as f:
-                doc = json.load(f)
-        except (OSError, json.JSONDecodeError):
+            doc = self.store.creatures() or {"agents": [], "map_items": []}
+        except ValueError:
             doc = {"agents": [], "map_items": []}
         agents = doc.setdefault("agents", [])
 
@@ -4025,8 +4088,7 @@ class App:
             agents.append(pc)
             added += 1
         doc.setdefault("map_items", [])
-        with open(self._save_path, "w") as f:
-            json.dump(doc, f, indent=2)
+        self.store.write_creatures(doc)
         self._load_agents()
 
         msg = f"Loaded {added} PC(s) from {os.path.basename(path)}"
@@ -6296,14 +6358,10 @@ class App:
                     notes.append(f"no map at {list(target)}; ladder is one-way")
                 continue
             back = list(here.local_to_global(*cells[0]))
-            path = self._page_terrain_path(page)
             try:
-                with open(path) as f:
-                    doc = json.load(f)
-            except FileNotFoundError:
-                doc = {"regions": [], "walls_enabled": True}
-            except (OSError, json.JSONDecodeError) as e:
-                notes.append(f"could not read {os.path.basename(path)}: {e}")
+                doc = self.store.terrain(page) or {"regions": [], "walls_enabled": True}
+            except ValueError as e:
+                notes.append(f"could not read '{page.id}' terrain: {e}")
                 continue
             ladders = doc.setdefault("ladders", [])
             on_landing = [i for i, lad in enumerate(ladders)
@@ -6324,9 +6382,9 @@ class App:
                     ladders.pop(i)
                 notes.append(f"removed return ladder on '{page.id}'")
             try:
-                atomic_write_json(path, doc)
+                self.store.write_terrain(doc, page)
             except OSError as e:
-                notes.append(f"could not write {os.path.basename(path)}: {e}")
+                notes.append(f"could not write '{page.id}' terrain: {e}")
         if notes:
             self._flash_status("Ladders: " + "; ".join(notes))
 
@@ -12960,8 +13018,11 @@ class App:
             cd["agent_idx"]  = old_to_new[c.agent_idx]
             cd["caster_idx"] = old_to_new.get(c.caster_idx, -1)
             conditions_data.append(cd)
-        atomic_write_json(path, {"agents": data, "map_items": items_data,
-                                 "active_conditions": conditions_data})
+        doc = {"agents": data, "map_items": items_data, "active_conditions": conditions_data}
+        if path == self._save_path:
+            self.store.write_creatures(doc)
+        else:                                   # a temp carry export, or the autosave ring
+            atomic_write_json(path, doc)
 
         # Keep the engine's resume sidecar in step with the file just written — every
         # path that persists the active encounter has to persist the matching combat
@@ -13166,9 +13227,8 @@ class App:
         # Persist current placements, append the new agent at a free column, reload.
         self._save_agents()
         try:
-            with open(self._save_path) as f:
-                doc = json.load(f)
-        except (OSError, json.JSONDecodeError):
+            doc = self.store.creatures() or {"agents": [], "map_items": []}
+        except ValueError:
             doc = {"agents": [], "map_items": []}
         agents = doc.setdefault("agents", [])
         occupied = {(a.get("col"), a.get("row")) for a in agents}
@@ -13178,8 +13238,7 @@ class App:
         agent["col"], agent["row"] = spot
         agents.append(agent)
         doc.setdefault("map_items", [])
-        with open(self._save_path, "w") as f:
-            json.dump(doc, f, indent=2)
+        self.store.write_creatures(doc)
         self._load_agents()
 
         sub = ""
@@ -14279,12 +14338,16 @@ class App:
 
     def _load_agents(self, path: str | None = None):
         path = path or self._save_path
-        if not os.path.exists(path):
+        from_store = (path == self._save_path)
+        if not (self.store.has_creatures() if from_store else os.path.exists(path)):
             return
         try:
-            with open(path) as f:
-                data = json.load(f)
-        except json.JSONDecodeError as e:
+            if from_store:
+                data = self.store.creatures()
+            else:
+                with open(path) as f:
+                    data = json.load(f)
+        except ValueError as e:
             print(f"\n{'='*60}")
             print(f"ERROR: Agents file corrupted: {path}")
             print(f"Details: {e}")
@@ -14714,11 +14777,21 @@ class App:
         self._door_links = {}
         explored_data = None  # fog-of-war mask from JSON; None = key absent (start fogged)
 
-        if blank and os.path.exists(path):
+        # The scene's own terrain comes through the store; an explicit other path (Terrain
+        # → Import) is read as a file.
+        from_store = (path == self._terrain_path)
+
+        def _read_terrain():
+            if from_store:
+                return self.store.terrain()
+            with open(path, 'r') as f:
+                return json.load(f)
+
+        have = self.store.has_terrain() if from_store else os.path.exists(path)
+        if blank and have:
             # Blank startup: apply ONLY the map-intrinsic calibration keys.
             try:
-                with open(path, 'r') as f:
-                    data = json.load(f)
+                data = _read_terrain()
                 mg = data.get("manual_grid")
                 if mg:
                     try:
@@ -14735,10 +14808,9 @@ class App:
                 self._edges_carried_from = data.get("edges_carried_from")
             except Exception:
                 pass
-        elif os.path.exists(path):
+        elif have:
             try:
-                with open(path, 'r') as f:
-                    data = json.load(f)
+                data = _read_terrain()
                 # A saved manual grid must be applied first: it resizes the per-cell
                 # terrain/light buffers, so it has to run before terrain regions are
                 # written into them.
@@ -14900,8 +14972,11 @@ class App:
         # Fog of war: persist the PC-party explored mask so a room seen once stays
         # revealed across save/reload. Compact [col, row] pairs; absent → fully fogged.
         data["explored"] = [[c.col, c.row] for c in self.bm.explored_cells()]
-        with open(path, 'w') as f:
-            json.dump(data, f, indent=2)
+        if path == self._terrain_path:
+            self.store.write_terrain(data)
+        else:                                   # Terrain → Export to a chosen file
+            with open(path, 'w') as f:
+                json.dump(data, f, indent=2)
 
     def _toggle_grid_sample_mode(self):
         """Enter/leave 'sample a tile' mode for defining a manual uniform grid.
@@ -15136,9 +15211,10 @@ class App:
                         and p.gy < page.gy + page.rows and page.gy < p.gy + p.rows):
                     continue
                 try:
-                    with open(self._page_terrain_path(p)) as f:
-                        data = json.load(f)
-                except (OSError, ValueError):
+                    data = self.store.terrain(p)
+                except ValueError:
+                    continue
+                if data is None:
                     continue
                 if self._carry_ready(data):
                     found.append((p, data))
@@ -15415,7 +15491,7 @@ class App:
         When the encounter has no lighting file, reset to a fully-lit default so a
         previous encounter's darkness/sources don't bleed through on a swap.
         """
-        path = path or self._lighting_path
+        path = path or self.store.lighting_read_path()
         # Clear existing DM-placed light effects before loading new ones
         for eff in self.bm.active_light_effects:
             if eff.source_agent_idx == -1:  # DM-placed
@@ -20323,10 +20399,50 @@ def standalone_encounter_base(png_path: str) -> str:
     return default
 
 
+def _campaign_start(path: str, camp_root: str):
+    """``(image, dungeon.json)`` for a path in a campaign: a ``dungeon.json``, a folder at
+    or inside a dungeon, or the campaign folder itself when it holds exactly one dungeon.
+    The image is that of the map the dungeon's run was last on, else its entry map."""
+    camp = save_layout.Campaign(camp_root)
+    d = path if os.path.isdir(path) else os.path.dirname(path)
+    manifest = None
+    while d.startswith(camp_root) and d != camp_root:
+        if os.path.isfile(os.path.join(d, save_layout.DUNGEON_FILE)):
+            manifest = os.path.join(d, save_layout.DUNGEON_FILE)
+            break
+        d = os.path.dirname(d)
+    if manifest is None:
+        names = camp.list_dungeons()
+        if len(names) != 1:
+            raise ValueError(f"{camp.name}: open one of its dungeons: "
+                             + (", ".join(names) or "(it has none)"))
+        manifest = camp.dungeon(names[0]).manifest_path
+    layout = camp.dungeon(os.path.basename(os.path.dirname(manifest)))
+    try:
+        dungeon = Dungeon.load(manifest)
+    except Exception as e:                       # noqa: BLE001 — report any bad file
+        raise ValueError(f"Not a dungeon: {manifest} ({e})") from e
+    current = None
+    if os.path.exists(layout.run_path()):
+        try:
+            with open(layout.run_path()) as f:
+                current = json.load(f).get("current_map")
+        except (OSError, ValueError):
+            current = None
+    page = dungeon.page_by_id(current) or dungeon.entry_page()
+    if page is None:
+        raise ValueError(f"Dungeon has no maps: {manifest}")
+    png = layout.image(page.id)
+    if not png:
+        raise ValueError(f"Map '{page.id}': no image in {layout.name}/maps or the library")
+    return png, manifest
+
+
 def resolve_start_path(path: str):
     """Work out what to open from the command-line argument.
 
-    ``path`` is either a map image or a ``.dungeon.json`` manifest. Returns
+    ``path`` is a map image, a ``.dungeon.json`` manifest, or a campaign path (a
+    campaign or dungeon folder, or a ``dungeon.json``; see ``_campaign_start``). Returns
     ``(png_path, manifest_path)``: for an image, ``(path, None)``; for a manifest, the
     entry page's PNG (resolved against the manifest's folder) and the manifest's
     absolute path. Raises ``ValueError`` with a readable message if the manifest is
@@ -20335,6 +20451,10 @@ def resolve_start_path(path: str):
     Opening a floor through its manifest always uses the PNG the manifest names, so
     its grid and edge walls land on the image they were drawn on.
     """
+    camp_root = save_layout.find_campaign(path)
+    if camp_root is not None and (os.path.isdir(path)
+                                  or os.path.basename(path) == save_layout.DUNGEON_FILE):
+        return _campaign_start(os.path.abspath(path), camp_root)
     if not path.lower().endswith(".json"):
         return path, None
     manifest = os.path.abspath(path)

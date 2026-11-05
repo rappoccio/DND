@@ -75,18 +75,22 @@ def _cells_key(cells) -> tuple:
 
 
 # ── Terrain ⇄ map / page / state ─────────────────────────────────────────────
-def split_terrain(terrain: dict) -> tuple[dict, dict, dict]:
+def split_terrain(terrain: dict, design: dict | None = None) -> tuple[dict, dict, dict]:
     """``(map_doc, page_extras, state)`` from an old-shape terrain document.
 
     ``page_extras`` is ``{"ladders", "door_links", "staging_cells"}`` for the map's
-    ``dungeon.json`` entry. A door's current open/locked is also taken as its designed
-    state; the caller that knows better (a fresh design) can override ``map_doc``."""
+    ``dungeon.json`` entry. ``design`` is the map.json already on disk, if any: a door it
+    has keeps its designed open/locked/DCs there, so opening a door in play changes the
+    run and never the map. A door it lacks (a new one) takes its current state as its
+    design."""
     t = terrain or {}
     map_doc = {k: copy.deepcopy(t[k]) for k in MAP_KEYS if k in t}
+    designed = {door_key(d): d for d in (design or {}).get("doors", []) or []}
     doors, door_state, door_links = [], [], []
     for d in t.get("doors", []) or []:
         geom = _door_geometry(d)
-        doors.append({**geom, **{f: d.get(f, _DOOR_DEFAULTS[f]) for f in DOOR_DESIGN}})
+        src = designed.get(door_key(d), d)
+        doors.append({**geom, **{f: src.get(f, _DOOR_DEFAULTS[f]) for f in DOOR_DESIGN}})
         door_state.append({**geom, **{f: d.get(f, _DOOR_DEFAULTS[f]) for f in DOOR_STATE}})
         lt = d.get("link_target")
         if lt and "cells" in geom:

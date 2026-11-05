@@ -65,20 +65,23 @@ def ghost_placement(cur_lines, cur_origin, ghost_lines, ghost_origin):
     return (sx, sy, ox, oy)
 
 
-def load_ghost_lines(png_path: str, terrain_path: Optional[str]):
+def load_ghost_lines(png_path: str, terrain):
     """A page's grid lines (v, h) in native pixels, or None if it has no usable grid.
 
-    A saved ``manual_grid`` in the page's ``_terrain.json`` wins (as it does when the
-    page is loaded for play); otherwise a headless ``BattleMap`` analyses the PNG."""
+    ``terrain`` is the page's terrain document (or a path to a ``_terrain.json``, or
+    None). Its saved ``manual_grid`` wins (as it does when the page is loaded for play);
+    otherwise a headless ``BattleMap`` analyses the PNG."""
     import rpg_battle_map as rpg
     try:
         bm = rpg.BattleMap(png_path)
     except Exception:
         return None
     mg = None
-    if terrain_path and os.path.exists(terrain_path):
+    if isinstance(terrain, dict):
+        mg = terrain.get("manual_grid")
+    elif terrain and os.path.exists(terrain):
         try:
-            with open(terrain_path) as f:
+            with open(terrain) as f:
                 mg = json.load(f).get("manual_grid")
         except (OSError, ValueError):
             mg = None
@@ -221,8 +224,12 @@ class FloorAlign:
             return False
         ghosts, skipped = [], []
         for p in pages:
-            png = app._page_png_path(p)
-            lines = load_ghost_lines(png, app._page_terrain_path(p)) if os.path.exists(png) else None
+            png = app.store.image(p)
+            try:
+                terrain = app.store.terrain(p)
+            except ValueError:
+                terrain = None
+            lines = load_ghost_lines(png, terrain) if os.path.exists(png) else None
             if lines is None:
                 skipped.append(p.id)
                 continue

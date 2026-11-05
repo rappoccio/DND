@@ -4,22 +4,24 @@
 # Launches the battle map viewer with a map image or a dungeon manifest
 # Usage: ./run.sh /path/to/map.png
 #        ./run.sh /path/to/name.dungeon.json   (opens the manifest's entry page)
+#        ./run.sh "encounters/Curse of Strahd/castle-ravenloft"   (a campaign's dungeon)
+#        ./run.sh encounters/Sithicus          (a campaign with one dungeon)
 
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 <map_image.png | name.dungeon.json>"
+    echo "Usage: $0 <map_image.png | name.dungeon.json | campaign or dungeon folder>"
     echo ""
     echo "Examples:"
     echo "  $0 maps/TestDNDMap.png"
     echo "  $0 /absolute/path/to/map.png"
-    echo "  $0 \"encounters/Castle Ravenloft/main_floor_ravenloft.dungeon.json\""
+    echo "  $0 \"encounters/Curse of Strahd/castle-ravenloft\""
     exit 1
 fi
 
 MAP_PATH="$1"
 
 # Verify the map file exists
-if [ ! -f "$MAP_PATH" ]; then
-    echo "Error: Map or dungeon file not found: $MAP_PATH"
+if [ ! -e "$MAP_PATH" ]; then
+    echo "Error: Map, dungeon or campaign not found: $MAP_PATH"
     exit 1
 fi
 

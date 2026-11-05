@@ -1,6 +1,6 @@
 # Save layout: campaigns, maps, encounters, PCs
 
-**Status 2026-11-05: Step 0 frozen (D1–D12). Steps 1–3 done (step 1 c8914a9; 2–3 uncommitted, 213/0); step 4 (migration tool) next.** Came out of the Sithicus folder: seven
+**Status 2026-11-05: Step 0 frozen (D1–D12). Steps 1–3 done (c8914a9, e6211d4); step 4 applied 2026-11-05; step 5a–5b done (all uncommitted since e6211d4, 214/0).** Came out of the Sithicus folder: seven
 copies of one map's terrain, names compounding (`_dungeon_dungeon_dungeon_agents.json`),
 and edge doors "missing" from generated encounters.
 
@@ -176,8 +176,35 @@ over in one change.
    `load_run` / `save_run`). `tests/test_run_state.py` (6). All 334 real terrain files
    under `encounters/` round-trip unchanged.
 4. `tools/migrate_layout.py` on steps 1–3: dry run reviewed with the user, then applied
-   to the three campaigns (D11).
-5. Switchover in `main.py`: open a campaign / dungeon / run; a lone map opens as a
+   to the three campaigns (D11). **Applied 2026-11-05.** User's calls: Sithicus map.json
+   from the newest terrain (its 25 Wall rects kept), run = `_pc_dungeon`; sessions are
+   the union of each campaign's old ones (newest join code); the church's map.json from
+   Feast phase 2. Checks: every map's terrain rebuilds from the new files (Sithicus
+   differs only by those Wall rects), every run controller is seated, Ravenloft keeps
+   36 staircases and 135 room labels. Until step 5 the three campaigns open only from
+   `_archive/` (old layout, and the game would save there).
+5. Switchover in `main.py`, in sub-steps that each keep the suite green:
+   - **5a done:** `gui/scene_store.py`; every terrain / creature read and write in
+     `main.py` and `floor_overlay.py` goes through `app.store` (`LegacyStore`: today's
+     files, no behaviour change).
+   - **5b done:** `CampaignStore` (terrain = merge of map.json + dungeon page + run state;
+     creatures = run section; map.json written to the dungeon copy only when changed;
+     a door's design is kept, so play never rewrites the map). Opening a v2 `dungeon.json`
+     (Dungeon → Open, or `run.sh` / `main.py` with a campaign folder, dungeon folder or
+     dungeon.json) enters campaign mode on the run's current map; page switches go
+     through the store; an unmeasured map learns cols/rows; a v1 manifest leaves campaign
+     mode. Session = the campaign's (D9, done here). Effects: `runs/<run>/effects/<map>.json`
+     (the engine loads them by path; nothing in the app writes them). Combat:
+     `runs/<run>/combat.json`. `tests/test_campaign_open.py` (3). Smoke-opened all four
+     migrated dungeons on copies: grids, doors, fog and creatures as before.
+   - **Open:** a creature on a blocked cell is skipped on load and dropped by the next save.
+     Pre-existing (old page switches lose Ravenloft's Swarm of Bats 9), but terrain-first
+     loading also hits the church's Aodhan and Ireena Kolyana and Sithicus's Pixie 18.
+   - **Next (5c+):** Save / Save run as / Load in campaign mode, encounters added to the
+     run with On Deck by encounter, Generate Dungeon and the multi-floor generator, Load
+     PCs from `pcs/` (step 6 folds in), autosave ring paths (step 8), `_map_dir` and file
+     browsers.
+   Original scope of step 5: open a campaign / dungeon / run; a lone map opens as a
    one-map dungeon; terrain load/save through `merge_terrain` / `split_terrain` (map.json
    written to the dungeon copy only when it changed); page switching through run
    sections; Save / Save run as / Load; encounters added to the run with On Deck by

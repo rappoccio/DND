@@ -87,6 +87,19 @@ def test_doors_by_key():
     print("  ✅ doors matched by key across a map edit; stale state dropped")
 
 
+def test_play_never_rewrites_design():
+    design, x, _ = rs.split_terrain(_terrain())
+    played = rs.merge_terrain(design, x, None)
+    played["doors"][1]["open"] = True                    # opened and unlocked in play
+    played["doors"][1]["locked"] = False
+    played["doors"].append({"cells": [[8, 8]], "cell": [8, 8], "open": True})  # new door
+    m, _, s = rs.split_terrain(played, design)
+    assert m["doors"][1]["open"] is False and m["doors"][1]["locked"] is True
+    assert m["doors"][2]["open"] is True                 # a new door's state is its design
+    assert s["doors"][1]["open"] is True and s["doors"][1]["locked"] is False
+    print("  ✅ play changes the run's door state, never the map's design")
+
+
 def test_fresh_run_uses_design():
     m, x, _ = rs.split_terrain(_terrain())
     t = rs.merge_terrain(m, x, None)
@@ -147,6 +160,7 @@ def main():
         test_split_parts,
         test_roundtrip,
         test_doors_by_key,
+        test_play_never_rewrites_design,
         test_fresh_run_uses_design,
         test_run_sections_and_encounters,
         test_save_load,
