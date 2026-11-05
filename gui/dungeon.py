@@ -69,7 +69,15 @@ import os
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
+from atomic_io import atomic_write_json
+
 DUNGEON_SCHEMA_VERSION = 1
+# plans/SAVE_LAYOUT_PLAN.md D4: ``<campaign>/<dungeon>/dungeon.json``. A page is named by
+# its map (``maps/<map>/`` in the dungeon and in the library), so a map appears at most
+# once per dungeon and the page id IS the map name. Version 1 (``<name>.dungeon.json``,
+# pages naming a PNG and an encounter file) is still read and written until the app is
+# switched over to the new layout.
+DUNGEON_LAYOUT_VERSION = 2
 
 # Direction vectors in global (X, Y) space. +Y is down (screen/row convention).
 _DIR_DELTAS = {
@@ -127,6 +135,13 @@ class MapPage:
     cols: int = 0
     rows: int = 0
     rooms: list[RoomLabel] = field(default_factory=list)
+    # Version 2 only: what spans pages or is dungeon design rather than the drawing.
+    # Ladders ``{"cells": [[c, r], ...], "target": [X, Y, Z]}`` and door staples
+    # ``{"cells": [[c, r], ...], "target": [X, Y, Z]}`` (a door's cells, its global
+    # landing); the room the party is dropped into (``[[c, r], ...]`` or None).
+    ladders: list[dict] = field(default_factory=list)
+    door_links: list[dict] = field(default_factory=list)
+    staging_cells: Optional[list[list[int]]] = None
 
     # ── Global-grid geometry ────────────────────────────────────────────────
     @property
@@ -177,6 +192,33 @@ class MapPage:
         if self.rooms:
             d["rooms"] = [r.to_dict() for r in self.rooms]
         return d
+
+    def to_dict_v2(self) -> dict:
+        d = {
+            "map": self.id,
+            "origin": [int(self.origin[0]), int(self.origin[1]), int(self.origin[2])],
+            "cols": int(self.cols),
+            "rows": int(self.rows),
+        }
+        if self.rooms:
+            d["rooms"] = [r.to_dict() for r in self.rooms]
+        if self.staging_cells:
+            d["staging_cells"] = [[int(c), int(r)] for c, r in self.staging_cells]
+        if self.ladders:
+            d["ladders"] = [_portal(lad) for lad in self.ladders]
+        if self.door_links:
+            d["door_links"] = [_portal(dl) for dl in self.door_links]
+        return d
+
+    @classmethod
+    def from_dict_v2(cls, d: dict) -> "MapPage":
+        name = _map_name(d.get("map"))
+        page = cls.from_dict({**d, "id": name, "png": ""})
+        sc = d.get("staging_cells")
+        page.staging_cells = [[int(c), int(r)] for c, r in sc] if sc else None
+        page.ladders = [_portal(x) for x in d.get("ladders", []) or []]
+        page.door_links = [_portal(x) for x in d.get("door_links", []) or []]
+        return page
 
     @classmethod
     def from_dict(cls, d: dict) -> "MapPage":
@@ -258,6 +300,14 @@ class Dungeon:
     entry_page_id: Optional[str] = None
     staircases: list[Staircase] = field(default_factory=list)
     next_staircase_id: int = 1
+    version: int = DUNGEON_SCHEMA_VERSION
+
+    @classmethod
+    def single_map(cls, map_name: str, cols: int = 0, rows: int = 0) -> "Dungeon":
+        """A version-2 dungeon of one map at the origin: how a lone map is opened."""
+        page = MapPage(id=_map_name(map_name), png="", encounter_base="",
+                       origin=[0, 0, 0], cols=int(cols), rows=int(rows))
+        return cls(pages=[page], entry_page_id=page.id, version=DUNGEON_LAYOUT_VERSION)
 
     # ── Lookup helpers ──────────────────────────────────────────────────────
     def page_by_id(self, page_id: Optional[str]) -> Optional[MapPage]:
@@ -430,6 +480,14 @@ class Dungeon:
 
     # ── Serialization ───────────────────────────────────────────────────────
     def to_dict(self) -> dict:
+        if self.version >= DUNGEON_LAYOUT_VERSION:
+            d = {"version": DUNGEON_LAYOUT_VERSION,
+                 "entry_map": self.entry_page_id,
+                 "maps": [p.to_dict_v2() for p in self.pages]}
+            if self.staircases or self.next_staircase_id > 1:
+                d["staircases"] = [st.to_dict() for st in self.staircases]
+                d["next_staircase_id"] = int(self.next_staircase_id)
+            return d
         d = {
             "version": DUNGEON_SCHEMA_VERSION,
             "entry_page_id": self.entry_page_id,
@@ -444,28 +502,52 @@ class Dungeon:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Dungeon":
-        pages = [MapPage.from_dict(pd) for pd in d.get("pages", [])]
-        entry = d.get("entry_page_id")
+        version = int(d.get("version", DUNGEON_SCHEMA_VERSION))
+        if version >= DUNGEON_LAYOUT_VERSION:
+            pages = [MapPage.from_dict_v2(pd) for pd in d.get("maps", [])]
+            names = [p.id for p in pages]
+            if len(set(names)) != len(names):
+                raise ValueError("a map appears twice in dungeon.json")
+            entry = d.get("entry_map")
+        else:
+            pages = [MapPage.from_dict(pd) for pd in d.get("pages", [])]
+            entry = d.get("entry_page_id")
         stairs = [Staircase.from_dict(sd) for sd in d.get("staircases", [])]
         stairs = [st for st in stairs if st.ends]
         # The stored counter wins, but never below max(id) + 1, so a hand-edited or
         # truncated manifest still can't hand out a live id twice.
         nxt = max([int(d.get("next_staircase_id", 1))] + [st.id + 1 for st in stairs])
         dung = cls(pages=pages, entry_page_id=entry, staircases=stairs,
-                   next_staircase_id=nxt)
+                   next_staircase_id=nxt,
+                   version=min(version, DUNGEON_LAYOUT_VERSION))
         # Repair a dangling/missing entry pointer so entry_page() is always valid.
         if dung.page_by_id(entry) is None:
             dung.entry_page_id = pages[0].id if pages else None
         return dung
 
     def save(self, path: str) -> None:
-        with open(path, "w") as f:
-            json.dump(self.to_dict(), f, indent=2)
+        atomic_write_json(path, self.to_dict())
 
     @classmethod
     def load(cls, path: str) -> "Dungeon":
         with open(path) as f:
             return cls.from_dict(json.load(f))
+
+
+def _map_name(name) -> str:
+    """A page's map name, which is also a folder name (``maps/<map>/``): refused when it
+    could leave that folder, so a hand-edited dungeon.json can't point outside it."""
+    if (not isinstance(name, str) or not name or name in (".", "..")
+            or name.startswith(".") or "/" in name or "\\" in name):
+        raise ValueError(f"bad map name {name!r} in dungeon.json")
+    return name
+
+
+def _portal(d: dict) -> dict:
+    """A ladder or door staple, normalised: ``cells`` as int pairs, ``target`` as an
+    int (X, Y, Z) triple."""
+    return {"cells": [[int(c[0]), int(c[1])] for c in d.get("cells", [])],
+            "target": [int(v) for v in list(d["target"])[:3]]}
 
 
 def _span_overlap(a0: int, a_len: int, b0: int, b_len: int) -> int:

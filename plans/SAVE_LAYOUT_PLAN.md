@@ -1,6 +1,6 @@
 # Save layout: campaigns, maps, encounters, PCs
 
-**Status 2026-11-05: Step 0 frozen (D1–D12). Step 1 done (uncommitted, 211/0); step 2 next.** Came out of the Sithicus folder: seven
+**Status 2026-11-05: Step 0 frozen (D1–D12). Steps 1–3 done (step 1 c8914a9; 2–3 uncommitted, 213/0); step 4 (migration tool) next.** Came out of the Sithicus folder: seven
 copies of one map's terrain, names compounding (`_dungeon_dungeon_dungeon_agents.json`),
 and edge doors "missing" from generated encounters.
 
@@ -154,23 +154,39 @@ Seungho, The Menacing Shadow.
 
 ## Steps
 
+Re-sequenced 2026-11-05 (D1–D12 unchanged): the app cannot open a one-map dungeon until it
+also reads `map.json` and keeps creatures in a run, so steps 2–3 build those as standalone
+models, the migration produces real campaigns from them, and step 5 switches `main.py`
+over in one change.
+
 1. `gui/save_layout.py` (D12, D3 lookup) + fixture campaign + unit tests. No behaviour
-   change. **Done:** `Campaign` / `DungeonLayout` (paths, listings, `resolve` /
+   change. **Done (c8914a9):** `Campaign` / `DungeonLayout` (paths, listings, `resolve` /
    `write_path` / `image` / `calibration_warning`), `slugify` / `unique_slug`,
-   `find_campaign`; `make_fixture_campaign` in `tests/test_helpers.py` (its
-   `dungeon.json` is a placeholder until step 2); `tests/test_save_layout.py` (7).
-2. Dungeon model: `dungeon.json`; a single map opens as a one-map dungeon.
-   `gui/dungeon.py` loads/saves it (D4).
-3. Map files: `map.json` / `lighting.json` through the D3 lookup, copy-on-write (D2, D3).
-4. Runs: `run.json` save/load across all maps, page switching, Save run as (D6).
-5. Encounters: definitions, add-to-run, On Deck by encounter, Generate Dungeon,
-   multi-floor generator (D5, D7).
+   `find_campaign`; `make_fixture_campaign` in `tests/test_helpers.py`;
+   `tests/test_save_layout.py` (7).
+2. `dungeon.json` v2 in `gui/dungeon.py` (D4). **Done:** `version` on `Dungeon`;
+   v2 writes `entry_map` and `maps` (a page's id is its map name; repeats and names that
+   leave their folder refused); pages carry `ladders`, `door_links`, `staging_cells`;
+   `Dungeon.single_map`; atomic `save`. Version 1 still reads/writes as 1 until step 5.
+   `tests/test_dungeon_layout.py` (6).
+3. Map / page / play-state model, `gui/run_state.py` (D3, D5, D6). **Done:**
+   `split_terrain` / `merge_terrain` (old `_terrain.json` shape ⇄ map.json + dungeon page
+   + run state; doors matched by edges/cells key), run doc (`new_run`, `map_section`,
+   `creatures`, `set_creatures`, `add_encounter` with tag + shifted condition indices,
+   `load_run` / `save_run`). `tests/test_run_state.py` (6). All 334 real terrain files
+   under `encounters/` round-trip unchanged.
+4. `tools/migrate_layout.py` on steps 1–3: dry run reviewed with the user, then applied
+   to the three campaigns (D11).
+5. Switchover in `main.py`: open a campaign / dungeon / run; a lone map opens as a
+   one-map dungeon; terrain load/save through `merge_terrain` / `split_terrain` (map.json
+   written to the dungeon copy only when it changed); page switching through run
+   sections; Save / Save run as / Load; encounters added to the run with On Deck by
+   encounter; Generate Dungeon and the multi-floor generator (D5, D7). Version 1 dungeon
+   reading removed.
 6. PCs folder: Save PCs, Load PCs checklist (D8).
 7. Campaign session + roster lifetime (D9).
 8. Autosave ring under the run (D10).
 9. File browser / DM menus / `run.sh` / tools (`encounter_generator.py`,
    `dungeon_from_png.py`, `rescale_to_grid.py`, `ladders_to_staircases.py`), import
    into library (D2).
-10. `tools/migrate_layout.py`; dry run reviewed with the user, then applied to the three
-    campaigns (D11).
-11. Docs (`memory/`, `CLAUDE.md` file names), suite green.
+10. Docs (`memory/`, `CLAUDE.md` file names), suite green.

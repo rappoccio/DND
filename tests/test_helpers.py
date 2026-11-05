@@ -130,11 +130,10 @@ def make_fixture_campaign(root, name="Test Campaign"):
     ``save_layout.Campaign``:
 
         campaign.json  pcs/  maps/test-grid/{test-grid.png, map.json}
-        test-dungeon/dungeon.json   (one map, test-grid; contents filled in by step 2)
+        test-dungeon/dungeon.json   (version 2: one map, test-grid)
 
     The library map is TestGrid12x12.png with its terrain as ``map.json``. No dungeon
     override, encounter or run exists yet; tests add what they need."""
-    import json
     import shutil
     import save_layout as sl
     camp = sl.Campaign.create(root, name)
@@ -144,7 +143,6 @@ def make_fixture_campaign(root, name="Test Campaign"):
     shutil.copyfile(TERRAIN_CONFIG_PATH, os.path.join(lib, sl.MAP_FILE))
     dun = camp.dungeon(FIXTURE_DUNGEON)
     os.makedirs(dun.root, exist_ok=True)
-    with open(dun.manifest_path, "w") as f:
-        json.dump({"version": sl.LAYOUT_VERSION,
-                   "maps": [{"id": FIXTURE_MAP, "map": FIXTURE_MAP}]}, f, indent=2)
+    from dungeon import Dungeon
+    Dungeon.single_map(FIXTURE_MAP).save(dun.manifest_path)
     return camp
