@@ -13,7 +13,7 @@ execute_action) off ``Weapon.permanently_armed``. These tests drive those real
 paths and read the combat log through an attached MessageLogger.
 """
 
-import sys, os
+import json, os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui"))
 import rpg_battle_map as rpg
 from test_helpers import (setup_battle_map, setup_combat_engine,
@@ -174,6 +174,32 @@ def test_pick_up_with_full_slots_and_slot_override():
     print("✅ test_pick_up_with_full_slots_and_slot_override passed")
 
 
+def test_bite_and_claw_load_permanently_armed():
+    """Bite and Claw are body parts whatever the data says: the catalog never flagged them, and a
+    saved vampire stores permanently_armed=False on each. A Frightened Spawn keeps both."""
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    from helpers import _dict_to_weapon
+
+    gui = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui")
+    with open(os.path.join(gui, "DND2024_MonsterStats.json")) as f:
+        spawn = json.load(f)["Vampire Spawn"]
+    claw, bite = spawn["weapons"]["main_hand"], spawn["weapons"]["off_hand"]
+    assert (claw["name"], bite["name"]) == ("Claw", "Bite")
+
+    saved = dict(bite, permanently_armed=False)
+    longsword = {"name": "Longsword", "permanently_armed": False}
+    assert _dict_to_weapon(claw).permanently_armed and _dict_to_weapon(saved).permanently_armed
+    assert not _dict_to_weapon(longsword).permanently_armed
+
+    bm, engine, atk, foe = _two_combatants()
+    engine.set_agent_weapons(bm, atk, [_dict_to_weapon(claw), _dict_to_weapon(saved),
+                                       _dict_to_weapon(longsword)])
+    engine.apply_frightened(bm, atk)
+    names = _weapon_names(engine, bm, atk)
+    assert "Claw" in names and "Bite" in names and "Longsword" not in names, names
+    print("✅ test_bite_and_claw_load_permanently_armed passed")
+
+
 if __name__ == "__main__":
     test_permanently_armed_flag_survives_roundtrip()
     test_disarming_attack_respects_permanently_armed()
@@ -181,4 +207,5 @@ if __name__ == "__main__":
     test_drop_effects_respect_permanently_armed()
     test_pick_up_dropped_weapon()
     test_pick_up_with_full_slots_and_slot_override()
+    test_bite_and_claw_load_permanently_armed()
     print("\n✅ All permanently_armed tests passed!")
