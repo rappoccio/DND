@@ -1,7 +1,7 @@
 # Dungeon releases, Reset Dungeon, Load Save File
 
-**Status 2026-11-06: Step 0 FROZEN (D1–D10). No code yet.** These decisions change only by a
-dated amendment with a reason, agreed with the user. Steps 1–6 done.
+**Status 2026-11-06: complete. Step 0 frozen (D1–D10), steps 1–7 done.** These decisions change
+only by a dated amendment with a reason, agreed with the user.
 
 Builds on `plans/SAVE_LAYOUT_PLAN.md` (a dungeon's design is `dungeon.json` + `maps/`, play
 state is `runs/<run>/run.json`). `CampaignStore` already keeps the two apart, which is what
@@ -81,9 +81,6 @@ possible later, but a release's design is read-only history for now.
 
 ## Known risks
 
-- **A fight's board snapshot carries per-cell terrain and light** (`_load_combat_state`), so
-  a resumed fight may run on the older walls and lighting until the scene reloads. Step 4 tests this; if it does,
-  the fix is to reapply the current design after the snapshot.
 - **A wall fix can land on a released creature's cell.** The open SAVE_LAYOUT issue applies:
   a creature on a blocked cell is skipped on load and dropped by the next save. Step 3
   reports any such creature by name on reset. The release itself still has it.
@@ -111,4 +108,13 @@ Each ends with its suite green in the container and is committed on request.
    A reset that cannot write its before-reset save does not happen.
 6. Panel buttons and Table rows; check the layout with `tests/gui_driver.py` screenshots.
    **Done.** `Save limit` is on the Table menu.
-7. Register the suites, update docs, run the whole suite.
+7. Register the suites, update docs, run the whole suite. **Done.** Release, reset and undo
+   checked end to end on copies of all four real dungeons; map.json never changed.
+
+## Open after this plan
+
+- **A release cannot bring back a creature already lost.** The SAVE_LAYOUT issue applies when
+  a release saves the board: Church of St Andral loads without Aodhan and Ireena Kolyana (their
+  cells are blocked), so a release made there leaves them out too, and the save drops them
+  from the run. Fix that issue, or move them, before releasing that dungeon.
+- A reset waits while a reaction prompt or the legendary-action phase is open (D4).

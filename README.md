@@ -144,6 +144,19 @@ linked to a neighbouring map** (terrain editor **[K]**) to cross to it; both are
 explicit actions on the creature's menu, and both carry that creature to the
 target page.
 
+### Releases, resets and save files (campaign dungeons)
+
+- **Release** (Dungeon Configuration) snapshots the dungeon's design and the current board,
+  PCs included, as the next `V0`, `V1`, … under `<dungeon>/releases/`. Releases are read-only.
+- **Reset Dungeon** (setup panel, Table menu) puts creatures, HP, fog, doors and effects back
+  to the newest release, or an older one from `Releases…`. Map fixes made since then stay. It
+  writes a `before reset` save first, so it can be undone.
+- **Save files** are written at every turn start and by **Save Game**, under
+  `<dungeon>/runs/<run>/saves/`. A run keeps the last 10 turn saves by default (`Save limit`
+  in the Table menu). Saved games are never dropped.
+- **Load Save File…** picks a save by fight, round and turn and returns to its map and fight,
+  on the current design.
+
 ### Known limitations
 
 - **One page is simulated at a time.** A ladder or linked door is a discrete
