@@ -1,7 +1,7 @@
 # Dungeon releases, Reset Dungeon, Load Save File
 
 **Status 2026-11-06: Step 0 FROZEN (D1–D10). No code yet.** These decisions change only by a
-dated amendment with a reason, agreed with the user. Steps 1–3 done.
+dated amendment with a reason, agreed with the user. Steps 1–4 done.
 
 Builds on `plans/SAVE_LAYOUT_PLAN.md` (a dungeon's design is `dungeon.json` + `maps/`, play
 state is `runs/<run>/run.json`). `CampaignStore` already keeps the two apart, which is what
@@ -103,7 +103,10 @@ Each ends with its suite green in the container and is committed on request.
    another map's is found when that map is next opened.
 4. `gui/saves.py`: write, index, prune and load, then the turn hook and `Save Game`.
    `tests/test_saves.py`, including a save on another map and a fight resumed after a wall
-   fix. Measure the turn hook's cost on Ravenloft.
+   fix. Measure the turn hook's cost on Ravenloft. **Done:** `run_state.keep_current_design`
+   rests a resumed fight on today's walls and lighting, for autosave restores too. A turn save
+   on Nedragaard Keep's 32-creature fight takes about 50 ms and 68 KB. (Ravenloft's current map
+   would not start a fight headless, so its 11–18 ms is out of combat.)
 5. The cascading picker and `before reset` wired into D4.
 6. Panel buttons and Table rows; check the layout with `tests/gui_driver.py` screenshots.
 7. Register the suites, update docs, run the whole suite.

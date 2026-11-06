@@ -136,6 +136,41 @@ def merge_terrain(map_doc: dict | None, extras: dict | None = None,
     return t
 
 
+def keep_current_design(board: dict, live: dict, wall: int) -> dict:
+    """A fight's board snapshot resting on the current design (plans/DUNGEON_RELEASES_PLAN.md
+    D3, D7). ``live`` is the snapshot of the scene just loaded from today's map and lighting.
+    Per-cell terrain, multipliers and base light come from ``live``, and so do the map's own
+    lights. The fight's effects stay: a Wall of Stone stands on top of the current terrain
+    and remembers it, and a spell's light keeps its id, which the engine refers to."""
+    out = dict(board)
+    terrain = list(live["terrain_type"])
+    effects = copy.deepcopy(board.get("terrain_effects", []))
+    for e in effects:
+        if e.get("sets_wall"):
+            cells = e.get("cell_indices", [])
+            e["saved_terrain"] = [terrain[i] if 0 <= i < len(terrain) else 0 for i in cells]
+            for i in cells:
+                if 0 <= i < len(terrain):
+                    terrain[i] = wall
+    out["terrain_effects"] = effects
+    out["terrain_type"] = terrain
+    out["terrain_mult"] = live["terrain_mult"]
+    out["base_light"] = live["base_light"]
+
+    def _is_map_light(e):
+        return e.get("source_agent_idx") == -1 and e.get("turns_remaining") == -1
+
+    lights = [e for e in board.get("light_effects", []) if not _is_map_light(e)]
+    next_id = int(board.get("next_light_id", 0))
+    for e in live.get("light_effects", []):
+        if _is_map_light(e):
+            lights.append({**e, "id": next_id})
+            next_id += 1
+    out["light_effects"] = lights
+    out["next_light_id"] = next_id
+    return out
+
+
 # ── Runs ─────────────────────────────────────────────────────────────────────
 def new_run(current_map: str | None = None) -> dict:
     return {"version": RUN_VERSION, "current_map": current_map, "maps": {}}

@@ -16,6 +16,7 @@ names.
           encounters/<encounter>.json    creature groups on this map (D5)
         runs/<run>/                      a traversal's play state (D6)
           run.json  combat.json  autosave/slot_<k>/
+          saves/                         one file per save (gui/saves.py)
         releases/<V n>/                  read-only snapshots (gui/releases.py)
 
 **Child-first, copy-on-write (D3).** A dungeon map's file is read from the dungeon's copy
@@ -48,6 +49,7 @@ ENCOUNTERS_DIR = "encounters"
 RUNS_DIR       = "runs"
 AUTOSAVE_DIR   = "autosave"
 EFFECTS_DIR    = "effects"
+SAVES_DIR      = "saves"
 RELEASES_DIR   = "releases"
 RELEASE_FILE   = "release.json"
 START_DIR      = "start"
@@ -292,6 +294,9 @@ class DungeonLayout:
 
     def effects_dir(self, run_name: str = DEFAULT_RUN) -> str:
         return os.path.join(self.run_dir(run_name), EFFECTS_DIR)
+
+    def saves_dir(self, run_name: str = DEFAULT_RUN) -> str:
+        return os.path.join(self.run_dir(run_name), SAVES_DIR)
 
     def list_runs(self) -> list[str]:
         """Runs that have been saved (a ``run.json`` exists)."""

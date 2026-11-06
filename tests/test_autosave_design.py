@@ -10,8 +10,9 @@ and the saves that follow it:
   · a wall region and a whole-map switch edited since the slot stay as edited, live and in
     map.json.
 
-Per-cell terrain and light in a resumed fight come from the board snapshot; step 4 covers
-those.
+  · the resumed fight itself runs on the current design: the fixed wall blocks, a removed
+    door's cell is open, and the lighting is the current lighting, while a Wall of Stone
+    from the fight stands and leaves the fixed design behind when it ends.
 """
 
 import os
@@ -40,7 +41,8 @@ from test_campaign_open import _campaign, _open, _place
 
 PC_FACTION, FOE_FACTION = 0, 1
 EDIT_DOOR = (7, 2)
-EDIT_REGION = {"name": "fixed wall", "type": "Wall", "cells": [[8, 6]]}
+EDIT_REGION = {"type": "Wall", "x": 240, "y": 180, "width": 30, "height": 30, "multiplier": 1}
+EDIT_CELL = (8, 6)
 
 
 def _map_doc(dl):
@@ -94,7 +96,7 @@ def test_restore_keeps_map_edits():
         # Live: the design is the fixed one, the door the slot knows has the slot's state.
         assert sorted((d.cell.col, d.cell.row) for d in app.bm.doors) == [(4, 4), EDIT_DOOR]
         assert app._walls_enabled is True
-        assert [r["name"] for r in app._terrain_regions] == ["fixed wall"]
+        assert [r["type"] for r in app._terrain_regions] == ["Wall"]
         assert next(d for d in app.bm.doors if d.cell.col == 4).open, "lost the slot's door"
 
         # On disk: the next save leaves the fixed design alone.
@@ -127,9 +129,71 @@ def test_restore_keeps_a_door_removed_since():
     print("  ✅ a restore does not bring back a door removed after the slot")
 
 
+def _light_doc(camp, level):
+    path = os.path.join(camp.library_map_dir("hall"), sl.LIGHTING_FILE)
+    with open(path, "w") as f:
+        json.dump({"default_light": level, "light_sources": []}, f)
+
+
+def test_resumed_fight_runs_on_current_design():
+    tmp = tempfile.mkdtemp(prefix="autosave_design_")
+    try:
+        camp, dl = _campaign(tmp)
+        _light_doc(camp, "Darkness")
+        app = _open(camp.root)
+        k = _fight_with_a_slot(app)
+        assert not app.bm.is_blocked(rpg.Cell(*EDIT_CELL), 1)
+
+        app._terrain_regions.append(dict(EDIT_REGION))
+        app._walls_enabled = True
+        app._save_terrain()
+        _light_doc(camp, "BrightLight")
+
+        assert autosave.restore(app, k), "the restore was refused"
+        assert app.combat_active
+        assert app.bm.is_blocked(rpg.Cell(*EDIT_CELL), 1), "the fight ran on the old walls"
+        assert app.bm.get_light_level(rpg.Cell(0, 0)) == rpg.VisibilityLevel.Clear, \
+            "the fight ran on the old lighting"
+    finally:
+        shutil.rmtree(tmp)
+    print("  ✅ a resumed fight runs on the current walls and lighting")
+
+
+def test_wall_of_stone_survives_on_current_design():
+    tmp = tempfile.mkdtemp(prefix="autosave_design_")
+    try:
+        camp, dl = _campaign(tmp)
+        app = _open(camp.root)
+        stone = rpg.Cell(*EDIT_CELL)
+        _place(app, "Aria", 1, 1)
+        _place(app, "Gnasher", 8, 1)
+        app.bm.set_agent_faction(_idx(app, "Aria"), PC_FACTION)
+        app.bm.set_agent_faction(_idx(app, "Gnasher"), FOE_FACTION)
+        app._start_combat()
+        eff = app.bm.place_terrain_effect("Wall of Stone", [stone], rpg.TerrainDifficulty.Normal,
+                                          -1, -1, sets_wall=True)
+        autosave.save(app)
+        k = autosave.list_slots(app)[0]["slot"]
+        assert app.bm.is_blocked(stone, 1)
+
+        # After the slot the DM paints a wall under the Wall of Stone.
+        app._terrain_regions.append(dict(EDIT_REGION))
+        app._save_terrain()
+
+        assert autosave.restore(app, k), "the restore was refused"
+        assert app.bm.is_blocked(stone, 1), "the fight's Wall of Stone fell"
+        app.bm.remove_terrain_effect(eff)
+        assert app.bm.is_blocked(stone, 1), "the wall's end took the map fix with it"
+    finally:
+        shutil.rmtree(tmp)
+    print("  ✅ a fight's Wall of Stone stands, and ends onto the current design")
+
+
 def main():
     pygame.init()
-    tests = [test_restore_keeps_map_edits, test_restore_keeps_a_door_removed_since]
+    tests = [test_restore_keeps_map_edits, test_restore_keeps_a_door_removed_since,
+             test_resumed_fight_runs_on_current_design,
+             test_wall_of_stone_survives_on_current_design]
     print("Running autosave design tests…")
     failed = 0
     for t in tests:

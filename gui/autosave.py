@@ -194,7 +194,7 @@ def _read_slot(paths: dict[str, str]) -> str | None:
     return None
 
 
-def _settle_turn(app) -> None:
+def settle_turn(app) -> None:
     """Land on the top of the restored turn, the state ``_finish_turn_start`` leaves.
 
     The slot was written there, where the action economy is fresh and no pick is armed;
@@ -229,14 +229,19 @@ def resync_players(app) -> None:
     app._net_turn = None
 
 
-def _load_terrain(app, path: str) -> None:
-    """The slot's terrain: whole for sidecar files, its play state alone in a campaign."""
+def _load_design_and_state(app, paths: dict[str, str]) -> None:
+    """The slot's scene: whole for sidecar files. In a campaign, the slot's play state on the
+    current design. Fight effects go first, so a Wall of Stone cannot read as the design."""
     if isinstance(app.store, CampaignStore):
-        with open(path) as f:
+        with open(paths["terrain"]) as f:
             app.store.adopt_play_state(json.load(f))
+        app.bm.clear_terrain_effects()
+        app.bm.clear_spell_effects()
         app._load_terrain()
+        app._load_lighting()
     else:
-        app._load_terrain(path)
+        app._load_terrain(paths["terrain"])
+        app._load_lighting(paths["lighting"])
 
 
 def restore(app, k: int) -> bool:
@@ -255,12 +260,12 @@ def restore(app, k: int) -> bool:
         app._flash_status(f"Autosave not restored: {why}")
         return False
     app._load_agents(paths["agents"])
-    _load_terrain(app, paths["terrain"])
-    app._load_lighting(paths["lighting"])
+    _load_design_and_state(app, paths)
     app._load_spell_effects(paths["effects"])
-    if not app._load_combat_state(paths["combat"]):
+    if not app._load_combat_state(paths["combat"],
+                                  keep_design=isinstance(app.store, CampaignStore)):
         return False                   # _load_combat_state has flashed why
-    _settle_turn(app)
+    settle_turn(app)
     resync_players(app)
     app._combat_log_add(f"[RESTORED] autosave: round {meta.get('round', 0) + 1}, "
                         f"{meta.get('actor') or '?'}'s turn")

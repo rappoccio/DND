@@ -13,6 +13,7 @@ from collections import Counter
 import autosave
 import releases
 import run_state as rs
+import saves
 from scene_store import CampaignStore
 
 _CAMPAIGN_ONLY = "Only a campaign dungeon has releases."
@@ -105,28 +106,8 @@ def reset_to(app, release) -> bool:
     if page is None or not store.image(page):
         app._flash_status(f"Not reset: no map to show for {release.name}")
         return False
-    # A section for the map showing, even an empty one: with none, the load would leave
-    # the old creatures on the board.
-    rs.map_section(run, page.id)
-    try:
-        store.replace_run(run, release.start_effects_dir)
-    except OSError as e:
-        app._flash_status(f"Not reset: {e}")
-        return False
-
-    if app.combat_active:
-        app._end_combat(award_xp=False)
-    app._save_combat_state()              # no fight now, so this removes the sidecar
-    app.bm.clear_terrain_effects()
-    app.bm.clear_spell_effects()
-    app._effect_meta.clear()
-    app._npc_drive_idx = -1
-    app.selected_idx = -1
-    # Another map's scene is abandoned, not written back. The same map keeps its view.
-    if app.dungeon_page is not None and app.dungeon_page.id != page.id:
-        app.dungeon_page = None
-    if not app._switch_to_page(page, force=True):
-        return False                      # _switch_to_page has flashed why
+    if not saves.swap_run(app, run, release.start_effects_dir, page):
+        return False                      # swap_run has flashed why
     autosave.resync_players(app)
 
     lost = _lost_on_load(app, run, page.id)

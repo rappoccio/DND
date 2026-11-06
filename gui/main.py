@@ -72,9 +72,11 @@ from floor_overlay import FloorAlign
 from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
 # S1: every save that a crash could tear goes through this (MULTIPLAYER_PLAN.md).
 from atomic_io import atomic_write_json
+from run_state import keep_current_design
 from scene_store import CampaignStore, LegacyStore
 import save_layout
 import autosave
+import saves
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
@@ -689,6 +691,7 @@ class App:
         # turns it off; the test runner sets that, so a suite's fights don't leave slots
         # beside the repo's maps. A test of the ring turns it back on for its own App.
         self.autosave_enabled = os.environ.get("RPG_AUTOSAVE", "1") != "0"
+        self._fight_started = None
         # The prompt bus (M1). Built after the roster so it can install prompt_lookup;
         # the screen does not exist yet, so the renderer resolves its size lazily.
         # Three renderers, because Step 0.2 found three widgets already drawing prompts:
@@ -5048,6 +5051,7 @@ class App:
         self.combat.apply_superior_inspiration(self.bm)
         self.initiative_order    = order
         self.combat_active       = True
+        self._fight_started      = time.time()      # names this fight's saves (gui/saves.py)
         self._seen_armed         = set()
         self.combat_paused       = False
         self.show_terrain        = True   # always show terrain during combat
@@ -5239,6 +5243,7 @@ class App:
         self.move_remaining_burrow = 0
         self.move_type             = rpg.MovementType.Walk
         self.combat_active         = False
+        self._fight_started        = None
         self._seen_armed           = set()
         self.combat_paused         = False
         self.initiative_order    = []
@@ -6094,6 +6099,7 @@ class App:
         # is the top of the turn a restore lands on.
         if self.autosave_enabled:
             autosave.save(self)
+            saves.save_turn(self)
 
     def _offer_keeper_of_souls_if_pending(self):
         """Grave Cleric Keeper of Souls (L17). The engine flags keeper_of_souls_pending on the cleric when
@@ -13307,12 +13313,13 @@ class App:
         except OSError as e:
             print(f"Warning: could not save combat state: {e}")
 
-    def _load_combat_state(self, path: str | None = None) -> bool:
+    def _load_combat_state(self, path: str | None = None, keep_design: bool = False) -> bool:
         """Restore a ``_combat.json`` sidecar. Returns True if combat was resumed.
 
         Call AFTER the agents are loaded — the basis check compares against the live
         placed-agent list. A missing file is the normal case (no fight was running)
-        and is not an error."""
+        and is not an error. ``keep_design``: the board rests on the scene as loaded
+        rather than on the terrain and light it was saved with (run_state.keep_current_design)."""
         path = path or self._combat_path
         if not os.path.exists(path):
             return False
@@ -13335,6 +13342,9 @@ class App:
         # A refused board changes nothing, so refusing the whole resume keeps the scene
         # exactly as the load built it. Absent in a sidecar written before M6.2.
         board = doc.get("board")
+        if board is not None and keep_design:
+            board = keep_current_design(board, json.loads(self.bm.snapshot_json()),
+                                        int(rpg.TerrainType.Wall))
         if board is not None and not self.bm.restore_json(json.dumps(board)):
             self._flash_status("Combat state skipped — board snapshot unreadable")
             return False

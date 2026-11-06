@@ -47,6 +47,8 @@ PROTOCOL_VERSION = 1
 MIN_AUTOSAVE_SLOTS = 1
 MAX_AUTOSAVE_SLOTS = 5
 DEFAULT_AUTOSAVE_SLOTS = 3
+# Turn saves kept per run (plans/DUNGEON_RELEASES_PLAN.md D8).
+DEFAULT_SAVE_LIMIT = 10
 
 # How long a freshly minted credential is nominally good for. Credentials die with the
 # process regardless (A3), so this only bounds a long-running session; the field exists
@@ -153,13 +155,15 @@ class SessionRoster:
     """
 
     def __init__(self, join_code: str | None = None,
-                 autosave_slots: int = DEFAULT_AUTOSAVE_SLOTS):
+                 autosave_slots: int = DEFAULT_AUTOSAVE_SLOTS,
+                 save_limit: int = DEFAULT_SAVE_LIMIT):
         self._lock = threading.RLock()
         # The signing key: process-local, never serialized. Regenerating it invalidates
         # every outstanding credential at once, which is A5's panic button.
         self._signing_key: bytes = secrets.token_bytes(32)
         self.join_code: str = join_code or self.generate_join_code()
         self.autosave_slots: int = _clamp_slots(autosave_slots)
+        self.save_limit: int = clamp_save_limit(save_limit)
         self._principals: dict[str, Principal] = {}
         # In-memory only: credentials die with the process, so a revocation list on disk
         # would only ever list ids that can no longer be presented.
@@ -443,6 +447,7 @@ class SessionRoster:
             "protocol_version": PROTOCOL_VERSION,
             "join_code":      self.join_code,
             "autosave_slots": self.autosave_slots,
+            "save_limit":     self.save_limit,
             "principals": [
                 {"id": p.id,
                  "display_name": p.display_name,
@@ -458,7 +463,8 @@ class SessionRoster:
     @classmethod
     def from_dict(cls, doc: dict) -> "SessionRoster":
         r = cls(join_code=str(doc.get("join_code") or "") or None,
-                autosave_slots=int(doc.get("autosave_slots", DEFAULT_AUTOSAVE_SLOTS)))
+                autosave_slots=int(doc.get("autosave_slots", DEFAULT_AUTOSAVE_SLOTS)),
+                save_limit=doc.get("save_limit", DEFAULT_SAVE_LIMIT))
         for rec in doc.get("principals", []):
             if not isinstance(rec, dict):
                 continue
@@ -499,6 +505,14 @@ class SessionRoster:
         if not isinstance(doc, dict):
             return cls()
         return cls.from_dict(doc)
+
+
+def clamp_save_limit(n) -> int:
+    """At least one; anything unreadable is the default."""
+    try:
+        return max(1, int(n))
+    except (TypeError, ValueError):
+        return DEFAULT_SAVE_LIMIT
 
 
 def _clamp_slots(n: int) -> int:
