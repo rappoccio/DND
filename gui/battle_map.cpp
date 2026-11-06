@@ -736,20 +736,8 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
                 // zone boundary (entering, or leaving in reverse mode). Blocks the directed edge.
                 if (movementWardBlocks(idx, cell, next)) continue;
 
-                int step_cost = (dr != 0 && dc != 0) ? 10 : 5;
-
-                // Apply crawling penalty if prone (2x cost in normal terrain, 3x in difficult)
-                if (pa.agent->getConditions().prone) {
-                    double terrain_mult = getTerrainMultiplierFor(next, type, idx);
-                    if (terrain_mult < 1.0) {  // difficult terrain (multiplier < 1)
-                        step_cost = static_cast<int>(step_cost * 3);
-                    } else {
-                        step_cost = step_cost * 2;
-                    }
-                }
-
-                double terrain_mult = getTerrainMultiplierFor(next, type, idx);
-                int new_cost = cost + static_cast<int>(step_cost / terrain_mult);
+                // Prone crawling and terrain both priced by stepCostFor (shared with the overlay).
+                int new_cost = cost + stepCostFor(next, (dr != 0 && dc != 0) ? 10 : 5, type, idx);
 
                 if (!dist.count(next) || dist[next] > new_cost) {
                     dist[next] = new_cost;
@@ -1108,6 +1096,16 @@ bool BattleMap::movementWardBlocks(int mover_idx, Cell from, Cell to) const noex
 }
 
 // Helper: Dijkstra pathfinding for path-based movement (Walk, Swim, Burrow, Jump)
+int BattleMap::stepCostFor(Cell next, int baseStep, MovementType type, int mover_idx) const noexcept
+{
+    int cost = static_cast<int>(baseStep / getTerrainMultiplierFor(next, type, mover_idx));
+    if (type != MovementType::Fly && mover_idx >= 0 &&
+        mover_idx < static_cast<int>(placedAgents_.size()) &&
+        placedAgents_[static_cast<std::size_t>(mover_idx)].agent->getConditions().prone)
+        cost += baseStep;   // crawling: 1 extra foot per foot
+    return cost;
+}
+
 CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
                                      int speedFt, MovementType type,
                                      int mover_idx) const
@@ -1147,10 +1145,8 @@ CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
                 // set — walk highlight and fly-destination validation — never offers a warded step.
                 if (movementWardBlocks(mover_idx, cell, next))  continue;
 
-                // Orthogonal: 5 ft; Diagonal: 10 ft
-                int step_cost = (dr != 0 && dc != 0) ? 10 : 5;
-                double terrain_mult = getTerrainMultiplierFor(next, type, mover_idx);
-                int new_cost = cost + static_cast<int>(step_cost / terrain_mult);
+                // Orthogonal: 5 ft; Diagonal: 10 ft — terrain and Prone crawling as moveAgent charges.
+                int new_cost = cost + stepCostFor(next, (dr != 0 && dc != 0) ? 10 : 5, type, mover_idx);
                 if (new_cost > speedFt) continue;
 
                 if (!dist.count(next) || dist[next] > new_cost) {

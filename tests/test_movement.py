@@ -222,6 +222,52 @@ def test_standing_up():
     assert after == initial - 15
     print("✅ Standing up costs movement (half speed)")
 
+def _set_prone(engine, bm, idx, prone):
+    cond = engine.get_agent_conditions(bm, idx)
+    cond.prone = prone
+    engine.set_agent_conditions(bm, idx, cond)
+
+def test_prone_reach_matches_crawl_cost():
+    """A prone mover's reachable cells are priced as crawling (2x), the same as moveAgent charges."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Crawler", 5, 5))
+    origin = bm.placed_agents[idx].origin
+    W = rpg.MovementType.Walk
+    key = lambda cells: sorted((c.col, c.row) for c in cells)
+
+    standing_half = key(bm.reachable_cells(origin, 1, 15, W, idx))
+    standing_full = key(bm.reachable_cells(origin, 1, 30, W, idx))
+    _set_prone(engine, bm, idx, True)
+    prone_full = key(bm.reachable_cells(origin, 1, 30, W, idx))
+    assert prone_full == standing_half, "prone reach with 30 ft should equal standing reach with 15 ft"
+    assert len(prone_full) < len(standing_full)
+
+    # The overlay must not offer a cell the move refuses: a cell only the standing reach covers
+    # is out of a prone mover's 30 ft.
+    engine.begin_turn(bm, idx)
+    _set_prone(engine, bm, idx, True)
+    beyond = next(c for c in standing_full if c not in prone_full)
+    assert not engine.move_agent(bm, idx, rpg.Cell(*beyond), W), f"prone move to {beyond} should be refused"
+    print("✅ Prone reachable cells use the crawling cost")
+
+def test_prone_difficult_terrain_triples():
+    """Crawling through difficult terrain costs 3x (one extra foot each), not 6x."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Crawler", 5, 5))
+    origin = bm.placed_agents[idx].origin
+    W = rpg.MovementType.Walk
+    # Find an open orthogonal neighbour and make it difficult terrain.
+    open1 = {(c.col, c.row) for c in bm.reachable_cells(origin, 1, 5, W, idx)}
+    nb = next((origin.col + dc, origin.row + dr) for dc, dr in ((1, 0), (-1, 0), (0, 1), (0, -1))
+              if (origin.col + dc, origin.row + dr) in open1)
+    bm.set_terrain_multiplier(rpg.Cell(*nb), 0.5)
+    _set_prone(engine, bm, idx, True)
+    at = lambda ft: nb in {(c.col, c.row) for c in bm.reachable_cells(origin, 1, ft, W, idx)}
+    assert at(15) and not at(14), "a prone step into difficult terrain should cost exactly 15 ft"
+    print("✅ Prone + difficult terrain costs 3x")
+
 def test_multiple_movement_types():
     """Test that agents can use different movement types."""
     bm = setup_battle_map()
@@ -257,6 +303,8 @@ if __name__ == "__main__":
         test_disengage_action,
         test_dash_action,
         test_standing_up,
+        test_prone_reach_matches_crawl_cost,
+        test_prone_difficult_terrain_triples,
         test_multiple_movement_types,
     ]
 

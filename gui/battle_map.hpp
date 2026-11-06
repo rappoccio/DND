@@ -973,6 +973,13 @@ private:
     // True iff an agent of `size` placed at `origin` lies entirely within the grid.
     [[nodiscard]] bool inBounds(Cell origin, int size) const noexcept;
 
+    // Feet one step into `next` costs agent `mover_idx`: `baseStep` (5 orthogonal, 10 diagonal)
+    // scaled by the cell's terrain, plus `baseStep` again while the mover is Prone and crawling
+    // (every non-Fly type). Crawling and difficult terrain each add a foot per foot, so a prone
+    // step costs 2x in clear terrain and 3x in difficult. moveAgent and pathfindMovement both
+    // price steps here, so the reachable-cell overlay cannot offer a cell the move refuses.
+    [[nodiscard]] int stepCostFor(Cell next, int baseStep, MovementType type, int mover_idx) const noexcept;
+
     // Dijkstra pathfinding for path-based movement (Walk, Swim, Burrow, Jump).
     [[nodiscard]] CellSet pathfindMovement(Cell origin, int tokenSize,
                                            int speedFt, MovementType type,

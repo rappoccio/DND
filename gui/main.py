@@ -54,7 +54,7 @@ from helpers import (
     _item_to_dict, _dict_to_item,
     _condition_to_dict, _dict_to_condition,
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
-    compute_summon_loadout, edge_key, edge_from_key, door_touch_cells,
+    compute_summon_loadout, edge_key, edge_from_key, door_touch_cells, _weapon_slot_is_empty,
 )
 from dialogs import FileBrowser, StatsDialog, MobSelectionDialog, ContextMenu, SpellGridMenu, SpellSelectionDialog, ArmorSelectionDialog, WeaponSelectionDialog, ItemSelectionDialog, ArmorDialog, WeaponsDialog, ItemsDialog, GENERAL_FEAT_NAMES, EPIC_BOON_FEAT_NAMES, ElementPickerDialog, TeamPickerDialog, GridSpanDialog, NamePromptDialog, WallDetectionDialog, NpcAutomationDialog
 from dialogs_conditions import ConditionsDialog
@@ -78,7 +78,7 @@ import autosave
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
-from net.mapimg import MapImageCache
+from net.mapimg import MapImageCache, FOG_OVERLAP
 from net.commands import CommandQueue
 from net.events import EventStream, outcome as net_outcome
 from net.submit import SubmitLog
@@ -796,6 +796,7 @@ class App:
         self.placement_config: rpg.AgentConfig | None = None  # Config for agent being placed
         self.placement_cell: rpg.Cell | None = None  # Current cell under mouse
         self.placement_valid = False  # Is current placement location valid?
+        self._pending_import_agent: dict | None = None  # D&D Beyond record awaiting its click
         self._pc_name_input: TextInput | None = None  # Name input for new PC
 
         # ── Selection state ───────────────────────────────────────────────
@@ -824,6 +825,12 @@ class App:
         # flips "Fog: ON" (btn_toggle_fog) when running a party through. Generate Dungeon
         # turns it on for you (_set_fog) since a generated dungeon is meant to be explored.
         self.show_fog = False
+        # Ask before a save or a big operation writes over an existing file
+        # (_confirm_overwrite). Off until run() starts the real loop, so a headless App —
+        # every test — keeps writing at once.
+        self.confirm_overwrites = False
+        # Set by _request_quit: "save" (strip temporary terrain and save it) or "nosave".
+        self._quit_requested: str | None = None
         # M4b B-7: the DM screen's "Animate: ON/OFF". Off lands every move at once; bubbles,
         # flashes and HP timing still play. Session-only, like the browser's own checkbox.
         self.animate_moves = True
@@ -850,6 +857,7 @@ class App:
         # ── Combat widget state ───────────────────────────────────────────
         self.combat_active        = False
         self.combat_paused        = False  # True when paused between turns
+        self._seen_armed          = set()  # agent idxs seen holding a droppable weapon this fight
         self.initiative_order     = []    # list[rpg.InitiativeEntry], high→low
         self.initiative_item_rects = []  # list[pygame.Rect], clickable areas for initiative items
         self.on_deck_item_rects   = []    # list[(pygame.Rect, name)], clickable Deploy rows for On Deck groups
@@ -1248,10 +1256,10 @@ class App:
                 continue
             if e.side == rpg.EdgeSide.East:
                 x = vlines[c + 1]
-                pygame.draw.line(self.overlay, wall_color, (x, hlines[rw]), (x, hlines[rw + 1]), 4)
+                pygame.draw.line(self.overlay, wall_color, (x, hlines[rw]), (x, hlines[rw + 1]), 7)
             else:
                 y = hlines[rw + 1]
-                pygame.draw.line(self.overlay, wall_color, (vlines[c], y), (vlines[c + 1], y), 4)
+                pygame.draw.line(self.overlay, wall_color, (vlines[c], y), (vlines[c + 1], y), 7)
 
     # ─────────────────────────────────────────────────────────────────────
     #  Zoom (Ctrl/Cmd + wheel, +/- keys, 0 to reset)
@@ -1511,7 +1519,7 @@ class App:
         self.btn_lighting = Button(pygame.Rect(px, light_y, W, B), "Lighting…",
                                    (120, 100, 80), (160, 130, 110), font=self.font_md)
         # DM-mode: carve a fresh terrain floor plan AND fill its rooms with a
-        # progressive-difficulty encounter in one shot ("New terrain: OFF" in the
+        # progressive-difficulty encounter in one shot ("Terrain: Keep (mobs only)" in the
         # dialog populates the existing terrain instead — the old two-step via
         # Terrain… → Generate…, which still works for hand-made maps).
         gen_y = light_y + B + self._BTN_GAP
@@ -2105,6 +2113,7 @@ class App:
             self.current_mob_grid_size = 1
 
         # Enter placement mode immediately
+        self._pending_import_agent = None
         cfg = rpg.AgentConfig()
         cfg.name        = mob_name
         cfg.sprite_path = self._get_mob_sprite_path(mob_name)
@@ -2120,6 +2129,7 @@ class App:
         """Callback when a PC class is selected."""
         self.selected_mob_stats = None  # No mob stats for PCs
         self.current_mob_grid_size = 1
+        self._pending_import_agent = None
 
         # Setup PC config
         cfg = rpg.AgentConfig()
@@ -2449,6 +2459,15 @@ class App:
                 self._sync_roster_tokens()
 
     def _on_save_path_chosen(self, path: str):
+        if self.dungeon is not None and self.dungeon_page is not None:
+            targets = [path]
+        else:
+            d, base = self._sidecar_base(path)
+            targets = [path, os.path.join(d, base + "_terrain.json")]
+        self._confirm_overwrite(targets, "Save Encounter",
+                                lambda: self._save_encounter_as(path))
+
+    def _save_encounter_as(self, path: str):
         # A dungeon's pages own their files; Save As there writes one multi-floor encounter
         # file instead of re-pointing the page at a new base (see _save_dungeon_encounter).
         if self.dungeon is not None and self.dungeon_page is not None:
@@ -2582,12 +2601,43 @@ class App:
                         return col + dc, row + dr
         return None
 
+    @staticmethod
+    def _clear_page_mobs(doc: dict, incoming_names: set) -> int:
+        """Load Encounter replaces a page's mobs: drop every NPC from the page's creature
+        ``doc``, plus any creature sharing a name with one the file brings (a PC saved in
+        the encounter replaces its copy instead of doubling). Other PCs stay. Conditions
+        on a dropped creature, or cast by one, go with it; the rest are re-indexed.
+        Returns how many creatures were dropped."""
+        agents = doc.get("agents") or []
+        keep = [i for i, a in enumerate(agents)
+                if not (isinstance(a, dict) and (a.get("is_npc") or a.get("name") in incoming_names))]
+        remap = {old: new for new, old in enumerate(keep)}
+        conds = []
+        for cd in doc.get("active_conditions") or []:
+            if not isinstance(cd, dict):
+                continue
+            target = remap.get(int(cd.get("agent_idx", -1)))
+            caster = int(cd.get("caster_idx", -1))
+            if target is None or (caster >= 0 and caster not in remap):
+                continue
+            cd = dict(cd)
+            cd["agent_idx"] = target
+            if caster >= 0:
+                cd["caster_idx"] = remap[caster]
+            conds.append(cd)
+        doc["agents"] = [agents[i] for i in keep]
+        doc["active_conditions"] = conds
+        return len(agents) - len(keep)
+
     def _import_encounter_onto_page(self, path: str):
-        """Load Encounter on a dungeon: add the file's creatures, map items and conditions
-        to the pages' own encounters. A record tagged with a page goes to that page; an
-        untagged one (a single-map encounter) goes to the page that is showing; one
-        tagged with a page this dungeon lacks is skipped. Every page keeps its terrain,
-        grid, lighting, effects and file names, and the chosen file is never written.
+        """Load Encounter on a dungeon: replace the pages' mobs with the file's creatures,
+        and add its map items and conditions. A record tagged with a page goes to that
+        page; an untagged one (a single-map encounter) goes to the page that is showing;
+        one tagged with a page this dungeon lacks is skipped. On each page that receives
+        creatures, its NPCs and any same-named creature are cleared first
+        (_clear_page_mobs), so loading an encounter twice doesn't double it. Every page
+        keeps its terrain, grid, lighting, effects and file names, and the chosen file is
+        never written.
 
         On the page that is showing, each creature keeps its saved cell when it is free,
         else takes the nearest free cell (an off-grid cell is pulled onto the grid
@@ -2639,7 +2689,7 @@ class App:
                 items_by_page.setdefault(pid, []).append(clean(m))
 
         new_index: dict[int, tuple[str, int]] = {}  # source index -> (page, index there)
-        added = dropped = 0
+        added = dropped = cleared = 0
         docs: dict[str, dict] = {}
 
         # The page that is showing: persist it, merge with live terrain, reload below.
@@ -2653,6 +2703,14 @@ class App:
             doc.setdefault("agents", [])
             doc.setdefault("map_items", [])
             docs[pid] = doc
+            if pid in by_page:
+                n = self._clear_page_mobs(doc, {a.get("name") for _, a in by_page[pid]})
+                cleared += n
+                if n and pid == here:
+                    # The showing page places against the live map: take the cleared mobs
+                    # off it first, or they still hold their cells.
+                    self.store.write_creatures(doc, pages[pid])
+                    self._load_agents()
             agents = doc["agents"]
             if pid == here:
                 reserved: set[tuple[int, int]] = set()
@@ -2715,6 +2773,8 @@ class App:
         hit = sorted({pid for pid, _ in new_index.values()})
         msg = f"Added {added} creature(s) from {os.path.basename(path)}"
         msg += f" to {hit[0]}" if len(hit) == 1 else f" on {len(hit)} pages"
+        if cleared:
+            msg += f", replacing {cleared}"
         if dropped:
             msg += f" ({dropped} didn't fit)"
         if unknown:
@@ -3003,7 +3063,9 @@ class App:
 
     def _open_terrain_editor(self):
         # The terrain editor works on the fit-scale map_surf (its regions are stored in
-        # fit-scale px) and zooms/pans with a view of its own, so hand it fit scale.
+        # fit-scale px) and zooms/pans with a view of its own, so hand it fit scale and
+        # open that view where the map's was.
+        view = (self.view_zoom, (self.pan_x, self.pan_y))
         self._reset_zoom()
         # The editor edits self._ladders in place; snapshot it so the close can pair the
         # ladders placed / removed this session with their other ends (_pair_ladders).
@@ -3039,6 +3101,7 @@ class App:
                                      self.name_prompt.show(text, commit, title=title,
                                                            allow_empty=allow_empty),
                                  grid_scale=self.base_map_scale)
+        self.terrain_editor.set_view(*view)
 
     def _close_terrain_editor(self):
         """Esc in the terrain editor: take its edits, save them, give new / removed
@@ -3064,6 +3127,10 @@ class App:
             self._dungeon_save_manifest()
         self._apply_terrain_to_battle_map()
         self.terrain_editor.close()
+        # The map comes back where the editor's view left it.
+        self._apply_zoom(self.terrain_editor.view_zoom)
+        self.pan_x, self.pan_y = self.terrain_editor.view_pan
+        self._clamp_pan()
         # Recalculate reach and attack overlays if an agent is selected
         if self.selected_idx >= 0:
             self._update_reach()
@@ -3232,6 +3299,10 @@ class App:
                                  "This map has no grid — Set Grid… first, so the page",
                                  "has a footprint on the global (X, Y, Z) grid."])
             return
+        self._confirm_overwrite([dungeon_path_for(self._save_path)], "New Dungeon",
+                                lambda: self._dungeon_new_write(cols, rows))
+
+    def _dungeon_new_write(self, cols, rows):
         # Set the manifest path first: page refs are stored relative to its folder.
         self._dungeon_manifest_path = dungeon_path_for(self._save_path)
         page = MapPage(id=self._unique_page_id(self._dungeon_stem()),
@@ -3242,6 +3313,51 @@ class App:
         self.dungeon_page = page          # already loaded — no page switch needed
         self._apply_page_origin(page)
         self._dungeon_save()
+
+    # ── Confirm before overwriting ───────────────────────────────────────────
+    def _confirm_overwrite(self, paths, what: str, proceed, *, anchor=None, on_cancel=None):
+        """Run ``proceed()`` now if none of ``paths`` exists yet (or confirmation is
+        off); otherwise ask the DM first — "Overwrite" runs it, Cancel runs
+        ``on_cancel`` and writes nothing."""
+        existing = sorted({p for p in paths if p and os.path.exists(p)})
+        if not existing or not self.confirm_overwrites:
+            proceed()
+            return
+        names = ", ".join(os.path.basename(p) for p in existing[:3])
+        if len(existing) > 3:
+            names += f" and {len(existing) - 3} more"
+        cancel = on_cancel or (lambda: None)
+        self._ask_dm("action", f"{what}: overwrite {names}?",
+                     [("Overwrite", proceed), ("Cancel", cancel)],
+                     anchor=anchor or pygame.mouse.get_pos(), on_cancel=cancel)
+
+    def _request_quit(self, anchor=None):
+        """Quit button / window close. Quitting strips temporary terrain and saves the
+        terrain file; when that file exists, ask first (save, don't save, or stay)."""
+        if self._quit_requested is not None:
+            return
+        if not (self.confirm_overwrites and os.path.exists(self._terrain_path)):
+            self._quit_requested = "save"
+            return
+
+        def choose(v):
+            def _set():
+                self._quit_requested = v
+            return _set
+        self._ask_dm("action", f"Quit: save terrain to {os.path.basename(self._terrain_path)}?",
+                     [("Save and quit", choose("save")),
+                      ("Quit without saving", choose("nosave")),
+                      ("Cancel", lambda: None)],
+                     anchor=anchor or pygame.mouse.get_pos())
+
+    def _dungeon_save_confirmed(self, anchor=None):
+        """Dungeon → Save Dungeon: _dungeon_save, after asking before overwriting."""
+        if self.dungeon is None:
+            self._dungeon_save()
+            return
+        path = self._dungeon_manifest_path or dungeon_path_for(self._save_path)
+        self._confirm_overwrite([path, self._save_path, self._terrain_path], "Save Dungeon",
+                                self._dungeon_save, anchor=anchor)
 
     def _dungeon_save(self):
         """Write the manifest, plus the active page's scene (agents + terrain) so the
@@ -3919,8 +4035,10 @@ class App:
     def _on_save_terrain_chosen(self, path: str):
         """Export the current terrain to a chosen _terrain.json (does not change the
         active encounter base — pure export so terrain can be reused across maps)."""
-        self._save_terrain(path)
-        self._flash_status(f"Terrain saved: {os.path.basename(path)}")
+        def write():
+            self._save_terrain(path)
+            self._flash_status(f"Terrain saved: {os.path.basename(path)}")
+        self._confirm_overwrite([path], "Save Terrain", write)
 
     def _on_load_terrain_chosen(self, path: str):
         """Import terrain from a chosen _terrain.json into the current scene (it then
@@ -4151,6 +4269,8 @@ class App:
             "npc_automated":   self.bm.is_agent_npc_automated(idx),
             "npc_auto_diff":   self.bm.get_agent_npc_automation_difficulty(idx),
             "npc_auto_strat":  self.bm.get_agent_npc_automation_strategy(idx),
+            # Team, so a pasted mob fights on its source's side.
+            "faction":         self.bm.get_agent_faction(idx),
         }
         self._flash_status(f"Copied {pt.name} — Ctrl+V to paste")
 
@@ -4204,6 +4324,8 @@ class App:
         # Re-key spell rendering metadata onto the pasted agent.
         for sp_idx, m in clip["spell_meta"].items():
             self._spell_metadata[(new_idx, sp_idx)] = m
+
+        self.bm.set_agent_faction(new_idx, int(clip.get("faction", 0)))
 
         # Carry over NPC automation flags so the copy self-drives like its source.
         if clip.get("npc_automated"):
@@ -4504,17 +4626,11 @@ class App:
                 current_weapons[0] = self._create_alter_self_claws_weapon()
                 self.combat.set_agent_weapons(self.bm, agent_idx, current_weapons)
 
-        # Pact of the Blade (invocation 13): conjure the pact weapon into the MAIN-HAND slot (0).
-        # Weapons are a fixed 3-slot array (main/off/ranged); the pact weapon is the Warlock's
-        # primary armament, so it always takes the main hand. pact_weapon=True drives the CHA
-        # attack/damage + the pact-weapon rider gates.
+        # Pact of the Blade (invocation 13): the MAIN-HAND weapon (slot 0) becomes the pact weapon.
+        # pact_weapon=True drives the CHA attack/damage + the pact-weapon rider gates.
         if "Warlock" in cl_map and 13 in (eldritch_invocations or []):
             current_weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
-            # Re-conjure when slot 0 isn't a proper pact blade. Guarding on the flag (not just the
-            # name) self-heals legacy saves where "PactBlade" round-tripped without pact_weapon=True.
-            if current_weapons and not (current_weapons[0].name == "PactBlade"
-                                        and current_weapons[0].pact_weapon):
-                current_weapons[0] = self._create_pact_blade_weapon()
+            if self._bond_pact_weapon(current_weapons):
                 self.combat.set_agent_weapons(self.bm, agent_idx, current_weapons)
 
         # Soulknife Rogue (L3+): manifest Psychic Blades — a 1d6 Psychic finesse/thrown blade in the
@@ -4884,6 +5000,7 @@ class App:
         self.combat.apply_superior_inspiration(self.bm)
         self.initiative_order    = order
         self.combat_active       = True
+        self._seen_armed         = set()
         self.combat_paused       = False
         self.show_terrain        = True   # always show terrain during combat
         self.safe_target_edit_idx = -1  # exit any safe-target editing when combat starts
@@ -5072,6 +5189,7 @@ class App:
         self.move_remaining_burrow = 0
         self.move_type             = rpg.MovementType.Walk
         self.combat_active         = False
+        self._seen_armed           = set()
         self.combat_paused         = False
         self.initiative_order    = []
         self.initiative_scroll_offset = 0  # reset scroll when combat ends
@@ -6105,8 +6223,9 @@ class App:
         weapon = weapons[slot_idx]
         if not weapon.name or weapon.name == "Unnamed":
             return
-        # Permanently-armed weapons (natural attacks, conjured/innate gear) cannot be dropped.
-        if weapon.permanently_armed:
+        # Natural/innate attacks (permanently_armed, Unarmed, a generic "Melee (Slashing)"
+        # stat-block attack) cannot be dropped.
+        if not weapon.droppable():
             self._combat_log_add(f"{self.bm.placed_agents[cur_idx].name} can't drop {weapon.name}.")
             return
         # Sprite: the Weapon now carries its own (so an engine-side drop — a THROW — lands with the
@@ -6140,9 +6259,22 @@ class App:
         name = item.weapon.name or "weapon"
 
         slot = self._find_pickup_slot(item.weapon, weapons)
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
+        pact = stats.has_class(rpg.CharacterClass.Warlock) and stats.has_invocation(13)
+        # Pact of the Blade: the pact weapon goes back in the main hand, dismissing a PactBlade
+        # conjured there meanwhile (a reload re-conjures one into the hand the weapon fell from).
+        if pact and item.weapon.pact_weapon and weapons and weapons[0].name == "PactBlade":
+            slot = 0
         if not self.bm.pick_up_item(item.id, agent_idx, slot):
             self._combat_log_add(f"{agent.name} can't pick up {name}.")
             return
+
+        # A weapon taken into the main hand is the pact weapon again (also repairs items saved
+        # before map items kept pact_weapon).
+        if slot == 0 and pact:
+            weapons = list(self.combat.get_agent_weapons(self.bm, agent_idx))
+            if self._bond_pact_weapon(weapons):
+                self.combat.set_agent_weapons(self.bm, agent_idx, weapons)
 
         held = next((w.quantity for w in self.combat.get_agent_weapons(self.bm, agent_idx)
                      if w.name == item.weapon.name and w.thrown), 0)
@@ -7962,6 +8094,23 @@ class App:
         dmg_roll.bonus = 0
         claws.physical_damage_types = [dmg_roll]
         return claws
+
+    def _bond_pact_weapon(self, weapons):
+        """Pact of the Blade (invocation 13): make the main-hand weapon (slot 0) the pact weapon,
+        in place. A real melee weapon there is bonded — it keeps its name and dice and gains
+        pact_weapon=True (CHA attack/damage, Eldritch Smite, Lifedrinker). With no melee weapon
+        there (empty "Unarmed" slot, Alter Self claws, a ranged weapon), the PactBlade is conjured
+        into it instead. Returns True if `weapons` changed. Guarding on the flag (not just the
+        name) self-heals legacy saves whose "PactBlade" lost pact_weapon=True on round-trip."""
+        if not weapons or weapons[0].pact_weapon:
+            return False
+        w = weapons[0]
+        if (not _weapon_slot_is_empty(w) and w.name != "AlterSelfClaws"
+                and w.type == rpg.WeaponType.Melee):
+            w.pact_weapon = True
+        else:
+            weapons[0] = self._create_pact_blade_weapon()
+        return True
 
     def _create_pact_blade_weapon(self):
         """Pact of the Blade (invocation 13): the conjured pact weapon — a 1d8 slashing martial
@@ -12992,6 +13141,11 @@ class App:
                 "col":         item.cell.col,
                 "row":         item.cell.row,
                 "weapon_name": item.weapon.name,
+                # The full weapon, not just its name: a catalog lookup by name loses per-instance
+                # state — a bonded pact weapon's pact_weapon flag (a slept Warlock's dropped
+                # Longsword came back swinging with STR/DEX), thrown quantity, and conjured weapons
+                # (PactBlade) that aren't in weapons.json at all.
+                "weapon":      _weapon_to_dict(item.weapon),
                 "sprite_path": item.sprite_path,
             })
         # Serialize the live active-condition list (durations, save timers, delayed effects, and
@@ -13157,6 +13311,7 @@ class App:
             order.append(entry)
         self.initiative_order = order
         self.combat_active    = bool(doc.get("combat_active", False)) and bool(order)
+        self._seen_armed      = set()
         self.combat_paused    = bool(doc.get("combat_paused", False))
         # Absent in a sidecar written before D-M5-7: keep the session's value. An unknown
         # value is refused the same way, rather than trusted as a number of seconds.
@@ -13224,23 +13379,6 @@ class App:
         except Exception:                            # noqa: BLE001 — sidecar is best-effort
             pass
 
-        # Persist current placements, append the new agent at a free column, reload.
-        self._save_agents()
-        try:
-            doc = self.store.creatures() or {"agents": [], "map_items": []}
-        except ValueError:
-            doc = {"agents": [], "map_items": []}
-        agents = doc.setdefault("agents", [])
-        occupied = {(a.get("col"), a.get("row")) for a in agents}
-        cols, rows = self.bm.grid_cols, self.bm.grid_rows
-        spot = next(((c, r) for c in range(cols) for r in range(rows)
-                     if (c, r) not in occupied), (0, 0))
-        agent["col"], agent["row"] = spot
-        agents.append(agent)
-        doc.setdefault("map_items", [])
-        self.store.write_creatures(doc)
-        self._load_agents()
-
         sub = ""
         for k, v in agent.items():
             if k.startswith("agent_") and k.endswith(("subclass", "circle", "oath")) and v != "NONE":
@@ -13249,13 +13387,42 @@ class App:
         lines = [f"Imported {agent['name']}",
                  f"{agent['agent_class']} {agent['agent_char_level']}{sub}   "
                  f"HP {agent['stats']['hp_max']}   spells {len(agent['spell_indices'])}",
-                 "Placed at the right edge — drag it into position, set its team via right-click."]
+                 "Click on the map to place it (Esc cancels); set its team via right-click."]
         if warnings:
             lines.append(f"{len(warnings)} note(s) (best-effort import):")
             lines.extend("• " + w[:70] for w in warnings[:8])
             if len(warnings) > 8:
                 lines.append(f"  …and {len(warnings) - 8} more (see console).")
         self._modal_message(lines)
+
+        # Float it at the cursor through the ordinary placement mode; the click lands in
+        # _place_imported_agent, which writes the full record.
+        cfg = rpg.AgentConfig()
+        cfg.name        = agent["name"]
+        cfg.sprite_path = ""
+        cfg.size        = agent.get("size", 1) or 1
+        self.selected_mob_stats = None
+        self._pending_pc_class = None
+        self._pending_import_agent = agent
+        self.placement_mode_active = True
+        self.placement_config = cfg
+        self.placement_cell = None
+        self.placement_valid = False
+
+    def _place_imported_agent(self, agent: dict, cell) -> None:
+        """Drop an imported D&D Beyond record at ``cell``: persist the current placements,
+        append the record to the scene's creatures and reload, so every field the importer
+        derived goes through the one loader."""
+        self._save_agents()
+        try:
+            doc = self.store.creatures() or {"agents": [], "map_items": []}
+        except ValueError:
+            doc = {"agents": [], "map_items": []}
+        agent["col"], agent["row"] = cell.col, cell.row
+        doc.setdefault("agents", []).append(agent)
+        doc.setdefault("map_items", [])
+        self.store.write_creatures(doc)
+        self._load_agents()
 
     def _modal_text_prompt(self, title: str, prompt: str) -> str | None:
         """Blocking single-line text prompt. Returns the entered text, or None on cancel."""
@@ -13741,6 +13908,7 @@ class App:
                         self.bm.clear_walls()
                         # The boss finale goes in the top floor's spine tile.
                         is_boss_tile = (z == num_floors - 1 and is_spine)
+                        is_entry = (z == 0 and is_spine)
                         ordered_rooms, results, _ = eg.build_dungeon(
                             self.bm, rpg, {"rooms": rooms_meta}, bestiary,
                             cr=encounter_params["cr"],
@@ -13752,21 +13920,21 @@ class App:
                             automation_level=encounter_params.get("automation", 4),
                             rng=rng, place=True,
                             filter_types=encounter_params.get("types"),
-                            filter_languages=encounter_params.get("languages"))
+                            filter_languages=encounter_params.get("languages"),
+                            groups=encounter_params.get("groups") or None,
+                            reserve_entrance=is_entry)
                         # Leave the ENTRY tile's entrance (floor 0 spine, room 0) empty so the
                         # party has a clear staging room to Load PCs into. build_dungeon returns
                         # results in room order, so results[0] is that entrance room;
                         # ordered_rooms[0] is its exact (post-filter) cells — recorded so Load
                         # PCs matches it. Every other tile is fully populated.
-                        is_entry = (z == 0 and is_spine)
                         keep = results[1:] if (is_entry and len(results) > 1) else results
                         if is_entry and ordered_rooms:
                             staging_cells = ordered_rooms[0]
                         agents = [a for res in keep for a in res["agents"]]
                         total_mobs += len(agents)
 
-                    suffix = "" if is_spine else f"_{mx}_{my}"
-                    page_base = os.path.join(self._map_dir, f"{base}_f{z}{suffix}")
+                    page_base = self._multifloor_page_base(base, z, mx, my)
                     ter_path = page_base + "_terrain.json"
                     agt_path = page_base + "_agents.json"
                     self._write_generated_terrain(ter_path, regions, rooms_meta, t["doors"],
@@ -13881,6 +14049,14 @@ class App:
         params = self._modal_generate_terrain()
         if not params:
             return
+        multi = (params.get("floors", 1) > 1 or params.get("maps_x", 1) > 1
+                 or params.get("maps_y", 1) > 1)
+        self._confirm_overwrite(self._generation_targets(params, multi=multi),
+                                "Generate Terrain",
+                                lambda: self._generate_terrain_with(params, cols, rows))
+
+    def _generate_terrain_with(self, params, cols, rows):
+        """_on_generate_terrain once any overwrite is confirmed."""
 
         # Lazy import: repo/tools is not on sys.path for the GUI process.
         gui_dir = os.path.dirname(os.path.abspath(__file__))
@@ -13921,6 +14097,39 @@ class App:
             f"{len(regions)} wall rects on a {cols}×{rows} grid",
             "Now press Generate Dungeon to populate the rooms.",
         ])
+
+    def _multifloor_page_base(self, base, z, mx, my) -> str:
+        """'<map dir>/<base>_f<z>[_<mx>_<my>]': one generated page's file stem. The (0, 0)
+        tile of a floor is its spine and carries no tile suffix."""
+        suffix = "" if (mx, my) == (0, 0) else f"_{mx}_{my}"
+        return os.path.join(self._map_dir, f"{base}_f{z}{suffix}")
+
+    def _generation_targets(self, params, *, multi: bool, agents_path=None) -> list:
+        """The files a generator run will write, for _confirm_overwrite: every page's
+        terrain + agents and the manifest for a multi-map run, else this map's terrain
+        (plus ``agents_path`` when the run writes an encounter)."""
+        if not multi:
+            return [self._terrain_path, agents_path]
+        base = self._generated_base()
+        maps_x = max(1, min(4, int(params.get("maps_x", 1))))
+        maps_y = max(1, min(4, int(params.get("maps_y", 1))))
+        out = [os.path.join(self._map_dir, f"{base}.dungeon.json")]
+        for z in range(int(params.get("floors", 1))):
+            for my in range(maps_y):
+                for mx in range(maps_x):
+                    stem = self._multifloor_page_base(base, z, mx, my)
+                    out += [stem + "_terrain.json", stem + "_agents.json"]
+        return out
+
+    def _dungeon_out_path(self) -> str:
+        """Where Generate Dungeon writes a single map's encounter: the page's own file in
+        an open dungeon, else '<base>_dungeon_agents.json' beside the map."""
+        if self.dungeon is not None and self._save_path:
+            return self._save_path
+        base = os.path.splitext(os.path.basename(self._save_path or "generated"))[0]
+        if base.endswith("_agents"):
+            base = base[:-len("_agents")]
+        return os.path.join(self._map_dir, base + "_dungeon_agents.json")
 
     def _generated_base(self) -> str:
         """Base filename stem for generator output next to the map (strips a trailing
@@ -14036,7 +14245,7 @@ class App:
         cancel. The start/peak difficulties are the endpoints of the per-room
         category-weight ramp; boss forces a category-E encounter into the deepest
         room. carve=True (the default) carves a fresh terrain floor plan first and
-        populates exactly those rooms; OFF populates the map's existing terrain
+        populates exactly those rooms; "Keep (mobs only)" populates the map's existing terrain
         (the old Generate Terrain -> Generate Dungeon two-step)."""
         DIFFS = ["Easy", "Medium", "Hard"]
 
@@ -14055,7 +14264,7 @@ class App:
             all_languages = []
 
         sw, sh = self.screen.get_size()
-        W, H = min(500, sw - 80), min(680, sh - 80)
+        W, H = min(500, sw - 80), min(720, sh - 80)
         box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
         lx = box.x + 20
         fx = box.right - 200       # field column
@@ -14072,16 +14281,22 @@ class App:
         roomsfloor_step = IntStepper(pygame.Rect(fx, y0 + 9 * row_h, fw, 30), 4, 3, 12, font=self.font_md)
         # "Each floor: N×M" — tile each floor with N (across) by M (down) maps, laid out
         # edge-to-edge and reachable via the map-paging HUD (both 1 = single map/floor).
-        nm_y = y0 + 10 * row_h
+        nm_y = y0 + 11 * row_h
         mapsx_step = IntStepper(pygame.Rect(fx,           nm_y, 82, 30), 1, 1, 4, font=self.font_md)
         mapsy_step = IntStepper(pygame.Rect(fx + fw - 82, nm_y, 82, 30), 1, 1, 4, font=self.font_md)
         # npc_automation_difficulty_level written on every mob. Level 1+ hands the strategy choice to the
         # engine's difficulty resolver (role + level at turn time; 4 = best heuristics — casters pick
         # Heal/Control/Support/AoE dynamically). Level 0 keeps the generator's fixed per-category
         # strategies (the legacy Simple/PreferRange/PreferAOE table in encounter_generator.py).
-        auto_step = IntStepper(pygame.Rect(fx, y0 + 11 * row_h, fw, 30), 4, 0, 6, font=self.font_md)
+        auto_step = IntStepper(pygame.Rect(fx, y0 + 12 * row_h, fw, 30), 4, 0, 6, font=self.font_md)
+        # How many rooms per map get a mob group (0 = every room). The entrance stays
+        # empty regardless, and a boss finale always counts as one of the groups.
+        groups_step = IntStepper(pygame.Rect(fx, y0 + 10 * row_h, fw, 30), 0, 0, 99, font=self.font_md)
         start_i, end_i, boss_on = [0], [2], [True]     # Easy -> Hard, boss on
-        carve_on = [True]   # carve a fresh floor plan (single-map; multi always carves)
+        # Carve a fresh floor plan, or keep the map's terrain and generate mobs only.
+        # A premade dungeon (manifest open) defaults to mobs only: its floors are drawn.
+        carve_on = [self.dungeon is None]
+        CARVE_TXT = {True: "New", False: "Keep (mobs only)"}
         type_selection, lang_selection = set(), set()  # multi-select for both
 
         btn_start = Button(pygame.Rect(fx, y0 + 2 * row_h, fw, 30), DIFFS[start_i[0]],
@@ -14090,7 +14305,7 @@ class App:
                            (70, 90, 120), (95, 115, 150), font=self.font_md)
         btn_boss  = Button(pygame.Rect(fx, y0 + 4 * row_h, fw, 30), "ON",
                            (60, 110, 70), (80, 140, 90), font=self.font_md)
-        btn_carve = Button(pygame.Rect(fx, y0 + 12 * row_h, fw, 30), "ON",
+        btn_carve = Button(pygame.Rect(fx, y0 + 13 * row_h, fw, 30), CARVE_TXT[carve_on[0]],
                            (60, 110, 70), (80, 140, 90), font=self.font_md)
         type_label = ["Any type"]
         btn_type = Button(pygame.Rect(fx, y0 + 6 * row_h, fw, 30), type_label[0],
@@ -14105,8 +14320,9 @@ class App:
 
         labels = ["Target CR", "Min room cells", "Start difficulty",
                   "Peak difficulty", "Boss finale", "Seed", "Mob type", "Languages",
-                  "Floors", "Rooms/map", "Each floor (N×M)", "NPC automation",
-                  "New terrain"]
+                  "Floors", "Rooms/map", "Mob groups/map (0=all)", "Each floor (N×M)",
+                  "NPC automation",
+                  "Terrain"]
         overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 170))
         while True:
@@ -14124,6 +14340,7 @@ class App:
                 mapsx_step.handle(event)
                 mapsy_step.handle(event)
                 auto_step.handle(event)
+                groups_step.handle(event)
                 if btn_start.clicked(event):
                     start_i[0] = (start_i[0] + 1) % len(DIFFS)
                     btn_start.text = DIFFS[start_i[0]]
@@ -14135,7 +14352,7 @@ class App:
                     btn_boss.text = "ON" if boss_on[0] else "OFF"
                 if btn_carve.clicked(event):
                     carve_on[0] = not carve_on[0]
-                    btn_carve.text = "ON" if carve_on[0] else "OFF"
+                    btn_carve.text = CARVE_TXT[carve_on[0]]
                 if btn_type.clicked(event):
                     self._modal_select_items("Select Mob Types", all_types, type_selection, multi_select=True)
                     if type_selection:
@@ -14174,27 +14391,31 @@ class App:
                             "floors": floors_step.value,
                             "rooms_per_floor": roomsfloor_step.value,
                             "maps_x": mapsx_step.value, "maps_y": mapsy_step.value,
-                            "automation": auto_step.value}
+                            "automation": auto_step.value,
+                            "groups": groups_step.value}
             self.screen.blit(overlay, (0, 0))
             pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
             pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
             self.screen.blit(self.font_lg.render("Generate Dungeon", True, (235, 235, 245)),
                              (lx, box.y + 18))
             for i, lab in enumerate(labels):
-                self.screen.blit(self.font_md.render(lab, True, (185, 185, 200)),
+                # Floors / Rooms/map / N×M only shape a carve; dim them when mobs only.
+                dim = not carve_on[0] and lab in ("Floors", "Rooms/map", "Each floor (N×M)")
+                self.screen.blit(self.font_md.render(lab, True,
+                                                     (110, 110, 125) if dim else (185, 185, 200)),
                                  (lx, y0 + i * row_h + 6))
             # "×" separator between the two N×M steppers.
             xt = self.font_md.render("×", True, (185, 185, 200))
             self.screen.blit(xt, (fx + fw // 2 - xt.get_width() // 2, nm_y + 6))
             for w in (cr_step, room_step, seed_inp, btn_start, btn_end, btn_boss, btn_type,
                       btn_lang, floors_step, roomsfloor_step, mapsx_step, mapsy_step,
-                      auto_step, btn_carve, gen, cancel):
+                      auto_step, groups_step, btn_carve, gen, cancel):
                 w.draw(self.screen)
             pygame.display.flip()
             self.clock.tick(60)
 
     def _on_generate_dungeon(self):
-        """DM-mode: carve a fresh terrain floor plan (unless "New terrain" is OFF),
+        """DM-mode: carve a fresh terrain floor plan (unless "Terrain" is "Keep (mobs only)"),
         then fill its rooms with one progressive-difficulty encounter — category
         weights ramp from the start to the peak difficulty as the party goes
         deeper, with a boss in the last room — and load it into the scene. One RNG
@@ -14207,6 +14428,15 @@ class App:
         params = self._modal_generate_dungeon()
         if not params:
             return
+        multi = params.get("carve", True) and (params.get("floors", 1) > 1
+                                               or params.get("maps_x", 1) > 1
+                                               or params.get("maps_y", 1) > 1)
+        self._confirm_overwrite(
+            self._generation_targets(params, multi=multi, agents_path=self._dungeon_out_path()),
+            "Generate Dungeon", lambda: self._generate_dungeon_with(params))
+
+    def _generate_dungeon_with(self, params):
+        """_on_generate_dungeon once any overwrite is confirmed."""
         # A generated dungeon is meant to be explored, so fog starts ON (both the
         # single-map and multi-floor paths below). The DM can still flip it off.
         self._set_fog(True)
@@ -14225,8 +14455,10 @@ class App:
         # Multi-floor or multi-map-per-floor: carve + populate a fresh layout per tile and
         # wire up the manifest. Terrain params for the carver are derived from the dungeon
         # modal (Rooms/floor + a min room side inferred from "Min room cells"); floors stack
-        # with ladders and each floor tiles into maps_x × maps_y maps.
-        if params.get("floors", 1) > 1 or params.get("maps_x", 1) > 1 or params.get("maps_y", 1) > 1:
+        # with ladders and each floor tiles into maps_x × maps_y maps. "Terrain: Keep
+        # (mobs only)" never takes this branch: it populates the current map's terrain.
+        if params.get("carve", True) and (params.get("floors", 1) > 1 or params.get("maps_x", 1) > 1
+                                          or params.get("maps_y", 1) > 1):
             terrain_params = {
                 "rooms": params["rooms_per_floor"],
                 "min_room": max(2, int(round(params["min_room"] ** 0.5))),
@@ -14252,7 +14484,7 @@ class App:
         # below — the same rng drives both, so one seed reproduces terrain + encounter
         # together. Terrain params mirror the multi-floor branch: Rooms/map is the
         # carver's room count and the min room side is inferred from "Min room cells".
-        # "New terrain: OFF" keeps the old behavior (populate the existing terrain).
+        # "Terrain: Keep (mobs only)" keeps the old behavior (populate the existing terrain).
         if params.get("carve", True):
             try:
                 import dungeon_from_png as dfp
@@ -14283,7 +14515,8 @@ class App:
                 difficulty_start=params["start"], difficulty_end=params["end"],
                 min_room=params["min_room"], boss=params["boss"], entrance=None,
                 automation_level=params.get("automation", 4), rng=rng, place=True,
-                filter_types=params.get("types"), filter_languages=params.get("languages"))
+                filter_types=params.get("types"), filter_languages=params.get("languages"),
+                groups=params.get("groups") or None, reserve_entrance=True)
         except Exception as e:
             self._modal_message(["Generate Dungeon failed", str(e)])
             return
@@ -14308,11 +14541,11 @@ class App:
         self._save_terrain()
 
         # Write an encounter file next to the map, make it the active base, and load it
-        # through the normal path (reuses all agent-instantiation logic).
-        base = os.path.splitext(os.path.basename(self._save_path or "generated"))[0]
-        if base.endswith("_agents"):
-            base = base[:-len("_agents")]
-        out_path = os.path.join(self._map_dir, base + "_dungeon_agents.json")
+        # through the normal path (reuses all agent-instantiation logic). On a page of an
+        # open dungeon, the mobs go into that page's own encounter file instead: a new
+        # base would re-point the terrain sidecar and leave the manifest page pointing at
+        # the old roster, so the mobs would vanish on the next page switch.
+        out_path = self._dungeon_out_path()
         meta = {"mode": "dungeon-gui", "seed": params["seed"],
                 "difficulty_start": params["start"],
                 "difficulty_end": params["end"], "boss": params["boss"],
@@ -14523,13 +14756,10 @@ class App:
                     stats.has_invocation(12) and cpp_weapons[0].name == "Unarmed"):
                 cpp_weapons[0] = self._create_alter_self_claws_weapon()
 
-            # Pact of the Blade (invocation 13): re-conjure the pact weapon into the main-hand slot.
-            # Guard on the flag (not just the name) so legacy saves whose "PactBlade" lost
-            # pact_weapon=True on round-trip get re-conjured (CHA attack/damage restored).
-            if (stats.character_class == rpg.CharacterClass.Warlock and
-                    stats.has_invocation(13)
-                    and not (cpp_weapons[0].name == "PactBlade" and cpp_weapons[0].pact_weapon)):
-                cpp_weapons[0] = self._create_pact_blade_weapon()
+            # Pact of the Blade (invocation 13): the main-hand weapon becomes the pact weapon again
+            # (pact_weapon is re-set on every load, so a weapon resolved by name regains CHA).
+            if stats.character_class == rpg.CharacterClass.Warlock and stats.has_invocation(13):
+                self._bond_pact_weapon(cpp_weapons)
 
             # Soulknife (L3+): re-manifest the Psychic Blades. Saves made before the psychic_blade
             # binding existed (or while the grant failed) restored an empty default weapon — this
@@ -14719,10 +14949,13 @@ class App:
         self.bm.clear_items()
         for idata in data.get("map_items", []):
             wname = idata.get("weapon_name", "")
-            if not wname or wname not in self.weapon_name_to_dict:
+            weapon_dict = self.weapon_name_to_dict.get(wname, {})
+            if isinstance(idata.get("weapon"), dict):
+                weapon = _dict_to_weapon(idata["weapon"])
+            elif weapon_dict:                       # legacy save: name only
+                weapon = _dict_to_weapon(weapon_dict)
+            else:
                 continue
-            weapon_dict = self.weapon_name_to_dict[wname]
-            weapon = _dict_to_weapon(weapon_dict)
             cell = rpg.Cell(int(idata["col"]), int(idata["row"]))
             sprite_path = idata.get("sprite_path", weapon_dict.get("sprite_path", ""))
             self.bm.place_item(cell, weapon, sprite_path)
@@ -15038,6 +15271,15 @@ class App:
         if cell_px <= 0:
             self._combat_log_add("Grid sample too small — cancelled.")
             return
+        # A new grid drops every terrain region and rewrites the terrain file.
+        self._confirm_overwrite(
+            [self._terrain_path], "Set grid",
+            lambda: self._apply_grid_span(cell_px, anchor_x, anchor_y, square_ft, square_px,
+                                          per_side),
+            on_cancel=lambda: self._combat_log_add("Grid sample cancelled."))
+
+    def _apply_grid_span(self, cell_px, anchor_x, anchor_y, square_ft, square_px, per_side):
+        """_on_grid_span once any overwrite is confirmed."""
         try:
             self.bm.set_uniform_grid(cell_px, anchor_x, anchor_y)
         except Exception as e:
@@ -15084,6 +15326,13 @@ class App:
         if not self._manual_grid:
             self._flash_status("Rescale needs a manual grid: Set Grid… first.")
             return
+        # Measuring saves the live agents + terrain first: ask before overwriting them.
+        self._confirm_overwrite([self._save_path, self._terrain_path], "Rescale image",
+                                self._rescale_image_measured,
+                                anchor=(self.btn_terrain.rect.x, self.btn_terrain.rect.y))
+
+    def _rescale_image_measured(self):
+        """_rescale_image_to_grid once any overwrite is confirmed."""
         # The image and terrain are rewritten from disk and reloaded: save what's live.
         self._save_agents()
         self._save_terrain()
@@ -15414,6 +15663,16 @@ class App:
                 self._wall_detect_dialog.toggle_seed(cell.col, cell.row)
 
         def on_close(settings):
+            if settings is not None:
+                # Saving writes the terrain file: ask first; Cancel puts the page back
+                # as the dialog's own Cancel does.
+                self._confirm_overwrite([self._terrain_path], "Wall detection",
+                                        lambda: finish(settings),
+                                        on_cancel=lambda: finish(None))
+            else:
+                finish(None)
+
+        def finish(settings):
             if settings is None:
                 self._detection = original
             elif original is None and settings.get("mode") != "dark_fraction":
@@ -15595,6 +15854,20 @@ class App:
         }
         with open(self._lighting_path, 'w') as f:
             json.dump(data, f, indent=2)
+
+    def _lighting_done(self, editor):
+        """Lighting editor → Done: apply its work and save the lighting file, after
+        asking before overwriting it. Cancel keeps the editor open."""
+        def finish():
+            editor.active = False
+            # Apply base level and effects to the battle map first. The base has to
+            # travel with the sources: Done is the only thing that applies the editor's
+            # work without a reload, and a base the file knows about but the map does
+            # not is a light switch that does nothing.
+            self._apply_light_effects(editor.light_sources, editor.default_light)
+            # Then save the configuration to disk (no reload, since we just applied)
+            self._save_lighting_no_reload(editor.light_sources, editor.default_light)
+        self._confirm_overwrite([self._lighting_path], "Lighting", finish)
 
     def _save_lighting(self, light_sources, default_light):
         """Save lighting data to JSON file and reload into battle map."""
@@ -15884,6 +16157,7 @@ class App:
         fog_surf = pygame.Surface((self.map_rect.width, self.map_rect.height), pygame.SRCALPHA)
         FOG_COL  = (0, 0, 0, 255)      # pure black, fully opaque (net/mapimg.py MASK_RGB)
         Cell = rpg.Cell
+        seen = []
         for r in range(rows):
             if r >= len(h_lines) - 1:
                 break
@@ -15892,11 +16166,20 @@ class App:
             for c in range(cols):
                 if c >= len(v_lines) - 1:
                     break
-                if bm.is_explored(Cell(c, r)):
-                    continue
                 cx = int(v_lines[c] * s)
                 cw = int(v_lines[c + 1] * s) - cx
+                if bm.is_explored(Cell(c, r)):
+                    seen.append((cx, cy, cw, ch))
+                    continue
                 pygame.draw.rect(fog_surf, FOG_COL, (cx, cy, cw, ch))
+        # Each explored cell's reveal reaches FOG_OVERLAP of a cell into its neighbours,
+        # the same margin net/mapimg.py punches for the players. pygame.draw writes the
+        # clear colour straight through (no blending), so this cuts holes in the fog.
+        for cx, cy, cw, ch in seen:
+            px = round(cw * FOG_OVERLAP)
+            py = round(ch * FOG_OVERLAP)
+            pygame.draw.rect(fog_surf, (0, 0, 0, 0),
+                             (cx - px, cy - py, cw + 2 * px, ch + 2 * py))
         panned_rect = self.map_rect.copy()
         panned_rect.x += self.pan_x
         panned_rect.y += self.pan_y
@@ -16548,6 +16831,11 @@ class App:
             self.screen.blit(net_badge, (int(screen_x + 4), int(screen_y + 76)))
             cond_labels.append(("Netted", (190, 200, 140)))
 
+        if pt.conditions.prone:
+            cond_labels.append(("Prone", (230, 200, 120)))
+        if agent_idx >= 0 and self._is_disarmed(agent_idx, pt):
+            cond_labels.append(("Disarmed", (230, 120, 120)))
+
         # Hidden indicator (eye-slash symbol)
         if pt.conditions.hidden:
             # Draw an eye-slash symbol in the top-right corner
@@ -16601,6 +16889,22 @@ class App:
                 lx = int(screen_x + size_px / 2 - surf.get_width() / 2)
                 self.screen.blit(surf, (lx, label_y))
                 label_y += surf.get_height() + 1
+
+    def _is_disarmed(self, idx: int, pt) -> bool:
+        """Whether agent `idx` has lost its weapons this fight, for the "Disarmed" token label.
+
+        Disarmed by an effect (conditions.disarmed), or holding no droppable weapon after having
+        held one earlier in this combat: dropped, knocked away, or a frightened drop. A creature
+        that never carried a weapon (natural attacks only) is never labelled. `_seen_armed`
+        records the armed sightings; it is reset whenever combat starts, ends or is restored."""
+        if pt.conditions.disarmed:
+            return True
+        if not self.combat_active:
+            return False
+        if any(w.name and w.droppable() for w in self.combat.get_agent_weapons(self.bm, idx)):
+            self._seen_armed.add(idx)
+            return False
+        return idx in self._seen_armed
 
     def _draw_reach_overlays(self, cpx: int, raw_h=None, raw_v=None):
         """Draw walk (blue) and fly (gold) reachable-cell overlays."""
@@ -16890,7 +17194,9 @@ class App:
             fill_surf.fill(color)
             self.screen.blit(fill_surf, (x + ox, y + oy))
 
-            # Draw border
+            # Water and difficult terrain are a plain fill; only walls and chasms get a border.
+            if terrain_type not in ("Wall", "Chasm"):
+                continue
             border_rect = pygame.Rect(x + ox, y + oy, w, h)
             border_color = tuple(min(c + 40, 255) for c in color[:3]) + (color[3],)
             pygame.draw.rect(self.screen, border_color, border_rect, 2)
@@ -19284,7 +19590,8 @@ class App:
     def _handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                return False
+                self._request_quit()
+                continue
 
             # NPC turn playback: any click or keypress fast-forwards the animation. The event
             # is CONSUMED — while the board shows deferred (snapshot) display state nothing
@@ -19390,7 +19697,9 @@ class App:
                 continue
 
             # ── Keyboard panning (arrow keys) + zoom (+/-/0) ──────────────
-            if map_input_allowed and event.type == pygame.KEYDOWN:
+            # Suppressed while an inline text field is capturing keystrokes (its
+            # arrows move the caret).
+            if map_input_allowed and event.type == pygame.KEYDOWN and not self._pc_name_input:
                 if event.key == pygame.K_UP:
                     self._pan_by(0, 30)
                 elif event.key == pygame.K_DOWN:
@@ -19400,9 +19709,6 @@ class App:
                 elif event.key == pygame.K_RIGHT:
                     self._pan_by(-30, 0)
                 # Zoom in: '+' / '=' (main and numpad). Zoom out: '-'. Reset: '0'.
-                # Suppressed while an inline text field is capturing keystrokes.
-                elif self._pc_name_input:
-                    pass
                 elif event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
                     self._zoom_by(self.ZOOM_STEP)
                 elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
@@ -19439,12 +19745,21 @@ class App:
                 self.name_prompt.handle(event)
                 continue
 
+            # ── A popup raised over an editor (closing it asks before overwriting
+            # a file) takes events ahead of the editor. ───────────────────────
+            if self.context_menu.visible and (self.terrain_editor.active
+                                              or self.lighting_editor.active):
+                if self.context_menu.handle(event):
+                    self.prompts.renderer_dismissed()
+                continue
+
             # ── Terrain editor gets first pick when open ──────────────────
             if self.terrain_editor.active:
                 self.terrain_editor.handle(event)
                 # Handle close/save for terrain editor
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    self._close_terrain_editor()
+                    self._confirm_overwrite([self._terrain_path], "Close terrain editor",
+                                            self._close_terrain_editor)
                 continue
 
             # ── Lighting editor gets priority when open ──────────────────
@@ -19567,7 +19882,13 @@ class App:
                     continue
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     # Place the agent immediately on the map
-                    if self.placement_cell and self.placement_valid:
+                    if self.placement_cell and self.placement_valid and self._pending_import_agent:
+                        self._place_imported_agent(self._pending_import_agent, self.placement_cell)
+                        self._pending_import_agent = None
+                        self.placement_mode_active = False
+                        self.placement_config = None
+                        self.placement_cell = None
+                    elif self.placement_cell and self.placement_valid:
                         cfg = self.placement_config
                         cfg.start_col = self.placement_cell.col
                         cfg.start_row = self.placement_cell.row
@@ -19615,6 +19936,7 @@ class App:
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     # Cancel placement
                     self.placement_mode_active = False
+                    self._pending_import_agent = None
                     self.placement_config = None
                     self.placement_cell = None
                     self._pc_name_input = None
@@ -20074,7 +20396,8 @@ class App:
 
                 # Toggle Wall Auto-Detection
                 if _hit(self.btn_toggle_walls):
-                    self._toggle_walls()
+                    self._confirm_overwrite([self._terrain_path], "Toggle walls",
+                                            self._toggle_walls, anchor=event.pos)
 
                 # Toggle Fog of War (grey never-seen cells + hide enemy tokens in them)
                 if _hit(self.btn_toggle_fog):
@@ -20092,9 +20415,9 @@ class App:
                 if _hit(self.btn_set_grid):
                     self._toggle_grid_sample_mode()
 
-                # Quit
+                # Quit (asks before overwriting the terrain file)
                 if _hit(self.btn_quit):
-                    return False
+                    self._request_quit(event.pos)
 
             else:
                 # ── On Deck deploy click detection (checked before initiative) ─
@@ -20285,9 +20608,10 @@ class App:
         # URL are printed before the first frame, by the one entry point that is a running
         # app rather than a constructed one.
         net_link.start_player_server(self)
+        self.confirm_overwrites = True
         running = True
         while running:
-            running = self._handle_events()
+            running = self._handle_events() and self._quit_requested is None
             net_link.pump_submits(self)         # M5a: remote answers, decided where clicks are; D-M5-7 expiry
             self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
             self._offer_keeper_of_souls_if_pending()   # Grave Cleric L17: an enemy died nearby
@@ -20341,7 +20665,8 @@ class App:
         # Clean up temporary terrain effects before quitting
         self.bm.clear_terrain_effects()
         self._clear_temporary_terrain()
-        self._save_terrain()
+        if self._quit_requested != "nosave":
+            self._save_terrain()
         if self._net is not None:
             self._net.stop()                # release 6081 before the process goes
         pygame.quit()
