@@ -21,6 +21,7 @@ import run_control
 import saves
 from helpers import door_touch_cells
 from net.roster import DM_PRINCIPAL_ID
+from scene_store import CampaignStore
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -123,6 +124,44 @@ def show_restore_autosave_menu(app, anchor=None, parent=None):
     if anchor is None:
         anchor = (app.btn_restore_autosave.rect.x, app.btn_restore_autosave.rect.y)
     app._ask_dm("action", "Restore autosave", options, anchor=anchor, parent=parent)
+
+
+def show_load_save_menu(app, anchor=None, parent=None):
+    """Load Save File (plans/DUNGEON_RELEASES_PLAN.md D9): the saves kept by hand, then each
+    fight, newest first, as fight ▸ round ▸ turn. Picking a row loads it."""
+    if not isinstance(app.store, CampaignStore):
+        app._flash_status("Only a campaign dungeon has save files.")
+        return
+    kept, fights = saves.group(saves.list_saves(
+        app.store.layout.saves_dir(app.store.run_name)))
+    if not kept and not fights:
+        app._flash_status("No saves yet.")
+        return
+
+    def _open(title, options):
+        app._ask_dm("action", title, options, anchor=anchor, parent=app.prompts.answering)
+
+    def _load_row(text, meta):
+        return (text, lambda m=meta: saves.load(app, m["seq"]))
+
+    def _round_row(rnd, turns):
+        rows = [_load_row(saves.turn_label(m), m) for m in turns]
+        return (f"Round {rnd + 1} ▸", lambda: _open(f"Round {rnd + 1}", rows))
+
+    def _fight_row(fight, rounds):
+        turns = [m for _, ms in rounds for m in ms]
+        title = saves.fight_label(fight, turns)
+        rows = [_round_row(rnd, ms) for rnd, ms in rounds]
+        return (f"{title} ▸", lambda: _open(title, rows))
+
+    options = []
+    if kept:
+        rows = [_load_row(saves.label(m), m) for m in kept]
+        options.append((f"Saved games ({len(kept)}) ▸", lambda: _open("Saved games", rows)))
+    options += [_fight_row(fight, rounds) for fight, rounds in fights]
+    if anchor is None:
+        anchor = (app.btn_load_save.rect.x, app.btn_load_save.rect.y)
+    app._ask_dm("action", "Load Save File", options, anchor=anchor, parent=parent)
 
 
 # ─────────────────────────────────────────────────────────────────────

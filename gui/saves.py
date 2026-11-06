@@ -349,5 +349,33 @@ def label(meta: dict) -> str:
     """One line for a save: where it is and when."""
     when = time.strftime("%H:%M:%S", time.localtime(meta.get("timestamp", 0)))
     if meta.get("actor"):
-        return f"Round {meta.get('round', 0) + 1} · {meta['actor']} · {when}"
-    return f"{meta.get('map', '?')} · {when}"
+        text = f"Round {meta.get('round', 0) + 1} · {meta['actor']} · {when}"
+    else:
+        text = f"{meta.get('map', '?')} · {when}"
+    return f"{BEFORE_RESET} · {text}" if meta.get("kind") == BEFORE_RESET else text
+
+
+def turn_label(meta: dict) -> str:
+    """A turn's row inside its round: the round is already on the menu above it."""
+    when = time.strftime("%H:%M:%S", time.localtime(meta.get("timestamp", 0)))
+    return f"{meta.get('actor') or '?'} · {when}"
+
+
+def fight_label(fight, turns: list[dict]) -> str:
+    when = time.strftime("%b %-d %H:%M", time.localtime(fight or turns[-1].get("timestamp", 0)))
+    return f"{when} · {len(turns)} turn{'' if len(turns) == 1 else 's'}"
+
+
+def group(metas: list[dict]) -> tuple[list[dict], list[tuple[object, list[tuple[int, list[dict]]]]]]:
+    """The picker's shape (D9), from ``list_saves``'s newest-first metas: the saves kept by
+    hand, and the turn saves as ``[(fight, [(round, [meta, ...]), ...]), ...]``, each level
+    newest first."""
+    kept, fights = [], {}
+    for meta in metas:
+        if meta.get("kind") == TURN:
+            fights.setdefault(meta.get("fight"), {}).setdefault(
+                int(meta.get("round", 0)), []).append(meta)
+        else:
+            kept.append(meta)
+    return kept, [(fight, sorted(rounds.items(), key=lambda kv: kv[0], reverse=True))
+                  for fight, rounds in fights.items()]

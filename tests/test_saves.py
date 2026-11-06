@@ -9,7 +9,9 @@
   · a load with no fight in it ends the live fight without XP;
   · a mid-turn Save Game keeps the turn's action economy;
   · a refusal changes nothing; a lost index or a bad file is not fatal;
-  · the turn hook's failure never reaches the turn.
+  · the turn hook's failure never reaches the turn;
+  · the picker shows saved games, then fight ▸ round ▸ turn;
+  · a reset writes a before-reset save first, so it can be undone.
 """
 
 import os
@@ -32,8 +34,8 @@ from unittest import mock
 import pygame
 import rpg_battle_map as rpg
 
+import run_control
 import saves
-import run_state as rs
 import save_layout as sl
 from main import App
 from menus import dm
@@ -358,6 +360,84 @@ def test_save_game_row():
     print("  ✅ the Dungeon menu reaches Save Game")
 
 
+def test_picker_shape():
+    with _Scene() as s:
+        app = s.app
+        app.btn_load_save = mock.Mock(rect=pygame.Rect(0, 0, 10, 10))
+        dm.show_load_save_menu(app)
+        assert app._status_msg == "No saves yet." and app.prompts.live is None
+
+        _place(app, "Aria", 1, 1)
+        kept = saves.save_game(app)
+        _place(app, "Gnasher", 8, 1)
+        app.bm.set_agent_faction(_idx(app, "Aria"), PC_FACTION)
+        app.bm.set_agent_faction(_idx(app, "Gnasher"), FOE_FACTION)
+        app._start_combat()
+        for _ in range(3):
+            app._advance_turn()              # one fight, into a second round
+        app._end_combat()
+        app._start_combat()                  # a second fight
+
+        dm.show_load_save_menu(app)
+        rows = [o.label for o in app.prompts.live.options]
+        assert rows[0] == "Saved games (1) ▸", rows
+        assert len(rows) == 3, rows
+        assert rows[1].endswith("· 1 turn ▸"), rows      # the newest fight first
+        assert rows[2].endswith("· 4 turns ▸"), rows
+
+        assert app.prompts.choose_label(rows[2]).ok
+        rounds = [o.label for o in app.prompts.live.options]
+        assert rounds == ["Round 2 ▸", "Round 1 ▸"], rounds
+        assert app.prompts.choose_label("Round 1 ▸").ok
+        turns = [o.label for o in app.prompts.live.options]
+        assert len(turns) == 2 and any(t.startswith("Gnasher · ") for t in turns), turns
+
+        # A turn row loads that turn.
+        assert app.prompts.choose_label(turns[0]).ok
+        assert app.combat_active and app.round_num == 0
+
+        # Saved games loads the out-of-combat board.
+        dm.show_load_save_menu(app)
+        assert app.prompts.choose_label("Saved games (1) ▸").ok
+        assert app.prompts.choose_label(saves.label(kept)).ok
+        assert not app.combat_active and _names(app) == ["Aria"]
+    print("  ✅ the picker goes saved games, then fight ▸ round ▸ turn, newest first")
+
+
+def test_reset_can_be_undone():
+    with _Scene() as s:
+        app = s.app
+        _place(app, "Aria", 1, 1)
+        release = run_control.make_release(app)
+        _place(app, "Gnasher", 8, 1)
+        assert run_control.reset_to(app, release), app._status_msg
+        assert _names(app) == ["Aria"]
+
+        metas = saves.list_saves(s.dir)
+        assert [m["kind"] for m in metas] == [saves.BEFORE_RESET]
+        assert saves.label(metas[0]).startswith("before reset · hall")
+        assert saves.load(app, metas[0]["seq"]), app._status_msg
+        assert _names(app) == ["Aria", "Gnasher"], "the reset could not be undone"
+
+        # Mid-fight too.
+        app.bm.set_agent_faction(_idx(app, "Aria"), PC_FACTION)
+        app.bm.set_agent_faction(_idx(app, "Gnasher"), FOE_FACTION)
+        app._start_combat()
+        turn = (app.round_num, app.turn_idx)
+        assert run_control.reset_to(app, release), app._status_msg
+        assert not app.combat_active
+        undo = saves.list_saves(s.dir)
+        undo = next(m for m in undo if m["kind"] == saves.BEFORE_RESET)
+        assert saves.load(app, undo["seq"]), app._status_msg
+        assert app.combat_active and (app.round_num, app.turn_idx) == turn
+
+        # With no way back there is no reset.
+        with mock.patch.object(saves, "write", side_effect=OSError("disk full")):
+            assert not run_control.reset_to(app, release)
+        assert "could not save" in app._status_msg and app.combat_active
+    print("  ✅ a reset can be undone from its before-reset save, or does not happen")
+
+
 def main():
     pygame.init()
     tests = [test_turn_start_writes_a_save, test_only_in_a_campaign, test_limit_and_pruning,
@@ -365,7 +445,8 @@ def main():
              test_load_returns_to_another_map, test_load_keeps_map_fixes,
              test_load_with_no_fight_ends_the_live_one, test_mid_turn_economy,
              test_refusals_change_nothing, test_index_is_only_a_cache,
-             test_turn_hook_never_raises, test_save_game_row]
+             test_turn_hook_never_raises, test_save_game_row, test_picker_shape,
+             test_reset_can_be_undone]
     print("Running save file tests…")
     for t in tests:
         t()

@@ -106,6 +106,12 @@ def reset_to(app, release) -> bool:
     if page is None or not store.image(page):
         app._flash_status(f"Not reset: no map to show for {release.name}")
         return False
+    # The way back from an accidental reset (D4). No save means no reset.
+    try:
+        saves.write(app, saves.BEFORE_RESET)
+    except (OSError, ValueError) as e:
+        app._flash_status(f"Not reset: could not save the board first ({e})")
+        return False
     if not saves.swap_run(app, run, release.start_effects_dir, page):
         return False                      # swap_run has flashed why
     autosave.resync_players(app)
