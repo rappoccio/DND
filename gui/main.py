@@ -4484,6 +4484,27 @@ class App:
         self._spell_metadata = {((a - 1 if a > idx else a), sp): m
                                 for (a, sp), m in self._spell_metadata.items() if a != idx}
 
+    def _delete_placed_agent(self, idx: int) -> None:
+        """The DM deletes a placed agent out of combat: remove it and drop the selection and
+        overlays, which index the old agent list. Weapon data lives in C++ and goes with it."""
+        self._remove_placed_agent(idx)
+        self._sync_roster_tokens()
+        self._mark_fog_dirty()   # roster changed (a party member may be gone)
+        self.selected_idx        = -1
+        self.drag_idx            = -1
+        self._reach_walk         = []
+        self._reach_fly          = []
+        self._reach_set          = set()
+        self._attack_cells_melee = []
+        self._attack_cells_rnorm = []
+        self._attack_cells_rlong = []
+
+    def _remove_downed_mob(self, idx: int) -> None:
+        """Delete a downed mob for good, out of combat. Removal shifts every later index, so
+        unlike _clear_mob's tombstone it can't run while the initiative list is live."""
+        if not self.combat_active and self._mob_clearable(idx):
+            self._delete_placed_agent(idx)
+
     def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0, class_levels: dict = None, subclasses: dict = None):
         """Called by StatsDialog when the user clicks OK.
 
@@ -5324,8 +5345,8 @@ class App:
                 f"{name} ×{len(idxs)} removed from On Deck — will roll Initiative at combat start.")
 
     def _mob_clearable(self, idx: int) -> bool:
-        """Whether the DM may clear `idx` off the board mid-combat: a non-party creature
-        that is down (0 HP, dying or dead), still in play and not an On Deck reserve."""
+        """Whether the DM may clear `idx` off the board: a non-party creature that is down
+        (0 HP, dying or dead), still in play and not an On Deck reserve."""
         if not (0 <= idx < len(self.bm.placed_agents)):
             return False
         pt = self.bm.placed_agents[idx]
@@ -20312,18 +20333,7 @@ class App:
                 if event.key in (pygame.K_DELETE, pygame.K_BACKSPACE) \
                         and not self.combat_active:
                     if self.selected_idx >= 0:
-                        idx = self.selected_idx
-                        self._remove_placed_agent(idx)
-                        self._mark_fog_dirty()   # roster changed (a party member may be gone)
-                        # Weapon data lives in C++ and is removed with the agent.
-                        self.selected_idx        = -1
-                        self.drag_idx            = -1
-                        self._reach_walk         = []
-                        self._reach_fly          = []
-                        self._reach_set          = set()
-                        self._attack_cells_melee = []
-                        self._attack_cells_rnorm = []
-                        self._attack_cells_rlong = []
+                        self._delete_placed_agent(self.selected_idx)
 
             if event.type == pygame.VIDEORESIZE:
                 self._reposition_panel()
@@ -20344,7 +20354,8 @@ class App:
                 if cell is not None and self._door_index_at(cell, event.pos) >= 0:
                     dm.show_door_menu(self, cell, event.pos)
 
-            # Right-click on a placed agent → context menu (disabled during combat)
+            # Right-click on a placed agent → context menu (disabled during combat). A corpse
+            # is skipped by _agent_at, so a downed mob's body gets its own Remove menu.
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and on_map \
                     and not self.combat_active:
                 cell = self._screen_to_cell(*event.pos)
@@ -20352,6 +20363,8 @@ class App:
                     hit = self._agent_at(cell)
                     if hit >= 0:
                         board.show_agent_menu(self, hit, event.pos)
+                    elif self._mob_clearable(self._corpse_at(cell)):
+                        board.show_remove_mob_menu(self, self._corpse_at(cell), event.pos)
 
             # During combat, right-click an On Deck reserve to recall (deploy) just that one
             # mob — the per-mob counterpart to the On Deck section's group Deploy rows. The
@@ -20476,9 +20489,14 @@ class App:
                             self._update_reach()
                             self._update_attack_overlay()
                         else:
-                            if not self.placement_mode_active:
+                            # A downed mob's corpse selects (for Delete) but doesn't drag.
+                            corpse = -1
+                            if not self.placement_mode_active and not self.jump_overlay_active \
+                                    and self._mob_clearable(self._corpse_at(cell)):
+                                corpse = self._corpse_at(cell)
+                            if corpse < 0 and not self.placement_mode_active:
                                 self._arm_pan_drag(event.pos)
-                            self.selected_idx        = -1
+                            self.selected_idx        = corpse
                             self._reach_walk         = []
                             self._reach_fly          = []
                             self._reach_set          = set()

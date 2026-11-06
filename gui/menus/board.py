@@ -357,6 +357,8 @@ def show_agent_menu(app, hit, pos):
                      _opts, anchor=pos, actor_idx=h,
                      parent=app.prompts.answering)
     _menu_opts.append(("Controller ▸", _controller_menu))
+    if app._mob_clearable(hit):   # a mob at 0 HP that isn't a corpse yet
+        _menu_opts.append((f"Remove '{pt.name}'", lambda h=hit: app._remove_downed_mob(h)))
     app._ask_dm("action", f"{app._agent_name(hit)} — DM menu",
                  _menu_opts, anchor=pos, actor_idx=hit)
 
@@ -379,6 +381,15 @@ def show_clear_mob_menu(app, hit, pos):
     nm = app.bm.placed_agents[hit].name
     app._ask_dm("action", f"{nm}: downed",
                  [(f"Clear mob '{nm}'", lambda h=hit: app._clear_mob(h))],
+                 anchor=pos, actor_idx=hit)
+
+
+def show_remove_mob_menu(app, hit, pos):
+    """Out of combat, delete a downed mob's corpse from the board. `hit` has already passed
+    `App._mob_clearable`."""
+    nm = app.bm.placed_agents[hit].name
+    app._ask_dm("action", f"{nm}: downed",
+                 [(f"Remove '{nm}'", lambda h=hit: app._remove_downed_mob(h))],
                  anchor=pos, actor_idx=hit)
 
 

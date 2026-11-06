@@ -38,12 +38,13 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "gui"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import pygame
 import rpg_battle_map as rpg
 
 from main import App
 from constants import COL_TEXT, PANEL_W
 from gui_driver import post_click
-from test_combat_panel import (_build_scene, _goto, _idx, _preserve_cwd_logs,
+from test_combat_panel import (FOE_TEAM, _build_scene, _goto, _idx, _preserve_cwd_logs,
                                _restore_cwd_logs)
 from menus import board, dm, features, panel, reactions, riders
 
@@ -380,6 +381,73 @@ def test_clear_mob_frees_a_downed_foes_square():
     print("✅ test_clear_mob_frees_a_downed_foes_square passed")
 
 
+def test_remove_downed_mobs_out_of_combat():
+    """Out of combat the DM can delete a downed mob. A corpse, which `_agent_at` skips, is
+    reachable by right-click → Remove and by left-click + Delete, and a mob at 0 HP that
+    isn't a corpse gets the same row on its agent menu. A PC's corpse is offered neither,
+    and removing a mob leaves the agents after it intact."""
+    app = App(MAP_PATH, seed=SEED)
+    _build_scene(app)
+    assert not app.combat_active
+
+    def _down(name, dead=True):
+        idx = _idx(app, name)
+        s = app.combat.get_agent_stats(app.bm, idx)
+        s.hp_cur = 0
+        app.combat.set_agent_stats(app.bm, idx, s)
+        c = app.combat.get_agent_conditions(app.bm, idx)
+        c.dead = dead
+        app.combat.set_agent_conditions(app.bm, idx, c)
+        return idx
+
+    def _click(idx, button):
+        app.prompts.cancel()
+        pt = app.bm.placed_agents[idx]
+        sx, sy = app._cell_to_screen(pt.origin.col, pt.origin.row)
+        half = int(app.bm.cell_pixel_size * app.map_scale) // 2
+        post_click(app, (sx + half, sy + half), button=button)
+        return app.prompts.live
+
+    def _names():
+        return [pt.name for pt in app.bm.placed_agents]
+
+    # A corpse: right-click offers Remove, and the agents after it keep their identity.
+    skarn = _down("Skarn")
+    p = _click(skarn, 3)
+    _assert_rows("board.show_remove_mob_menu", p)
+    assert app.prompts.choose_label("Remove 'Skarn'").ok, "could not choose Remove"
+    assert _names() == ["Aria", "Brannor", "Cyra"], _names()
+
+    # A corpse: left-click selects it (without starting a drag), and Delete removes it.
+    app.bm.set_agent_faction(_idx(app, "Cyra"), FOE_TEAM)
+    cyra = _down("Cyra")
+    _click(cyra, 1)
+    assert app.selected_idx == cyra, "left-clicking the corpse did not select it"
+    assert app.drag_idx == -1, "left-clicking the corpse started a drag"
+    pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DELETE, mod=0, unicode=""))
+    app._handle_events()
+    assert _names() == ["Aria", "Brannor"], _names()
+    assert app.selected_idx == -1, "the selection outlived the deleted corpse"
+
+    # A PC's corpse can't be selected or offered Remove.
+    brannor = _down("Brannor")
+    p = _click(brannor, 3)
+    assert p is None or not any(o.label.startswith("Remove") for o in p.options), \
+        "a PC's corpse was offered Remove"
+    app.prompts.cancel()
+    _click(brannor, 1)
+    assert app.selected_idx == -1, "a PC's corpse was selected"
+
+    # A mob at 0 HP that isn't a corpse: the row is on its agent menu.
+    app.bm.set_agent_faction(_idx(app, "Aria"), FOE_TEAM)
+    aria = _down("Aria", dead=False)
+    p = _click(aria, 3)
+    assert any(o.label == "Remove 'Aria'" for o in p.options), "no Remove row on the agent menu"
+    assert app.prompts.choose_label("Remove 'Aria'").ok, "could not choose Remove"
+    assert _names() == ["Brannor"], _names()
+    print("✅ test_remove_downed_mobs_out_of_combat passed")
+
+
 def test_the_seam_did_not_move():
     """`_ask_actor` and `_ask_dm` stay on `App`: they hold the owner defaulting and the
     anchor, which is where authorization lives. Every relocated builder reaches them
@@ -405,6 +473,7 @@ def main():
              test_panel_feature_menus_build_choose_and_cancel,
              test_on_deck_row_deploys_its_group_on_click,
              test_clear_mob_frees_a_downed_foes_square,
+             test_remove_downed_mobs_out_of_combat,
              test_the_seam_did_not_move]
     failed = 0
     for t in tests:
