@@ -1417,9 +1417,11 @@ class WallDetectionDialog:
     """Wall-detection settings for the current page (DUNGEON_LEVELS_PLAN.md Phase 2B).
 
     Docks over the right panel so the map stays in view: every change calls
-    ``on_change(settings)`` and the app re-detects and redraws at once. In drawn-map mode a
-    click on the map calls ``on_map_click(pos)``, which toggles an outside seed there;
-    wheel and pan events it doesn't use go back to the app (``handle`` returns False).
+    ``on_change(settings)`` and the app re-detects and redraws at once. Place seed arms one
+    map click: in drawn-map mode the next click calls ``on_map_click(pos)``, which toggles an
+    outside seed there. A seed floods whole rooms if it lands inside the building, so an
+    unarmed click never touches them. Wheel, pan and unarmed-click events go back to the app
+    (``handle`` returns False).
     OK calls ``on_close(settings)``, Cancel / Esc ``on_close(None)``.
 
     ``settings`` is the terrain file's "detection" block: mode, dark_level,
@@ -1443,7 +1445,8 @@ class WallDetectionDialog:
         self._on_change = self._on_map_click = self._on_close = None
         self._steppers = {}
         self._chips = []          # [(rect, key, value)]
-        self._ok_rect = self._cancel_rect = self._clear_rect = None
+        self._ok_rect = self._cancel_rect = self._clear_rect = self._place_rect = None
+        self._placing_seed = False
         self._frames_since_show = 0
 
     # Stepper rows: (key, label, lo, hi, scale). Fractions are shown as whole percents.
@@ -1456,6 +1459,7 @@ class WallDetectionDialog:
         """``settings`` is the page's current block, or None for today's detector."""
         self.visible = True
         self._frames_since_show = 0
+        self._placing_seed = False
         self._on_change, self._on_map_click, self._on_close = on_change, on_map_click, on_close
         base = dict(self.DEFAULTS)
         if settings:
@@ -1465,7 +1469,7 @@ class WallDetectionDialog:
         base["outside_seeds"] = [list(c) for c in base.get("outside_seeds", [])]
         self.settings = base
         x = panel_rect.x + max(0, (panel_rect.w - self.W) // 2)
-        rows = 2 + len(self.STEPPERS) + 1
+        rows = 2 + len(self.STEPPERS) + 2
         h = self.HDR_H + self.PAD * 3 + self.ROW_H * rows + self.BTN_H + 40
         self.rect = pygame.Rect(x, panel_rect.y + 40, self.W, h)
         fld_w = 120
@@ -1485,7 +1489,8 @@ class WallDetectionDialog:
                                               self.font_md), scale, y)
             y += self.ROW_H
         self._seed_y = y
-        self._clear_rect = pygame.Rect(fx, y, fld_w, self.ROW_H - 6)
+        self._place_rect = pygame.Rect(fx, y, fld_w, self.ROW_H - 6)
+        self._clear_rect = pygame.Rect(fx, y + self.ROW_H, fld_w, self.ROW_H - 6)
 
     def _chip_labels(self):
         return {("mode", "mean"): "Mean", ("mode", "dark_fraction"): "Drawn",
@@ -1538,12 +1543,17 @@ class WallDetectionDialog:
                 self._dismiss(True)
                 return True
             if event.key == pygame.K_ESCAPE:
-                self._dismiss(False)
+                if self._placing_seed:
+                    self._placing_seed = False
+                else:
+                    self._dismiss(False)
                 return True
             return False            # arrows / +/- reach the map's pan and zoom
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if not self.rect.collidepoint(*event.pos):
-                if self.settings["mode"] == "dark_fraction" and self._on_map_click:
+                if self._placing_seed and self.settings["mode"] == "dark_fraction" \
+                        and self._on_map_click:
+                    self._placing_seed = False
                     self._on_map_click(event.pos)
                     return True
                 return False
@@ -1556,7 +1566,12 @@ class WallDetectionDialog:
             if chip is not None:
                 if self.settings[chip[0]] != chip[1]:
                     self.settings[chip[0]] = chip[1]
+                    if self.settings["mode"] != "dark_fraction":
+                        self._placing_seed = False
                     self._changed()
+            elif self._place_rect and self._place_rect.collidepoint(*event.pos):
+                if self.settings["mode"] == "dark_fraction":
+                    self._placing_seed = not self._placing_seed
             elif self._clear_rect and self._clear_rect.collidepoint(*event.pos):
                 if self.settings["outside_seeds"]:
                     self.settings["outside_seeds"] = []
@@ -1602,12 +1617,19 @@ class WallDetectionDialog:
         n = len(self.settings["outside_seeds"])
         surf.blit(self.font_md.render(f"Outside seeds: {n}", True, lab_on if drawn else lab_off),
                   (x, self._seed_y + 5))
+        armed = self._placing_seed
+        pygame.draw.rect(surf, (70, 60, 130) if armed else (45, 45, 62), self._place_rect, border_radius=4)
+        pygame.draw.rect(surf, (150, 130, 220) if armed else (80, 80, 100), self._place_rect, 1, border_radius=4)
+        pt = self.font_md.render("Click map…" if armed else "Place seed", True,
+                                 (235, 235, 245) if drawn else (120, 120, 135))
+        surf.blit(pt, pt.get_rect(center=self._place_rect.center))
         pygame.draw.rect(surf, (60, 50, 50), self._clear_rect, border_radius=4)
         ct = self.font_md.render("Clear seeds", True, (220, 210, 210))
         surf.blit(ct, ct.get_rect(center=self._clear_rect.center))
-        hint = ("Click the map outside the building to add or remove a seed."
-                if drawn else "Mean: the original detector. Drawn: for maps drawn with thin walls.")
-        hy = self._seed_y + self.ROW_H + 2
+        hint = ("Mean: the original detector. Drawn: for maps drawn with thin walls." if not drawn
+                else "Click outside the building to add a seed, or on a seed to remove it. Esc cancels."
+                if armed else "Place seed arms one map click, to add or remove a seed.")
+        hy = self._seed_y + 2 * self.ROW_H + 2
         for line in _wrap_words(hint, self.font_sm, self.rect.w - 2 * self.PAD):
             surf.blit(self.font_sm.render(line, True, (170, 170, 185)), (x, hy))
             hy += self.font_sm.get_linesize()

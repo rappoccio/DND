@@ -390,12 +390,15 @@ def test_dialog_redetects_live_and_ok_saves_the_block():
         assert dlg.settings["mode"] == "mean" and _edges(app.bm) == set()
         _click(app, _chip(dlg, "mode", "dark_fraction"))
         assert _edges(app.bm) == _outer_edges(), "switching to Drawn re-detects at once"
+        _click(app, dlg._place_rect.center)
         _click(app, _cell_center(app, 0, 0))
         assert dlg.settings["outside_seeds"] == [[0, 0]]
         everything = {(c, r) for c in range(COLS) for r in range(ROWS)}
         assert _blocked(app.bm) == everything - INSIDE, "the seed floods the outside at once"
+        _click(app, dlg._place_rect.center)
         _click(app, _cell_center(app, 0, 0))
         assert dlg.settings["outside_seeds"] == [] and _blocked(app.bm) == set(), "a second click removes it"
+        _click(app, dlg._place_rect.center)
         _click(app, _cell_center(app, 0, 0))
         _click(app, dlg._ok_rect.center)
         assert not dlg.visible
@@ -818,6 +821,45 @@ def test_fog_hides_unseen_doors_and_ladders():
         finally:
             main_mod.draw_door_glyph, main_mod.draw_ladder_glyph = orig_door, orig_lad
     print("✅ test_fog_hides_unseen_doors_and_ladders passed")
+
+
+def test_a_map_click_only_places_a_seed_once_armed():
+    """A stray click used to drop a seed, and one inside the building floods its rooms. Place
+    seed arms exactly one click, which adds a seed or removes the one there; Esc disarms."""
+    def click(dlg, pos):
+        return dlg.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=pos, button=1))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        app, _ = _app(tmp, doc={"detection": {"mode": "dark_fraction"}})
+        dlg = _open_dialog(app)
+        outside, inside = _cell_center(app, 0, 0), _cell_center(app, 4, 3)
+
+        assert click(dlg, inside) is False, "an unarmed click goes on to the map view"
+        assert dlg.settings["outside_seeds"] == []
+
+        click(dlg, dlg._place_rect.center)
+        assert click(dlg, outside) is True
+        assert dlg.settings["outside_seeds"] == [[0, 0]]
+        assert (0, 0) in {(c.col, c.row) for c in app.bm.disallowed_cells}
+
+        assert click(dlg, inside) is False, "the arm covers a single click"
+        assert dlg.settings["outside_seeds"] == [[0, 0]]
+
+        click(dlg, dlg._place_rect.center)
+        dlg.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE, unicode="", mod=0))
+        assert dlg.visible, "Esc drops the arm before it cancels the dialog"
+        assert click(dlg, inside) is False
+        assert dlg.settings["outside_seeds"] == [[0, 0]]
+
+        click(dlg, dlg._place_rect.center)
+        click(dlg, outside)
+        assert dlg.settings["outside_seeds"] == [], "an armed click on a seed removes it"
+
+        click(dlg, dlg._place_rect.center)
+        click(dlg, _chip(dlg, "mode", "mean"))
+        click(dlg, _chip(dlg, "mode", "dark_fraction"))
+        assert click(dlg, outside) is False, "leaving Drawn mode drops the arm"
+        dlg.draw(app.screen)
 
 
 if __name__ == "__main__":
