@@ -77,8 +77,14 @@ def _dungeon(app):
     app.dungeon_page = page
 
 
+def _bestiary():
+    sys.path.insert(0, os.path.join(_ROOT, "tools"))
+    import encounter_generator as eg
+    return eg.Bestiary(data_dir=os.path.join(_ROOT, "gui"))
+
+
 def _modals(app):
-    """The six, each as a zero-argument call. The table Step 0.11 verified, executable.
+    """The seven, each as a zero-argument call. The table Step 0.11 verified, executable.
 
     `_modal_message` is listed with one line of text; `_modal_select_items` with one item
     and an empty selection. Neither shape matters — what is under test is the loop, and
@@ -92,6 +98,8 @@ def _modals(app):
         "_modal_generate_terrain": app._modal_generate_terrain,
         "_modal_select_items":     lambda: app._modal_select_items("t", ["one"], set()),
         "_modal_generate_dungeon": app._modal_generate_dungeon,
+        "_modal_pick_mobs":        lambda: app._modal_pick_mobs(
+            _bestiary(), 3, None, None, True, set(), [None]),
     }
 
 
@@ -228,7 +236,7 @@ def test_every_event_draining_loop_has_a_pump():
     drains `pygame.event.get()` is a blocking modal**, and its first statement must be
     `self._pump_net()`. `_advance_npc_playback`'s `while True:` (`main.py:3119`) drains a
     recorded event list rather than pygame's queue, so the rule does not reach it — which
-    is why the site count is six and not seven.
+    is why it is not counted among them.
     """
     tree = ast.parse(open(os.path.join(_ROOT, "gui", "main.py")).read())
 
@@ -247,7 +255,8 @@ def test_every_event_draining_loop_has_a_pump():
              and isinstance(n.test, ast.Constant) and n.test.value is True
              and drains_pygame_events(n)]
 
-    assert len(loops) == 6, f"{len(loops)} event-draining modal loops, not the six Step 0.11 named"
+    # Step 0.11 named six; _modal_pick_mobs (Generate Dungeon's mob picker) is the seventh.
+    assert len(loops) == 7, f"{len(loops)} event-draining modal loops, not the known seven"
 
     for loop in loops:
         first = loop.body[0]

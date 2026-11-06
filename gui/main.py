@@ -13861,6 +13861,7 @@ class App:
         down_cell = None      # spine cell this floor's DOWN-ladder occupies (set by floor below)
         total_mobs = 0
         total_staples = 0
+        boss_dropped = False
         for z in range(num_floors):
             up_cell = None    # spine cell this floor's UP-ladder occupies (picked below)
 
@@ -13949,7 +13950,10 @@ class App:
                             filter_types=encounter_params.get("types"),
                             filter_languages=encounter_params.get("languages"),
                             groups=encounter_params.get("groups") or None,
-                            reserve_entrance=is_entry)
+                            reserve_entrance=is_entry,
+                            allowed=encounter_params.get("allowed_mobs"),
+                            boss_name=encounter_params.get("boss_mob"))
+                        boss_dropped = boss_dropped or any(r.get("boss_dropped") for r in results)
                         # Leave the ENTRY tile's entrance (floor 0 spine, room 0) empty so the
                         # party has a clear staging room to Load PCs into. build_dungeon returns
                         # results in room order, so results[0] is that entrance room;
@@ -14002,6 +14006,9 @@ class App:
         summary = [f"Dungeon generated: {num_floors} floors, {layout} on {png_name}"]
         if encounter_params is not None:
             summary.append(f"{total_mobs} mobs total; ladders link every floor")
+            if boss_dropped:
+                summary.append(f"{encounter_params['boss_mob']} did not fit in the finale room, "
+                               "so its toughest mob is the boss.")
         else:
             summary.append("terrain only; ladders link every floor")
         summary.append(f"Saved manifest: {os.path.basename(manifest)}")
@@ -14287,6 +14294,7 @@ class App:
             all_types = sorted(bestiary.all_types)
             all_languages = sorted(bestiary.all_languages)
         except Exception:
+            bestiary = None
             all_types = []
             all_languages = []
 
@@ -14325,6 +14333,8 @@ class App:
         carve_on = [self.dungeon is None]
         CARVE_TXT = {True: "New", False: "Keep (mobs only)"}
         type_selection, lang_selection = set(), set()  # multi-select for both
+        # The mob picker's choices, kept across Back so a tweak here doesn't lose them.
+        mob_excluded, mob_boss = set(), [None]
 
         btn_start = Button(pygame.Rect(fx, y0 + 2 * row_h, fw, 30), DIFFS[start_i[0]],
                            (70, 90, 120), (95, 115, 150), font=self.font_md)
@@ -14410,7 +14420,14 @@ class App:
                             seed = int(s)
                         except ValueError:
                             seed = None
-                    return {"cr": cr_step.value, "min_room": room_step.value,
+                    picks = {"allowed_mobs": None, "boss_mob": None}
+                    if bestiary is not None:
+                        picks = self._modal_pick_mobs(
+                            bestiary, cr_step.value, list(type_selection) or None,
+                            list(lang_selection) or None, boss_on[0], mob_excluded, mob_boss)
+                        if picks is None:     # Back: stay here with the settings intact
+                            continue
+                    return {**picks, "cr": cr_step.value, "min_room": room_step.value,
                             "start": DIFFS[start_i[0]], "end": DIFFS[end_i[0]],
                             "boss": boss_on[0], "seed": seed, "carve": carve_on[0],
                             "types": list(type_selection) if type_selection else None,
@@ -14438,6 +14455,210 @@ class App:
                       btn_lang, floors_step, roomsfloor_step, mapsx_step, mapsy_step,
                       auto_step, groups_step, btn_carve, gen, cancel):
                 w.draw(self.screen)
+            pygame.display.flip()
+            self.clock.tick(60)
+
+    def _mob_picker_layout(self) -> dict:
+        """The mob picker's rects, in one place for the modal and its test."""
+        sw, sh = self.screen.get_size()
+        W, H = min(960, sw - 60), min(720, sh - 60)
+        box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
+        preview_w = min(340, W // 3)
+        lx = box.x + 20
+        list_w = W - preview_w - 50
+        crs_x = lx + list_w - 90       # the toolbar sits right-aligned over the list
+        all_x = crs_x - 2 * 60 - 12
+        return {
+            "box": box,
+            "search": pygame.Rect(lx + 50, box.y + 54, all_x - lx - 58, 28),
+            "all": pygame.Rect(all_x, box.y + 54, 60, 28),
+            "none": pygame.Rect(all_x + 66, box.y + 54, 60, 28),
+            "crs": pygame.Rect(crs_x, box.y + 54, 90, 28),
+            "list": pygame.Rect(lx, box.y + 92, list_w, H - 92 - 60),
+            "preview": pygame.Rect(box.right - preview_w - 20, box.y + 54,
+                                   preview_w, H - 54 - 60),
+            "generate": pygame.Rect(box.right - 220, box.bottom - 46, 95, 32),
+            "back": pygame.Rect(box.right - 115, box.bottom - 46, 95, 32),
+            "row_h": 28,
+        }
+
+    def _modal_pick_mobs(self, bestiary, cr, types, languages, boss_on,
+                         excluded: set, boss: list) -> dict | None:
+        """Blocking picker between the Generate Dungeon settings and the generation.
+
+        Lists every monster the generator could draw at this CR and filter set. Clicking a
+        row ticks or unticks it, clicking its star makes it the boss, and hovering shows
+        its stat block. "All CRs" adds the rest of the bestiary, as boss-only rows: a
+        regular room's CR band would never draw them, so a tick there would mean nothing.
+
+        Returns {allowed_mobs, boss_mob} or None for Back. allowed_mobs is None when
+        nothing was unticked, so an untouched picker generates exactly what it always did.
+        excluded and boss[0] are updated in place to survive a Back."""
+        import encounter_generator as eg
+        band = bestiary.candidates(cr, types, languages)
+        if not band:
+            self._modal_message(["Generate Dungeon",
+                                 "No monster matches the Mob type and Languages filters."])
+            return None
+        band_set = set(band)
+        everything = bestiary.candidates(cr, types, languages, all_crs=True)
+        if boss[0] not in everything:
+            boss[0] = None
+
+        ui = self._mob_picker_layout()
+        box, list_rect, row_h = ui["box"], ui["list"], ui["row_h"]
+        search = TextInput(ui["search"], placeholder="name or type", font=self.font_md)
+        btn_all = Button(ui["all"], "All", (70, 90, 120), (95, 115, 150), font=self.font_md)
+        btn_none = Button(ui["none"], "None", (70, 90, 120), (95, 115, 150), font=self.font_md)
+        btn_crs = Button(ui["crs"], "All CRs", (70, 90, 120), (95, 115, 150), font=self.font_md)
+        btn_gen = Button(ui["generate"], "Generate", (60, 110, 70), (80, 140, 90), font=self.font_md)
+        btn_back = Button(ui["back"], "Back", (110, 60, 60), (150, 80, 80), font=self.font_md)
+        show_all = [False]
+        scroll = [0]
+        preview_name = [boss[0] or band[0]]
+        star_x = list_rect.x + 34      # the star's column; left of it is the tick box
+        overlay = pygame.Surface(self.screen.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 170))
+
+        def mob_type(name):
+            return bestiary.mobs[name].get("meta", {}).get("type", "")
+
+        def visible():
+            needle = search.text.strip().lower()
+            names = everything if show_all[0] else band
+            return [n for n in names
+                    if not needle or needle in n.lower() or needle in mob_type(n).lower()]
+
+        def row_at(pos, names):
+            if not list_rect.collidepoint(pos):
+                return None
+            i = (pos[1] - list_rect.y + scroll[0]) // row_h
+            return names[i] if 0 <= i < len(names) else None
+
+        def clamp_scroll(names):
+            limit = max(0, len(names) * row_h - list_rect.height)
+            scroll[0] = max(0, min(scroll[0], limit))
+
+        def chosen():
+            """Ticked names that regular rooms can draw: the boss is never an ordinary mob."""
+            return [n for n in band if n not in excluded and n != boss[0]]
+
+        def draw_star(cx, cy, lit):
+            points = [(cx + (8 if k % 2 == 0 else 3) * math.sin(k * math.pi / 5),
+                       cy - (8 if k % 2 == 0 else 3) * math.cos(k * math.pi / 5))
+                      for k in range(10)]
+            if lit:
+                pygame.draw.polygon(self.screen, (240, 200, 70), points)
+            else:
+                pygame.draw.polygon(self.screen, (120, 120, 135), points, 1)
+
+        while True:
+            self._pump_net()      # D-M4-3: a modal is not a quiescent point, and must not stall the queue
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    return None
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    return None
+                search.handle(event)
+                names = visible()
+                clamp_scroll(names)
+                if event.type == pygame.MOUSEWHEEL:
+                    scroll[0] -= event.y * row_h
+                    clamp_scroll(names)
+                if event.type == pygame.MOUSEMOTION:
+                    hovered = row_at(event.pos, names)
+                    if hovered:
+                        preview_name[0] = hovered
+                if btn_all.clicked(event):         # All/None act on the rows the search shows
+                    excluded.difference_update(names)
+                if btn_none.clicked(event):
+                    excluded.update(n for n in names if n in band_set)
+                if btn_crs.clicked(event):
+                    show_all[0] = not show_all[0]
+                    btn_crs.text = "This CR" if show_all[0] else "All CRs"
+                    scroll[0] = 0
+                if btn_back.clicked(event):
+                    return None
+                if btn_gen.clicked(event) and chosen():
+                    picked = chosen()
+                    untouched = boss[0] is None and len(picked) == len(band)
+                    return {"allowed_mobs": None if untouched else picked, "boss_mob": boss[0]}
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    name = row_at(event.pos, names)
+                    if name:
+                        preview_name[0] = name
+                        if boss_on and star_x - 12 <= event.pos[0] < star_x + 12:
+                            boss[0] = None if boss[0] == name else name
+                        elif name in band_set:
+                            excluded.symmetric_difference_update({name})
+
+            self.screen.blit(overlay, (0, 0))
+            pygame.draw.rect(self.screen, (35, 35, 50), box, border_radius=8)
+            pygame.draw.rect(self.screen, (90, 90, 110), box, 1, border_radius=8)
+            self.screen.blit(self.font_lg.render(f"Choose the mobs (target CR {cr})", True,
+                                                 (235, 235, 245)), (box.x + 20, box.y + 18))
+            self.screen.blit(self.font_md.render("Find", True, (185, 185, 200)),
+                             (box.x + 20, ui["search"].y + 4))
+            for w in (search, btn_all, btn_none, btn_crs, btn_gen, btn_back):
+                w.draw(self.screen)
+
+            # ── The list ──────────────────────────────────────────────────────
+            names = visible()
+            clamp_scroll(names)
+            pygame.draw.rect(self.screen, (25, 25, 40), list_rect, border_radius=4)
+            self.screen.set_clip(list_rect)
+            first = scroll[0] // row_h
+            for i in range(first, min(len(names), first + list_rect.height // row_h + 2)):
+                name = names[i]
+                y = list_rect.y + i * row_h - scroll[0]
+                ticked = name in band_set and name not in excluded
+                row = pygame.Rect(list_rect.x, y, list_rect.width, row_h)
+                pygame.draw.rect(self.screen, (60, 110, 70) if ticked else (45, 45, 65), row)
+                pygame.draw.rect(self.screen, (65, 65, 85), row, 1)
+                if name in band_set:
+                    pygame.draw.rect(self.screen, (255, 255, 255) if ticked else (150, 150, 150),
+                                     (list_rect.x + 8, y + 6, 16, 16), 0 if ticked else 1)
+                if boss_on:
+                    draw_star(star_x, y + row_h // 2, boss[0] == name)
+                col = (235, 235, 235) if name in band_set else (160, 160, 175)
+                self.screen.blit(self.font_sm.render(name, True, col), (star_x + 16, y + 6))
+                info = self.font_sm.render(
+                    f"CR {bestiary.mobs[name]['meta'].get('cr', '?')}  "
+                    f"{eg.Bestiary._base_type(mob_type(name))}", True, (185, 185, 200))
+                self.screen.blit(info, (list_rect.right - info.get_width() - 8, y + 6))
+            self.screen.set_clip(None)
+            pygame.draw.rect(self.screen, (70, 70, 85), list_rect, 1, border_radius=4)
+
+            # ── The preview ───────────────────────────────────────────────────
+            pv = ui["preview"]
+            pygame.draw.rect(self.screen, (25, 25, 40), pv, border_radius=4)
+            pygame.draw.rect(self.screen, (70, 70, 85), pv, 1, border_radius=4)
+            self.screen.set_clip(pv)
+            rec = bestiary.mobs[preview_name[0]]
+            sprite = self._get_sprite(self._get_mob_sprite_path(preview_name[0]), 64)
+            if sprite:
+                self.screen.blit(sprite, (pv.right - 74, pv.y + 10))
+            self.screen.blit(self.font_md.render(preview_name[0], True, (235, 235, 245)),
+                             (pv.x + 10, pv.y + 10))
+            line_y = pv.y + 84
+            wrap_at = max(20, (pv.width - 20) // max(1, self.font_sm.size("n")[0]))
+            for line in eg.mob_preview_lines(rec):
+                for part in textwrap.wrap(line, wrap_at, subsequent_indent="    ") or [""]:
+                    self.screen.blit(self.font_sm.render(part, True, (205, 205, 215)),
+                                     (pv.x + 10, line_y))
+                    line_y += self.font_sm.get_linesize()
+            self.screen.set_clip(None)
+
+            # ── The tally ─────────────────────────────────────────────────────
+            count = len(chosen())
+            boss_text = ("Boss finale off" if not boss_on
+                         else f"Boss: {boss[0]}" if boss[0] else "Boss: automatic")
+            tally = f"{count} of {len(band)} mobs in the draw. {boss_text}"
+            if not count:
+                tally = "Tick at least one mob besides the boss."
+            self.screen.blit(self.font_md.render(tally, True,
+                                                 (185, 185, 200) if count else (235, 140, 120)),
+                             (box.x + 20, box.bottom - 40))
             pygame.display.flip()
             self.clock.tick(60)
 
@@ -14543,7 +14764,8 @@ class App:
                 min_room=params["min_room"], boss=params["boss"], entrance=None,
                 automation_level=params.get("automation", 4), rng=rng, place=True,
                 filter_types=params.get("types"), filter_languages=params.get("languages"),
-                groups=params.get("groups") or None, reserve_entrance=True)
+                groups=params.get("groups") or None, reserve_entrance=True,
+                allowed=params.get("allowed_mobs"), boss_name=params.get("boss_mob"))
         except Exception as e:
             self._modal_message(["Generate Dungeon failed", str(e)])
             return
@@ -14581,6 +14803,10 @@ class App:
             meta["filter_types"] = params["types"]
         if params.get("languages"):
             meta["filter_languages"] = params["languages"]
+        if params.get("allowed_mobs"):
+            meta["allowed_mobs"] = params["allowed_mobs"]
+        if params.get("boss_mob"):
+            meta["boss_mob"] = params["boss_mob"]
         eg.write_agents_file(
             out_path, all_agents, difficulty=params["end"], target_cr=params["cr"],
             generator_meta=meta)
@@ -14588,13 +14814,19 @@ class App:
         self._load_agents(out_path)
 
         boss_line = "  + boss finale" if params["boss"] else ""
-        self._modal_message([
+        if params["boss"] and params.get("boss_mob"):
+            boss_line = f"  + boss: {params['boss_mob']}"
+        lines = [
             f"Dungeon generated: {len(all_agents)} mobs",
             f"{len(rooms)} rooms, {params['start']} -> {params['end']}{boss_line}",
             f"Room 0 left empty -> click Load PCs to drop the party there",
             f"Ordering: {note}",
             f"Saved: {os.path.basename(out_path)}",
-        ])
+        ]
+        if any(r.get("boss_dropped") for r in results):
+            lines.insert(2, f"{params['boss_mob']} did not fit in the finale room, "
+                            "so its toughest mob is the boss.")
+        self._modal_message(lines)
 
     def _load_agents(self, path: str | None = None):
         path = path or self._save_path

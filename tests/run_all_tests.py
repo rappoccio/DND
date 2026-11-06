@@ -170,6 +170,7 @@ test_scripts = [
     # dialog. Kept with the oracles because the failure it prevents is invisible from the
     # DM's own screen: the app looks fine, and every player's request times out.
     "test_modal_pump.py",
+    "test_mob_picker.py",
 
     # The push socket and the client it serves (MULTIPLAYER_PLAN.md M4e, D-M4e-1..4) —
     # `WS /live`, `GET /` and the two files beside it, over a real socket with a hand-rolled

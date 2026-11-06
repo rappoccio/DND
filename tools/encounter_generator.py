@@ -228,19 +228,23 @@ class Bestiary:
         return False
 
     def _pool(self, cr_lo: float, cr_hi: float, kind: str,
-              filter_types: str | list[str] | None = None, filter_languages: list[str] | None = None) -> list[str]:
+              filter_types: str | list[str] | None = None, filter_languages: list[str] | None = None,
+              allowed: set[str] | None = None) -> list[str]:
         """Names matching `kind` whose CR falls in the inclusive band [cr_lo, cr_hi].
 
         Drawing from a band rather than a single exact CR is what gives packs
         their variety — the pool is the union of every CR bucket in range.
         If filter_types is set (string or list), only return mobs whose meta.type matches any of them.
         If filter_languages is set, only return mobs that have at least one of those languages.
+        If allowed is set, only return mobs named in it (the DM's ticked list).
         """
         candidates = [n for c in self._crs_sorted if cr_lo <= c <= cr_hi
                       for n in self.by_cr[c]]
 
         out = []
         for name in candidates:
+            if allowed is not None and name not in allowed:
+                continue
             rec = self.mobs[name]
             if kind == "ranged" and not self.has_ranged(rec):
                 continue
@@ -260,7 +264,7 @@ class Bestiary:
     def pick(self, cr_lo: float, cr_hi: float, kind: str,
              rng: random.Random, count: int,
              filter_types: str | list[str] | None = None, filter_languages: list[str] | None = None,
-             avoid: set[str] | None = None) -> list[str]:
+             avoid: set[str] | None = None, allowed: set[str] | None = None) -> list[str]:
         """Pick `count` monster names from the CR band [cr_lo, cr_hi], preferring
         VARIETY over a monoculture pack.
 
@@ -268,14 +272,26 @@ class Bestiary:
         of the same dungeon) and not already drawn in this call, only repeating a
         species once the distinct options are exhausted — so the same mob no longer
         floods every room. Falls back to the nearest CR bucket when the band has no
-        monster that satisfies `kind`."""
-        pool = self._pool(cr_lo, cr_hi, kind, filter_types, filter_languages)
-        if not pool:
+        monster that satisfies `kind`.
+
+        `allowed` is the DM's ticked list. It outranks the slot's ranged/AoE wish: when
+        nothing ticked satisfies `kind`, the slot takes any ticked mob rather than
+        coming up empty."""
+        def nearest(k):
             cr_mid = (cr_lo + cr_hi) / 2.0
             for near in sorted(self._crs_sorted, key=lambda c: (abs(c - cr_mid), c)):
-                pool = self._pool(near, near, kind, filter_types, filter_languages)
-                if pool:
-                    break
+                found = self._pool(near, near, k, filter_types, filter_languages, allowed)
+                if found:
+                    return found
+            return []
+
+        pool = self._pool(cr_lo, cr_hi, kind, filter_types, filter_languages, allowed)
+        if not pool and allowed is not None:
+            pool = self._pool(cr_lo, cr_hi, "any", filter_types, filter_languages, allowed)
+        if not pool:
+            pool = nearest(kind)
+        if not pool and allowed is not None:
+            pool = nearest("any")
         if not pool:
             return []
         avoid = avoid or set()
@@ -295,6 +311,86 @@ class Bestiary:
             result.append(nm)
             used_here.add(nm)
         return result
+
+    def candidates(self, x: int, filter_types: str | list[str] | None = None,
+                   filter_languages: list[str] | None = None,
+                   all_crs: bool = False) -> list[str]:
+        """Every monster the generator could draw at target CR `x`, under the filters:
+        the union of the category bands, or the nearest CR holding a match when that
+        band has none (pick's own fallback). `all_crs` drops the CR limit. Toughest
+        first, then by name."""
+        if all_crs:
+            names = self._pool(0.0, float("inf"), "any", filter_types, filter_languages)
+        else:
+            lo, hi = cr_band(x)
+            names = self._pool(lo, hi, "any", filter_types, filter_languages)
+            if not names:
+                mid = (lo + hi) / 2.0
+                for near in sorted(self._crs_sorted, key=lambda c: (abs(c - mid), c)):
+                    names = self._pool(near, near, "any", filter_types, filter_languages)
+                    if names:
+                        break
+        return sorted(names, key=lambda n: (-self.mobs[n]["_cr"], n))
+
+
+def cr_band(x: int) -> tuple[float, float]:
+    """The inclusive CR range every CATEGORY_TABLE slot at target `x` draws from."""
+    rows = [row for slots in CATEGORY_TABLE.values() for row in slots]
+    return (max(0.0, float(x) + min(r[0] for r in rows)),
+            max(0.0, float(x) + max(r[1] for r in rows)))
+
+
+def _weapon_line(w) -> str:
+    """One bestiary weapon as text. A slot is a catalog name or a synthesized dict."""
+    if not isinstance(w, dict):
+        return str(w)
+    bonus = w.get("bonus_damage", 0)
+    parts = []
+    for d in w.get("physical_damage_types", []) + w.get("magic_damage_types", []):
+        dice = f"{d.get('num_dice', 0)}d{d.get('die_size', 0)}"
+        parts.append(f"{dice} {d.get('type', '')}".strip())
+    damage = " + ".join(parts)
+    if damage and bonus:
+        damage += f" {bonus:+d}"
+    reach = (f"{w.get('normal_range_ft', 0)} ft" if w.get("type") == "ranged"
+             else f"reach {w.get('reach_ft', 5)} ft")
+    return f"{w.get('name', '?')}: {damage or 'no damage'} ({reach})"
+
+
+def mob_preview_lines(rec: dict) -> list[str]:
+    """A monster's stat block as plain lines, for the Generate Dungeon mob picker."""
+    meta = rec.get("meta", {})
+    st = rec.get("stats", {})
+    lines = [f"CR {meta.get('cr', '?')}  {rec.get('size', 'Medium')} {meta.get('type', '')}".rstrip()]
+    speed = f"Speed {st.get('speed_walk', 0)}"
+    for key, label in (("speed_fly", "fly"), ("speed_swim", "swim"), ("speed_burrow", "burrow")):
+        if st.get(key):
+            speed += f", {label} {st[key]}"
+    lines.append(f"HP {st.get('hp_max', 0)}  AC {st.get('ac', 0)}  {speed}")
+    abilities = [f"{label} {st.get(key, 10)} ({(st.get(key, 10) - 10) // 2:+d})"
+                 for label, key in (("STR", "str"), ("DEX", "dex"), ("CON", "con"),
+                                    ("INT", "intel"), ("WIS", "wis"), ("CHA", "cha"))]
+    lines += [" ".join(abilities[:3]), " ".join(abilities[3:]), ""]
+
+    weapons = rec.get("weapons")
+    slots = weapons.values() if isinstance(weapons, dict) else (weapons or [])
+    attacks = [_weapon_line(w) for w in slots if w]
+    if attacks:
+        lines.append(f"Attacks ({st.get('num_attacks', 1)} per action):")
+        lines += [f"  {a}" for a in attacks]
+    for label, value in (("Spells", rec.get("spell_indices")),
+                         ("Recharge", rec.get("npc_spell_recharge")),
+                         ("Traits", meta.get("traits")),
+                         ("Resists", st.get("magic_resistances", []) + st.get("physical_resistances", [])),
+                         ("Immune", st.get("magic_immunities", []) + st.get("physical_immunities", [])),
+                         ("Languages", meta.get("languages"))):
+        if value:
+            lines.append(f"{label}: {', '.join(str(v) for v in value)}")
+    if meta.get("legendary", {}).get("actions"):
+        lines.append(f"Legendary actions: {meta['legendary']['actions']}")
+    if meta.get("action_notes"):
+        lines.append(f"Notes: {meta['action_notes']}")
+    return lines
 
 
 # ── Sprite selection ─────────────────────────────────────────────────────────
@@ -343,7 +439,9 @@ def build_encounter(category: str, x: int, bestiary: Bestiary, rng: random.Rando
                     automation_level: int = 4,
                     filter_types: str | list[str] | None = None,
                     filter_languages: list[str] | None = None,
-                    avoid: set[str] | None = None) -> tuple[list[dict], list[dict]]:
+                    avoid: set[str] | None = None,
+                    allowed: set[str] | None = None,
+                    boss_name: str | None = None) -> tuple[list[dict], list[dict]]:
     """Build the agent list for one encounter of `category` at target CR `x`.
 
     Returns (agents, detail) where detail describes each mob group for logging.
@@ -351,23 +449,32 @@ def build_encounter(category: str, x: int, bestiary: Bestiary, rng: random.Rando
     If filter_languages is set, all mobs will speak at least one of those languages.
     `avoid` is a set of species names already used (e.g. earlier dungeon rooms);
     picks steer away from them and every newly chosen species is added to it so a
-    multi-room caller keeps diversifying."""
+    multi-room caller keeps diversifying.
+    `allowed` limits the draws to those names. `boss_name` fills a category-E finale
+    slot with exactly that monster, tagged is_boss."""
     if category not in CATEGORY_TABLE:
         raise ValueError(f"Unknown category {category!r} (expected one of A-E)")
     x_float = float(x)
     agents: list[dict] = []
     detail: list[dict] = []
-    for lo_off, hi_off, strat, kind, lo, hi in CATEGORY_TABLE[category]:
+    slots = CATEGORY_TABLE[category]
+    for slot_i, (lo_off, hi_off, strat, kind, lo, hi) in enumerate(slots):
         count = rng.randint(lo, hi)
         cr_lo = max(0.0, x_float + lo_off)
         cr_hi = max(0.0, x_float + hi_off)
-        names = bestiary.pick(cr_lo, cr_hi, kind, rng, count,
-                              filter_types=filter_types, filter_languages=filter_languages,
-                              avoid=avoid)
+        is_finale = boss_name is not None and category == "E" and slot_i == len(slots) - 1
+        if is_finale:
+            names = [boss_name]
+        else:
+            names = bestiary.pick(cr_lo, cr_hi, kind, rng, count,
+                                  filter_types=filter_types, filter_languages=filter_languages,
+                                  avoid=avoid, allowed=allowed)
         if avoid is not None:
             avoid.update(names)
         for nm in names:
             agents.append(make_agent(bestiary.mobs[nm], strat, faction, automation_level))
+            if is_finale:
+                agents[-1]["is_boss"] = True
         detail.append({
             "count": len(names),
             "requested": count,
@@ -665,7 +772,9 @@ def build_dungeon(bm, rpg, terrain: dict, bestiary: Bestiary, *, cr: int,
                   boss: bool, entrance: tuple[int, int] | None,
                   automation_level: int, rng: random.Random, place: bool,
                   filter_types: str | list[str] | None = None,
-                  filter_languages: list[str] | None = None
+                  filter_languages: list[str] | None = None,
+                  groups: int | None = None, reserve_entrance: bool = False,
+                  allowed: list[str] | None = None, boss_name: str | None = None
                   ) -> tuple[list[list[tuple[int, int]]], list[dict], str]:
     """Order the rooms, ramp the category weights start->end along the walk order,
     force a boss (category E) into the last room, and build one encounter per room.
@@ -675,16 +784,41 @@ def build_dungeon(bm, rpg, terrain: dict, bestiary: Bestiary, *, cr: int,
       agents (placed if `place` else raw), requested, placed, detail.
     With place=True the rng also drives placement; pass place=False for a preview
     that leaves the layout untouched. Reusable directly from a GUI/DM-mode caller.
-    If filter_types or filter_languages are set, all encounters will use those filters."""
+    If filter_types or filter_languages are set, all encounters will use those filters.
+
+    `groups` caps how many rooms get an encounter (None/0 = every room). The populated
+    rooms are a random subset that always includes the boss room; the rest stay empty
+    (agents == []) but keep their slot, so results still line up with ordered_rooms
+    and the ramp still follows walk order. `reserve_entrance` keeps room 0 out of that
+    count, for callers that drop results[0] to leave a staging room.
+
+    `allowed` limits every draw to those names (the DM's ticked list); None draws from
+    the whole bestiary. `boss_name` makes that monster the boss of the boss room in place
+    of the toughest-mob pick, and it never appears as an ordinary mob. A boss that does
+    not fit in that room is dropped and its result carries boss_dropped=True."""
+    allowed_set = None if allowed is None else set(allowed) - {boss_name}
     rooms, order_note = order_dungeon_rooms(bm, rpg, terrain, min_room, entrance, rng=rng)
+    n = len(rooms)
+    populate = set(range(n))
+    candidates = list(range(1 if reserve_entrance and n > 1 else 0, n))
+    if groups and groups < len(candidates):
+        forced = [n - 1] if boss and (n - 1) in candidates else []
+        pool = [i for i in candidates if i not in forced]
+        populate = set(forced) | set(rng.sample(pool, groups - len(forced)))
     start_row = DIFFICULTY_WEIGHTS[difficulty_start]
     end_row = DIFFICULTY_WEIGHTS[difficulty_end]
-    n = len(rooms)
     results: list[dict] = []
     # Species used so far across the whole dungeon — build_encounter steers picks
     # away from these so the same mob doesn't reappear in room after room.
     used_names: set[str] = set()
     for i, floor in enumerate(rooms):
+        if i not in populate:
+            results.append({
+                "room": i, "is_boss": False, "category": None, "weights": None,
+                "floor_cells": len(floor), "agents": [], "requested": 0,
+                "placed": 0 if place else None, "detail": [],
+            })
+            continue
         is_boss = boss and i == n - 1
         if is_boss:
             weights = None
@@ -698,11 +832,14 @@ def build_dungeon(bm, rpg, terrain: dict, bestiary: Bestiary, *, cr: int,
                                          automation_level=automation_level,
                                          filter_types=filter_types,
                                          filter_languages=filter_languages,
-                                         avoid=used_names)
+                                         avoid=used_names, allowed=allowed_set,
+                                         boss_name=boss_name if is_boss else None)
         placed = place_agents_in_room(agents, floor, rng) if place else agents
+        boss_dropped = is_boss and boss_name is not None and not any(
+            a.get("is_boss") for a in placed)
         # Tag the toughest mob in the boss room (highest max HP — the big-bad)
         # so the GUI can flag the finale with its golden ring.
-        if is_boss and placed:
+        if is_boss and placed and not any(a.get("is_boss") for a in placed):
             boss_ag = max(placed, key=lambda a: a.get("stats", {}).get("hp_max", 0))
             boss_ag["is_boss"] = True
         results.append({
@@ -710,6 +847,7 @@ def build_dungeon(bm, rpg, terrain: dict, bestiary: Bestiary, *, cr: int,
             "weights": weights, "floor_cells": len(floor),
             "agents": placed, "requested": len(agents),
             "placed": len(placed) if place else None, "detail": detail,
+            "boss_dropped": boss_dropped,
         })
     return rooms, results, order_note
 
@@ -722,8 +860,9 @@ def place_agents_in_room(agents: list[dict], floor: list[tuple[int, int]],
     floor_set = set(floor)
     taken: set[tuple[int, int]] = set()
     placed: list[dict] = []
-    # Place larger footprints first — they're harder to fit.
-    order = sorted(range(len(agents)), key=lambda i: -agents[i]["size"])
+    # A chosen boss goes first; after it, larger footprints — they're harder to fit.
+    order = sorted(range(len(agents)),
+                   key=lambda i: (not agents[i].get("is_boss"), -agents[i]["size"]))
     for i in order:
         ag = agents[i]
         sz = ag["size"]
