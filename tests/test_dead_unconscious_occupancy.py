@@ -92,7 +92,34 @@ def test_spawn_lands_on_corpse_not_unconscious():
     print("✅ test_spawn_lands_on_corpse_not_unconscious passed")
 
 
+def test_slept_npc_is_not_dead():
+    """Sleep routes through apply_unconscious, which is also the 0-HP death chokepoint. An NPC
+    knocked out by Sleep (HP intact) must stay alive — flagged dead, its square was freed (a pixie
+    landed on it) and the GUI's click lookup skipped it, so it could never be targeted again."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    npc = _place(engine, bm, "Sleeper", 2, 2, 1)
+    s = engine.get_agent_stats(bm, npc)
+    s.is_npc = True
+    engine.set_agent_stats(bm, npc, s)
+    assert engine.get_agent_stats(bm, npc).hp_cur > 0
+
+    engine.apply_unconscious(bm, npc)   # Sleep — HP untouched
+    cond = engine.get_agent_conditions(bm, npc)
+    assert cond.unconscious, "Sleep must still knock the NPC unconscious"
+    assert not cond.dead, "a slept NPC with HP left must not be flagged dead"
+
+    # A 0-HP NPC still dies outright.
+    s = engine.get_agent_stats(bm, npc)
+    s.hp_cur = 0
+    engine.set_agent_stats(bm, npc, s)
+    engine.apply_unconscious(bm, npc)
+    assert engine.get_agent_conditions(bm, npc).dead, "a 0-HP NPC must still die outright"
+    print("✅ test_slept_npc_is_not_dead passed")
+
+
 if __name__ == "__main__":
     test_occupancy_split()
     test_spawn_lands_on_corpse_not_unconscious()
+    test_slept_npc_is_not_dead()
     print("\n✅ All dead/unconscious occupancy tests passed")

@@ -592,10 +592,16 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     // plus every reverse-reference mark (charmed_by, *_marked_by, goaded_by, …) pointing back at it.
     releaseAgentInfluence(bm, idx);
 
+    // applyUnconscious is dual-purpose: it is the 0-HP down/death chokepoint AND the setter for the
+    // Unconscious *condition* (Sleep), which leaves HP intact. The rules below that key off dropping
+    // to 0 HP (vow transfer, Gaseous Form ending, NPC true death) must not fire for a sleeper — a
+    // slept NPC flagged dead frees its square and becomes unclickable.
+    const bool at_zero_hp = bm.getAgentStats(idx).hp_cur <= 0;
+
     // Paladin Oath of Vengeance — Vow of Enmity transfer: if this creature was a paladin's sworn
     // foe, the vow moves (no action) to a different creature within 30 ft of that paladin; if none
     // is in range, the vow simply lapses. Runs before the NPC early-return so corpses hand it off.
-    for (int p = 0; p < static_cast<int>(agents.size()); ++p) {
+    for (int p = 0; at_zero_hp && p < static_cast<int>(agents.size()); ++p) {
         Agent::Stats ps = bm.getAgentStats(p);
         if (ps.vow_of_enmity_turns <= 0 || ps.vow_of_enmity_target != idx) continue;
         const PlacedAgent& pp = agents[static_cast<std::size_t>(p)];
@@ -622,7 +628,7 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     // Gaseous Form / vampire Misty Escape ends when the creature drops to 0 HP (RAW). It is a SELF
     // condition, which releaseAgentInfluence deliberately skips, so end it here: restore the snapshot,
     // clear the flag, and drop the tracked "Gaseous" condition so nothing lingers past death/revival.
-    if (bm.getAgentConditions(idx).gaseous_form) {
+    if (at_zero_hp && bm.getAgentConditions(idx).gaseous_form) {
         endGaseousForm(bm, idx);
         std::vector<int> gaseous_ids;
         for (const auto& ac : conditions_.all())
@@ -642,7 +648,7 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
 
     // NPCs do not make death saves: they die outright at 0 HP. Only player
     // characters fall unconscious and roll death saves on their turns.
-    if (bm.getAgentStats(idx).is_npc) {
+    if (at_zero_hp && bm.getAgentStats(idx).is_npc) {
         cond.dead = true;
         bm.setAgentConditions(idx, cond);
         log_("{} drops to 0 HP and dies (NPC — no death saves)", agents[static_cast<std::size_t>(idx)].agent->name());
