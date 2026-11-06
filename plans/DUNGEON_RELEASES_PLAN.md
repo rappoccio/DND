@@ -1,7 +1,7 @@
 # Dungeon releases, Reset Dungeon, Load Save File
 
 **Status 2026-11-06: Step 0 FROZEN (D1–D10). No code yet.** These decisions change only by a
-dated amendment with a reason, agreed with the user. Steps 1–5 done.
+dated amendment with a reason, agreed with the user. Steps 1–6 done.
 
 Builds on `plans/SAVE_LAYOUT_PLAN.md` (a dungeon's design is `dungeon.json` + `maps/`, play
 state is `runs/<run>/run.json`). `CampaignStore` already keeps the two apart, which is what
@@ -110,4 +110,5 @@ Each ends with its suite green in the container and is committed on request.
 5. The cascading picker and `before reset` wired into D4. **Done:** `dm.show_load_save_menu`.
    A reset that cannot write its before-reset save does not happen.
 6. Panel buttons and Table rows; check the layout with `tests/gui_driver.py` screenshots.
+   **Done.** `Save limit` is on the Table menu.
 7. Register the suites, update docs, run the whole suite.

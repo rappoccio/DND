@@ -189,9 +189,32 @@ def show_table_menu(app, anchor=None):
         ("Lock the table (new code, everyone rejoins)", lambda: lock_table(app)),
         ("Restore autosave…", lambda: show_restore_autosave_menu(
             app, anchor=anchor, parent=app.prompts.answering)),
+        ("Save Game", lambda: saves.save_game(app)),
+        ("Load Save File…", lambda: show_load_save_menu(
+            app, anchor=anchor, parent=app.prompts.answering)),
+        ("Reset Dungeon", lambda: run_control.ask_reset(
+            app, anchor=anchor, parent=app.prompts.answering)),
+        (f"Save limit: {roster.save_limit} ▸", lambda: _save_limit_menu(app, anchor)),
         ("Session log…", lambda: _session_log_menu(app, anchor)),
     ]
     app._ask_dm("action", "Table", items, anchor=anchor)
+
+
+SAVE_LIMIT_CHOICES = (10, 25, 50, 100, 500, 1000)
+
+
+def _save_limit_menu(app, anchor):
+    """How many turn saves a run keeps (plans/DUNGEON_RELEASES_PLAN.md D8). A lower limit
+    prunes on the next write."""
+    def _set(n):
+        app.roster.save_limit = n
+        app._save_session()
+        app._flash_status(f"Keeping the last {n} turn saves")
+
+    items = [(f"{n} (current)" if n == app.roster.save_limit else str(n),
+              lambda n=n: _set(n)) for n in SAVE_LIMIT_CHOICES]
+    app._ask_dm("action", "Turn saves to keep", items, anchor=anchor,
+                parent=app.prompts.answering)
 
 
 def _players_menu(app, anchor):

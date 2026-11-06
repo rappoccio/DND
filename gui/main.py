@@ -76,6 +76,7 @@ from run_state import keep_current_design
 from scene_store import CampaignStore, LegacyStore
 import save_layout
 import autosave
+import run_control
 import saves
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
@@ -1515,7 +1516,13 @@ class App:
         # D-M7-5: the Table menu shares the row. The combat panel has its own `table` tool.
         self.btn_table = Button(pygame.Rect(px, rs_y, W, B), "Table…",
                                 (95, 95, 75), (130, 130, 100), font=self.font_md)
-        ter_y = rs_y + B + self._BTN_GAP
+        # Campaign dungeons only; elsewhere they say so (plans/DUNGEON_RELEASES_PLAN.md D10).
+        rd_y = rs_y + B + self._BTN_GAP
+        self.btn_reset_dungeon = Button(pygame.Rect(px, rd_y, HW, B), "Reset Dungeon",
+                                        (120, 75, 70), (160, 100, 95), font=self.font_md)
+        self.btn_load_save = Button(pygame.Rect(px + HW + 4, rd_y, HW, B), "Load Save File…",
+                                    (95, 95, 75), (130, 130, 100), font=self.font_md)
+        ter_y = rd_y + B + self._BTN_GAP
         self.btn_terrain = Button(pygame.Rect(px, ter_y, W, B), "Terrain…",
                                   (80, 100, 120), (110, 130, 160), font=self.font_md)
         light_y = ter_y + B + self._BTN_GAP
@@ -1574,7 +1581,8 @@ class App:
         # ── Base (top-anchored, scroll-independent) y for each row ──
         bc_y           = b1            + B + G + 8
         rs_y           = bc_y          + B + G
-        ter_y          = rs_y          + B + G
+        rd_y           = rs_y          + B + G
+        ter_y          = rd_y          + B + G
         light_y        = ter_y         + B + G
         gen_y          = light_y       + B + G
         dung_y         = gen_y         + B + G
@@ -1607,6 +1615,8 @@ class App:
         self.btn_begin_combat.rect.update(px, bc_y + off, W, B)
         self.btn_restore_autosave.rect.update(px, rs_y + off, SW, B)
         self.btn_table.rect.update(px + SW + 4, rs_y + off, SW, B)
+        self.btn_reset_dungeon.rect.update(px, rd_y + off, SW, B)
+        self.btn_load_save.rect.update(px + SW + 4, rd_y + off, SW, B)
         self.btn_terrain.rect.update(px, ter_y + off, W, B)
         self.btn_lighting.rect.update(px, light_y + off, W, B)
         self.btn_generate_dungeon.rect.update(px, gen_y + off, W, B)
@@ -19748,6 +19758,8 @@ class App:
         # ── and Table…, the join code and the seats (D-M7-5) ──────────────────
         self.btn_restore_autosave.draw(self.screen)
         self.btn_table.draw(self.screen)
+        self.btn_reset_dungeon.draw(self.screen)
+        self.btn_load_save.draw(self.screen)
 
         # ── Terrain… / Lighting… grouped menus ─────────────────────────────
         self.btn_terrain.draw(self.screen)
@@ -20677,6 +20689,13 @@ class App:
                 # Table… — join code, players, lock, rewind, session log (D-M7-5)
                 if _hit(self.btn_table):
                     dm.show_table_menu(self)
+
+                if _hit(self.btn_reset_dungeon):
+                    run_control.ask_reset(self, anchor=(self.btn_reset_dungeon.rect.x,
+                                                        self.btn_reset_dungeon.rect.y))
+
+                if _hit(self.btn_load_save):
+                    dm.show_load_save_menu(self)
 
                 # Terrain… — edit / load / save / generate / show-hide / clear
                 if _hit(self.btn_terrain):

@@ -11,7 +11,8 @@
   · a refusal changes nothing; a lost index or a bad file is not fatal;
   · the turn hook's failure never reaches the turn;
   · the picker shows saved games, then fight ▸ round ▸ turn;
-  · a reset writes a before-reset save first, so it can be undone.
+  · a reset writes a before-reset save first, so it can be undone;
+  · the panel buttons and the Table rows reach everything, mid-fight included.
 """
 
 import os
@@ -37,6 +38,7 @@ import rpg_battle_map as rpg
 import run_control
 import saves
 import save_layout as sl
+from gui_driver import post_click
 from main import App
 from menus import dm
 from net.roster import SessionRoster
@@ -363,7 +365,6 @@ def test_save_game_row():
 def test_picker_shape():
     with _Scene() as s:
         app = s.app
-        app.btn_load_save = mock.Mock(rect=pygame.Rect(0, 0, 10, 10))
         dm.show_load_save_menu(app)
         assert app._status_msg == "No saves yet." and app.prompts.live is None
 
@@ -438,6 +439,59 @@ def test_reset_can_be_undone():
     print("  ✅ a reset can be undone from its before-reset save, or does not happen")
 
 
+def test_panel_buttons():
+    with _Scene() as s:
+        app = s.app
+        app._reposition_panel()
+        rows = (app.btn_table, app.btn_begin_combat, app.btn_terrain, app.btn_restore_autosave)
+        for btn in (app.btn_reset_dungeon, app.btn_load_save):
+            for other in rows:
+                assert not btn.rect.colliderect(other.rect), f"{btn.text} overlaps {other.text}"
+        assert not app.btn_reset_dungeon.rect.colliderect(app.btn_load_save.rect)
+        assert app.btn_reset_dungeon.rect.top == app.btn_load_save.rect.top
+
+        _place(app, "Aria", 1, 1)
+        post_click(app, app.btn_reset_dungeon.rect.center)
+        assert app._status_msg == "Make a Release first."
+        release = run_control.make_release(app)
+        _place(app, "Gnasher", 8, 1)
+        post_click(app, app.btn_reset_dungeon.rect.center)
+        assert app.prompts.live.title == f"Reset the dungeon to {release.name}?"
+        assert app.prompts.choose_label(f"Reset to {release.name}").ok
+        assert _names(app) == ["Aria"]
+
+        post_click(app, app.btn_load_save.rect.center)
+        assert app.prompts.live.title == "Load Save File"
+    print("  ✅ the panel's Reset Dungeon and Load Save File… work")
+
+
+def test_table_rows():
+    with _Scene() as s:
+        app = s.app
+        _fight(app)                              # the Table menu is how a fight reaches them
+        dm.show_table_menu(app)
+        assert app.prompts.choose_label("Save Game").ok
+        assert any(m["kind"] == saves.MANUAL for m in saves.list_saves(s.dir))
+
+        dm.show_table_menu(app)
+        assert app.prompts.choose_label("Load Save File…").ok
+        assert app.prompts.live.title == "Load Save File"
+        app.prompts.cancel()
+
+        dm.show_table_menu(app)
+        assert app.prompts.choose_label("Reset Dungeon").ok
+        assert app._status_msg == "Make a Release first."
+
+        dm.show_table_menu(app)
+        assert app.prompts.choose_label("Save limit: 10 ▸").ok
+        assert [o.label for o in app.prompts.live.options][:2] == ["10 (current)", "25"]
+        assert app.prompts.choose_label("25").ok
+        assert app.roster.save_limit == 25
+        with open(s.camp.session_path) as f:
+            assert json.load(f)["save_limit"] == 25, "the limit did not reach session.json"
+    print("  ✅ the Table menu reaches all of it mid-fight; the limit persists")
+
+
 def main():
     pygame.init()
     tests = [test_turn_start_writes_a_save, test_only_in_a_campaign, test_limit_and_pruning,
@@ -446,7 +500,7 @@ def main():
              test_load_with_no_fight_ends_the_live_one, test_mid_turn_economy,
              test_refusals_change_nothing, test_index_is_only_a_cache,
              test_turn_hook_never_raises, test_save_game_row, test_picker_shape,
-             test_reset_can_be_undone]
+             test_reset_can_be_undone, test_panel_buttons, test_table_rows]
     print("Running save file tests…")
     for t in tests:
         t()
