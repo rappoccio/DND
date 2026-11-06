@@ -28,11 +28,11 @@ def door_link_key(cells):
 
 
 def edge_door_rect(door, cell_xy, size):
-    """(x, y, w, h) of an edge door's slab: a bar a third of a cell thick, centred on
+    """(x, y, w, h) of an edge door's slab: a bar half a cell thick, centred on
     its grid line and as long as its edges. ``cell_xy(col, row)`` gives a cell's
     top-left in the target's px, ``size`` the cell size there."""
     keys = [edge_key(e) for e in door.edges]
-    t = max(4, size // 3)
+    t = max(6, size // 2)
     c0, r0 = min(k[0] for k in keys), min(k[1] for k in keys)
     n = len(keys)
     if keys[0][2] == "E":
@@ -416,6 +416,10 @@ class TerrainEditorDialog:
         self.view_zoom = 1.0
         self.view_pan = [0, 0]
         self._pan_drag = None   # last mouse pos while middle-button panning
+        # A plain left press on the map, held until it either leaves the slop (a pan, as
+        # on the main map) or is released (a click, replayed through _handle_edit). The
+        # editor's own drags (regions, edges, door spans, moving portals) take Ctrl+drag.
+        self._press = None
         # map-surface px per image px. The engine's grid lines are image px; map_surf is
         # the app's fit-scale copy, smaller than the image when the map is too big for
         # the window. Every grid position the editor uses goes through ``_grid``.
@@ -462,9 +466,10 @@ class TerrainEditorDialog:
         self.portal_drag = None
 
     ZOOM_MIN = 0.5
-    ZOOM_MAX = 6.0
+    ZOOM_MAX = 10.0      # main.py App.ZOOM_MAX
     ZOOM_STEP = 1.15
     PAN_STEP = 30
+    PAN_SLOP_PX = 6      # main.py App.PAN_SLOP_PX
 
     def open(self, map_surf, terrain_regions, bm=None, ladders=None, door_links=None,
              on_regions_changed=None, edge_overrides=None, edges_enabled=False,
@@ -518,6 +523,25 @@ class TerrainEditorDialog:
         self.view_zoom = 1.0
         self.view_pan = [0, 0]
         self._pan_drag = None
+        self._press = None
+
+    def set_view(self, zoom, pan):
+        """Open on the main map's view: its zoom multiplier and pan are this view's
+        (both put the fit-scale map at screen = map * zoom + pan)."""
+        self.view_zoom = max(self.ZOOM_MIN, min(self.ZOOM_MAX, zoom))
+        self.view_pan = [int(pan[0]), int(pan[1])]
+
+    def _pan_by(self, dx, dy):
+        """Pan, keeping the viewport's centre over the map (main.py App._clamp_pan)."""
+        self.view_pan[0] += int(dx)
+        self.view_pan[1] += int(dy)
+        if self.map_surf is None or self._viewport is None:
+            return
+        vx, vy = self._viewport.center
+        w = self.map_surf.get_width() * self.view_zoom
+        h = self.map_surf.get_height() * self.view_zoom
+        self.view_pan[0] = int(max(vx - w, min(vx, self.view_pan[0])))
+        self.view_pan[1] = int(max(vy - h, min(vy, self.view_pan[1])))
 
     def _to_map(self, pos):
         """Screen px -> map-surface px under the current view."""
@@ -546,25 +570,41 @@ class TerrainEditorDialog:
         self.view_zoom = new_zoom
 
     def _handle_view(self, event):
-        """Zoom / pan input, the same gestures as the main map: wheel pans (Shift for
-        horizontal), Ctrl/Cmd+wheel zooms at the cursor, middle-drag and the arrow keys
-        pan, +/- zoom (keypad always; the main keys only outside Door mode, where they
-        set the lock DC), 0 resets. Returns True when the event was consumed."""
+        """Zoom / pan input, the same gestures as the main map: the wheel (a trackpad
+        pinch) zooms at the cursor, a left drag on the map pans (Ctrl+drag authors
+        instead), middle-drag and the arrow keys pan, +/- zoom (keypad always; the main
+        keys only outside Door mode, where they set the lock DC), 0 resets. Returns True
+        when the event was consumed."""
         if event.type == pygame.MOUSEWHEEL:
-            mods = pygame.key.get_mods()
-            if mods & (pygame.KMOD_CTRL | pygame.KMOD_META):
-                if event.y:
-                    f = self.ZOOM_STEP if event.y > 0 else 1.0 / self.ZOOM_STEP
-                    self.zoom_by(f, center=pygame.mouse.get_pos())
-                return True
-            dx, dy = event.x, event.y
-            if mods & pygame.KMOD_SHIFT and dx == 0:
-                dx, dy = dy, 0
-            self.view_pan[0] += dx * self.PAN_STEP
-            self.view_pan[1] += dy * self.PAN_STEP
+            if event.y:
+                f = self.ZOOM_STEP if event.y > 0 else 1.0 / self.ZOOM_STEP
+                self.zoom_by(f, center=pygame.mouse.get_pos())
             return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button in (4, 5):
             return True   # legacy wheel buttons; MOUSEWHEEL above does the work
+        if (event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+                and not pygame.key.get_mods() & (pygame.KMOD_CTRL | pygame.KMOD_META)
+                and (self._viewport is None or self._viewport.collidepoint(event.pos))):
+            self._press = {"down": event, "last": event.pos, "moved": False}
+            return True
+        if self._press is not None:
+            press = self._press
+            if event.type == pygame.MOUSEMOTION:
+                x0, y0 = press["down"].pos
+                if not press["moved"] and math.hypot(event.pos[0] - x0,
+                                                     event.pos[1] - y0) < self.PAN_SLOP_PX:
+                    return True
+                press["moved"] = True
+                self._pan_by(event.pos[0] - press["last"][0], event.pos[1] - press["last"][1])
+                press["last"] = event.pos
+                return True
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self._press = None
+                if press["moved"]:
+                    return True
+                # A click: the press goes through now, the release falls through after it.
+                self._handle_edit(press["down"])
+                return False
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 2:
             self._pan_drag = event.pos
             return True
@@ -572,8 +612,7 @@ class TerrainEditorDialog:
             self._pan_drag = None
             return True
         if event.type == pygame.MOUSEMOTION and self._pan_drag is not None:
-            self.view_pan[0] += event.pos[0] - self._pan_drag[0]
-            self.view_pan[1] += event.pos[1] - self._pan_drag[1]
+            self._pan_by(event.pos[0] - self._pan_drag[0], event.pos[1] - self._pan_drag[1])
             self._pan_drag = event.pos
             return True
         if event.type == pygame.KEYDOWN:
@@ -581,8 +620,7 @@ class TerrainEditorDialog:
             arrows = {pygame.K_UP: (0, 1), pygame.K_DOWN: (0, -1),
                       pygame.K_LEFT: (1, 0), pygame.K_RIGHT: (-1, 0)}
             if k in arrows:
-                self.view_pan[0] += arrows[k][0] * self.PAN_STEP
-                self.view_pan[1] += arrows[k][1] * self.PAN_STEP
+                self._pan_by(arrows[k][0] * self.PAN_STEP, arrows[k][1] * self.PAN_STEP)
                 return True
             door = self.selected_type == "Door"
             if k == pygame.K_KP_PLUS or (k in (pygame.K_PLUS, pygame.K_EQUALS) and not door):
@@ -610,7 +648,10 @@ class TerrainEditorDialog:
             return
         if self._handle_view(event):
             return
+        self._handle_edit(event)
 
+    def _handle_edit(self, event):
+        """The editor's own handling of an event the view did not take."""
         pos = None
         if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
             # A press over the config panel is not a press on the map, however the map
@@ -1196,7 +1237,7 @@ class TerrainEditorDialog:
             lines.append((f"Selected: {st.name}{label}, end {'AB'[i]} on floor {z}, {to}",
                           (90, 230, 255)))
         lines.append(("Click an end to select it (again: the next one on a shared cell); "
-                      "drag an end to move it; Shift+click places on an end",
+                      "Ctrl+drag an end to move it; Shift+click places on an end",
                       (170, 170, 170)))
         lines.append(("[F] new / finish  [M] move end  [N] rename  [L] label  "
                       "[Del] delete staircase  [Ctrl+Z] undo  [Right click] deselect",
@@ -1734,7 +1775,7 @@ class TerrainEditorDialog:
             "[5] Door (click a grid line)" if self._edge_doors() else "[5] Door (click a cell)",
             f"[6] Ladder (click a cell)",
             f"[7] Floor (clears detected walls)",
-            f"[8] Edge (drag along a grid line)",
+            f"[8] Edge (Ctrl+drag along a grid line)",
             f"[9] Staircase (click a cell)",
         ]
         y = 10
@@ -1754,7 +1795,7 @@ class TerrainEditorDialog:
             lad_surf = self.font_sm.render(f"Ladder travels: {dir_str}", True, (220, 200, 120))
             screen.blit(lad_surf, (10, y + 10))
             keys_surf = self.font_sm.render(
-                "[U] toggle up/down  (click places; click again removes; drag one to move it)",
+                "[U] toggle up/down  (click places; click again removes; Ctrl+drag one to move it)",
                 True, (170, 170, 170))
             screen.blit(keys_surf, (10, y + 28))
         elif self.selected_type == "Door":
@@ -1768,10 +1809,10 @@ class TerrainEditorDialog:
             screen.blit(door_surf, (10, y + 10))
             if self._edge_doors():
                 hint = ("[L] lock  [A] arcane  [+/-] lock DC  [ [ / ] ] break DC  "
-                        "(click a grid line toggles; drag along it for a wide door, max 4)")
+                        "(click a grid line toggles; Ctrl+drag along it for a wide door, max 4)")
             else:
                 hint = ("[L] lock  [A] arcane  [K] link  [+/-] lock DC  [ [ / ] ] break DC  "
-                        "(click toggles; drag for a wide door, max 4)")
+                        "(click toggles; Ctrl+drag for a wide door, max 4)")
             keys_surf = self.font_sm.render(hint, True, (170, 170, 170))
             screen.blit(keys_surf, (10, y + 28))
         elif self.selected_type == "Staircase":
@@ -1779,12 +1820,12 @@ class TerrainEditorDialog:
                 screen.blit(self.font_sm.render(text, True, colour), (10, y + 10 + 18 * k))
         elif self.selected_type == "Floor":
             fl = self.font_sm.render(
-                "Floor: drag a box to clear the detected wall cells and edges inside it",
+                "Floor: Ctrl+drag a box to clear the detected wall cells and edges inside it",
                 True, (140, 220, 160))
             screen.blit(fl, (10, y + 10))
         elif self.selected_type == "Edge":
             if self.edges_enabled:
-                lines = [("Edge: drag along a grid line to add a run (or remove it, if it starts "
+                lines = [("Edge: Ctrl+drag along a grid line to add a run (or remove it, if it starts "
                           "on a wall); click toggles one edge", (255, 200, 120)),
                          ("Right-drag a box to erase every edge in it (and clear its blue)  |  "
                           "[Ctrl+Z] undo an edge edit",
@@ -1815,8 +1856,8 @@ class TerrainEditorDialog:
             inst_texts = [
                 "Click terrain to select, [ESC] Save & Close, [Ctrl+Z] Undo",
             ]
-        inst_texts.append(f"Zoom {self.view_zoom:.2f}x: Ctrl/Cmd+wheel or +/-, [0] reset"
-                          " | Pan: wheel, Shift+wheel, arrows, middle-drag")
+        inst_texts.append(f"Zoom {self.view_zoom:.2f}x: wheel/pinch or +/-, [0] reset"
+                          " | Pan: drag, arrows | Ctrl+drag draws")
         y_inst = screen.get_height() - 25 - len(inst_texts) * 20
         for text in inst_texts:
             inst = self.font_sm.render(text, True, (180, 180, 180))

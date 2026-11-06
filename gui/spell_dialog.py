@@ -6,7 +6,10 @@ import pygame
 import copy
 import rpg_battle_map as rpg
 from constants import *
-from widgets import Button
+import re
+from widgets import Button, edit_line, caret_x
+
+_DIGITS = re.compile(r"\d*")
 from helpers import _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL
 
 class SpellDialog:
@@ -33,6 +36,7 @@ class SpellDialog:
         self._cb         = None
         self._rect: pygame.Rect | None = None
         self._active_field: str | None = None
+        self._caret = None   # caret index into the active field's text; None = end
         self._f: dict = {}
         self._rects: dict = {}
         # Scrolling state for the (tabs + form) region between the header and
@@ -166,25 +170,21 @@ class SpellDialog:
         if event.type == pygame.KEYDOWN:
             af = self._active_field
             if af == "name":
-                if event.key == pygame.K_BACKSPACE:
-                    self._f[af] = self._f.get(af, "")[:-1]
-                elif event.key == pygame.K_RETURN:
+                if event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
                     self._active_field = None
-                elif event.key == pygame.K_ESCAPE:
-                    self._active_field = None
-                elif event.unicode and event.unicode.isprintable():
-                    self._f[af] = self._f.get(af, "") + event.unicode
+                else:
+                    self._f[af], self._caret, _ = edit_line(
+                        self._f.get(af, ""), self._caret, event)
                 return True
             if af in ("range", "radius", "width", "length", "duration", "level", "upcast_dice_bonus"):
-                cur = str(self._f.get(af, ""))
-                if event.key == pygame.K_BACKSPACE:
-                    cur = cur[:-1]
-                    self._f[af] = int(cur) if cur.isdigit() else 0
-                elif event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+                if event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
                     self._active_field = None
-                elif event.unicode.isdigit():
-                    cur += event.unicode
-                    self._f[af] = int(cur)
+                else:
+                    # A 0 edits as an empty field, so typing replaces it.
+                    cur = str(self._f.get(af, "") or "")
+                    cur, self._caret, _ = edit_line(cur, self._caret, event,
+                                                    accept=_DIGITS.fullmatch)
+                    self._f[af] = int(cur) if cur else 0
                 return True
             if event.key == pygame.K_ESCAPE:
                 self._confirm()
@@ -253,6 +253,7 @@ class SpellDialog:
             for field_key in ("name", "range", "radius", "width", "length", "duration", "level", "upcast_dice_bonus"):
                 if field_key in self._rects and self._rects[field_key].collidepoint(mx, my):
                     self._active_field = field_key
+                    self._caret = None
                     return True
 
             # Damage type multi-toggles
@@ -375,7 +376,7 @@ class SpellDialog:
                 ts = self._font_md.render(val, True, (220, 210, 240))
                 screen.blit(ts, (rect.x + 4, rect.centery - ts.get_height() // 2))
                 if active:
-                    cx_cur = rect.x + 4 + ts.get_width() + 1
+                    cx_cur = caret_x(self._font_md, val, self._caret, rect.x + 4)
                     pygame.draw.line(screen, (200, 180, 240),
                                      (cx_cur, rect.y + 3), (cx_cur, rect.bottom - 3))
                 self._rects[key] = rect

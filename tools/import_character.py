@@ -101,6 +101,20 @@ KNOWN_FEATS = {
     "Unarmed Fighting", "Blind Fighting", "Two-Weapon Fighting", "Interception",
 }
 
+# Warlock Eldritch Invocation display name (normalized) → our invocation code. Mirrors
+# gui/dialogs.py INVOCATIONS (not imported: dialogs pulls in pygame). DDB lists the chosen
+# invocations under data["options"]["class"], some with a parenthetical spell suffix
+# ("Agonizing Blast (Eldritch Blast)") that _invocation_codes strips before lookup.
+INVOCATION_CODES = {
+    "agonizingblast": 0, "repellingblast": 1, "eldritchspear": 2, "eldritchmind": 3,
+    "devilssight": 4, "armorofshadows": 5, "fiendishvigor": 6, "witchsight": 7,
+    "onewithshadows": 8, "giftoftheprotectors": 9, "otherworldlyleap": 10,
+    "giftofthedepths": 11, "masterofmyriadforms": 12, "pactoftheblade": 13,
+    "thirstingblade": 14, "eldritchsmite": 15, "lifedrinker": 16, "devouringblade": 17,
+    "pactofthechain": 18, "investmentofthechainmaster": 19, "pactofthetome": 20,
+    "lessonsofthefirstones": 21,
+}
+
 # DDB sometimes prefixes the granted-at level, e.g. "4: Weapon Mastery". Strip that.
 _FEAT_LEVEL_PREFIX = re.compile(r"^\d+:\s*")
 
@@ -258,6 +272,17 @@ def match_subclass(cls, ddb_name):
             return e
     warn(f"subclass '{ddb_name}' ({cls}) not in our enums — left NONE")
     return "NONE"
+
+
+def _invocation_codes(data):
+    """Warlock invocation codes from DDB's class options, in DDB order, deduplicated."""
+    codes = []
+    for o in (data.get("options") or {}).get("class") or []:
+        name = ((o or {}).get("definition") or {}).get("name") or ""
+        code = INVOCATION_CODES.get(norm(re.sub(r"\(.*?\)", "", name)))
+        if code is not None and code not in codes:
+            codes.append(code)
+    return codes
 
 
 def compute_slots(cls, level):
@@ -504,7 +529,8 @@ def build_agent(data, catalogs, faction=0):
         agent[k] = "NONE"
     if cls_name in SUBCLASS_KEY:
         agent[SUBCLASS_KEY[cls_name]] = match_subclass(cls_name, sub_ddb)
-    agent["agent_eldritch_invocations"] = []
+    agent["agent_eldritch_invocations"] = (_invocation_codes(data)
+                                           if cls_name == "Warlock" else [])
     agent["agent_fiendish_resilience_type"] = -1
     agent["druid_wild_shape_active"] = False
     agent["druid_wild_shape_form_name"] = ""

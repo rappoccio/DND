@@ -28,7 +28,9 @@ The four rules this module exists to keep, all frozen:
     player's key is the mask hash and a re-key costs a fetch of the whole page.
     ``_lag_is_only_fog()`` is the invariant as code, checked on every publish.
 
-**What is masked is everything not explicitly earned.** The render starts from a fully
+**What is masked is everything not explicitly earned**, less a ``FOG_OVERLAP`` margin:
+each explored cell's hole reaches that fraction of a cell into its neighbours (user,
+2026-11-05), so the edge of the seen area shows a sliver of what borders it. The render starts from a fully
 opaque sheet and punches out the explored cells, rather than painting rectangles over the
 unexplored ones. The two differ on the margins — image area outside the outermost grid
 lines, and any cell the line lists are too short to describe — and the punch-out is the
@@ -64,6 +66,12 @@ from PIL import Image, ImageDraw
 # the RGB keeps a player's fog looking like the DM's; sharing the alpha would leak.
 MASK_RGB = (0, 0, 0)
 
+# How far an explored cell's reveal reaches into each neighbour, as a fraction of the cell
+# (user, 2026-11-05: "around 20%", so features at the edge of what the party has seen
+# read clearly). The DM overlay (`main.py` `_draw_fog_overlay`) and the client
+# (`app.js` `FOG_OVERLAP`) use the same fraction, so all three fogs agree.
+FOG_OVERLAP = 0.2
+
 # Measured in the container on the largest page in the tree — `wachterhaus.png`,
 # 1084x1504, a 98x91 grid, 8918 cells (see the M4 write-up for the table). The encode *is*
 # the route's cost: the mask build and the composite together are under 5 ms at every
@@ -80,7 +88,7 @@ _KEY_CHARS = 16
 # (`If-None-Match` -> 304) and keeps it indefinitely. Found by owed item 11's own phone
 # check: the crop shipped, and the phone went on showing the stretched page. Change this
 # whenever the bytes for the same inputs change.
-_RENDER_REV = "grid-crop"
+_RENDER_REV = "grid-crop+overlap"
 
 # How long a published mask may lag the live one (D-M4-1, amended 2026-09-23). The player's
 # `?v=` is the mask hash, so without this every newly-explored cell costs that player a
@@ -265,7 +273,10 @@ def render(page: PageImage, is_dm: bool) -> bytes:
     for col, row in page.explored:
         if not (0 <= col < len(v) - 1 and 0 <= row < len(h) - 1):
             continue   # mirrors _draw_fog_overlay's break: no line pair, no cell
-        draw.rectangle([v[col], h[row], v[col + 1] - 1, h[row + 1] - 1], fill=255)
+        pad_x = round((v[col + 1] - v[col]) * FOG_OVERLAP)
+        pad_y = round((h[row + 1] - h[row]) * FOG_OVERLAP)
+        draw.rectangle([v[col] - pad_x, h[row] - pad_y,
+                        v[col + 1] - 1 + pad_x, h[row + 1] - 1 + pad_y], fill=255)
 
     out = Image.composite(raw, _flat(raw.mode, size), holes)
     box = grid_box(page, size)

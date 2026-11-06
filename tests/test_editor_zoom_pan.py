@@ -14,8 +14,9 @@ view moved, and that what gets stored is unchanged by the view:
     map px would;
   · a door click on a zoomed, panned view lands on the cell under the pointer;
   · a press over the config panel does nothing, even with the map zoomed under it;
-  · wheel / arrows pan, Ctrl+wheel and +/- zoom, 0 resets; +/- keep their Door-mode
-    meaning (lock DC);
+  · the wheel (a pinch) and +/- zoom, arrows / middle-drag / a plain left drag pan,
+    0 resets; +/- keep their Door-mode meaning (lock DC); authoring drags take Ctrl;
+  · the editor opens on the map's zoom and pan, and hands its own back on close;
   · drawing at high zoom works and paints the viewport only;
   · the lighting editor passes the wheel (zoom), zoom keys and arrows through to the
     app's map, and its overlay follows the zoom.
@@ -62,10 +63,16 @@ def _wheel(x=0, y=0):
                precise_y=float(y))
 
 
-def _drag(ed, a, b, button=1):
-    ed.handle(_ev(pygame.MOUSEBUTTONDOWN, pos=a, button=button))
-    ed.handle(_ev(pygame.MOUSEMOTION, pos=b, rel=(0, 0), buttons=(1, 0, 0)))
-    ed.handle(_ev(pygame.MOUSEBUTTONUP, pos=b, button=button))
+def _drag(ed, a, b, button=1, mods=pygame.KMOD_CTRL):
+    """Press at ``a``, move to ``b``, release. Ctrl (the default) makes it an authoring
+    drag; ``mods=0`` is a plain drag, which pans."""
+    pygame.key.set_mods(mods)
+    try:
+        ed.handle(_ev(pygame.MOUSEBUTTONDOWN, pos=a, button=button))
+        ed.handle(_ev(pygame.MOUSEMOTION, pos=b, rel=(0, 0), buttons=(1, 0, 0)))
+        ed.handle(_ev(pygame.MOUSEBUTTONUP, pos=b, button=button))
+    finally:
+        pygame.key.set_mods(0)
 
 
 def _cell_center(bm, col, row):
@@ -134,17 +141,19 @@ def test_a_press_over_the_panel_does_nothing():
 
 
 def test_wheel_keys_pan_and_zoom():
+    """The main map's gestures: the wheel (a trackpad pinch) zooms at the cursor, with
+    or without a modifier; arrows and middle-drag pan; +/- zoom, 0 resets."""
     app, ed = _terrain_app()
-    ed.handle(_wheel(y=-2))
-    assert ed.view_pan == [0, -60], ed.view_pan
+    ed.handle(_wheel(y=1))
+    assert ed.view_zoom > 1.0, "the wheel did not zoom"
+    z = ed.view_zoom
+    ed.handle(_wheel(y=-1))
+    assert ed.view_zoom < z, "the wheel did not zoom out"
+    ed.handle(_key(pygame.K_0))
+    ed.zoom_by(2.0, center=(0, 0))
     ed.handle(_key(pygame.K_LEFT))
-    assert ed.view_pan == [30, -60], ed.view_pan
-    pygame.key.set_mods(pygame.KMOD_CTRL)
-    try:
-        ed.handle(_wheel(y=1))
-    finally:
-        pygame.key.set_mods(0)
-    assert ed.view_zoom > 1.0, "Ctrl+wheel did not zoom"
+    ed.handle(_key(pygame.K_UP))
+    assert ed.view_pan == [30, 30], ed.view_pan
     z = ed.view_zoom
     ed.handle(_key(pygame.K_EQUALS))
     assert ed.view_zoom > z, "+ did not zoom outside Door mode"
@@ -160,12 +169,54 @@ def test_wheel_keys_pan_and_zoom():
     ed.handle(_key(pygame.K_0))
     assert ed.view_zoom == 1.0 and ed.view_pan == [0, 0], "0 did not reset the view"
 
-    # Middle-drag pans.
-    ed.handle(_ev(pygame.MOUSEBUTTONDOWN, pos=(50, 50), button=2))
-    ed.handle(_ev(pygame.MOUSEMOTION, pos=(80, 30), rel=(30, -20), buttons=(0, 1, 0)))
-    ed.handle(_ev(pygame.MOUSEBUTTONUP, pos=(80, 30), button=2))
-    assert ed.view_pan == [30, -20], ed.view_pan
+    # Middle-drag pans (the clamp lets the fit map move up / left of the origin).
+    ed.handle(_ev(pygame.MOUSEBUTTONDOWN, pos=(80, 80), button=2))
+    ed.handle(_ev(pygame.MOUSEMOTION, pos=(50, 60), rel=(-30, -20), buttons=(0, 1, 0)))
+    ed.handle(_ev(pygame.MOUSEBUTTONUP, pos=(50, 60), button=2))
+    assert ed.view_pan == [-30, -20], ed.view_pan
     print("✅ test_wheel_keys_pan_and_zoom passed")
+
+
+def test_a_plain_drag_pans_and_authors_nothing():
+    app, ed = _terrain_app()
+    bm = ed.bm
+    ed.selected_type = "Water"
+    a = _cell_center(bm, 4, 4)
+    b = (a[0] - 40, a[1] - 25)
+    _drag(ed, a, b, mods=0)
+    assert ed.terrain_regions == [], f"a plain drag painted terrain: {ed.terrain_regions}"
+    assert ed.view_pan == [-40, -25], f"a plain drag did not pan: {ed.view_pan}"
+    # A plain click (no movement past the slop) is still a click: Ladder places one.
+    ed.selected_type = "Ladder"
+    at = ed._to_screen(_cell_center(bm, 2, 2))
+    _drag(ed, at, (at[0] + 2, at[1] + 1), mods=0)
+    assert [tuple(l["cells"][0]) for l in ed.ladders] == [(2, 2)], ed.ladders
+    print("✅ test_a_plain_drag_pans_and_authors_nothing passed")
+
+
+def test_the_editor_opens_and_closes_on_the_map_view():
+    app = App(MAP_PATH, seed=SEED)
+    app._zoom_by(2.0, center=(0, 0))
+    app.pan_x -= 23
+    app.pan_y -= 17
+    z, pan = app.view_zoom, (app.pan_x, app.pan_y)
+    sx, sy = app._cell_to_screen(3, 3)
+    app._open_terrain_editor()
+    ed = app.terrain_editor
+    assert abs(ed.view_zoom - z) < 1e-9 and tuple(ed.view_pan) == pan, \
+        f"editor opened at {ed.view_zoom}, {ed.view_pan}; the map was at {z}, {pan}"
+    # Same cell under the same screen point in both views.
+    v, h, _ = ed._grid()
+    ex, ey = ed._to_screen((v[3], h[3]))
+    assert abs(ex - sx) <= 1 and abs(ey - sy) <= 1, ((sx, sy), (ex, ey))
+    ed.draw(app.screen)
+    ed.zoom_by(1.5, center=(100, 100))
+    ed._pan_by(-10, -5)
+    z2, pan2 = ed.view_zoom, tuple(ed.view_pan)
+    app._close_terrain_editor()
+    assert abs(app.view_zoom - z2) < 1e-6 and (app.pan_x, app.pan_y) == pan2, \
+        f"map came back at {app.view_zoom}, {(app.pan_x, app.pan_y)}; editor left {z2}, {pan2}"
+    print("✅ test_the_editor_opens_and_closes_on_the_map_view passed")
 
 
 def test_drawing_at_high_zoom_paints_the_viewport_only():
@@ -272,6 +323,8 @@ def main():
              test_a_zoomed_door_click_lands_on_the_cell_under_the_pointer,
              test_a_press_over_the_panel_does_nothing,
              test_wheel_keys_pan_and_zoom,
+             test_a_plain_drag_pans_and_authors_nothing,
+             test_the_editor_opens_and_closes_on_the_map_view,
              test_drawing_at_high_zoom_paints_the_viewport_only,
              test_the_lighting_editor_lets_zoom_and_pan_through]
     failed = 0

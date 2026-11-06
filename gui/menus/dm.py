@@ -303,7 +303,7 @@ def show_dungeon_menu(app):
             ("Staircases…",       lambda: show_staircases_menu(app)),
             ("Hide Room Labels" if app.show_room_labels else "Show Room Labels",
                                   app._toggle_room_labels),
-            ("Save Dungeon",      app._dungeon_save),
+            ("Save Dungeon",      app._dungeon_save_confirmed),
             ("Open Dungeon…",     app._dungeon_open_browser),
             ("Close Dungeon",     app._dungeon_close),
         ]

@@ -6,7 +6,10 @@ import pygame
 import copy
 import rpg_battle_map as rpg
 from constants import *
-from widgets import Button
+import re
+from widgets import Button, edit_line, caret_x
+
+_DIGITS = re.compile(r"\d*")
 from helpers import _parse_physical_damage, _parse_magic_damage, _DEFAULT_WEAPON, _weapon_to_dict, _dict_to_weapon
 
 class WeaponDialog:
@@ -60,6 +63,7 @@ class WeaponDialog:
         self._cb         = callback
         self._add_cb     = add_weapon_callback
         self._active_field = None
+        self._caret = None   # caret index into the active field's text; None = end
         self._rects      = {}
 
         sw, sh = screen.get_size()
@@ -110,6 +114,22 @@ class WeaponDialog:
             self._cb(self._agent_idx, self._weapons)
         self.active = False
 
+    def _dice_entry(self, key: str):
+        """(roll dict, "num_dice" | "die_size") for a per-type dice field key such as
+        ``phys_num_dice_Slashing``; (None, None) for any other key."""
+        for prefix, list_key in (("phys_", "physical_damage_types"),
+                                 ("mag_", "magic_damage_types")):
+            if not key.startswith(prefix):
+                continue
+            rest = key[len(prefix):]
+            for field in ("num_dice", "die_size"):
+                if rest.startswith(field + "_"):
+                    t = rest[len(field) + 1:]
+                    entry = next((r for r in self._f.get(list_key, []) if r.get("type") == t),
+                                 None)
+                    return entry, field
+        return None, None
+
     # ── Event handling ───────────────────────────────────────────────────────
     def handle(self, event, screen) -> bool:
         if not self.active:
@@ -118,44 +138,30 @@ class WeaponDialog:
         if event.type == pygame.KEYDOWN:
             af = self._active_field
             if af == "name":
-                if event.key == pygame.K_BACKSPACE:
-                    self._f[af] = self._f.get(af, "")[:-1]
-                elif event.key == pygame.K_RETURN:
+                if event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
                     self._active_field = None
-                elif event.key == pygame.K_ESCAPE:
-                    self._active_field = None
-                elif event.unicode and event.unicode.isprintable():
-                    self._f[af] = self._f.get(af, "") + event.unicode
+                else:
+                    self._f[af], self._caret, _ = edit_line(
+                        self._f.get(af, ""), self._caret, event)
                 return True
+            entry, field_name = self._dice_entry(af) if af else (None, None)
             if af and (af in ("normal_range_ft", "long_range_ft", "bonus_hit", "bonus_damage",
-                              "quantity") or
-                      af.startswith("phys_") or af.startswith("mag_")):
-                # Handle per-type dice fields (phys_num_dice_X, phys_die_size_X, mag_num_dice_X, mag_die_size_X)
-                if af.startswith("phys_") or af.startswith("mag_"):
-                    prefix, field_type, type_name = af.split("_", 2)
-                    key = f"{prefix}_damage_types"
-                    rolls = self._f.get(key, [])
-                    entry = next((r for r in rolls if r.get("type") == type_name), None)
-                    if entry:
-                        field_name = "num_dice" if field_type == "num" else "die_size"
-                        cur = str(entry.get(field_name, ""))
-                else:
-                    cur = str(self._f.get(af, ""))
-                    field_name = af
+                              "quantity") or entry is not None):
+                # Per-type dice fields (phys_num_dice_X, phys_die_size_X, mag_num_dice_X,
+                # mag_die_size_X) edit the matching roll in the damage lists.
+                cur = str(entry.get(field_name, "") if entry is not None else self._f.get(af, ""))
 
-                if event.key == pygame.K_BACKSPACE:
-                    cur = cur[:-1]
-                    val = int(cur) if cur.isdigit() else 0
-                elif event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
+                if event.key in (pygame.K_RETURN, pygame.K_ESCAPE):
                     self._active_field = None
                     return True
-                elif event.unicode.isdigit():
-                    cur += event.unicode
-                    val = int(cur)
-                else:
-                    return True
+                # A 0 edits as an empty field, so typing replaces it.
+                if cur == "0":
+                    cur = ""
+                cur, self._caret, _ = edit_line(cur, self._caret, event,
+                                                accept=_DIGITS.fullmatch)
+                val = int(cur) if cur else 0
 
-                if af.startswith("phys_") or af.startswith("mag_"):
+                if entry is not None:
                     entry[field_name] = val
                 else:
                     self._f[af] = val
@@ -222,11 +228,12 @@ class WeaponDialog:
 
             # Text / numeric input fields (includes per-type dice)
             numeric_keys = ["name", "normal_range_ft", "long_range_ft", "quantity"]
-            numeric_keys += [k for k in self._rects.keys() if k.startswith("phys_") or k.startswith("mag_")]
+            numeric_keys += [k for k in self._rects.keys() if self._dice_entry(k)[0] is not None]
             for field_key in numeric_keys:
                 if field_key in self._rects and \
                         self._rects[field_key].collidepoint(mx, my):
                     self._active_field = field_key
+                    self._caret = None
                     return True
 
             # Physical damage type toggles
@@ -367,11 +374,12 @@ class WeaponDialog:
                 pygame.draw.rect(screen,
                                  (130, 160, 220) if active else (80, 80, 110),
                                  rect, 1, border_radius=3)
-                val = str(self._f.get(key, ""))
+                entry, field = self._dice_entry(key)
+                val = str(entry.get(field, "") if entry is not None else self._f.get(key, ""))
                 ts  = self._font_md.render(val, True, (220, 220, 235))
                 screen.blit(ts, (rect.x + 4, rect.centery - ts.get_height() // 2))
                 if active:          # cursor
-                    cx_cur = rect.x + 4 + ts.get_width() + 1
+                    cx_cur = caret_x(self._font_md, val, self._caret, rect.x + 4)
                     pygame.draw.line(screen, (200, 200, 220),
                                      (cx_cur, rect.y + 3),
                                      (cx_cur, rect.bottom - 3))

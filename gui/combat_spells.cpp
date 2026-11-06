@@ -4453,8 +4453,8 @@ bool CombatEngine::applyWildMagicSurgeEffect(BattleMap& bm, int idx, int effect)
         auto weapons = bm.getAgentWeapons(idx);
         int dropped = 0;
         for (auto& w : weapons) {
-            // Weapons without "Unarmed" in name are real weapons — only real weapons drop (not permanently armed).
-            if (!w.name.empty() && w.name.find("Unarmed") == std::string::npos && !w.permanently_armed) {
+            // Only real weapons drop — natural/innate attacks stay (Weapon::droppable()).
+            if (w.droppable()) {
                 [[maybe_unused]] int item_id = bm.placeItem(origin, w);
                 w = Weapon{};  // clear the slot back to the default (Unarmed)
                 ++dropped;

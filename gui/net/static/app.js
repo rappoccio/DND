@@ -46,6 +46,7 @@ const CRED_KEY = "dnd.credential";        // sessionStorage, per D-M4e-2
 const NAME_KEY = "dnd.principal";
 const SEAT_KEY = "dnd.seat";              // localStorage: {id, name}, a hint, never a credential (D-M6-7)
 const MASK = "rgb(0, 0, 0)";              // net/mapimg.py MASK_RGB
+const FOG_OVERLAP = 0.2;                   // net/mapimg.py FOG_OVERLAP
 const WS_UNAUTHENTICATED = 4401;          // net/server.py WS_CLOSE_UNAUTHENTICATED
 const WS_REPLACED = 4408;                 // net/server.py WS_CLOSE_REPLACED (D-M7-3)
 const WS_REMOVED = 4403;                  // net/server.py WS_CLOSE_REMOVED (D-M7-5)
@@ -1054,22 +1055,50 @@ function drawFog(cell, cols, rows) {
   // `_cells`). So there is nothing to paint.
   if (!view.fog.active) return;
 
-  const byRow = new Map();
-  for (const run of view.fog.explored_runs) {
-    const [row, from, to] = run;
-    if (!byRow.has(row)) byRow.set(row, []);
-    byRow.get(row).push([from, to]);
+  const seen = new Set();
+  for (const [row, from, to] of view.fog.explored_runs) {
+    for (let col = from; col <= to; col++) seen.add(row * cols + col);
   }
+  const isSeen = (col, row) =>
+    col >= 0 && row >= 0 && col < cols && row < rows && seen.has(row * cols + col);
 
+  // An explored cell's reveal reaches FOG_OVERLAP of a cell into each neighbour, as the
+  // server's mask does. A fogged cell touching nothing explored is filled whole (batched
+  // into runs); one that borders the seen area is filled as a 3x3 of pieces, an edge
+  // piece dropped when that side's neighbour is seen and a corner piece when any of the
+  // three cells around it is.
+  const p = cell * FOG_OVERLAP, q = cell - 2 * p;
   ctx.fillStyle = MASK;
   for (let row = 0; row < rows; row++) {
-    const spans = (byRow.get(row) || []).sort((a, b) => a[0] - b[0]);
-    let col = 0;
-    for (const [from, to] of spans) {
-      if (from > col) ctx.fillRect(col * cell, row * cell, (from - col) * cell, cell);
-      col = Math.max(col, to + 1);
+    const y = row * cell;
+    let runFrom = -1;
+    const flush = (col) => {
+      if (runFrom >= 0) ctx.fillRect(runFrom * cell, y, (col - runFrom) * cell, cell);
+      runFrom = -1;
+    };
+    for (let col = 0; col < cols; col++) {
+      if (isSeen(col, row)) { flush(col); continue; }
+      const n = isSeen(col, row - 1), s = isSeen(col, row + 1);
+      const w = isSeen(col - 1, row), e = isSeen(col + 1, row);
+      const nw = isSeen(col - 1, row - 1), ne = isSeen(col + 1, row - 1);
+      const sw = isSeen(col - 1, row + 1), se = isSeen(col + 1, row + 1);
+      if (!(n || s || w || e || nw || ne || sw || se)) {
+        if (runFrom < 0) runFrom = col;
+        continue;
+      }
+      flush(col);
+      const x = col * cell;
+      ctx.fillRect(x + p, y + p, q, q);
+      if (!n) ctx.fillRect(x + p, y, q, p);
+      if (!s) ctx.fillRect(x + p, y + cell - p, q, p);
+      if (!w) ctx.fillRect(x, y + p, p, q);
+      if (!e) ctx.fillRect(x + cell - p, y + p, p, q);
+      if (!(n || w || nw)) ctx.fillRect(x, y, p, p);
+      if (!(n || e || ne)) ctx.fillRect(x + cell - p, y, p, p);
+      if (!(s || w || sw)) ctx.fillRect(x, y + cell - p, p, p);
+      if (!(s || e || se)) ctx.fillRect(x + cell - p, y + cell - p, p, p);
     }
-    if (col < cols) ctx.fillRect(col * cell, row * cell, (cols - col) * cell, cell);
+    flush(cols);
   }
 }
 
@@ -1104,16 +1133,17 @@ const DOOR_BROKEN_FRAME = "rgb(150, 70, 45)";
 const DOOR_SHARD = "rgb(120, 75, 40)";
 const DOOR_LOCK = "rgb(230, 200, 60)";
 
-/* The world rect [x, y, w, h] a door covers: an edge door's bar, a third of a cell thick
+/* The world rect [x, y, w, h] a door covers: an edge door's bar, half a cell thick
    and centred on its grid line (`edge_door_rect`), or a cell door's bounding box. */
 function doorRect(door, cell) {
   if (door.edges && door.edges.length) {
-    const t = Math.max(4, Math.floor(cell / 3));
+    const t = Math.max(6, Math.floor(cell / 2));
     const c0 = Math.min(...door.edges.map((e) => e[0]));
     const r0 = Math.min(...door.edges.map((e) => e[1]));
     const n = door.edges.length;
-    if (door.edges[0][2] === "E") return [(c0 + 1) * cell - t / 2, r0 * cell, t, n * cell];
-    return [c0 * cell, (r0 + 1) * cell - t / 2, n * cell, t];
+    const half = Math.floor(t / 2);     // `t // 2`: an odd t stays on whole pixels
+    if (door.edges[0][2] === "E") return [(c0 + 1) * cell - half, r0 * cell, t, n * cell];
+    return [c0 * cell, (r0 + 1) * cell - half, n * cell, t];
   }
   if (!door.cells || !door.cells.length) return null;
   const cols = door.cells.map((c) => c[0]);

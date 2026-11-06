@@ -1057,6 +1057,9 @@ void bindTypes(py::module_& m) {
         .def_readwrite("save_for_damage_ability", &Weapon::save_for_damage_ability)
         .def_readwrite("auto_use_when_grappling", &Weapon::auto_use_when_grappling)
         .def_readwrite("permanently_armed", &Weapon::permanently_armed)
+        .def("droppable", &Weapon::droppable,
+             "True if this weapon can land on the ground: not permanently_armed, not an Unarmed "
+             "strike, not a generic stat-block attack (\"Melee (Slashing)\", \"Ranged (Piercing)\").")
         .def_readwrite("mastery",          &Weapon::mastery)
         .def_readwrite("ac_bonus",         &Weapon::ac_bonus)
         .def_readwrite("physical_damage_types", &Weapon::physicalDamageRolls)

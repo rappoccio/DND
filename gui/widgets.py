@@ -2,11 +2,114 @@
 #  widgets.py  –  Reusable pygame UI widgets
 # ─────────────────────────────────────────────────────────────────────────────
 
+import re
 import pygame
 from constants import (
     COL_BTN, COL_BTN_HOVER, COL_PANEL_BORDER, COL_TEXT, COL_LABEL,
     COL_INPUT_BG, COL_INPUT_ACTIVE
 )
+
+
+# ── single-line text editing (shared by every typed field) ────────────────────
+# The system clipboard goes through pygame.scrap (SDL's clipboard, which x11vnc syncs to
+# the noVNC client). If scrap is unavailable — headless tests, no display yet — copy and
+# paste still work inside the app through this fallback.
+_clipboard_fallback = ""
+# pygame 2 on SDL2 publishes the text clipboard under this type; pygame.SCRAP_TEXT
+# ("text/plain") reads back None there, which silently left paste on the fallback.
+_SCRAP_UTF8 = "text/plain;charset=utf-8"
+_INT_TEXT = re.compile(r"-?\d*")   # what an integer field may hold mid-edit
+
+
+def clipboard_get() -> str:
+    try:
+        import pygame.scrap as scrap
+        if not scrap.get_init():
+            scrap.init()
+        for kind in (_SCRAP_UTF8, pygame.SCRAP_TEXT):
+            raw = scrap.get(kind)
+            if raw:
+                return raw.decode("utf-8", "ignore").replace("\x00", "")
+    except Exception:
+        pass
+    return _clipboard_fallback
+
+
+def clipboard_put(text: str):
+    global _clipboard_fallback
+    _clipboard_fallback = text
+    try:
+        import pygame.scrap as scrap
+        if not scrap.get_init():
+            scrap.init()
+        scrap.put(_SCRAP_UTF8, text.encode("utf-8"))
+    except Exception:
+        pass
+
+
+def edit_line(text: str, caret, event, accept=None):
+    """Apply one KEYDOWN to a single-line field with a caret.
+
+    ``caret`` is an index into ``text`` (None means the end). ← / → move it, Home / End
+    jump, Backspace / Delete erase around it, typed characters insert at it, and
+    Ctrl/Cmd+C copies the field, Ctrl/Cmd+X cuts it, Ctrl/Cmd+V pastes at the caret.
+    ``accept(new_text)`` may veto an edit (e.g. digits only). Returns
+    ``(text, caret, handled)``; Enter, Esc and Tab are left to the caller."""
+    n = len(text)
+    c = n if caret is None else max(0, min(n, caret))
+    if event.type != pygame.KEYDOWN:
+        return text, c, False
+    k = event.key
+    if event.mod & (pygame.KMOD_CTRL | pygame.KMOD_META):
+        if k == pygame.K_c:
+            clipboard_put(text)
+            return text, c, True
+        if k == pygame.K_x:
+            if accept is None or accept(""):
+                clipboard_put(text)
+                return "", 0, True
+            return text, c, True
+        if k == pygame.K_v:
+            ins = "".join(ch for ch in clipboard_get().replace("\n", " ").replace("\t", " ")
+                          if ch.isprintable())
+            new = text[:c] + ins + text[c:]
+            if ins and (accept is None or accept(new)):
+                return new, c + len(ins), True
+            return text, c, True
+        return text, c, k not in (pygame.K_RETURN, pygame.K_ESCAPE, pygame.K_TAB)
+    if k == pygame.K_LEFT:
+        return text, max(0, c - 1), True
+    if k == pygame.K_RIGHT:
+        return text, min(n, c + 1), True
+    if k == pygame.K_HOME:
+        return text, 0, True
+    if k == pygame.K_END:
+        return text, n, True
+    if k == pygame.K_BACKSPACE:
+        new = text[:c - 1] + text[c:] if c else text
+        if c and (accept is None or accept(new)):
+            return new, c - 1, True
+        return text, c, True
+    if k == pygame.K_DELETE:
+        new = text[:c] + text[c + 1:]
+        if c < n and (accept is None or accept(new)):
+            return new, c, True
+        return text, c, True
+    if k in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_ESCAPE, pygame.K_TAB):
+        return text, c, False
+    ch = event.unicode
+    if ch and ch.isprintable():
+        new = text[:c] + ch + text[c:]
+        if accept is None or accept(new):
+            return new, c + len(ch), True
+        return text, c, True
+    return text, c, False
+
+
+def caret_x(font, text: str, caret, x0: int) -> int:
+    """Screen x of the caret for ``text`` drawn starting at ``x0``."""
+    c = len(text) if caret is None else max(0, min(len(text), caret))
+    return x0 + font.size(text[:c])[0] + 1
 
 
 class Button:
@@ -40,15 +143,16 @@ class TextInput:
         self.font        = font
         self.text        = ""
         self.active      = False
+        self.caret       = None   # index into text; None = end
 
     def handle(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
+            was = self.active
             self.active = self.rect.collidepoint(event.pos)
+            if self.active and not was:
+                self.caret = None
         if self.active and event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_BACKSPACE:
-                self.text = self.text[:-1]
-            elif event.key not in (pygame.K_RETURN, pygame.K_TAB):
-                self.text += event.unicode
+            self.text, self.caret, _ = edit_line(self.text, self.caret, event)
 
     def draw(self, surf: pygame.Surface):
         bg = COL_INPUT_ACTIVE if self.active else COL_INPUT_BG
@@ -59,7 +163,7 @@ class TextInput:
         txt = self.font.render(display, True, color)
         surf.blit(txt, (self.rect.x + 6, self.rect.centery - txt.get_height() // 2))
         if self.active:  # caret
-            cx = self.rect.x + 6 + self.font.size(self.text)[0] + 1
+            cx = caret_x(self.font, self.text, self.caret, self.rect.x + 6)
             pygame.draw.line(surf, COL_TEXT,
                              (cx, self.rect.y+4), (cx, self.rect.bottom-4))
 
@@ -79,6 +183,7 @@ class IntStepper:
         self.font        = font
         self._active     = False   # True while the text field has keyboard focus
         self._raw        = str(value)   # what the user has typed so far
+        self._caret      = None         # caret index into _raw; None = end
         # Last committed number. A field cleared for typing holds no number of its own; it
         # reads back as this rather than as `lo`, so clearing a field and clicking away
         # can't silently snap it to the minimum.
@@ -115,6 +220,7 @@ class IntStepper:
             elif self.field.collidepoint(event.pos):
                 self._active = True
                 self._raw = ""   # clear so the user can type fresh
+                self._caret = None
             else:
                 self._commit()
                 self._active = False
@@ -126,11 +232,9 @@ class IntStepper:
             elif event.key == pygame.K_ESCAPE:
                 self._raw    = str(self.value)   # revert
                 self._active = False
-            elif event.key == pygame.K_BACKSPACE:
-                self._raw = self._raw[:-1]
-            elif event.unicode.lstrip('-').isdigit() or \
-                 (event.unicode == '-' and not self._raw):
-                self._raw += event.unicode
+            else:
+                self._raw, self._caret, _ = edit_line(
+                    self._raw, self._caret, event, accept=_INT_TEXT.fullmatch)
 
     def _commit(self):
         """Clamp whatever the user typed and store it (an empty field keeps its last
@@ -161,8 +265,8 @@ class IntStepper:
 
         # Blinking caret when active
         if self._active:
-            cx = self.field.x + (self.field.w - vt.get_width()) // 2 \
-                 + vt.get_width() + 2
+            cx = caret_x(self.font, self._raw, self._caret,
+                         self.field.x + (self.field.w - vt.get_width()) // 2) + 1
             pygame.draw.line(surf, COL_TEXT,
                              (cx, self.field.y + 4),
                              (cx, self.field.bottom - 4))

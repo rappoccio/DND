@@ -409,10 +409,10 @@ void CombatEngine::dropAgentWeapons(BattleMap& bm, int idx) noexcept
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
 
-    // Get mutable reference and drop all non-empty weapons (except permanently armed ones)
+    // Get mutable reference and drop every held weapon (natural/innate attacks stay: droppable())
     PlacedAgent& pa = const_cast<PlacedAgent&>(agents[idx]);
     for (auto& w : pa.weapons) {
-        if (!w.name.empty() && w.name.find("Unarmed") == std::string::npos && !w.permanently_armed) {
+        if (w.droppable()) {
 	    log_("{} dropped weapon {}", agentName(bm, idx), w.name);
             (void)bm.placeItem(pa.origin, w, "");
             w = Weapon{};

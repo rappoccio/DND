@@ -511,9 +511,13 @@ def _edge_editor(tmp, doc=None, gap=False):
 
 def _drag(ed, a, b, button=1):
     """Press at ``a``, move to ``b``, release (map px = screen px at zoom 1)."""
-    ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=a, button=button))
-    ed.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=b, rel=(0, 0), buttons=(1, 0, 0)))
-    ed.handle(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=b, button=button))
+    pygame.key.set_mods(pygame.KMOD_CTRL)      # Ctrl+drag authors; a plain drag pans
+    try:
+        ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=a, button=button))
+        ed.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=b, rel=(0, 0), buttons=(1, 0, 0)))
+        ed.handle(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=b, button=button))
+    finally:
+        pygame.key.set_mods(0)
 
 
 def _vx(i, j):
@@ -686,7 +690,9 @@ def test_a_map_click_near_the_line_finds_an_edge_door():
         assert app._door_index_at(C(5, 3), (x + cpx + 2, y + cpx // 2)) == 0, "from either side"
         assert app._door_index_at(C(4, 3), (x + cpx // 2, y + cpx // 2)) == -1, "not mid-cell"
         assert app._edge_door_at_pos(near) == 0, "the slab itself, whatever stands beside it"
-        assert app._edge_door_at_pos((x + cpx - cpx // 3, y + cpx // 2)) == -1, \
+        # Just past the slab's half-thickness and the pick pad, on the west side.
+        past = (cpx // 2) // 2 + app.EDGE_DOOR_PICK_PAD + 2
+        assert app._edge_door_at_pos((x + cpx - past, y + cpx // 2)) == -1, \
             "a click well inside the neighbouring cell is not the door"
         assert app._door_index_at(C(5, 3)) == 0 and app._door_index_at(C(6, 3)) == -1
         # The DM's menu needs the actor standing beside the line.
@@ -715,9 +721,13 @@ def test_editor_draws_edge_doors_and_the_drag_preview():
     with tempfile.TemporaryDirectory() as tmp:
         app, _, ed = _door_editor(tmp)
         app.bm.add_edge_door([rpg.Edge(C(4, 3), S)])
-        ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=_vx(X0, 3), button=1))
-        ed.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=_vx(X0, 5), rel=(0, 0),
-                                     buttons=(1, 0, 0)))
+        pygame.key.set_mods(pygame.KMOD_CTRL)      # Ctrl+drag authors; a plain drag pans
+        try:
+            ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=_vx(X0, 3), button=1))
+            ed.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=_vx(X0, 5), rel=(0, 0),
+                                         buttons=(1, 0, 0)))
+        finally:
+            pygame.key.set_mods(0)
         ed.draw(app.screen)
         assert ed._door_edge_keys(*ed.door_edge_drag) == [(X0 - 1, 3, "E"), (X0 - 1, 4, "E")]
     print("✅ test_editor_draws_edge_doors_and_the_drag_preview passed")

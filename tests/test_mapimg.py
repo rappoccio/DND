@@ -128,7 +128,9 @@ def test_unexplored_is_one_flat_colour():
     def check(_art, page, _tmp):
         out = _open(mapimg.render(page, is_dm=False))
         assert out.mode in ("RGB", "RGBA"), out.mode
-        for col, row in ((2, 0), (0, 1), (3, 2)):
+        # Cells with no explored neighbour: one that borders the seen area shows a
+        # FOG_OVERLAP sliver of art on purpose (test_reveal_overlaps_neighbours).
+        for col, row in ((3, 0), (0, 2), (3, 2)):
             cell = out.crop(_served_box(page, col, row))
             colours = cell.getcolors(maxcolors=1 << 16)
             assert len(colours) == 1, f"cell {(col, row)} carries {len(colours)} colours"
@@ -149,8 +151,8 @@ def test_fog_col_alpha_would_have_leaked():
     "reuses the existing constant".
     """
     def check(art, page, _tmp):
-        box = _cell_box(page, 2, 0)          # never explored, structure underneath
-        served = _served_box(page, 2, 0)
+        box = _cell_box(page, 3, 0)          # never explored, structure underneath
+        served = _served_box(page, 3, 0)
 
         leaky = Image.blend(art.convert("RGB"),
                             Image.new("RGB", art.size, mapimg.MASK_RGB),
@@ -196,10 +198,33 @@ def test_geometry_is_raw_image_px():
         x0, y0, x1, y1 = _served_box(page, 1, 0)    # explored
         assert out.getpixel((x0, y0)) != mapimg.MASK_RGB, "first px of a seen cell is fog"
         assert out.getpixel((x1 - 1, y1 - 1)) != mapimg.MASK_RGB, "last px of a seen cell is fog"
-        assert out.getpixel((x1, y0)) == mapimg.MASK_RGB, "the fog starts a px late"
-        assert out.getpixel((x0, y1)) == mapimg.MASK_RGB, "the fog starts a row late"
+        pad_x = round((x1 - x0) * mapimg.FOG_OVERLAP)
+        pad_y = round((y1 - y0) * mapimg.FOG_OVERLAP)
+        assert out.getpixel((x1 + pad_x - 1, y0)) != mapimg.MASK_RGB, "the overlap stops short"
+        assert out.getpixel((x1 + pad_x, y0)) == mapimg.MASK_RGB, "the fog starts a px late"
+        assert out.getpixel((x0, y1 + pad_y)) == mapimg.MASK_RGB, "the fog starts a row late"
     _run(check)
     print("✅ test_geometry_is_raw_image_px")
+
+
+def test_reveal_overlaps_neighbours():
+    """An explored cell's reveal reaches FOG_OVERLAP of a cell into each neighbour,
+    diagonals included, and no further (user, 2026-11-05)."""
+    def check(art, page, _tmp):
+        out = _open(mapimg.render(page, is_dm=False)).convert("RGB")
+        src = art.convert("RGB")
+        ox, oy = page.v_lines[0], page.h_lines[0]
+        x0, y0, x1, y1 = _cell_box(page, 1, 0)       # explored; (2, 0) east, (2, 1) SE
+        pad_x = round((x1 - x0) * mapimg.FOG_OVERLAP)
+        pad_y = round((y1 - y0) * mapimg.FOG_OVERLAP)
+        sliver = (x1, y0, x1 + pad_x, y1 + pad_y)   # into (2, 0) and (2, 1)'s corner
+        assert out.crop((sliver[0] - ox, sliver[1] - oy, sliver[2] - ox, sliver[3] - oy)) \
+            .tobytes() == src.crop(sliver).tobytes(), "the overlap is not the page's art"
+        x2 = page.v_lines[3]
+        rest = out.crop((x1 + pad_x - ox, 0, x2 - ox, y1 - oy)).getcolors(maxcolors=1 << 16)
+        assert rest == [(rest[0][0], mapimg.MASK_RGB)], "the overlap reaches too far"
+    _run(check)
+    print("✅ test_reveal_overlaps_neighbours")
 
 
 def test_the_served_image_is_the_grid():
@@ -298,7 +323,7 @@ def test_real_transparency_survives():
         out = _open(mapimg.render(page, is_dm=False))
         assert out.mode == "RGBA", out.mode
         assert out.getpixel((seen[0] + 1, seen[1] + 1))[3] == 60, "the art's alpha was lost"
-        hidden = _served_box(page, 2, 0)
+        hidden = _served_box(page, 3, 0)
         assert out.getpixel((hidden[0] + 1, hidden[1] + 1)) == (*mapimg.MASK_RGB, 255)
     _run(check, mode="RGBA", translucent=(V_LINES[0] + 1, H_LINES[0] + 1))
     print("✅ test_real_transparency_survives")
@@ -422,7 +447,9 @@ def test_cache_follows_the_newest_published_mask():
         assert new_key != old_key and new_png != old_png, "the cache served the old mask"
         assert cache.renders == 2
 
-        box = _served_box(page, 2, 0)
+        x0, y0, x1, y1 = _served_box(page, 2, 0)
+        pad = round((x1 - x0) * mapimg.FOG_OVERLAP) + 1   # clear of (1, 0)'s overlap
+        box = (x0 + pad, y0, x1 - pad, y1 - pad)
         assert len(_open(old_png).crop(box).getcolors(1 << 16)) == 1, \
             "the older render was not the foggier one"
         assert len(_open(new_png).crop(box).getcolors(1 << 16)) > 1, \
@@ -504,6 +531,7 @@ if __name__ == "__main__":
     test_fog_col_alpha_would_have_leaked()
     test_explored_cells_are_verbatim()
     test_geometry_is_raw_image_px()
+    test_reveal_overlaps_neighbours()
     test_the_served_image_is_the_grid()
     test_the_stretch_lands_on_the_lattice()
     test_undescribable_cell_stays_masked()

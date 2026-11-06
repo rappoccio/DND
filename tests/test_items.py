@@ -628,6 +628,30 @@ def test_thrown_item_dict_round_trip():
     print("✅ Thrown-item save round-trip (damage / condition / fiend-undead / size / escape DC)")
 
 
+def test_natural_attacks_are_not_dropped():
+    """Falling Unconscious drops held weapons, but not natural/innate attacks: "Unarmed", a
+    permanently_armed weapon, or a generic stat-block attack ("Melee (Slashing)", "Ranged (Piercing)")
+    — those used to litter the battlefield whenever a monster went down."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    idx = add_agent_to_battle(engine, bm, create_test_agent("Ogre", 4, 4, hp=20), hp=20)
+
+    def mk(name, ranged=False, perm=False):
+        w = rpg.Weapon(); w.name = name; w.permanently_armed = perm
+        w.type = rpg.WeaponType.Ranged if ranged else rpg.WeaponType.Melee
+        return w
+    weapons = [mk("Melee (Slashing)"), mk("Unarmed"), mk("Ranged (Piercing)", ranged=True),
+               mk("Claw", perm=True), mk("Greatclub")]
+    engine.set_agent_weapons(bm, idx, weapons)
+
+    assert [w.droppable() for w in weapons] == [False, False, False, False, True]
+    engine.apply_unconscious(bm, idx)
+    assert [it.weapon.name for it in bm.get_all_items()] == ["Greatclub"], \
+        [it.weapon.name for it in bm.get_all_items()]
+    held = [w.name for w in engine.get_agent_weapons(bm, idx)]
+    assert "Melee (Slashing)" in held and "Ranged (Piercing)" in held and "Claw" in held
+    print("✅ test_natural_attacks_are_not_dropped passed")
+
+
 def run_tests():
     """Run all item tests."""
     print("\n" + "="*50)
@@ -665,6 +689,7 @@ def run_tests():
         test_net_restrains_until_escaped,
         test_net_auto_succeeds_against_huge,
         test_thrown_item_dict_round_trip,
+        test_natural_attacks_are_not_dropped,
     ]
 
     passed = 0

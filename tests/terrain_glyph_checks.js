@@ -82,15 +82,15 @@ check("a broken door is the splintered frame", () => {
 check("an east edge door is a bar on the cell's east grid line", () => {
   const h = drawn({ doors: [{ id: 2, cells: [], edges: [[5, 5, "E"]], open: false,
                               locked: false, broken: false }] });
-  // t = 50 // 3 = 16, centred on x = 300; pad = max(2, 16 // 8) = 2.
-  assert.notStrictEqual(find(h, "fillRect", WOOD, [294, 252, 12, 46]), -1);
+  // t = 50 // 2 = 25, from x = 300 - 25 // 2 = 288; pad = max(2, 25 // 8) = 3.
+  assert.notStrictEqual(find(h, "fillRect", WOOD, [291, 253, 19, 44]), -1);
 });
 
 check("a south edge door two edges long is a bar on the south grid line", () => {
   const h = drawn({ doors: [{ id: 3, cells: [], edges: [[2, 1, "S"], [3, 1, "S"]],
                               open: false, locked: false, broken: false }] });
-  // Centred on y = 100, from x = 100, 100 long.
-  assert.notStrictEqual(find(h, "fillRect", WOOD, [102, 94, 96, 12]), -1);
+  // From y = 100 - 25 // 2 = 88 and x = 100, 100 long; pad 3.
+  assert.notStrictEqual(find(h, "fillRect", WOOD, [103, 91, 94, 19]), -1);
 });
 
 check("doors draw over the fog, not under it", () => {

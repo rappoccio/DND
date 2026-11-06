@@ -275,9 +275,13 @@ def _drag(ed, a, b):
     v, h = ed.bm.v_line_positions, ed.bm.h_line_positions
     pa = (v[a[0]] + CELL // 2, h[a[1]] + CELL // 2)
     pb = (v[b[0]] + CELL // 2, h[b[1]] + CELL // 2)
-    ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=pa))
-    ed.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=pb, rel=(0, 0), buttons=(1, 0, 0)))
-    ed.handle(pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=pb))
+    pygame.key.set_mods(pygame.KMOD_CTRL)      # Ctrl+drag authors; a plain drag pans
+    try:
+        ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=1, pos=pa))
+        ed.handle(pygame.event.Event(pygame.MOUSEMOTION, pos=pb, rel=(0, 0), buttons=(1, 0, 0)))
+        ed.handle(pygame.event.Event(pygame.MOUSEBUTTONUP, button=1, pos=pb))
+    finally:
+        pygame.key.set_mods(0)
 
 
 def test_drag_moves_an_end():

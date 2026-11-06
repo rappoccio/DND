@@ -136,15 +136,10 @@ class LightingEditorDialog:
             self.default_light, _ = self.light_level_choices[next_idx]
             self._update_base_button()
         elif button_name == 'done':
-            self.active = False
             if self.app:
-                # Apply base level and effects to the battle map first. The base has to
-                # travel with the sources: Done is the only thing that applies the
-                # editor's work without a reload, and a base the file knows about but the
-                # map does not is a light switch that does nothing.
-                self.app._apply_light_effects(self.light_sources, self.default_light)
-                # Then save the configuration to disk (without reloading, since we just applied)
-                self.app._save_lighting_no_reload(self.light_sources, self.default_light)
+                self.app._lighting_done(self)    # applies + saves (asks before overwriting)
+            else:
+                self.active = False
         elif button_name == 'cancel':
             self.close()
 

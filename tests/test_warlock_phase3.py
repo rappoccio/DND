@@ -517,6 +517,37 @@ def test_pact_blade_uses_charisma():
     print("✅ test_pact_blade_uses_charisma passed")
 
 
+def test_pact_blade_bonds_the_main_hand_weapon():
+    """Pact of the Blade turns the main-hand weapon into the pact weapon instead of replacing it:
+    a real melee weapon keeps its name and dice and gains pact_weapon=True; an empty slot (or a
+    ranged weapon) gets the conjured PactBlade; an already-bonded weapon is left alone."""
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+    import main
+    app = main.App.__new__(main.App)   # _bond_pact_weapon needs no App state
+
+    sword = rpg.Weapon()
+    sword.name = "Longsword"
+    sword.type = rpg.WeaponType.Melee
+    weapons = [sword, rpg.Weapon(), rpg.Weapon()]
+    assert app._bond_pact_weapon(weapons) is True
+    assert weapons[0].name == "Longsword" and weapons[0].pact_weapon, \
+        "a melee main-hand weapon is bonded in place, not replaced"
+    assert app._bond_pact_weapon(weapons) is False, "an already-bonded weapon is left alone"
+
+    empty = [rpg.Weapon(), rpg.Weapon(), rpg.Weapon()]          # default "Unarmed" sentinel
+    assert app._bond_pact_weapon(empty) is True
+    assert empty[0].name == "PactBlade" and empty[0].pact_weapon, "an empty main hand conjures"
+
+    bow = rpg.Weapon()
+    bow.name = "Longbow"
+    bow.type = rpg.WeaponType.Ranged
+    ranged = [bow, rpg.Weapon(), rpg.Weapon()]
+    app._bond_pact_weapon(ranged)
+    assert ranged[0].name == "PactBlade", "a ranged weapon can't be the pact weapon"
+    print("✅ test_pact_blade_bonds_the_main_hand_weapon passed")
+
+
 def test_thirsting_blade_extra_attack():
     """Thirsting Blade (14, L5+, requires Pact of the Blade): grants a 2nd attack (num_attacks=2).
     Invocations must be set BEFORE initialize_class_resources (as the GUI does in _on_stats_ok)."""
@@ -687,6 +718,7 @@ if __name__ == '__main__':
     test_invisibility_spell_grants_and_breaks()
     test_greater_invisibility_persists_through_attack()
     test_pact_blade_uses_charisma()
+    test_pact_blade_bonds_the_main_hand_weapon()
     test_thirsting_blade_extra_attack()
     test_eldritch_smite()
     test_eldritch_smite_requires_pact_weapon()

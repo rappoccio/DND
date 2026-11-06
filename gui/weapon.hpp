@@ -128,6 +128,15 @@ struct Weapon {
     // lands it with the right sprite. Empty ⇒ the GUI draws its amber fallback box.
     std::string sprite_path = "";
 
+    // Can this weapon end up on the ground (Unconscious, Frightened, Command "Drop", a Wild Magic
+    // surge, the GUI's manual drop)? Not a natural or innate attack: permanently_armed, the
+    // "Unarmed"/"MonkUnarmed" strikes, or a stat-block attack with no named weapon behind it —
+    // the monster importer's generic "Melee (Slashing)" / "Ranged (Piercing)" style entries.
+    [[nodiscard]] bool droppable() const noexcept {
+        if (name.empty() || permanently_armed) return false;
+        if (name.find("Unarmed") != std::string::npos) return false;
+        return !(name.starts_with("Melee (") || name.starts_with("Ranged ("));
+    }
 };
 
 } // namespace rpg

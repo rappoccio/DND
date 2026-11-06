@@ -6,7 +6,7 @@ import os
 import pygame
 import rpg_battle_map as rpg
 from constants import *
-from widgets import Button, TextInput, IntStepper, IntSlider
+from widgets import Button, TextInput, IntStepper, IntSlider, edit_line, caret_x
 from helpers import _dnd_mod, _mod_str, _calculate_total_ac
 
 class FileBrowser:
@@ -70,6 +70,7 @@ class FileBrowser:
         self._title     = ""
         self._filename  = ""     # editable in save mode
         self._fn_active = False  # filename input focused
+        self._fn_caret  = None   # caret index into _filename; None = end
 
     # ── public API ───────────────────────────────────────────────────────────
     def open(self, start_dir: str, callback, *,
@@ -94,6 +95,7 @@ class FileBrowser:
             "Save Layout As" if save_mode else "Open Layout / Select Sprite")
         self._filename  = default_filename
         self._fn_active = save_mode   # auto-focus filename in save mode
+        self._fn_caret  = None
         self.scroll     = 0
         self._hover     = -1
         self._load()
@@ -187,12 +189,11 @@ class FileBrowser:
                 return True
             if self._fn_active and self.save_mode:
                 # Filename text editing
-                if event.key == pygame.K_BACKSPACE:
-                    self._filename = self._filename[:-1]
-                elif event.key == pygame.K_RETURN:
+                if event.key == pygame.K_RETURN:
                     self._confirm_save()
-                elif event.unicode and event.unicode.isprintable():
-                    self._filename += event.unicode
+                else:
+                    self._filename, self._fn_caret, _ = edit_line(
+                        self._filename, self._fn_caret, event)
             else:
                 if event.key == pygame.K_UP:
                     self.scroll = max(0, self.scroll - 1)
@@ -245,6 +246,7 @@ class FileBrowser:
                     elif self.save_mode:
                         # Populate the filename box; don't close yet
                         self._filename  = name
+                        self._fn_caret  = None
                         self._fn_active = True
                     else:
                         # Load mode: selecting a file is the final action
@@ -363,7 +365,7 @@ class FileBrowser:
 
             # Caret
             if self._fn_active:
-                cx = text_x + 4 + self.font_md.size(self._filename)[0] + 1
+                cx = caret_x(self.font_md, self._filename, self._fn_caret, text_x + 4)
                 pygame.draw.line(screen, (200, 200, 200),
                                  (cx, fn_r.y + 4), (cx, fn_r.bottom - 4))
 
@@ -1906,6 +1908,7 @@ class NamePromptDialog:
         self.visible = True
         self._allow_empty = allow_empty
         self._text = current_text or ""
+        self._caret = None
         self._title = title
         self._callback = callback
         self._frames_since_show = 0
@@ -1935,10 +1938,8 @@ class NamePromptDialog:
                 self._dismiss()
             elif event.key == pygame.K_RETURN:
                 self._commit()
-            elif event.key == pygame.K_BACKSPACE:
-                self._text = self._text[:-1]
-            elif event.unicode and event.unicode.isprintable():
-                self._text += event.unicode
+            else:
+                self._text, self._caret, _ = edit_line(self._text, self._caret, event)
             return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self._ok_rect and self._ok_rect.collidepoint(*event.pos):
@@ -1969,7 +1970,7 @@ class NamePromptDialog:
         pygame.draw.rect(surf, (140, 140, 170), inp, width=1, border_radius=4)
         txt = self.font_md.render(self._text, True, (235, 235, 245))
         surf.blit(txt, (inp.x + 6, inp.centery - txt.get_height() // 2))
-        cx = inp.x + 6 + self.font_md.size(self._text)[0] + 1  # caret
+        cx = caret_x(self.font_md, self._text, self._caret, inp.x + 6)
         pygame.draw.line(surf, (235, 235, 245), (cx, inp.y + 4), (cx, inp.bottom - 4))
 
         bw, bh = 90, self.BTN_H
@@ -3084,158 +3085,11 @@ class StatsDialog:
             self._element_dialog.draw(screen)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Tiny UI helpers
-# ─────────────────────────────────────────────────────────────────────────────
-class Button:
-    def __init__(self, rect: pygame.Rect, label: str, color=COL_BTN,
-                 hover_color=COL_BTN_HOVER, font=None):
-        self.rect   = rect
-        self.label  = label
-        self.color  = color
-        self.hcolor = hover_color
-        self.font   = font
-
-    def draw(self, surf: pygame.Surface):
-        hovered = self.rect.collidepoint(pygame.mouse.get_pos())
-        col = self.hcolor if hovered else self.color
-        pygame.draw.rect(surf, col, self.rect, border_radius=4)
-        pygame.draw.rect(surf, COL_PANEL_BORDER, self.rect, 1, border_radius=4)
-        txt = self.font.render(self.label, True, COL_TEXT)
-        surf.blit(txt, txt.get_rect(center=self.rect.center))
-
-    def clicked(self, event) -> bool:
-        return (event.type == pygame.MOUSEBUTTONDOWN
-                and event.button == 1
-                and self.rect.collidepoint(event.pos))
-
-
-class TextInput:
-    def __init__(self, rect: pygame.Rect, placeholder: str = "", font=None):
-        self.rect        = rect
-        self.placeholder = placeholder
-        self.font        = font
-        self.text        = ""
-        self.active      = False
-
-    def handle(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN:
-            self.active = self.rect.collidepoint(event.pos)
-        if self.active and event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_BACKSPACE:
-                self.text = self.text[:-1]
-            elif event.key not in (pygame.K_RETURN, pygame.K_TAB):
-                self.text += event.unicode
-
-    def draw(self, surf: pygame.Surface):
-        bg = COL_INPUT_ACTIVE if self.active else COL_INPUT_BG
-        pygame.draw.rect(surf, bg, self.rect, border_radius=3)
-        pygame.draw.rect(surf, COL_PANEL_BORDER, self.rect, 1, border_radius=3)
-        display = self.text or self.placeholder
-        color   = COL_TEXT if self.text else COL_LABEL
-        txt = self.font.render(display, True, color)
-        surf.blit(txt, (self.rect.x + 6, self.rect.centery - txt.get_height() // 2))
-        if self.active:  # caret
-            cx = self.rect.x + 6 + self.font.size(self.text)[0] + 1
-            pygame.draw.line(surf, COL_TEXT,
-                             (cx, self.rect.y+4), (cx, self.rect.bottom-4))
-
-
-class IntStepper:
-    """
-    Integer input: click the centre field to type a number directly,
-    or use the − / + buttons on either side to nudge by 1.
-    The public interface (self.value, handle, draw) is unchanged so
-    StatsDialog and any other caller needs no modifications.
-    """
-    BW = 24   # width of each nudge button
-
-    def __init__(self, rect: pygame.Rect, value: int, lo: int, hi: int, font=None):
-        self.rect        = rect
-        self.lo, self.hi = lo, hi
-        self.font        = font
-        self._active     = False   # True while the text field has keyboard focus
-        self._raw        = str(value)   # what the user has typed so far
-
-        bw = self.BW
-        self.btn_dec  = pygame.Rect(rect.x,          rect.y, bw, rect.h)
-        self.btn_inc  = pygame.Rect(rect.right - bw, rect.y, bw, rect.h)
-        self.field    = pygame.Rect(rect.x + bw, rect.y,
-                                    rect.w - bw * 2, rect.h)
-
-    # ── committed integer value ───────────────────────────────────────────────
-    @property
-    def value(self) -> int:
-        try:
-            return max(self.lo, min(self.hi, int(self._raw)))
-        except ValueError:
-            return self.lo
-
-    @value.setter
-    def value(self, v: int):
-        self._raw = str(max(self.lo, min(self.hi, v)))
-
-    # ── event handling ────────────────────────────────────────────────────────
-    def handle(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.btn_dec.collidepoint(event.pos):
-                self.value = self.value - 1
-                self._active = False
-            elif self.btn_inc.collidepoint(event.pos):
-                self.value = self.value + 1
-                self._active = False
-            elif self.field.collidepoint(event.pos):
-                self._active = True
-                self._raw = ""   # clear so the user can type fresh
-            else:
-                self._commit()
-                self._active = False
-
-        if self._active and event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_RETURN:
-                self._commit()
-                self._active = False
-            elif event.key == pygame.K_ESCAPE:
-                self._raw    = str(self.value)   # revert
-                self._active = False
-            elif event.key == pygame.K_BACKSPACE:
-                self._raw = self._raw[:-1]
-            elif event.unicode.lstrip('-').isdigit() or \
-                 (event.unicode == '-' and not self._raw):
-                self._raw += event.unicode
-
-    def _commit(self):
-        """Clamp whatever the user typed and store it."""
-        self._raw = str(self.value)   # value property already clamps
-
-    # ── drawing ───────────────────────────────────────────────────────────────
-    def draw(self, surf: pygame.Surface):
-        mouse = pygame.mouse.get_pos()
-
-        # Nudge buttons
-        for btn, lbl in ((self.btn_dec, "−"), (self.btn_inc, "+")):
-            hov = btn.collidepoint(mouse)
-            pygame.draw.rect(surf, COL_BTN_HOVER if hov else COL_BTN,
-                             btn, border_radius=3)
-            t = self.font.render(lbl, True, COL_TEXT)
-            surf.blit(t, t.get_rect(center=btn.center))
-
-        # Text field
-        field_col = COL_INPUT_ACTIVE if self._active else COL_INPUT_BG
-        pygame.draw.rect(surf, field_col, self.field, border_radius=3)
-        pygame.draw.rect(surf, COL_PANEL_BORDER, self.field, 1, border_radius=3)
-
-        display = self._raw if self._active else str(self.value)
-        vt = self.font.render(display, True, COL_TEXT)
-        surf.blit(vt, vt.get_rect(center=self.field.center))
-
-        # Blinking caret when active
-        if self._active:
-            cx = self.field.x + (self.field.w - vt.get_width()) // 2 \
-                 + vt.get_width() + 2
-            pygame.draw.line(surf, COL_TEXT,
-                             (cx, self.field.y + 4),
-                             (cx, self.field.bottom - 4))
+def _draw_search_text(surf, font, box, text, caret):
+    """The picker dialogs' "Search: …" line, with a caret at ``caret``."""
+    surf.blit(font.render(f"Search: {text}", True, (200, 200, 200)), (box.x + 4, box.y + 4))
+    cx = caret_x(font, text, caret, box.x + 4 + font.size("Search: ")[0])
+    pygame.draw.line(surf, (200, 200, 200), (cx, box.y + 3), (cx, box.bottom - 3))
 
 
 class MobSelectionDialog:
@@ -3255,6 +3109,7 @@ class MobSelectionDialog:
         self._hover_idx = -1
         self.selected_callback = None
         self.search_text = ""
+        self._search_caret = None
         self.search_active = False
 
     def show(self, callback):
@@ -3263,6 +3118,7 @@ class MobSelectionDialog:
         self.scroll_y = 0
         self._hover_idx = -1
         self.search_text = ""
+        self._search_caret = None
         self.search_active = True
         self.filtered_mobs = self.all_mobs[:]
         # Center dialog on screen
@@ -3289,10 +3145,6 @@ class MobSelectionDialog:
             if event.key == pygame.K_ESCAPE:
                 self.dismiss()
                 return True
-            elif event.key == pygame.K_BACKSPACE:
-                self.search_text = self.search_text[:-1]
-                self._update_filtered_mobs()
-                return True
             elif event.key == pygame.K_RETURN:
                 # Select first filtered mob if only one matches
                 if len(self.filtered_mobs) == 1:
@@ -3300,10 +3152,14 @@ class MobSelectionDialog:
                         self.selected_callback(self.filtered_mobs[0])
                     self.dismiss()
                     return True
-            elif event.unicode.isprintable():
-                self.search_text += event.unicode
-                self._update_filtered_mobs()
-                return True
+            else:
+                before = self.search_text
+                self.search_text, self._search_caret, used = edit_line(
+                    self.search_text, self._search_caret, event)
+                if used:
+                    if self.search_text != before:
+                        self._update_filtered_mobs()
+                    return True
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(*event.pos):
                 # Check if click is in search box area
@@ -3377,6 +3233,8 @@ class MobSelectionDialog:
         search_txt = self.font_sm.render(self.search_text if self.search_text else "Search mobs...",
                                         True, COL_TEXT if self.search_text else (120, 120, 120))
         surf.blit(search_txt, (search_rect.x + 6, search_rect.centery - search_txt.get_height() // 2))
+        cx = caret_x(self.font_sm, self.search_text, self._search_caret, search_rect.x + 6)
+        pygame.draw.line(surf, COL_TEXT, (cx, search_rect.y + 4), (cx, search_rect.bottom - 4))
 
         # List area (below search box)
         list_y = search_y + self.SEARCH_H
@@ -3636,6 +3494,7 @@ class SpellSelectionDialog:
         self._hover_idx = -1
         self.selected_callback = None
         self.search_text = ""
+        self._search_caret = None
         self.active_level = None  # None == "All" tab
         self._tab_rects = []      # cached (rect, level) for hit-testing
         self._frames_since_show = 0  # Prevent immediate dismissal on show click
@@ -3655,6 +3514,7 @@ class SpellSelectionDialog:
         self.scroll_y = 0
         self._hover_idx = -1
         self.search_text = ""
+        self._search_caret = None
         self.active_level = None
         self.max_level = max_level
         self.allow_names = allow_names
@@ -3734,19 +3594,19 @@ class SpellSelectionDialog:
             if event.key == pygame.K_ESCAPE:
                 self.dismiss()
                 return True
-            elif event.key == pygame.K_BACKSPACE:
-                self.search_text = self.search_text[:-1]
-                self._update_filtered_spells()
-                return True
             elif event.key == pygame.K_RETURN:
                 # Select first filtered spell if only one matches
                 if len(self.filtered_spells) == 1:
                     self._commit(self.filtered_spells[0])
                     return True
-            elif event.unicode.isprintable():
-                self.search_text += event.unicode
-                self._update_filtered_spells()
-                return True
+            else:
+                before = self.search_text
+                self.search_text, self._search_caret, used = edit_line(
+                    self.search_text, self._search_caret, event)
+                if used:
+                    if self.search_text != before:
+                        self._update_filtered_spells()
+                    return True
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(*event.pos):
                 # Tab clicks
@@ -3754,6 +3614,7 @@ class SpellSelectionDialog:
                     if tab_rect.collidepoint(*event.pos):
                         self.active_level = level
                         self.search_text = ""  # tab switch clears search
+                        self._search_caret = None
                         self._update_filtered_spells()
                         return True
 
@@ -3838,8 +3699,8 @@ class SpellSelectionDialog:
         search_box = pygame.Rect(self.rect.x + self.PAD, search_y, self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
         pygame.draw.rect(surf, (30, 30, 40), search_box)
         pygame.draw.rect(surf, (140, 140, 90) if searching else (100, 100, 120), search_box, 1)
-        search_label = self.font_sm.render(f"Search: {self.search_text}_", True, (200, 200, 200))
-        surf.blit(search_label, (search_box.x + 4, search_box.y + 4))
+        _draw_search_text(surf, self.font_sm, search_box, self.search_text,
+                          self._search_caret)
 
         # Spell list background
         list_bg = pygame.Rect(self.rect.x + self.PAD, list_y, self.rect.w - self.PAD * 2, list_h)
@@ -3891,6 +3752,7 @@ class ArmorSelectionDialog:
         self._hover_idx = -1
         self.selected_callback = None
         self.search_text = ""
+        self._search_caret = None
         self._frames_since_show = 0
 
     def show(self, callback):
@@ -3899,6 +3761,7 @@ class ArmorSelectionDialog:
         self.scroll_y = 0
         self._hover_idx = -1
         self.search_text = ""
+        self._search_caret = None
         self._frames_since_show = 0
         self.filtered_armors = self.all_armors[:]
         screen_w, screen_h = pygame.display.get_surface().get_size()
@@ -3927,20 +3790,20 @@ class ArmorSelectionDialog:
             if event.key == pygame.K_ESCAPE:
                 self.dismiss()
                 return True
-            elif event.key == pygame.K_BACKSPACE:
-                self.search_text = self.search_text[:-1]
-                self._update_filtered_armors()
-                return True
             elif event.key == pygame.K_RETURN:
                 if len(self.filtered_armors) == 1:
                     if self.selected_callback:
                         self.selected_callback(self.filtered_armors[0])
                     self.dismiss()
                     return True
-            elif event.unicode.isprintable():
-                self.search_text += event.unicode
-                self._update_filtered_armors()
-                return True
+            else:
+                before = self.search_text
+                self.search_text, self._search_caret, used = edit_line(
+                    self.search_text, self._search_caret, event)
+                if used:
+                    if self.search_text != before:
+                        self._update_filtered_armors()
+                    return True
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(*event.pos):
                 search_y = self.rect.y + 35
@@ -4006,8 +3869,8 @@ class ArmorSelectionDialog:
         search_box = pygame.Rect(self.rect.x + self.PAD, search_y, self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
         pygame.draw.rect(surf, (30, 30, 40), search_box)
         pygame.draw.rect(surf, (100, 100, 120), search_box, 1)
-        search_label = self.font_sm.render(f"Search: {self.search_text}_" if self.visible else f"Search: {self.search_text}", True, (200, 200, 200))
-        surf.blit(search_label, (search_box.x + 4, search_box.y + 4))
+        _draw_search_text(surf, self.font_sm, search_box, self.search_text,
+                          self._search_caret)
 
         list_y = search_y + self.SEARCH_H
         list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
@@ -4041,6 +3904,7 @@ class WeaponSelectionDialog:
         self._hover_idx = -1
         self.selected_callback = None
         self.search_text = ""
+        self._search_caret = None
         self._frames_since_show = 0
 
     def show(self, callback):
@@ -4049,6 +3913,7 @@ class WeaponSelectionDialog:
         self.scroll_y = 0
         self._hover_idx = -1
         self.search_text = ""
+        self._search_caret = None
         self._frames_since_show = 0
         self.filtered_weapons = self.all_weapons[:]
         screen_w, screen_h = pygame.display.get_surface().get_size()
@@ -4077,20 +3942,20 @@ class WeaponSelectionDialog:
             if event.key == pygame.K_ESCAPE:
                 self.dismiss()
                 return True
-            elif event.key == pygame.K_BACKSPACE:
-                self.search_text = self.search_text[:-1]
-                self._update_filtered_weapons()
-                return True
             elif event.key == pygame.K_RETURN:
                 if len(self.filtered_weapons) == 1:
                     if self.selected_callback:
                         self.selected_callback(self.filtered_weapons[0])
                     self.dismiss()
                     return True
-            elif event.unicode.isprintable():
-                self.search_text += event.unicode
-                self._update_filtered_weapons()
-                return True
+            else:
+                before = self.search_text
+                self.search_text, self._search_caret, used = edit_line(
+                    self.search_text, self._search_caret, event)
+                if used:
+                    if self.search_text != before:
+                        self._update_filtered_weapons()
+                    return True
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(*event.pos):
                 search_y = self.rect.y + 35
@@ -4156,8 +4021,8 @@ class WeaponSelectionDialog:
         search_box = pygame.Rect(self.rect.x + self.PAD, search_y, self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
         pygame.draw.rect(surf, (30, 30, 40), search_box)
         pygame.draw.rect(surf, (100, 100, 120), search_box, 1)
-        search_label = self.font_sm.render(f"Search: {self.search_text}_" if self.visible else f"Search: {self.search_text}", True, (200, 200, 200))
-        surf.blit(search_label, (search_box.x + 4, search_box.y + 4))
+        _draw_search_text(surf, self.font_sm, search_box, self.search_text,
+                          self._search_caret)
 
         list_y = search_y + self.SEARCH_H
         list_h = self.rect.h - (list_y - self.rect.y) - self.PAD
@@ -4581,6 +4446,7 @@ class ItemSelectionDialog:
         self._hover_idx = -1
         self.selected_callback = None
         self.search_text = ""
+        self._search_caret = None
         self._frames_since_show = 0
 
     def show(self, callback):
@@ -4589,6 +4455,7 @@ class ItemSelectionDialog:
         self.scroll_y = 0
         self._hover_idx = -1
         self.search_text = ""
+        self._search_caret = None
         self._frames_since_show = 0
         self.filtered_items = self.all_items[:]
         screen_w, screen_h = pygame.display.get_surface().get_size()
@@ -4634,20 +4501,20 @@ class ItemSelectionDialog:
             if event.key == pygame.K_ESCAPE:
                 self.dismiss()
                 return True
-            elif event.key == pygame.K_BACKSPACE:
-                self.search_text = self.search_text[:-1]
-                self._update_filtered_items()
-                return True
             elif event.key == pygame.K_RETURN:
                 if len(self.filtered_items) == 1:
                     if self.selected_callback:
                         self.selected_callback(self.filtered_items[0])
                     self.dismiss()
                     return True
-            elif event.unicode.isprintable():
-                self.search_text += event.unicode
-                self._update_filtered_items()
-                return True
+            else:
+                before = self.search_text
+                self.search_text, self._search_caret, used = edit_line(
+                    self.search_text, self._search_caret, event)
+                if used:
+                    if self.search_text != before:
+                        self._update_filtered_items()
+                    return True
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(*event.pos):
                 search_y = self.rect.y + 35
@@ -4712,8 +4579,8 @@ class ItemSelectionDialog:
         search_box = pygame.Rect(self.rect.x + self.PAD, search_y, self.rect.w - self.PAD * 2, self.SEARCH_H - 8)
         pygame.draw.rect(surf, (30, 30, 40), search_box)
         pygame.draw.rect(surf, (100, 100, 120), search_box, 1)
-        search_label = self.font_sm.render(f"Search: {self.search_text}_", True, (200, 200, 200))
-        surf.blit(search_label, (search_box.x + 4, search_box.y + 4))
+        _draw_search_text(surf, self.font_sm, search_box, self.search_text,
+                          self._search_caret)
 
         list_y = search_y + self.SEARCH_H
         list_h = self.rect.h - (list_y - self.rect.y) - self.PAD

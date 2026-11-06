@@ -1,6 +1,6 @@
 # Save layout: campaigns, maps, encounters, PCs
 
-**Status 2026-11-05: Step 0 frozen (D1–D12). Steps 1–3 done (c8914a9, e6211d4); step 4 applied 2026-11-05; step 5a–5b done (all uncommitted since e6211d4, 214/0).** Came out of the Sithicus folder: seven
+**Status 2026-11-05: Step 0 frozen (D1–D12). Steps 1–3 done (c8914a9, e6211d4); step 4 applied 2026-11-05; step 5a–5b done (committed 9059b50, 214/0).** Came out of the Sithicus folder: seven
 copies of one map's terrain, names compounding (`_dungeon_dungeon_dungeon_agents.json`),
 and edge doors "missing" from generated encounters.
 

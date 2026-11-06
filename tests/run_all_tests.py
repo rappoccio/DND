@@ -170,6 +170,7 @@ test_scripts = [
     # dialog. Kept with the oracles because the failure it prevents is invisible from the
     # DM's own screen: the app looks fine, and every player's request times out.
     "test_modal_pump.py",
+    "test_paste_and_mob_groups.py",
     "test_mob_picker.py",
 
     # The push socket and the client it serves (MULTIPLAYER_PLAN.md M4e, D-M4e-1..4) —
@@ -267,6 +268,7 @@ test_scripts = [
     "test_dual_wield.py",
     "test_reaction_feats.py",
     "test_save_load_weapons.py",
+    "test_pact_weapon_drop.py",
     "test_weapon_list.py",
     "test_multiattack_recipes.py",
     "test_evoker_safe_targets.py",
@@ -447,6 +449,12 @@ test_scripts = [
 
     # Multiclassing Phase 5 — GUI save/load round-trip (class_levels + subclasses + merge)
     "test_multiclass_gui_roundtrip.py",
+
+    # Caret, arrows and cut/copy/paste in every typed field (widgets.edit_line)
+    "test_text_editing.py",
+
+    # Confirm before saves / big operations overwrite an existing file
+    "test_confirm_overwrite.py",
 ]
 
 def run_tests():
