@@ -138,6 +138,7 @@ test_scripts = [
     "test_board_snapshot.py",
     "test_autosave.py",
     "test_autosave_restore.py",
+    "test_autosave_design.py",
     # Reconnect and restart: the client re-claims its seat by principal_id (M6.5).
     "test_reclaim.py",
     # M7, hardening: the roster lock, the limits, the session log, the DM's Table menu.

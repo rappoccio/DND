@@ -163,6 +163,12 @@ class CampaignStore:
         rs.map_section(self.run, p.id)["state"] = state
         self.save_run()
 
+    def adopt_play_state(self, doc, page=None) -> None:
+        """Take a map's fog and door states from a terrain document and leave its design
+        alone. In memory only: like any restored scene, it reaches run.json on the next
+        save."""
+        rs.map_section(self.run, self._page(page).id)["state"] = rs.split_terrain(doc)[2]
+
     # ── Creatures ─────────────────────────────────────────────────────────
     def has_creatures(self, page=None) -> bool:
         return self._page(page).id in (self.run.get("maps") or {})

@@ -21,6 +21,10 @@ save always survives. The slot written is the empty one, else the oldest (lowest
 encounter base at the slot, so the DM's next save would land in the ring and the next
 autosave would nest a ring inside a slot, and a moved base re-points the roster, which logs
 every player out. The base, the roster and the DM's scene files stay exactly as they were.
+
+**In a campaign a slot is play state only** (plans/DUNGEON_RELEASES_PLAN.md D3, D7). The
+slot's terrain gives the fog and door states; the design comes from the current ``map.json``,
+so a map edit made after the slot was written survives the restore and the next save.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ import shutil
 import time
 
 from atomic_io import atomic_write_json
+from scene_store import CampaignStore
 
 META_FILE = "meta.json"
 META_VERSION = 1
@@ -176,6 +181,8 @@ def _read_slot(paths: dict[str, str]) -> str | None:
             agents = json.load(f)["agents"]
         with open(paths["combat"]) as f:
             combat = json.load(f)
+        with open(paths["terrain"]) as f:
+            json.load(f)
     except (OSError, ValueError, KeyError, TypeError) as e:
         return f"unreadable ({e})"
     if not isinstance(agents, list) or not isinstance(combat, dict):
@@ -222,6 +229,16 @@ def _resync_players(app) -> None:
     app._net_turn = None
 
 
+def _load_terrain(app, path: str) -> None:
+    """The slot's terrain: whole for sidecar files, its play state alone in a campaign."""
+    if isinstance(app.store, CampaignStore):
+        with open(path) as f:
+            app.store.adopt_play_state(json.load(f))
+        app._load_terrain()
+    else:
+        app._load_terrain(path)
+
+
 def restore(app, k: int) -> bool:
     """Restore slot ``k`` of the active encounter's ring into ``app``. Returns True when
     the fight resumed. A refusal flashes its reason and, short of the engine refusing its
@@ -238,7 +255,7 @@ def restore(app, k: int) -> bool:
         app._flash_status(f"Autosave not restored: {why}")
         return False
     app._load_agents(paths["agents"])
-    app._load_terrain(paths["terrain"])
+    _load_terrain(app, paths["terrain"])
     app._load_lighting(paths["lighting"])
     app._load_spell_effects(paths["effects"])
     if not app._load_combat_state(paths["combat"]):
