@@ -4468,6 +4468,22 @@ class App:
         for n in names:
             stats.add_feat(n)
 
+    @staticmethod
+    def _saved_is_npc(t: dict) -> bool:
+        """A saved agent's NPC flag: the stats sub-dict's, else the older top-level one."""
+        sd = t.get("stats") or {}
+        return bool(sd["is_npc"] if "is_npc" in sd else t.get("is_npc", False))
+
+    def _remove_placed_agent(self, idx: int) -> None:
+        """Remove a placed agent and re-key the index-keyed metadata past it. Left alone, those
+        entries land on whichever agent slides down into the index: a monster's _agent_meta on
+        the next PC saved that PC as an NPC."""
+        self.bm.remove_agent(idx)
+        self._agent_meta = {(i - 1 if i > idx else i): m
+                            for i, m in self._agent_meta.items() if i != idx}
+        self._spell_metadata = {((a - 1 if a > idx else a), sp): m
+                                for (a, sp), m in self._spell_metadata.items() if a != idx}
+
     def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0, class_levels: dict = None, subclasses: dict = None):
         """Called by StatsDialog when the user clicks OK.
 
@@ -4645,6 +4661,12 @@ class App:
             stats_chk.has_offhand_attack = True
             self.combat.set_agent_stats(self.bm, agent_idx, stats_chk)
 
+        # The dialog's NPC box decides the engine flag, both ways: is_npc is what saves and what
+        # picks spells/day over slots, so unticking the box has to clear it here.
+        was_npc = stats_chk.is_npc
+        stats_chk.is_npc = bool(npc_data)
+        self.combat.set_agent_stats(self.bm, agent_idx, stats_chk)
+
         # Store NPC metadata if provided, and initialize spell uses via C++
         if npc_data:
             self._agent_meta[agent_idx] = npc_data
@@ -4660,6 +4682,11 @@ class App:
         # from class/level/subclass — re-grant onto the agent's current spells so they show up
         # without needing to reopen the spell picker.
         cpp_spells = list(self.combat.get_agent_spells(self.bm, agent_idx))
+        if was_npc and not npc_data:
+            # Back to spell slots: drop the N/day and recharge limits the NPC spells carried.
+            for sp in cpp_spells:
+                sp.uses_max = sp.uses_remaining = sp.recharge_min = 0
+                sp.expended = False
         self._grant_class_features(agent_idx, cpp_spells)
         self.combat.set_agent_spells(self.bm, agent_idx, cpp_spells)
 
@@ -13105,7 +13132,7 @@ class App:
             # flag (set by init_npc_spell_groups) so it can't silently flip to false on a round-trip.
             if s.is_npc or i in self._agent_meta:
                 meta = self._agent_meta.get(i, {})
-                data[-1]["is_npc"] = bool(s.is_npc) or bool(meta.get("is_npc", False))
+                data[-1]["is_npc"] = bool(s.is_npc)
                 # Cosmetic boss-finale flag (dungeon generator) — round-trip so the ★ persists.
                 if meta.get("is_boss"):
                     data[-1]["is_boss"] = True
@@ -14629,8 +14656,9 @@ class App:
             # agent dict (not inside "stats"), so dict_to_stats read it back as False and
             # the reloaded monster stopped dying outright at 0 HP (its corpse lingered on
             # the map). Honor the top-level flag as a fallback so those saves self-heal.
-            if t.get("is_npc"):
-                s.is_npc = True
+            # Only as a fallback: a stats flag that is present wins, because a stale top-level
+            # flag is how PCs got turned into NPCs (see _remove_placed_agent).
+            s.is_npc = self._saved_is_npc(t)
 
             # Restore character class and subclasses BEFORE committing stats to engine
             restore_class_resources(s, t)
@@ -14890,8 +14918,13 @@ class App:
         for i, t in enumerate(agent_data):
             if i >= len(self.bm.placed_agents):
                 break
-            is_npc = t.get("is_npc", False)
+            is_npc = self._saved_is_npc(t)
             if is_npc:
+                # An agent saved without a stats dict skipped the restore above.
+                live = self.combat.get_agent_stats(self.bm, i)
+                if not live.is_npc:
+                    live.is_npc = True
+                    self.combat.set_agent_stats(self.bm, i, live)
                 npc_spell_groups = t.get("npc_spell_groups", {})
                 # Initialize NPC spell groups in C++ (converts string keys to ints)
                 if npc_spell_groups:
@@ -20042,7 +20075,7 @@ class App:
                         and not self.combat_active:
                     if self.selected_idx >= 0:
                         idx = self.selected_idx
-                        self.bm.remove_agent(idx)
+                        self._remove_placed_agent(idx)
                         self._mark_fog_dirty()   # roster changed (a party member may be gone)
                         # Weapon data lives in C++ and is removed with the agent.
                         self.selected_idx        = -1

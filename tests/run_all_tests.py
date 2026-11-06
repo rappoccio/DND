@@ -250,6 +250,7 @@ test_scripts = [
     "test_terrain_concentration.py",
     "test_summoning.py",
     "test_npc_spells.py",
+    "test_npc_flag_roundtrip.py",
     "test_origins.py",
     "test_feats.py",
     "test_general_feats.py",
