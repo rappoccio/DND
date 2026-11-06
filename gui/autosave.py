@@ -221,7 +221,7 @@ def _settle_turn(app) -> None:
     app._mark_fog_dirty()
 
 
-def _resync_players(app) -> None:
+def resync_players(app) -> None:
     """Every seated player gets a fresh ``view`` and nothing replays (D-M6-5, D-M6-6).
     The forced boundary pushes on the next frame even when the restored turn is the one
     the push cycle last saw, and it publishes the page image without the lag."""
@@ -261,7 +261,7 @@ def restore(app, k: int) -> bool:
     if not app._load_combat_state(paths["combat"]):
         return False                   # _load_combat_state has flashed why
     _settle_turn(app)
-    _resync_players(app)
+    resync_players(app)
     app._combat_log_add(f"[RESTORED] autosave: round {meta.get('round', 0) + 1}, "
                         f"{meta.get('actor') or '?'}'s turn")
     app._flush_combat_log()

@@ -17,6 +17,7 @@ the board opens, not a panel button.
 
 import rpg_battle_map as rpg
 import autosave
+import run_control
 from helpers import door_touch_cells
 from net.roster import DM_PRINCIPAL_ID
 
@@ -304,6 +305,13 @@ def show_dungeon_menu(app):
             ("Hide Room Labels" if app.show_room_labels else "Show Room Labels",
                                   app._toggle_room_labels),
             ("Save Dungeon",      app._dungeon_save_confirmed),
+            ("Release",           lambda: run_control.make_release(app)),
+            ("Releases…",         lambda: run_control.show_releases_menu(
+                app, anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y),
+                parent=app.prompts.answering)),
+            ("Reset Dungeon",     lambda: run_control.ask_reset(
+                app, anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y),
+                parent=app.prompts.answering)),
             ("Open Dungeon…",     app._dungeon_open_browser),
             ("Close Dungeon",     app._dungeon_close),
         ]

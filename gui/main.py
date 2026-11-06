@@ -5227,10 +5227,12 @@ class App:
                 f"(party XP {new_total:,} ≥ {need:,}).")
         self._modal_message(lines)
 
-    def _end_combat(self):
-        """Leave combat mode and clear all combat state."""
+    def _end_combat(self, award_xp: bool = True):
+        """Leave combat mode and clear all combat state. ``award_xp`` is False when the
+        fight is being thrown away (Reset Dungeon), not finished."""
         # Award XP for enemies defeated this combat before combat state is cleared.
-        self._award_encounter_xp()
+        if award_xp:
+            self._award_encounter_xp()
         self.move_remaining_walk   = 0
         self.move_remaining_fly    = 0
         self.move_remaining_swim   = 0

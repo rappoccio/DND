@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 
 import run_state as rs
 import save_layout as sl
@@ -123,6 +124,16 @@ class CampaignStore:
 
     def save_run(self) -> None:
         rs.save_run(self.layout.run_path(self.run_name), self.run)
+
+    def replace_run(self, run: dict, effects_src: str | None = None) -> None:
+        """Make ``run`` this run's play state, with ``effects_src``'s effect files (none
+        if that folder does not exist). Design files are not touched."""
+        effects = self.layout.effects_dir(self.run_name)
+        shutil.rmtree(effects, ignore_errors=True)
+        if effects_src and os.path.isdir(effects_src):
+            shutil.copytree(effects_src, effects)
+        self.run = run
+        self.save_run()
 
     def set_current_map(self, map_name: str) -> None:
         if self.run.get("current_map") != map_name:
