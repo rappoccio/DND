@@ -16,6 +16,7 @@ names.
           encounters/<encounter>.json    creature groups on this map (D5)
         runs/<run>/                      a traversal's play state (D6)
           run.json  combat.json  autosave/slot_<k>/
+        releases/<V n>/                  read-only snapshots (gui/releases.py)
 
 **Child-first, copy-on-write (D3).** A dungeon map's file is read from the dungeon's copy
 when one exists, else from the campaign library. Writes always go to the dungeon's copy
@@ -46,6 +47,10 @@ MAPS_DIR       = "maps"
 ENCOUNTERS_DIR = "encounters"
 RUNS_DIR       = "runs"
 AUTOSAVE_DIR   = "autosave"
+EFFECTS_DIR    = "effects"
+RELEASES_DIR   = "releases"
+RELEASE_FILE   = "release.json"
+START_DIR      = "start"
 
 DEFAULT_RUN = "main"
 
@@ -285,7 +290,21 @@ class DungeonLayout:
     def autosave_dir(self, run_name: str = DEFAULT_RUN) -> str:
         return os.path.join(self.run_dir(run_name), AUTOSAVE_DIR)
 
+    def effects_dir(self, run_name: str = DEFAULT_RUN) -> str:
+        return os.path.join(self.run_dir(run_name), EFFECTS_DIR)
+
     def list_runs(self) -> list[str]:
         """Runs that have been saved (a ``run.json`` exists)."""
         return [r for r in _subdirs(self.runs_dir)
                 if os.path.isfile(os.path.join(self.runs_dir, r, RUN_FILE))]
+
+    # ── Releases (gui/releases.py) ────────────────────────────────────────
+    @property
+    def releases_dir(self) -> str:
+        return os.path.join(self.root, RELEASES_DIR)
+
+    def release_dir(self, release_name: str) -> str:
+        return os.path.join(self.releases_dir, _check_name(release_name, "release"))
+
+    def list_release_dirs(self) -> list[str]:
+        return _subdirs(self.releases_dir)

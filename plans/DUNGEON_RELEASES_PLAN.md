@@ -1,7 +1,7 @@
 # Dungeon releases, Reset Dungeon, Load Save File
 
 **Status 2026-11-06: Step 0 FROZEN (D1–D10). No code yet.** These decisions change only by a
-dated amendment with a reason, agreed with the user. Step 1 done.
+dated amendment with a reason, agreed with the user. Steps 1–2 done.
 
 Builds on `plans/SAVE_LAYOUT_PLAN.md` (a dungeon's design is `dungeon.json` + `maps/`, play
 state is `runs/<run>/run.json`). `CampaignStore` already keeps the two apart, which is what
@@ -96,6 +96,7 @@ Each ends with its suite green in the container and is committed on request.
    slot now gives only fog and door state (`CampaignStore.adopt_play_state`).
    `tests/test_autosave_design.py`.
 2. `gui/releases.py`: create, list and read a release, with no UI. `tests/test_releases.py`.
+   **Done.** On copies, Ravenloft's release is 8.1 MB and takes 32 ms.
 3. Reset Dungeon: the run swap, the page reload, the fight ending, the seat resync and
    confirm. Dungeon menu rows for `Release` and `Reset Dungeon`.
 4. `gui/saves.py`: write, index, prune and load, then the turn hook and `Save Game`.

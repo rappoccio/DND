@@ -204,7 +204,7 @@ class CampaignStore:
             "agents":   os.path.join(run_dir, f"{page.id}_agents.json"),
             "terrain":  os.path.join(run_dir, f"{page.id}_terrain.json"),
             "lighting": self.layout.write_path(page.id, sl.LIGHTING_FILE),
-            "effects":  os.path.join(run_dir, "effects", f"{page.id}.json"),
+            "effects":  os.path.join(self.layout.effects_dir(self.run_name), f"{page.id}.json"),
             "combat":   self.layout.combat_path(self.run_name),
             "session":  self.campaign.session_path,
         }

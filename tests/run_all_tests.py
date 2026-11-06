@@ -209,6 +209,7 @@ test_scripts = [
     "test_dungeon_layout.py",
     "test_run_state.py",
     "test_campaign_open.py",
+    "test_releases.py",
     "test_staircase_use.py",
     "test_load_encounter_dungeon.py",
     "test_staircase_editor.py",
