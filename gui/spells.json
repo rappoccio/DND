@@ -2419,6 +2419,7 @@
   {
     "name": "Divine Smite",
     "description": "The target takes an extra 2d8 Radiant damage from the attack. The damage increases by 1d8 if the target is a Fiend or an Undead.",
+    "casting_time": "BonusAction",
     "type": "Harm",
     "geometry": "Single",
     "attack_type": "Automatic",
@@ -6936,6 +6937,7 @@
   {
     "name": "Searing Smite",
     "description": "As you hit the target, it takes an extra 1d6 Fire damage from the attack. At the start of each of its turns until the spell ends, the target takes 1d6 Fire damage and then makes a Constitution saving throw. On a failed save, the spell continues. On a successful save, the spell ends.",
+    "costs_action_and_bonus": true,
     "type": "Harm",
     "geometry": "Single",
     "attack_type": "Save",
@@ -7158,6 +7160,7 @@
   {
     "name": "Shield of Faith",
     "description": "A shimmering field surrounds a creature of your choice within range, granting it a +2 bonus to AC for the duration.",
+    "casting_time": "BonusAction",
     "type": "Harm",
     "geometry": "Single",
     "attack_type": "Automatic",
@@ -7200,6 +7203,7 @@
   {
     "name": "Shining Smite",
     "description": "The target hit by the strike takes an extra 2d6 Radiant damage from the attack. Until the spell ends, the target sheds Bright Light in a 5-foot radius, attack rolls against it have Advantage, and it can't benefit from the Invisible condition.",
+    "costs_action_and_bonus": true,
     "type": "Harm",
     "geometry": "Single",
     "attack_type": "AttackRoll",
@@ -7614,6 +7618,7 @@
   {
     "name": "Spiritual Weapon",
     "description": "You create a floating, spectral force that resembles a weapon of your choice and lasts for the duration. The force appears within range in a space of your choice, and you can immediately make one melee spell attack against one creature within 5 feet of the force. On a hit, the target takes Force damage equal to 1d8 plus your spellcasting ability modifier. As a Bonus Action on your later turns, you can move the force up to 20 feet and repeat the attack against a creature within 5 feet of it.",
+    "casting_time": "BonusAction",
     "type": "Harm",
     "geometry": "Single",
     "attack_type": "Automatic",

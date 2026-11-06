@@ -10337,12 +10337,8 @@ class App:
         else:
             available_indices = self.combat.available_castable_spells(self.bm, idx)
         if not available_indices:
+            # Nothing was cast, so nothing is spent: the Action and its attacks remain available.
             self._combat_log_add("No available spells!")
-            if slot == "action":
-                self.action_used = True
-            elif slot == "bonus":
-                self.bonus_used = True
-            # "war_magic": consume nothing — the Attack action's weapon attacks remain available.
             return
 
         spells = self.combat.get_agent_spells(self.bm, idx)
@@ -10399,6 +10395,11 @@ class App:
                         sp.name == "Spare the Dying" and self._grave_return_to_life(stats)):
                     continue  # Skip non-bonus-action spells from the bonus menu
 
+            # An Action + Bonus Action spell needs the Action slot and an unspent Bonus Action, so
+            # Quickened, a Wild Magic bonus cast and War Magic can't carry it.
+            if self._spell_costs_action_and_bonus(sp) and (slot != "action" or self.bonus_used):
+                continue
+
             if sp_level == 0:
                 # Cantrip - always available, no level to pick
                 def _pick_cantrip(s=slot, si_=si):
@@ -10450,12 +10451,8 @@ class App:
                     options.append((f"{sp.name} ▸", _open_levels))
 
         if not options:
+            # Nothing was cast, so nothing is spent: the Action and its attacks remain available.
             self._combat_log_add("No available spells!")
-            if slot == "action":
-                self.action_used = True
-            elif slot == "bonus":
-                self.bonus_used = True
-            # "war_magic": consume nothing — the Attack action's weapon attacks remain available.
             return
 
         if len(options) == 1:
@@ -11227,11 +11224,17 @@ class App:
                 if pl > 0:
                     action.slot_level = pl
 
-    def _consume_cast_slot(self, slot: str, caster_idx: int):
+    def _spell_costs_action_and_bonus(self, sp) -> bool:
+        """Does the catalog flag this spell as taking both the Action and the Bonus Action?"""
+        si = self.spell_name_to_idx.get(sp.name)
+        return si is not None and bool(self.all_spells[si].get("costs_action_and_bonus"))
+
+    def _consume_cast_slot(self, slot: str, caster_idx: int, spell=None):
         """Charge the action economy for a resolved cast. Normally a cast consumes the whole
-        action (or bonus action). War Magic (slot=='war_magic') instead replaces ONE weapon attack
-        inside the Attack action: mark the once-per-Attack-action gate, spend one attack, and either
-        re-prompt for the remaining attack(s) or end the action."""
+        action (or bonus action), and `spell`, when flagged, the bonus action as well. War Magic
+        (slot=='war_magic') instead replaces ONE weapon attack inside the Attack action: mark the
+        once-per-Attack-action gate, spend one attack, and either re-prompt for the remaining
+        attack(s) or end the action."""
         if slot == "war_magic":
             self.combat.mark_war_magic_used(self.bm, caster_idx)
             self.attacks_remaining -= 1
@@ -11253,6 +11256,8 @@ class App:
                 self._attack_sequence_slot = ""
         elif slot == "action":
             self.action_used = True
+            if spell is not None and self._spell_costs_action_and_bonus(spell) and not self.bonus_used:
+                self.bonus_used = True
         else:
             self.bonus_used = True
 
@@ -12174,6 +12179,7 @@ class App:
         caster_idx = ctx["caster_idx"]
         result     = self.combat.last_cast_result()
         self._flush_combat_log()
+        cast_spell = self.combat.get_agent_spells(self.bm, caster_idx)[ctx["spell_idx"]]
 
         agents    = self.bm.placed_agents
         cast_name = agents[caster_idx].name if caster_idx < len(agents) else "?"
@@ -12183,7 +12189,7 @@ class App:
         if self.combat.last_cast_countered():
             self._combat_log_add(f"{cast_name}'s spell was countered!")
             self._sync_spell_effect_cache()
-            self._consume_cast_slot(ctx["slot"], caster_idx)
+            self._consume_cast_slot(ctx["slot"], caster_idx, cast_spell)
             return
         if not result.valid:
             self._combat_log_add(f"{cast_name}: spell failed (invalid)")
@@ -12202,7 +12208,7 @@ class App:
             self._share_spell_with_companion(caster_idx, ctx["spell_idx"], ctx.get("slot_level", 0))
         # Clear spell effect cache entries for any removed effects (e.g., from concentration loss)
         self._sync_spell_effect_cache()
-        self._consume_cast_slot(ctx["slot"], caster_idx)
+        self._consume_cast_slot(ctx["slot"], caster_idx, cast_spell)
         # Boon of Dimensional Travel — arm Blink Steps: casting a spell is the Magic action.
         self._arm_blink_steps(caster_idx)
         # College of Glamour Beguiling Magic: offer the once/long-rest rider after a slot-fueled

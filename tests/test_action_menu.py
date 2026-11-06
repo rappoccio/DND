@@ -1541,6 +1541,104 @@ def test_wild_magic_bonus_cast_offers_action_spells():
     print("✅ test_wild_magic_bonus_cast_offers_action_spells passed")
 
 
+def test_divine_smite_is_a_bonus_action_and_keeps_the_attack_action():
+    """Divine Smite is a Bonus Action spell. With no casting_time in spells.json it defaulted to
+    Action: Cast Spell listed it, and casting it spent the Action, so a Paladin with Extra Attack
+    lost every swing. Now the Bonus band casts it and the whole Attack action stays."""
+    app = _app()
+    aria = _reclass(app, "Aria", rpg.CharacterClass.Paladin, 6)
+    skarn = _idx(app, "Skarn")
+    app.combat.set_agent_spells(app.bm, aria, [_spell(app, "Bless"),
+                                               _spell(app, "Divine Smite")])
+    s = app.combat.get_agent_stats(app.bm, aria)
+    s.spell_slots_remaining = [4, 2, 0, 0, 0, 0, 0, 0, 0]
+    app.combat.set_agent_stats(app.bm, aria, s)
+
+    seen = []
+    app._ask_actor = lambda idx, kind, title, pairs, **kw: seen.append((title, pairs))
+
+    app._start_cast_spell("action")
+    assert len(seen) == 1 and "Bless" in seen[0][0], seen
+    seen.clear()
+
+    app._start_cast_spell("bonus")
+    assert len(seen) == 1 and "Divine Smite" in seen[0][0], seen
+    seen[0][1][0][1]()               # the 1st-level slot
+    hp = app.combat.get_agent_stats(app.bm, skarn).hp_cur
+    app._resolve_spell_cast(skarn)
+    assert app.combat.get_agent_stats(app.bm, skarn).hp_cur < hp
+    assert app.bonus_used and not app.action_used
+
+    assert "atk_action" in _ids(app, aria)
+    app._start_attack("action")
+    assert app._attack_sequence_slot == "action" and app.attacks_remaining == 2, \
+        (app._attack_sequence_slot, app.attacks_remaining)
+    print("✅ test_divine_smite_is_a_bonus_action_and_keeps_the_attack_action passed")
+
+
+def test_an_empty_spell_menu_spends_nothing():
+    """Clicking a spell button with nothing castable used to burn that Action or Bonus Action,
+    and an Extra Attack sequence with it. It only logs now."""
+    app = _app()
+    aria = _reclass(app, "Aria", rpg.CharacterClass.Paladin, 6)
+    # Out of slots: the engine lists nothing castable (the early return).
+    app.combat.set_agent_spells(app.bm, aria, [_spell(app, "Bless")])
+    s = app.combat.get_agent_stats(app.bm, aria)
+    s.spell_slots_remaining = [0] * 9
+    app.combat.set_agent_stats(app.bm, aria, s)
+    app._start_cast_spell("action")
+    app._start_cast_spell("bonus")
+    assert not app.action_used and not app.bonus_used
+
+    # Castable, but none for this button (the menu's own empty check).
+    s = app.combat.get_agent_stats(app.bm, aria)
+    s.spell_slots_remaining = [2, 0, 0, 0, 0, 0, 0, 0, 0]
+    app.combat.set_agent_stats(app.bm, aria, s)
+    app._start_cast_spell("bonus")
+    app.combat.set_agent_spells(app.bm, aria, [_spell(app, "Hunter's Mark")])
+    app._start_cast_spell("action")
+    assert not app.action_used and not app.bonus_used
+    assert "atk_action" in _ids(app, aria)
+    print("✅ test_an_empty_spell_menu_spends_nothing passed")
+
+
+def test_shield_of_faith_and_spiritual_weapon_are_bonus_actions():
+    """Both had no casting_time in spells.json and so defaulted to Action."""
+    app = _app()
+    for name in ("Shield of Faith", "Spiritual Weapon"):
+        assert _spell(app, name).casting_time == rpg.CastingTime.BonusAction, name
+    print("✅ test_shield_of_faith_and_spiritual_weapon_are_bonus_actions passed")
+
+
+def test_searing_and_shining_smite_cost_the_action_and_the_bonus_action():
+    """House rule: these smites take both, flagged `costs_action_and_bonus` in spells.json."""
+    for name, slots in (("Searing Smite", [4, 0, 0, 0, 0, 0, 0, 0, 0]),
+                        ("Shining Smite", [0, 2, 0, 0, 0, 0, 0, 0, 0])):
+        app = _app()
+        aria = _reclass(app, "Aria", rpg.CharacterClass.Paladin, 6)
+        skarn = _idx(app, "Skarn")
+        app.combat.set_agent_spells(app.bm, aria, [_spell(app, name)])
+        s = app.combat.get_agent_stats(app.bm, aria)
+        s.spell_slots_remaining = slots
+        app.combat.set_agent_stats(app.bm, aria, s)
+
+        # The Bonus band never offers it, even with the Action still free.
+        app._start_cast_spell("bonus")
+        assert not app.pending_spell_slot, name
+
+        # With the Bonus Action spent, the Action band refuses it too, and nothing is charged.
+        app.bonus_used = True
+        app._start_cast_spell("action")
+        assert not app.pending_spell_slot and not app.action_used, name
+        app.bonus_used = False
+
+        app._start_cast_spell("action")      # one castable row casts directly
+        assert app.pending_spell_slot == "action", name
+        app._resolve_spell_cast(skarn)
+        assert app.action_used and app.bonus_used, name
+    print("✅ test_searing_and_shining_smite_cost_the_action_and_the_bonus_action passed")
+
+
 def test_ids_are_unique():
     """The panel keys widgets by id and `_handle_events` dispatches on it; a duplicate
     would make one of the two unreachable in a way no golden could show."""
@@ -1614,6 +1712,10 @@ if __name__ == "__main__":
         test_the_two_telekinetic_options_are_two_widgets()
         test_every_action_carries_an_economy_from_the_vocabulary()
         test_wild_magic_bonus_cast_offers_action_spells()
+        test_divine_smite_is_a_bonus_action_and_keeps_the_attack_action()
+        test_an_empty_spell_menu_spends_nothing()
+        test_shield_of_faith_and_spiritual_weapon_are_bonus_actions()
+        test_searing_and_shining_smite_cost_the_action_and_the_bonus_action()
         test_ids_are_unique()
     finally:
         _restore_cwd_logs(_saved)
