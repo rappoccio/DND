@@ -44,6 +44,7 @@
 //  Serializable from the start, per plan decision #4.
 // ─────────────────────────────────────────────────────────────────────────────
 
+#include "cell.hpp"            // Cell
 #include "combat_types.hpp"    // HideResult
 #include "combat_context.hpp"  // CombatContext (and, transitively, nlohmann/json)
 
@@ -72,9 +73,17 @@ public:
 
     // True if `viewer` can perceive `target` for targeting purposes: a target with the
     // Invisible condition can only be perceived by a viewer with Truesight or Blindsight
-    // whose range reaches it. Non-invisible targets are always perceivable here (geometric
-    // line-of-sight is enforced separately).
+    // whose range reaches it, and an enemy concealed by magical darkness (darknessConceals)
+    // not at all. Anything else is perceivable here (geometric line-of-sight is enforced
+    // separately).
     [[nodiscard]] bool canPerceiveTarget(const BattleMap& bm, int viewer_idx, int target_idx) const noexcept;
+
+    // True if magical darkness hides `target` from `viewer` standing at `viewer_origin`: the target's
+    // whole footprint is in darkness the viewer can't pierce, and the viewer is outside it. Allies
+    // always know where their friends are. Truesight, Blindsight and Devil's Sight in range pierce it,
+    // and a Shadow Arts caster sees through their own. `viewer_origin` is a parameter so the NPC
+    // planner can ask about a cell it hasn't moved to yet.
+    [[nodiscard]] bool darknessConceals(const BattleMap& bm, int viewer_idx, Cell viewer_origin, int target_idx) const noexcept;
 
     // True when a Forcecage BOX (10-ft solid) stands between the two agents: exactly one of
     // them is sealed inside a box, so they are on opposite sides of that wall and NO attack,

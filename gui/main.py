@@ -5628,7 +5628,7 @@ class App:
                     if not self.bm.has_line_of_sight(caster.origin, caster.size, target.origin, target.size):
                         self._combat_log_add("No line of sight to target!")
                     elif not self.combat.can_perceive_target(self.bm, caster_idx, hit):
-                        self._combat_log_add("Cannot perceive target (invisible)!")
+                        self._combat_log_add("Cannot perceive target (invisible or in magical darkness)!")
                     elif getattr(c_cond, "forcecage_sealed", False) != getattr(t_cond, "forcecage_sealed", False):
                         # Forcecage Box: a solid wall between the occupant and the outside — no spell crosses.
                         self._combat_log_add("A Forcecage wall blocks that — no spell crosses it.")
@@ -7337,8 +7337,12 @@ class App:
                 # move); clicking Attack again resumes the SAME sequence with the remaining count.
                 rem = self.attacks_remaining
                 tail = (f" ({rem} attack{'s' if rem != 1 else ''} remaining)" if rem > 0 else "")
-                self._combat_log_add(
-                    f"{atk_name}: out of range — move closer or click Attack to retry{tail}")
+                if not self.combat.can_perceive_target(self.bm, atk_idx, target_idx):
+                    self._combat_log_add(
+                        f"{atk_name}: can't see that target — move or click Attack to retry{tail}")
+                else:
+                    self._combat_log_add(
+                        f"{atk_name}: out of range — move closer or click Attack to retry{tail}")
                 self.pending_attack_slot = ""
             return
 

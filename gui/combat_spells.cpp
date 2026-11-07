@@ -618,6 +618,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                      agentName(bm, action.caster_idx), agentName(bm, t), sp.name);
                 return result;   // valid == false → nothing spent
             }
+            if (darknessConceals(bm, action.caster_idx, caster_pa.origin, t)) {
+                log_("{} can't target {} with {} — hidden by magical darkness",
+                     agentName(bm, action.caster_idx), agentName(bm, t), sp.name);
+                return result;   // valid == false → nothing spent
+            }
         }
     }
 

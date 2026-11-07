@@ -382,6 +382,144 @@ def test_invisible_attacker_has_advantage():
     print("✅ test_invisible_attacker_has_advantage")
 
 
+def _dark_arena(attacker_at=(5, 5), target_at=(8, 5), target_size=1):
+    """An attacker and an enemy (factions 1 and 2), with a bow and a dagger, and a block of magical
+    darkness over cols 8-10, rows 3-7. Returns (bm, engine, attacker_idx, target_idx)."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Archer", *attacker_at))
+    cfg = create_test_agent("Target", *target_at)
+    cfg.size = target_size
+    tgt = add_agent_to_battle(engine, bm, cfg)
+    bm.set_agent_faction(atk, 1)
+    bm.set_agent_faction(tgt, 2)
+    bow = rpg.Weapon()
+    bow.name = "Shortbow"; bow.type = rpg.WeaponType.Ranged; bow.proficient = True
+    bow.normal_range_ft = 80; bow.long_range_ft = 320
+    engine.set_agent_weapons(bm, atk, [bow, _melee_wpn()[0], rpg.Weapon()])
+    cells = [rpg.Cell(c, r) for c in range(8, 11) for r in range(3, 8)]
+    bm.place_light_effect("Darkness", cells, rpg.VisibilityLevel.MagicalDark, -1, -1)
+    bm.update_lighting()
+    engine.begin_turn(bm, atk)
+    return bm, engine, atk, tgt
+
+
+def _targets(engine, bm, atk):
+    return {a.target_idx for a in engine.available_attacks(bm, atk)}
+
+
+def test_darkness_hides_enemy_from_outside():
+    """A ranged attack from outside can't target an enemy inside the Darkness."""
+    bm, engine, atk, tgt = _dark_arena()
+    assert not engine.can_perceive_target(bm, atk, tgt)
+    assert tgt not in _targets(engine, bm, atk), "enemy in darkness must leave the action space"
+    res = engine.execute_action(bm, rpg.Attack(atk, tgt, 0))
+    assert not res.valid, "a direct attack into the darkness must be refused"
+    print("✅ test_darkness_hides_enemy_from_outside")
+
+
+def test_darkness_blocks_adjacent_melee_from_outside():
+    """It isn't only a range rule: a dagger from the next cell over can't target them either."""
+    bm, engine, atk, tgt = _dark_arena(attacker_at=(7, 5))
+    assert tgt not in _targets(engine, bm, atk)
+    assert not engine.execute_action(bm, rpg.Attack(atk, tgt, 1)).valid
+    print("✅ test_darkness_blocks_adjacent_melee_from_outside")
+
+
+def test_darkness_does_not_hide_enemy_outside_it():
+    """Control: the same shot at an enemy standing in the open is legal."""
+    bm, engine, atk, tgt = _dark_arena(target_at=(7, 5))
+    assert engine.can_perceive_target(bm, atk, tgt)
+    assert engine.execute_action(bm, rpg.Attack(atk, tgt, 0)).valid
+    print("✅ test_darkness_does_not_hide_enemy_outside_it")
+
+
+def test_darkness_allows_fighting_inside_it():
+    """Two creatures both in the darkness can still fight."""
+    bm, engine, atk, tgt = _dark_arena(attacker_at=(8, 4), target_at=(8, 5))
+    assert engine.can_perceive_target(bm, atk, tgt)
+    assert engine.execute_action(bm, rpg.Attack(atk, tgt, 1)).valid
+    print("✅ test_darkness_allows_fighting_inside_it")
+
+
+def test_senses_pierce_darkness_from_outside():
+    """Truesight, Blindsight and Devil's Sight in range see in; out of range or Darkvision don't."""
+    for sense, ft, sees in (("truesight_range", 60, True), ("blindsight_range", 60, True),
+                            ("devilssight_range", 120, True), ("devilssight_range", 10, False),
+                            ("darkvision_range", 120, False)):
+        bm, engine, atk, tgt = _dark_arena()
+        s = engine.get_agent_stats(bm, atk)
+        setattr(s, sense, ft)
+        engine.set_agent_stats(bm, atk, s)
+        assert engine.can_perceive_target(bm, atk, tgt) == sees, f"{sense} {ft} ft"
+        assert engine.execute_action(bm, rpg.Attack(atk, tgt, 0)).valid == sees, f"{sense} {ft} ft"
+    print("✅ test_senses_pierce_darkness_from_outside")
+
+
+def test_own_shadow_arts_darkness_stays_transparent():
+    """A caster tagged see-through still targets an enemy inside their own Darkness."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Monk", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("Target", 8, 5))
+    bm.set_agent_faction(atk, 1)
+    bm.set_agent_faction(tgt, 2)
+    bm.place_light_effect("Darkness", [rpg.Cell(8, 5)], rpg.VisibilityLevel.MagicalDark, -1, atk, atk)
+    bm.update_lighting()
+    assert engine.can_perceive_target(bm, atk, tgt)
+    print("✅ test_own_shadow_arts_darkness_stays_transparent")
+
+
+def test_ally_in_darkness_stays_targetable():
+    """Only enemies are hidden: a friend in the darkness can still be reached (a heal, say)."""
+    bm, engine, atk, tgt = _dark_arena()
+    bm.set_agent_faction(tgt, 1)
+    assert engine.can_perceive_target(bm, atk, tgt)
+    print("✅ test_ally_in_darkness_stays_targetable")
+
+
+def test_large_target_half_out_of_darkness_is_targetable():
+    """A Large enemy with cells sticking out of the darkness is still in plain view."""
+    bm, engine, atk, tgt = _dark_arena(target_at=(7, 5), target_size=2)
+    assert engine.can_perceive_target(bm, atk, tgt)
+    assert engine.execute_action(bm, rpg.Attack(atk, tgt, 0)).valid
+    print("✅ test_large_target_half_out_of_darkness_is_targetable")
+
+
+def test_darkness_refuses_single_target_spell_from_outside():
+    """A directly-targeted spell is refused like the attack, and spends nothing."""
+    bm, engine, atk, tgt = _dark_arena()
+    spell = rpg.Spell()
+    spell.name = "Bolt"
+    spell.level = 1
+    spell.geometry = rpg.SpellGeometry.Single
+    spell.range = 120
+    engine.set_agent_spells(bm, atk, [spell])
+    s = engine.get_agent_stats(bm, atk)
+    s.spell_slots_remaining = [2] * 9
+    engine.set_agent_stats(bm, atk, s)
+    act = rpg.SpellAction()
+    act.caster_idx = atk
+    act.spell_idx = 0
+    act.slot_level = 1
+    act.target_indices = [tgt]
+    assert not engine.execute_spell(bm, act).valid
+    assert list(engine.get_agent_stats(bm, atk).spell_slots_remaining) == [2] * 9, "no slot spent"
+    print("✅ test_darkness_refuses_single_target_spell_from_outside")
+
+
+def test_npc_outside_darkness_does_not_shoot_in():
+    """An automated archer outside the darkness doesn't attack the enemy hidden in it."""
+    bm, engine, atk, tgt = _dark_arena()
+    bm.set_agent_npc_automated(atk, True)
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, atk)
+    assert engine.run_npc_turn(bm, atk) == rpg.FlowStatus.Completed
+    assert not calls, f"NPC attacked into the darkness: {calls}"
+    print("✅ test_npc_outside_darkness_does_not_shoot_in")
+
+
 if __name__ == "__main__":
     tests = [
         test_visibility_level_clear,
@@ -411,6 +549,16 @@ if __name__ == "__main__":
         test_ally_still_perceives_invisible_teammate,
         test_ally_still_perceives_hidden_teammate,
         test_invisible_attacker_has_advantage,
+        test_darkness_hides_enemy_from_outside,
+        test_darkness_blocks_adjacent_melee_from_outside,
+        test_darkness_does_not_hide_enemy_outside_it,
+        test_darkness_allows_fighting_inside_it,
+        test_senses_pierce_darkness_from_outside,
+        test_own_shadow_arts_darkness_stays_transparent,
+        test_ally_in_darkness_stays_targetable,
+        test_large_target_half_out_of_darkness_is_targetable,
+        test_darkness_refuses_single_target_spell_from_outside,
+        test_npc_outside_darkness_does_not_shoot_in,
     ]
 
     print("Running Visibility Mechanics Tests...")

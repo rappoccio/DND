@@ -1724,6 +1724,8 @@ bool CombatEngine::npcAttackable(const BattleMap& bm, int agent_idx, int target_
     if (bm.getAgentStats(target_idx).hp_cur <= 0)  return false;
     const auto cond = bm.getAgentConditions(target_idx);
     if (cond.dead || cond.unconscious)             return false;
+    if (darknessConceals(bm, agent_idx, agents[static_cast<std::size_t>(agent_idx)].origin, target_idx))
+        return false;                                              // can't see into the darkness
     return true;
 }
 
@@ -1937,6 +1939,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         const int  d  = footprintDistance(from, ms, tg, ts);
         if (d < 1 || d > reachCellsFor(w)) return false;
         if (!bm.hasLineOfSight(from, ms, tg, ts)) return false;
+        if (darknessConceals(bm, agent_idx, from, t)) return false;   // stepping out of the darkness loses sight
         return true;
     };
     auto inReachOf = [&](int t, int w) -> bool {

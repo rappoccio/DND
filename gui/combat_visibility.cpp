@@ -56,12 +56,47 @@ bool VisibilityService::canPerceiveTarget(const BattleMap& bm, int viewer_idx, i
     if (viewer_idx < 0 || viewer_idx >= n || target_idx < 0 || target_idx >= n)
         return true;  // permissive on bad indices; callers handle geometry/range separately
     const PlacedAgent& target = agents[static_cast<std::size_t>(target_idx)];
+    const PlacedAgent& viewer = agents[static_cast<std::size_t>(viewer_idx)];
+    if (darknessConceals(bm, viewer_idx, viewer.origin, target_idx))
+        return false;
     if (!target.agent->getConditions().invisible)
         return true;  // not invisible → perceivable (geometric LoS handled elsewhere)
     if (areAllies(bm, viewer_idx, target_idx))
         return true;  // allies always know where their invisible friend is (RAW: you hide from enemies)
-    const PlacedAgent& viewer = agents[static_cast<std::size_t>(viewer_idx)];
     return piercesInvisibility(viewer.agent->getStats(), chebyshevFeet(viewer, target));
+}
+
+bool VisibilityService::darknessConceals(const BattleMap& bm, int viewer_idx, Cell viewer_origin, int target_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (viewer_idx < 0 || viewer_idx >= n || target_idx < 0 || target_idx >= n || viewer_idx == target_idx)
+        return false;
+    if (areAllies(bm, viewer_idx, target_idx))
+        return false;
+
+    // A target with any cell out of the darkness is still in plain view; attacks reach any cell of it.
+    const PlacedAgent& target = agents[static_cast<std::size_t>(target_idx)];
+    const int target_size = target.agent->getSize();
+    for (int r = 0; r < target_size; ++r)
+        for (int c = 0; c < target_size; ++c)
+            if (bm.getLightLevelFor({target.origin.col + c, target.origin.row + r}, viewer_idx)
+                    != VisibilityLevel::MagicalDark)
+                return false;
+
+    // A viewer in the darkness too isn't shut out by it: updateDarknessBlinding already blinds them,
+    // so they fight on with the penalties of that.
+    const PlacedAgent& viewer = agents[static_cast<std::size_t>(viewer_idx)];
+    const int viewer_size = viewer.agent->getSize();
+    for (int r = 0; r < viewer_size; ++r)
+        for (int c = 0; c < viewer_size; ++c)
+            if (bm.getLightLevelFor({viewer_origin.col + c, viewer_origin.row + r}, viewer_idx)
+                    == VisibilityLevel::MagicalDark)
+                return false;
+
+    const Agent::Stats& vs = viewer.agent->getStats();
+    const int dist_ft = footprintDistance(viewer_origin, viewer_size, target.origin, target_size) * 5;
+    return !piercesInvisibility(vs, dist_ft) && vs.devilssight_range < dist_ft;
 }
 
 bool VisibilityService::forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx) const noexcept
@@ -428,6 +463,11 @@ VisibilityLevel CombatEngine::getVisibility(int source_idx, int target_idx) cons
 bool CombatEngine::canPerceiveTarget(const BattleMap& bm, int viewer_idx, int target_idx) const noexcept
 {
     return vis_.canPerceiveTarget(bm, viewer_idx, target_idx);
+}
+
+bool CombatEngine::darknessConceals(const BattleMap& bm, int viewer_idx, Cell viewer_origin, int target_idx) const noexcept
+{
+    return vis_.darknessConceals(bm, viewer_idx, viewer_origin, target_idx);
 }
 
 bool CombatEngine::forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx) const noexcept

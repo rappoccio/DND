@@ -922,7 +922,8 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              &CombatEngine::canPerceiveTarget,
              py::arg("battle_map"), py::arg("viewer_idx"), py::arg("target_idx"),
              "True unless the target has the Invisible condition and the viewer lacks\n"
-             "Truesight/Blindsight in range. Geometric line-of-sight is separate.")
+             "Truesight/Blindsight in range, or magical darkness hides an enemy from a viewer\n"
+             "outside it. Geometric line-of-sight is separate.")
         .def("reseed", &CombatEngine::reseed, py::arg("seed"))
         // ── Snapshot / restore (COMBAT_REFACTOR_PLAN.md R5) ──────────────────
         // Strings, not dicts: the payload is written straight to a save file and read

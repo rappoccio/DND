@@ -795,10 +795,16 @@ public:
 
     // True if `viewer` can perceive `target` for targeting purposes: a target with the
     // Invisible condition can only be perceived by a viewer with Truesight or Blindsight
-    // whose range reaches it. Non-invisible targets are always perceivable here (geometric
-    // line-of-sight is enforced separately). Used by availableAttacks / getBattleObservation
-    // so the RL action space and observation agree with the GUI.
+    // whose range reaches it, and an enemy concealed by magical darkness (darknessConceals)
+    // not at all. Anything else is perceivable here (geometric line-of-sight is enforced
+    // separately). Used by availableAttacks / getBattleObservation so the RL action space and
+    // observation agree with the GUI.
     [[nodiscard]] bool canPerceiveTarget(const BattleMap& bm, int viewer_idx, int target_idx) const noexcept;
+
+    // True if magical darkness hides `target` from `viewer` standing at `viewer_origin`: the target is
+    // wholly inside darkness the viewer can't pierce, and the viewer is outside it. Such an enemy
+    // can't be targeted by an attack or a single-target spell. See VisibilityService.
+    [[nodiscard]] bool darknessConceals(const BattleMap& bm, int viewer_idx, Cell viewer_origin, int target_idx) const noexcept;
 
     // True when a Forcecage BOX (10-ft solid) stands between the two agents: exactly one of them is
     // sealed inside a box, so they are on opposite sides of that wall and NO attack, spell, or effect

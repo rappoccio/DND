@@ -2506,6 +2506,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     if (!canAttack(w, bm, atk_pt.origin, atk_sz, tgt_pt.origin, tgt_sz, s.was_thrown))
         return false;
 
+    if (darknessConceals(bm, action.attacker_idx, atk_pt.origin, action.target_idx)) {
+        log_("{} can't see {} — hidden by magical darkness",
+             agentName(bm, action.attacker_idx), agentName(bm, action.target_idx));
+        return false;
+    }
+
 
     // end of checking if it's mechanically possible to attack this round
 
