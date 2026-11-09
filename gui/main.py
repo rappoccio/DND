@@ -874,6 +874,9 @@ class App:
         self._tracker_hits        = []    # this frame's sheet click targets: (rect, kind, arg)
         self._tracker_edit        = None  # the row (tuple of agent idxs) being typed into
         self._tracker_edit_text   = ""
+        self._tracker_hp          = -1    # agent idx whose HP box is open (T4), or -1
+        self._tracker_hp_text     = ""    # the amount typed into the HP box
+        self.dm_view              = False # D1: show monster HP and fogged mobs (T4b toggles)
         self.combat_paused    = False  # True when paused between turns
         self._seen_armed          = set()  # agent idxs seen holding a droppable weapon this fight
         self.initiative_order     = []    # list[rpg.InitiativeEntry], high→low
@@ -5038,6 +5041,7 @@ class App:
         self.tracker.add(in_play)
         self.tracker.phase = "collecting"
         self._tracker_edit = None
+        self._tracker_hp = -1
         self.combat_active       = True
         self._fight_started      = time.time()
         self._seen_armed         = set()
@@ -5170,7 +5174,21 @@ class App:
                 self._tracker_step(1 if kind == "next" else -1)
             elif kind in ("up", "down"):
                 self._tracker_move(arg, -1 if kind == "up" else 1)
+            elif kind == "hp_open":
+                self._tracker_hp_open(arg)
+            elif kind == "hp_close":
+                self._tracker_hp = -1
+            elif kind == "hp":
+                self._tracker_hp_apply(arg)
             return True
+        if event.type == pygame.KEYDOWN and self._tracker_edit is None and self._tracker_hp >= 0:
+            if event.key == pygame.K_ESCAPE:
+                self._tracker_hp = -1
+                return True
+            text, _, handled = edit_line(self._tracker_hp_text, None, event,
+                                         accept=lambda s: len(s) <= 3 and (s == "" or s.isdigit()))
+            self._tracker_hp_text = text
+            return handled
         if event.type == pygame.KEYDOWN and self._tracker_edit is not None:
             if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_TAB):
                 keys = [tuple(ix) for _, ix, _ in self._tracker_rows()]
@@ -5189,6 +5207,57 @@ class App:
                     self.tracker.set_total(i, total)
             return True
         return False
+
+    def _tracker_hp_open(self, agent_idx: int):
+        """Open the HP box (T4) on `agent_idx`, with an empty amount."""
+        self._tracker_edit = None
+        self._tracker_hp = agent_idx
+        self._tracker_hp_text = ""
+
+    def _tracker_hp_shown(self, agent_idx: int) -> bool:
+        """D1: the table view shows party HP only; DM view shows every number."""
+        return self.dm_view or self.bm.placed_agents[agent_idx].faction == PC_FACTION
+
+    def _tracker_hp_apply(self, op: str):
+        """Apply the HP box's typed amount to its token: "dmg" (temp HP absorbs it first,
+        then HP, down to 0), "heal" (up to max), "temp" (set temp HP), "max" (set max HP,
+        current clamped to it). One log line per change. A monster at 0 leaves the board
+        and the order (D4, through _clear_mob); a PC at 0 stays and keeps its turn."""
+        idx, text = self._tracker_hp, self._tracker_hp_text
+        if idx < 0 or not text.isdigit():
+            return
+        n = int(text)
+        bm = self.bm
+        pt = bm.placed_agents[idx]
+        s = self.combat.get_agent_stats(bm, idx)
+        if op == "dmg":
+            soak = min(s.temp_hp, n)
+            s.temp_hp -= soak
+            s.hp_cur = max(0, s.hp_cur - (n - soak))
+            msg = f"{pt.name} takes {n} damage" + (f" ({soak} to temp HP)" if soak else "")
+        elif op == "heal":
+            s.hp_cur = min(s.hp_max, s.hp_cur + n)
+            msg = f"{pt.name} heals {n}"
+        elif op == "temp":
+            s.temp_hp = n
+            msg = f"{pt.name} has {n} temp HP"
+        elif op == "max":
+            s.hp_max = max(1, n)
+            s.hp_cur = min(s.hp_cur, s.hp_max)
+            msg = f"{pt.name}'s max HP changes"
+        else:
+            return
+        self.combat.set_agent_stats(bm, idx, s)
+        self._tracker_hp_text = ""
+        if self._tracker_hp_shown(idx):
+            msg += f": {s.hp_cur}/{s.hp_max} HP" + (f" +{s.temp_hp} temp" if s.temp_hp else "")
+        self._combat_log_add(msg + ".")
+        if s.hp_cur <= 0 and pt.faction != PC_FACTION:
+            self._tracker_hp = -1
+            self._clear_mob(idx)
+            if self.tracker.remove(idx):     # _clear_mob already stepped past it if it acted
+                self._mirror_tracker()
+        self._flush_combat_log()
 
     def _tracker_open_field(self, key):
         """Start typing into the row keyed by `key` (its agent idxs), showing its total."""
@@ -5478,6 +5547,7 @@ class App:
         self.initiative_order    = []
         self.tracker             = Tracker()       # tracker mode's sheet goes with it
         self._tracker_hits       = []
+        self._tracker_hp         = -1
         self._tracker_edit       = None
         self.initiative_scroll_offset = 0  # reset scroll when combat ends
         self.combat_panel_scroll = 0
@@ -17240,8 +17310,10 @@ class App:
                 pygame.draw.line(hatch, col, (offset + size_px, 0), (offset, size_px), 2)
             self.screen.blit(hatch, (screen_x, screen_y))
 
-        # HP bar (skip translucent previews, e.g. movement ghosts)
-        if alpha == 255:
+        # HP bar (skip translucent previews, e.g. movement ghosts). Tracker mode's table
+        # view shows party HP only (D1).
+        if alpha == 255 and not (self.tracker_mode and not self.dm_view
+                                 and pt.faction != PC_FACTION):
             self._draw_hp_bar(screen_x, screen_y, size_px, pt.stats, hp_override=hp_override)
 
         # Name is shown on hover (see _draw_agent_hover_name), not painted on the token.
@@ -20744,9 +20816,11 @@ class App:
                             else:
                                 # When paused, allow dragging any agent; otherwise only the current
                                 # combatant — or the legendary creature performing an out-of-turn Dash.
+                                # Tracker mode drags like a pause (T5): any token, any time.
                                 cur = self._current_agent_idx()
+                                free = self.combat_paused or self.tracker_mode
                                 allow_drag = (hit >= 0) and (
-                                    self.combat_paused or hit == cur
+                                    free or hit == cur
                                     or (self._legendary_move_active and hit == self._legendary_actor))
                                 if allow_drag:
                                     pt = self.bm.placed_agents[hit]
@@ -20757,8 +20831,10 @@ class App:
                                     self.drag_cell   = rpg.Cell(pt.origin.col, pt.origin.row)
                                     self.drag_valid  = True
                                     # During pause, allow selecting other agents; otherwise keep on current.
-                                    if self.combat_paused:
+                                    if free:
                                         self.selected_idx = hit
+                                    if self.tracker_mode and self._tracker_hp != hit:
+                                        self._tracker_hp_open(hit)    # T4: a token's HP box
                                 else:
                                     self._arm_pan_drag(event.pos)
                     else:
@@ -20826,7 +20902,9 @@ class App:
                     # The movement-range clamp applies only in active combat (not paused).
                     # Before combat or when paused, the agent can be repositioned anywhere it
                     # legally fits (DM free placement); placement validity was checked above.
-                    if self.drag_valid and self.combat_active and not self.combat_paused:
+                    # Tracker mode has no budgets (T5), so it never clamps either.
+                    if self.drag_valid and self.combat_active and not self.combat_paused \
+                            and not self.tracker_mode:
                         if self._reach_set:
                             self.drag_valid = (
                                 self.drag_cell.col, self.drag_cell.row
@@ -20862,10 +20940,12 @@ class App:
 
             if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 if self.drag_idx >= 0:
-                    if self.drag_valid and self.drag_cell is not None and (not self.combat_active or self.combat_paused):
-                        # Free pre-combat repositioning or paused DM repositioning: placement validity was already
-                        # checked (_can_place), so bypass the movement rules (speed / range /
-                        # pathing) entirely and set the agent's position directly.
+                    if self.drag_valid and self.drag_cell is not None and (
+                            not self.combat_active or self.combat_paused or self.tracker_mode):
+                        # Free pre-combat repositioning, paused DM repositioning, or any tracker
+                        # mode drag (T5): placement validity was already checked (_can_place),
+                        # so bypass the movement rules (speed / range / pathing, opportunity
+                        # attacks) entirely and set the agent's position directly.
                         if self.bm.set_agent_position(self.drag_idx, self.drag_cell):
                             self.selected_idx = self.drag_idx
                             self._mark_fog_dirty()   # DM/pre-combat reposition moves a token

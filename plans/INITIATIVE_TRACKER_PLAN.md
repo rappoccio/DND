@@ -1,7 +1,8 @@
 # Initiative tracker mode — the table rolls, the DM's screen keeps score
 
 **Status 2026-11-09: Step 0 frozen (D1–D5 decided by the user). T1 committed 1b44e2c (222/0).
-T2 committed 19caef6 (223/0). T3 implemented (223/0, uncommitted). T4 next.**
+T2 committed 19caef6 (223/0). T3 committed 4722635 (223/0). T5 and T4 implemented
+(223/0, uncommitted). T4b next.**
 
 ## What the user asked for
 
@@ -125,6 +126,15 @@ types them in. The app is a board plus a score sheet.
 - HP display follows D1: table view shows party HP only; DM view shows every number.
 - **Tests:** temp absorbs first, clamps, a monster at 0 leaves the board and the order,
   a PC at 0 keeps its turn.
+- **Landed 2026-11-09 (after T5).** The HP box is inline in the panel, under the sheet
+  (`menus.panel._draw_hp_box`), in either phase. A click on a running row's name (kind
+  `hp_open`) or on a token (the drag press) opens it on that token. Typed digits fill the
+  amount (Esc closes, so does ×); **−N / +N / Temp / Max** apply it through
+  `App._tracker_hp_apply`, which writes the engine stats directly. A monster at 0 goes
+  through `_clear_mob` (stepping on first if it was acting) and is tombstoned in the
+  tracker at once, not on the next step. D1 is `App._tracker_hp_shown`: party HP always,
+  monster HP only when `app.dm_view` (added here, default off; T4b adds its toggle). It
+  governs the row HP, the box header, the log line's "x/y HP" tail and the token HP bar.
 
 ### T4b — DM view toggle (D1)
 - `app.dm_view` (default off) with a button next to Fog. On: `_fog_active()` is false for
@@ -137,6 +147,11 @@ types them in. The app is a board plus a score sheet.
 - The DM drags any token, with no budget and no opportunity attacks; the drop marks fog
   dirty, so reveal and On Deck wake-up run as for any move.
 - **Tests:** a drag that sees into a room reveals it and wakes its On Deck mobs.
+- **Landed 2026-11-09.** Tracker mode is treated like a pause at the three drag gates in
+  `_handle_events` (press: any token; motion: no reach clamp; release:
+  `set_agent_position` + `_mark_fog_dirty`, not `commit_move`), so there is no budget and
+  no opportunity attack, before Start too. The fog reveal on the next frame wakes On Deck
+  groups through `_tracker_join`.
 
 ### T6 — Save and resume
 - `tracker_mode` and `Tracker.to_json` go in the run save (`save_layout.py`), so a session

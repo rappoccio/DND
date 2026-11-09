@@ -146,8 +146,10 @@ def draw_tracker_section(app, lx, W, y):
 
     Collecting: one number field per row (a mob group shares one), then Roll for monsters
     and Start. Running: the round, Prev / Next, and the order with ↑/↓ on each row; an
-    entry that joins next round (D5) is dimmed. Click targets go to `app._tracker_hits` as
-    (rect, kind, arg), reset every call; `App._tracker_handle_event` acts on them."""
+    entry that joins next round (D5) is dimmed. A row shows its HP when D1 allows and opens
+    the HP box (T4) on a click; the box sits under the sheet in either phase. Click targets
+    go to `app._tracker_hits` as (rect, kind, arg), reset every call;
+    `App._tracker_handle_event` acts on them."""
     app._tracker_hits = []
     t = app.tracker
     B = app._BTN_H
@@ -183,7 +185,7 @@ def draw_tracker_section(app, lx, W, y):
         y += 4
         button("Roll for monsters", pygame.Rect(lx, y, hw, B), "roll")
         button("Start", pygame.Rect(lx + hw + 4, y, W - hw - 4, B), "start")
-        return y + B + 6
+        return _draw_hp_box(app, lx, W, y + B + 6, text, button)
 
     if t.phase == "running":
         text(f"Round {t.round}", lx, y, COL_INITIATIVE_CUR)
@@ -202,7 +204,48 @@ def draw_tracker_section(app, lx, W, y):
             name = agents[e.agent_idx].name if e.agent_idx < len(agents) else "?"
             text(f"{'▶ ' if cur else '  '}{tot}  {name}{'  (next round)' if waiting else ''}",
                  lx, y + 2, col)
+            hp = _hp_label(app, e.agent_idx)
+            if hp:
+                s = font.render(hp, True, col)
+                app.screen.blit(s, (lx + W - 2 * aw - 8 - s.get_width(), y + 2))
             button("↑", pygame.Rect(lx + W - 2 * aw - 2, y, aw, 18), "up", e.agent_idx)
             button("↓", pygame.Rect(lx + W - aw, y, aw, 18), "down", e.agent_idx)
+            app._tracker_hits.append((pygame.Rect(lx, y, W - 2 * aw - 4, 18),
+                                      "hp_open", e.agent_idx))
             y += 20
+        y = _draw_hp_box(app, lx, W, y + 4, text, button)
     return y
+
+
+def _hp_label(app, idx) -> str:
+    """ "12/30" (+ "+5" temp) for a token whose HP D1 shows, else "". """
+    if not app._tracker_hp_shown(idx):
+        return ""
+    s = app.combat.get_agent_stats(app.bm, idx)
+    return f"{s.hp_cur}/{s.hp_max}" + (f" +{s.temp_hp}" if s.temp_hp else "")
+
+
+def _draw_hp_box(app, lx, W, y, text, button):
+    """The HP box (T4) on `app._tracker_hp`: its HP (when D1 shows it), the amount typed so
+    far, and −N / +N / Temp / Max. Closed if its token has left the board."""
+    idx = app._tracker_hp
+    agents = app.bm.placed_agents
+    if not (0 <= idx < len(agents)) or agents[idx].removed_from_play:
+        app._tracker_hp = -1
+        return y
+    B = app._BTN_H
+    hp = _hp_label(app, idx) or "HP hidden"
+    text(f"{agents[idx].name}: {hp}", lx, y, COL_INITIATIVE_CUR)
+    y += 18
+    field = pygame.Rect(lx, y, W - 30, 20)
+    pygame.draw.rect(app.screen, COL_INPUT_ACTIVE, field, border_radius=3)
+    pygame.draw.rect(app.screen, COL_PANEL_BORDER, field, 1, border_radius=3)
+    val = app._tracker_hp_text
+    text(val or "type an amount", field.x + 6, field.y + 3, COL_TEXT if val else COL_LABEL)
+    button("×", pygame.Rect(lx + W - 26, y, 26, 20), "hp_close")
+    y += 24
+    qw = (W - 12) // 4
+    for k, (label, op) in enumerate((("−N", "dmg"), ("+N", "heal"),
+                                     ("Temp", "temp"), ("Max", "max"))):
+        button(label, pygame.Rect(lx + k * (qw + 4), y, qw, B), "hp", op)
+    return y + B + 6

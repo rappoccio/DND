@@ -26,6 +26,7 @@ import tempfile
 import pygame
 
 from constants import PC_FACTION
+from gui_driver import cell_center
 from main import App
 from menus import dm
 from net import link as net_link
@@ -366,6 +367,187 @@ def test_revealed_group_joins_next_round():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _drag(app, frm, to):
+    """The DM drags a token from cell `frm` to cell `to` through real events."""
+    a, b = cell_center(app, *frm), cell_center(app, *to)
+    pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=a, button=1))
+    pygame.event.post(pygame.event.Event(pygame.MOUSEMOTION, pos=b, rel=(b[0] - a[0], b[1] - a[1]),
+                                         buttons=(1, 0, 0)))
+    pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=b, button=1))
+    assert app._handle_events() is not False
+
+
+def _pos(app, idx):
+    o = app.bm.placed_agents[idx].origin
+    return (o.col, o.row)
+
+
+def test_drag_any_token():
+    """T5: the DM drags any token at any time, while the totals are collected and on
+    someone else's turn, with no movement budget and no opportunity attack."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _setup(tmp, tracker=True)
+        app._begin_encounter()
+        aria, skarn, gnasher = (_idx(app, n) for n in ("Aria", "Skarn", "Gnasher"))
+        _drag(app, (2, 3), (3, 3))                      # nobody is acting yet
+        check(_pos(app, aria) == (3, 3), f"collecting: Aria at {_pos(app, aria)}")
+
+        for name, tot in TOTALS.items():
+            app.tracker.set_total(_idx(app, name), tot)
+        app._tracker_start()
+        check(app._current_agent_idx() == gnasher, "Gnasher does not act first")
+        hp = {i: app.combat.get_agent_stats(app.bm, i).hp_cur
+              for i in range(len(app.bm.placed_agents))}
+        _drag(app, (8, 8), (6, 8))                      # Skarn, on Gnasher's turn, 10 ft
+        check(_pos(app, skarn) == (6, 8), f"Skarn's drag left him at {_pos(app, skarn)}")
+        _drag(app, (3, 3), (7, 3))                      # Aria runs past Gnasher's reach
+        _drag(app, (7, 3), (2, 6))                      # and away from it again
+        check(_pos(app, aria) == (2, 6), f"Aria's drags left her at {_pos(app, aria)}")
+        after = {i: app.combat.get_agent_stats(app.bm, i).hp_cur for i in hp}
+        check(after == hp, f"a drag cost HP (an opportunity attack?): {hp} → {after}")
+        check(app._current_agent_idx() == gnasher, "a drag moved the turn")
+        check(app._fog_dirty, "the drop did not mark the fog dirty")
+        print("✅ test_drag_any_token")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_drag_wakes_on_deck():
+    """T5: a drag that sees into a room reveals it and wakes its On Deck mobs, which join
+    at one roll next round (D5)."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _setup(tmp, tracker=True, foes=("Gnasher", "Ghoul", "Ghoul"))
+        ghouls = [i for i, pt in enumerate(app.bm.placed_agents) if pt.name == "Ghoul"]
+        for i in ghouls:
+            app.bm.set_agent_on_deck(i, True)
+        app._begin_encounter()
+        for name, tot in (("Aria", 15), ("Brannor", 12), ("Gnasher", 18)):
+            app.tracker.set_total(_idx(app, name), tot)
+        app._tracker_start()
+        aria = _idx(app, "Aria")
+        # The ghouls' room is in view only from (4, 5): the drag there is what wakes them.
+        app.show_fog = True
+        app._agents_in_revealed_rooms = (
+            lambda idxs: list(idxs) if _pos(app, aria) == (4, 5) else [])
+        app._tracker_roll = lambda i: 11
+        app._refresh_fog()
+        check(all(app.bm.is_agent_on_deck(i) for i in ghouls), "the ghouls woke before the drag")
+        _drag(app, (2, 3), (4, 5))
+        app._refresh_fog()                              # the frame's reveal
+        check(not any(app.bm.is_agent_on_deck(i) for i in ghouls), "the drag woke no ghoul")
+        check(all(app.tracker.entry(i).total == 11 and app.tracker.entry(i).joins_round == 2
+                  for i in ghouls), "the ghouls did not join at 11 next round")
+        print("✅ test_drag_wakes_on_deck")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _hp(app, op, amount):
+    """Type `amount` into the open HP box, then click its `op` button."""
+    for ch in str(amount):
+        app._tracker_handle_event(pygame.event.Event(
+            pygame.KEYDOWN, key=ord(ch), unicode=ch, mod=0))
+    _click(app, "hp", op)
+
+
+def _stats(app, idx):
+    s = app.combat.get_agent_stats(app.bm, idx)
+    return s.hp_cur, s.hp_max, s.temp_hp
+
+
+def test_hp_box():
+    """T4: a row click opens the HP box. Temp HP absorbs damage first; heal stops at max;
+    a lower max clamps current HP. Each change is one log line."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _board(tmp, tracker=True)
+        aria = _idx(app, "Aria")
+        _click(app, "hp_open", aria)
+        check(app._tracker_hp == aria, "the row click opened no HP box")
+        cur, mx, _ = _stats(app, aria)
+        log0 = len(app.combat_log)
+        _hp(app, "temp", 5)
+        _hp(app, "dmg", 8)
+        check(_stats(app, aria) == (cur - 3, mx, 0), f"temp first: {_stats(app, aria)}")
+        _hp(app, "heal", 999)
+        check(_stats(app, aria) == (mx, mx, 0), f"heal clamp: {_stats(app, aria)}")
+        _hp(app, "max", mx - 2)
+        check(_stats(app, aria) == (mx - 2, mx - 2, 0), f"max clamp: {_stats(app, aria)}")
+        check(len(app.combat_log) - log0 == 4, f"{len(app.combat_log) - log0} log lines for 4")
+        check(f"{mx - 2}/{mx - 2} HP" in app.combat_log[0], f"PC line {app.combat_log[0]}")
+        _click(app, "hp_open", _idx(app, "Brannor"))     # another row: a fresh box
+        check(app._tracker_hp == _idx(app, "Brannor") and app._tracker_hp_text == "",
+              "a second row did not open its own box")
+        app._tracker_handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE,
+                                                     unicode="", mod=0))
+        check(app._tracker_hp == -1, "Esc did not close the box")
+        print("✅ test_hp_box")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_hp_zero():
+    """T4/D4: a monster at 0 leaves the board and the order (the acting one hands the turn
+    on); a PC at 0 stays in the order and keeps its turn. A token click opens the box."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _board(tmp, tracker=True)
+        aria, skarn, gnasher = (_idx(app, n) for n in ("Aria", "Skarn", "Gnasher"))
+        _drag(app, _pos(app, skarn), _pos(app, skarn))   # a click on Skarn's token
+        check(app._tracker_hp == skarn, "the token click opened no HP box")
+        _hp(app, "dmg", 999)
+        check(app.bm.is_agent_removed_from_play(skarn), "Skarn at 0 is still on the board")
+        check("Skarn" not in _order(app), f"Skarn at 0 is still in the order {_order(app)}")
+        check(app._current_agent_idx() == gnasher, "clearing Skarn moved the turn")
+        check(app._tracker_hp == -1, "the box stayed open on a cleared token")
+
+        _click(app, "hp_open", gnasher)                 # the acting monster drops
+        _hp(app, "dmg", 999)
+        check(app._current_agent_idx() == aria, "the turn did not pass from Gnasher to Aria")
+        check(_order(app) == ["Aria", "Brannor"], f"order {_order(app)}")
+
+        _click(app, "hp_open", aria)
+        _hp(app, "dmg", 999)
+        check(_stats(app, aria)[0] == 0, "Aria not at 0")
+        check(not app.bm.is_agent_removed_from_play(aria), "a PC at 0 left the board")
+        check(app._current_agent_idx() == aria, "a PC at 0 lost her turn")
+        app._advance_turn()
+        app._advance_turn()
+        check(app._current_agent_idx() == aria, "a PC at 0 was skipped next round")
+        app._draw_combat_panel()
+        print("✅ test_hp_zero")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_hp_display_d1():
+    """D1: the table view shows party HP only, on the sheet and in the log; DM view shows
+    every number."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _board(tmp, tracker=True)
+        skarn, aria = _idx(app, "Skarn"), _idx(app, "Aria")
+        check(app._tracker_hp_shown(aria), "party HP hidden in the table view")
+        check(not app._tracker_hp_shown(skarn), "monster HP shown in the table view")
+        _click(app, "hp_open", skarn)
+        _hp(app, "dmg", 1)
+        check("/" not in app.combat_log[0], f"monster HP in the log: {app.combat_log[0]}")
+        app.dm_view = True
+        check(app._tracker_hp_shown(skarn), "DM view hides monster HP")
+        _hp(app, "dmg", 1)
+        check("HP" in app.combat_log[0] and "/" in app.combat_log[0],
+              f"DM view log line {app.combat_log[0]}")
+        app._draw_combat_panel()
+        app._draw_agents()                      # the token HP bars follow D1 too
+        app.dm_view = False
+        app._draw_agents()
+        print("✅ test_hp_display_d1")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 class _FakeServer:
     def __init__(self):
         self.stopped = False
@@ -408,6 +590,11 @@ if __name__ == "__main__":
     test_start_with_blanks()
     test_roll_for_monsters()
     test_revealed_group_joins_next_round()
+    test_drag_any_token()
+    test_drag_wakes_on_deck()
+    test_hp_box()
+    test_hp_zero()
+    test_hp_display_d1()
     if FAILURES:
         print(f"\n❌ {len(FAILURES)} failure(s)")
         sys.exit(1)
