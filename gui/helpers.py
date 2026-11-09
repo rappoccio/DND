@@ -854,6 +854,10 @@ def _spell_to_dict(s) -> dict:
         "requires_concentration": s.requires_concentration,
         "moves_with_caster":     s.moves_with_caster,
         "grants_advantage_aura": s.grants_advantage_aura,
+        "excludes_caster":       s.excludes_caster,
+        "effects_on_begin_turn": s.effects_on_begin_turn,
+        "effects_on_end_turn":   s.effects_on_end_turn,
+        "effects_on_enter":      s.effects_on_enter,
         "opens_doors":           s.opens_doors,
         "dispels_magic":         s.dispels_magic if hasattr(s, 'dispels_magic') else False,
         "light_level":           s.light_level,
@@ -951,6 +955,7 @@ def _dict_to_spell(d: dict):
     s.moves_with_caster = d.get("moves_with_caster", False)
     s.grants_advantage_aura = d.get("grants_advantage_aura", False)
     s.selective_targeting = d.get("selective_targeting", False)
+    s.excludes_caster = d.get("excludes_caster", False)
     s.resource_name = d.get("resource_name", "") or ""
     s.resource_cost = int(d.get("resource_cost", 1))
     s.requires_los = d.get("requires_los", False)
@@ -991,6 +996,7 @@ def _dict_to_spell(d: dict):
     s.targets_per_upcast_level = int(d.get("targets_per_upcast_level", 0))
     s.effects_on_begin_turn = d.get("effects_on_begin_turn", True)
     s.effects_on_end_turn = d.get("effects_on_end_turn", False)
+    s.effects_on_enter = d.get("effects_on_enter", True)
 
     # N/day + Recharge (breath weapons / limited innate actions). uses_max==0
     # ⇒ unlimited; recharge_min==0 ⇒ no recharge. uses_remaining defaults to
@@ -1028,8 +1034,13 @@ def _dict_to_spell(d: dict):
             # compiled module still loads spells.json (falls back to start-of-turn saves).
             if hasattr(c, "save_at_end_of_turn"):
                 c.save_at_end_of_turn = bool(cond_entry.get("save_at_end_of_turn", False))
-            # Condition requires a save if it has a save_ability specified
-            c.requires_save = ("save_ability" in cond_entry)
+            # Condition requires a save if it names its own save_ability, or if the spell itself
+            # is a Save spell: a failed spell save is what lands the condition (Hold Person, Web,
+            # Entangle carry no per-condition save_ability, and used to apply unconditionally).
+            # The engine reuses the spell's own save roll for these — no second roll.
+            c.requires_save = bool(cond_entry.get(
+                "requires_save",
+                "save_ability" in cond_entry or d.get("attack_type") == "Save"))
             # Parse save_ability string (target's save) - defaults to spell's save_ability
             save_ability_str = cond_entry.get("save_ability")
             if save_ability_str:

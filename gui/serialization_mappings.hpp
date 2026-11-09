@@ -78,7 +78,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     magic_damage_rolls, physical_damage_rolls, healing_type,
     terrain_difficulty, slip_save_dc, slip_distance_feet, light_level,
     requires_concentration, moves_with_caster, requires_los, check_los_on_center,
-    requires_sight, selective_targeting, grants_advantage_aura,
+    requires_sight, selective_targeting, excludes_caster, grants_advantage_aura,
     level, upcast_dice_bonus, cantrip_dice_per_tier, uses_max, uses_remaining, recharge_min, expended,
     resource_name, resource_cost, opens_doors, dispels_magic,
     instant_kill_threshold, condition_hp_threshold,
@@ -86,6 +86,6 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     creates_movement_ward, ward_blocks_living, creates_wall_terrain, binds_creature,
     ends_conditions,
     teleportation_spell, max_teleport_targets, teleport_range_ft,
-    effects_on_begin_turn, effects_on_end_turn, conditions)
+    effects_on_begin_turn, effects_on_end_turn, effects_on_enter, conditions)
 
 } // namespace rpg

@@ -56,6 +56,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /tmp/xdg_runtime && chmod 700 /tmp/xdg_runtime
 
+# NPC learning (plans/NPC_LEARNING_PLAN.md): CPU-only PyTorch + scikit-learn for offline
+# training and tree distillation. Separate layer so the base layer above stays cached.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.5.1 \
+    && pip install --no-cache-dir numpy==2.1.3 scikit-learn==1.5.2
+
 # Copy entrypoint script (renamed from entrypoint.sh -> initgui.sh)
 COPY initgui.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

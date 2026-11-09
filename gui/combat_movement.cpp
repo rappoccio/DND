@@ -204,6 +204,7 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     std::vector<Cell> pathCells = getCellsAlongPath(oldOrigin, newOrigin);
     for (const auto& pathCell : pathCells) {
         for (const auto& effect : bm.activeSpellEffects()) {
+            if (!effect.spell.effects_on_enter) continue;     // cast-time-only area (Entangle)
             if (zoneSparesTarget(bm, effect, idx)) continue;  // self + allies (faction rules)
             if (std::find(effect.cells.begin(), effect.cells.end(), pathCell) != effect.cells.end())
                 applyZoneIfNewThisTurn(bm, effect, idx);

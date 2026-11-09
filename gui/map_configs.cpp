@@ -114,12 +114,14 @@ static Spell spellFromJson(const json& j) noexcept {
     spell.requires_los = j.value("requires_los", false);
     spell.check_los_on_center = j.value("check_los_on_center", true);
     spell.selective_targeting = j.value("selective_targeting", false);
+    spell.excludes_caster = j.value("excludes_caster", false);
     spell.uses_max = j.value("uses_max", 0);
     spell.uses_remaining = j.value("uses_remaining", 0);
     spell.recharge_min = j.value("recharge_min", 0);
     spell.expended = j.value("expended", false);
     spell.effects_on_begin_turn = j.value("effects_on_begin_turn", true);
     spell.effects_on_end_turn = j.value("effects_on_end_turn", false);
+    spell.effects_on_enter = j.value("effects_on_enter", true);
 
     // Parse terrain difficulty
     std::string terrain_str = j.value("terrain_difficulty", "Normal");

@@ -232,15 +232,23 @@ class ContextMenuRenderer:
     builds is the same list the call site used to build itself.
     """
 
-    def __init__(self, menu, screen_size: Callable[[], tuple[int, int]] | None = None):
+    def __init__(self, menu, screen_size: Callable[[], tuple[int, int]] | None = None,
+                 show_title: bool = False):
         self._menu = menu
         self._screen_size = screen_size
+        # Most popups' titles were written for the wire, not the console, so only a
+        # renderer registered with show_title draws ``prompt.title`` as a header row.
+        self._show_title = show_title
 
     def show(self, prompt: Prompt, submit: Callable[[str], None]) -> None:
         items = [(o.label, (lambda oid=o.id: submit(oid))) for o in prompt.options]
         if not items:                     # ContextMenu.show indexes max() over items
             return
-        self._menu.show(prompt.anchor or (100, 100), items, self._size())
+        if self._show_title and prompt.title:
+            self._menu.show(prompt.anchor or (100, 100), items, self._size(),
+                            header=prompt.title)
+        else:
+            self._menu.show(prompt.anchor or (100, 100), items, self._size())
 
     def dismiss(self) -> None:
         self._menu.dismiss()

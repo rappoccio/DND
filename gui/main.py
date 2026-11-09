@@ -703,6 +703,10 @@ class App:
             renderer=ContextMenuRenderer(self.context_menu,
                                          lambda: self.screen.get_size()),
             renderers={
+                # The default popup with the prompt's title drawn as a header row.
+                "titled": ContextMenuRenderer(self.context_menu,
+                                              lambda: self.screen.get_size(),
+                                              show_title=True),
                 "grid":   SpellGridRenderer(self.spell_grid_menu,
                                             lambda: self.screen.get_size()),
                 "picker": ElementPickerRenderer(self._element_dialog),
@@ -5039,9 +5043,9 @@ class App:
 
         prompt = self._ask_actor(
             idx, "reaction",
-            f"{self._agent_name(idx)}: Use Tides of Chaos for Advantage on Initiative?",
+            "Use Tides of Chaos for Initiative?",
             [("Yes", lambda: answer(True)), ("No", lambda: answer(False))],
-            on_cancel=lambda: answer(False))
+            render="titled", on_cancel=lambda: answer(False))
         self._tides_start = {"queue": queue, "prompt": prompt}
 
     def _begin_combat(self):
@@ -12913,6 +12917,10 @@ class App:
             "moves_with_caster":     s.moves_with_caster,
             "grants_advantage_aura": s.grants_advantage_aura,
             "selective_targeting":   s.selective_targeting,
+            "excludes_caster":       s.excludes_caster,
+            "effects_on_begin_turn": s.effects_on_begin_turn,
+            "effects_on_end_turn":   s.effects_on_end_turn,
+            "effects_on_enter":      s.effects_on_enter,
             "resource_name":         s.resource_name or None,
             "resource_cost":         s.resource_cost,
             "teleportation_spell":   s.teleportation_spell,

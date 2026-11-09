@@ -3292,25 +3292,37 @@ class ContextMenu:
         self._hover_idx: int   = -1
         self.visible:    bool  = False
         self._font:      pygame.font.Font | None = None
+        self.header:     str | None = None
 
     def show(self, pos: tuple[int, int], items: list[tuple[str, object]],
-             screen_size: tuple[int, int] = (9999, 9999)):
+             screen_size: tuple[int, int] = (9999, 9999), header: str | None = None):
+        """``header`` is an optional question drawn above the items; it is not clickable."""
         self._font   = pygame.font.SysFont(None, 16)
         self.items   = list(items)
+        self.header  = header
         self._hover_idx = -1
         self.visible = True
         w = max(self.MIN_W,
-                max((len(t) * 7 + self.PAD * 2) for t, _ in items))
-        h = self.ITEM_H * len(items) + self.PAD * 2
+                max((len(t) * 7 + self.PAD * 2) for t, _ in items),
+                len(header or "") * 7 + self.PAD * 2)
+        h = self.ITEM_H * (len(items) + self._head_rows()) + self.PAD * 2
         # Flip left / up if the menu would go off-screen.
         x = min(pos[0], screen_size[0] - w - 2)
         y = min(pos[1], screen_size[1] - h - 2)
         self.rect = pygame.Rect(x, y, w, h)
 
+    def _head_rows(self) -> int:
+        return 1 if self.header else 0
+
+    def _row_at(self, y: int) -> int:
+        """The item index under screen row ``y``; the header row maps to -1."""
+        return (y - self.rect.y - self.PAD) // self.ITEM_H - self._head_rows()
+
     def dismiss(self):
         self.visible = False
         self.items   = []
         self.rect    = None
+        self.header  = None
 
     def handle(self, event) -> bool:
         """Returns True if the event was consumed (menu was visible)."""
@@ -3324,8 +3336,10 @@ class ContextMenu:
             return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect and self.rect.collidepoint(*event.pos):
-                idx = (event.pos[1] - self.rect.y - self.PAD) // self.ITEM_H
-                if 0 <= idx < len(self.items):
+                idx = self._row_at(event.pos[1])
+                if idx < 0:
+                    return True   # the header: not an option, and not a click-away either
+                if idx < len(self.items):
                     _, cb = self.items[idx]
                     self.dismiss()
                     cb()
@@ -3337,8 +3351,7 @@ class ContextMenu:
             return True
         if event.type == pygame.MOUSEMOTION and self.visible:
             if self.rect and self.rect.collidepoint(*event.pos):
-                self._hover_idx = (
-                    event.pos[1] - self.rect.y - self.PAD) // self.ITEM_H
+                self._hover_idx = self._row_at(event.pos[1])
             else:
                 self._hover_idx = -1
         return False      # don't block other events while just moving
@@ -3348,9 +3361,17 @@ class ContextMenu:
             return
         pygame.draw.rect(screen, (48, 48, 62), self.rect, border_radius=4)
         pygame.draw.rect(screen, (110, 110, 150), self.rect, 1, border_radius=4)
+        head = self._head_rows()
+        if head:
+            hr = pygame.Rect(self.rect.x + 2, self.rect.y + self.PAD,
+                             self.rect.width - 4, self.ITEM_H)
+            lbl = self._font.render(self.header, True, (240, 210, 120))
+            screen.blit(lbl, (hr.x + self.PAD, hr.centery - lbl.get_height() // 2))
+            pygame.draw.line(screen, (110, 110, 150),
+                             (hr.x + 4, hr.bottom - 1), (hr.right - 4, hr.bottom - 1))
         for i, (text, _) in enumerate(self.items):
             ir = pygame.Rect(self.rect.x + 2,
-                             self.rect.y + self.PAD + i * self.ITEM_H,
+                             self.rect.y + self.PAD + (i + head) * self.ITEM_H,
                              self.rect.width - 4, self.ITEM_H)
             if i == self._hover_idx:
                 pygame.draw.rect(screen, (75, 100, 145), ir, border_radius=3)

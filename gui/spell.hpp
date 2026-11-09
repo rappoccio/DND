@@ -74,6 +74,9 @@ namespace rpg {
       // neutrals) are auto-excluded from this spell's area without any Evoker/Careful feature.
       // Heal spells already restrict to allies via faction, so this flag is meaningful on Harm.
       bool selective_targeting{false};
+      // The caster is never caught in its own area ("each creature (other than you)", e.g. Entangle).
+      // Narrower than selective_targeting: allies in the area are still affected.
+      bool excludes_caster{false};
 
       // Advantage emanation (data-driven). While this spell's persistent area is active, the
       // caster and its same-faction allies within `radius` ft of the caster have Advantage on
@@ -194,6 +197,9 @@ namespace rpg {
       bool effects_on_begin_turn{true};
       // Apply effects to agents in this spell's area at the END of their turn
       bool effects_on_end_turn{false};
+      // Apply effects to agents that ENTER this spell's area during a move. False for areas that only
+      // affect creatures present when the spell is cast (Entangle), which stay as terrain afterwards.
+      bool effects_on_enter{true};
 
       // Condition application (e.g., Hold Person applies "Paralyzed")
       // Each condition can have its own duration and save rules

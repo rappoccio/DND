@@ -295,6 +295,99 @@ def test_mixed_conditions_on_spell():
     else:
         print("✅ Spell cast setup (spell effect created)")
 
+def _catalog_spell(name):
+    """Load a spell from gui/spells.json through the GUI's real loader (helpers._dict_to_spell)."""
+    import json
+    import helpers
+    gui_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui")
+    with open(os.path.join(gui_dir, "spells.json")) as f:
+        for entry in json.load(f):
+            if entry.get("name") == name:
+                return helpers._dict_to_spell(entry)
+    raise AssertionError(f"{name} not found in spells.json")
+
+
+def test_catalog_save_spell_conditions_require_save():
+    """A Save spell's condition with no per-condition save_ability is still gated on the spell's save
+    (Entangle / Web / Hold Person used to apply it unconditionally), and a target with an unbeatable
+    save is never caught. Entangle is the 2024 20-foot square."""
+    for name in ("Entangle", "Web", "Hold Person"):
+        sp = _catalog_spell(name)
+        assert sp.conditions and all(c.requires_save for c in sp.conditions), \
+            f"{name}: condition must require the spell's save"
+    ent = _catalog_spell("Entangle")
+    assert ent.geometry == rpg.SpellGeometry.Square and ent.width == 20 and ent.length == 20, \
+        "Entangle is a 20-foot square"
+
+    for seed in range(10):
+        bm = setup_battle_map()
+        engine = rpg.CombatEngine(seed)
+        caster = add_agent_to_battle(engine, bm, create_test_agent("Druid", 2, 2))
+        target = add_agent_to_battle(engine, bm, create_test_agent("Brute", 6, 2))
+        ts = engine.get_agent_stats(bm, target); ts.str = 30
+        engine.set_agent_stats(bm, target, ts)
+        bm.set_agent_faction(caster, 1)
+        bm.set_agent_faction(target, 2)
+        ent = _catalog_spell("Entangle")
+        ent.level = 0                                   # no slot bookkeeping
+        cs = engine.get_agent_stats(bm, caster); cs.can_cast_spell = True
+        engine.set_agent_stats(bm, caster, cs)
+        engine.set_agent_spells(bm, caster, [ent])
+        action = rpg.SpellAction()
+        action.caster_idx = caster
+        action.spell_idx = 0
+        action.aoe_col, action.aoe_row = 6, 2
+        action.target_indices = [target]
+        engine.execute_spell(bm, action)
+        assert not engine.get_agent_conditions(bm, target).restrained, \
+            f"seed {seed}: a STR-30 target must make the Entangle save"
+    print("✅ Catalog Save-spell conditions are gated on the spell's save")
+
+
+def test_entangle_spares_caster_and_is_cast_time_only():
+    """Entangle RAW: "each creature (other than you) in the area when you cast the spell". The caster in
+    its own square is not a target (an ally there is), the plants last the full minute as terrain, and a
+    creature that walks in or starts its turn there later makes no save."""
+    bm = setup_battle_map()
+    engine = rpg.CombatEngine(3)
+    logger = rpg.MessageLogger()
+    engine.set_logger(logger)
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Druid", 2, 5))
+    ally   = add_agent_to_battle(engine, bm, create_test_agent("Ally", 3, 5))
+    walker = add_agent_to_battle(engine, bm, create_test_agent("Walker", 9, 5))
+    bm.set_agent_faction(caster, 1)
+    bm.set_agent_faction(ally, 1)
+    bm.set_agent_faction(walker, 2)
+
+    ent = _catalog_spell("Entangle")
+    assert ent.duration == 10 and ent.excludes_caster, "Entangle lasts a minute and spares its caster"
+    ent.level = 0
+    cs = engine.get_agent_stats(bm, caster); cs.can_cast_spell = True
+    engine.set_agent_stats(bm, caster, cs)
+    engine.set_agent_spells(bm, caster, [ent])
+    action = rpg.SpellAction()
+    action.caster_idx = caster
+    action.spell_idx = 0
+    action.aoe_col, action.aoe_row = 3, 5             # 20-ft square covering both Druid and Ally
+    res = engine.execute_spell(bm, action)
+    hit = {tr.target_idx for tr in res.target_results}
+    assert caster not in hit, "the caster is not caught in its own Entangle"
+    assert ally in hit, "an ally in the area still makes the save (only the caster is spared)"
+    assert not engine.get_agent_conditions(bm, caster).restrained
+    assert any(e.spell.name == "Entangle" for e in bm.active_spell_effects), "the plants persist as a zone"
+
+    logger.flush()
+    engine.begin_turn(bm, walker)
+    bm.placed_agents[walker].init_movement(60)
+    assert engine.move_agent(bm, walker, rpg.Cell(4, 5), rpg.MovementType.Walk)
+    engine.end_turn(bm, walker)
+    engine.begin_turn(bm, walker)
+    lines = [ln for ln in logger.flush() if "Walker" in ln and ("Restrained" in ln or "save" in ln)]
+    assert not lines, f"no save for a creature entering / starting in Entangle after the cast: {lines}"
+    assert not engine.get_agent_conditions(bm, walker).restrained
+    print("✅ Entangle spares its caster and only catches creatures there when cast")
+
+
 def run_tests():
     """Run all condition save requirement tests."""
     print("\n" + "="*60)
@@ -307,6 +400,8 @@ def run_tests():
         test_spell_automatic_condition,
         test_spell_save_based_condition,
         test_mixed_conditions_on_spell,
+        test_catalog_save_spell_conditions_require_save,
+        test_entangle_spares_caster_and_is_cast_time_only,
     ]
 
     passed = 0

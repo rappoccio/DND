@@ -2448,6 +2448,7 @@ int CombatEngine::npcAreaNetEnemies(const BattleMap& bm, const Spell& sp, int ag
     const std::vector<int> hit = resolveAoeTargets(bm, sp, agent_idx, aim.col, aim.row);
     int enemiesHit = 0, alliesHit = 0;
     for (int t : hit) {
+        if (sp.excludes_caster && t == agent_idx) continue;               // "other than you" (Entangle)
         if (npcAttackable(bm, agent_idx, t)) { ++enemiesHit; continue; }   // living enemy in play
         if (t == agent_idx || areAllies(bm, agent_idx, t)) {              // friendly-fire candidate
             const PlacedAgent& tp = agents[static_cast<std::size_t>(t)];
@@ -3281,10 +3282,16 @@ FlowStatus CombatEngine::runCasterTurn(BattleMap& bm, int agent_idx, CasterInten
     }
 
     if (plan.spell_idx < 0) {
-        // Still nothing to cast even after approaching → end the turn having closed distance (hold the spell
-        // for next round rather than swing a weapon, mirroring runAoeTurn's held-AoE behaviour).
-        st = NpcTurnState{};
-        return FlowStatus::Completed;
+        // Still nothing to cast even after approaching. The Action is unspent, so fight with it rather than
+        // idle: an adjacent enemy can leave the planner with no move to make (an area spell centred on it
+        // would also catch the caster) and the turn used to end silently with no attack. Hand off to the
+        // weapon executor as a RESUMED turn (active, PickAndMove) so it keeps the movement already spent
+        // instead of refilling it. A park inside it resumes through the non-cast branch above.
+        st           = NpcTurnState{};
+        st.active    = true;
+        st.agent_idx = agent_idx;
+        st.phase     = NpcTurnState::PickAndMove;
+        return runWeaponTurn(bm, agent_idx, NpcStrategyPolicy{});
     }
 
     // Commit the cast turn state BEFORE beginCast so a parked OnDeclareCast window resumes without re-casting.

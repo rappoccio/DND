@@ -1010,8 +1010,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         }
     }
 
-    // Emanation ignores the caster's own space — the caster is never a target.
-    if (moving_sphere)
+    // Emanation ignores the caster's own space — the caster is never a target. So does an area
+    // that affects "each creature (other than you)" (Entangle).
+    if (moving_sphere || sp.excludes_caster)
         std::erase(targets, action.caster_idx);
 
     // Check if caster is charmed and any target is the charmer
@@ -3286,6 +3287,10 @@ bool CombatEngine::zoneSparesTarget(const BattleMap& bm, const ActiveSpellEffect
     // leave selective_targeting false → friendly fire stays ON.
     if (sp.type == Spell::Harm && sp.selective_targeting && caster_faction != 0 &&
         areAllies(bm, effect.caster_idx, target_idx))
+        return true;
+
+    // "Each creature (other than you)" (Entangle): the caster is never caught in its own zone.
+    if (sp.excludes_caster && target_idx == effect.caster_idx)
         return true;
 
     // Evoker safe targets are fully excluded from this caster's AoE/zone effects.

@@ -1623,6 +1623,9 @@ void bindTypes(py::module_& m) {
              "Harm AoE that intrinsically affects only 'creatures of your choosing'\n"
              "(e.g. Radiance of the Dawn): the caster's allies (same faction + claimed\n"
              "neutrals) are auto-spared from the area without any Evoker/Careful feature.")
+        .def_readwrite("excludes_caster", &Spell::excludes_caster,
+             "The caster is never caught in its own area ('each creature (other than you)',\n"
+             "e.g. Entangle). Allies in the area are still affected.")
         .def_readwrite("grants_advantage_aura", &Spell::grants_advantage_aura,
              "Advantage emanation: while this spell's persistent area is active, the caster\n"
              "and its same-faction allies within `radius` ft of the caster have Advantage on\n"
@@ -1719,6 +1722,8 @@ void bindTypes(py::module_& m) {
              "If true, apply spell effects to agents in area at the start of their turn.")
         .def_readwrite("effects_on_end_turn", &Spell::effects_on_end_turn,
              "If true, apply spell effects to agents in area at the end of their turn.")
+        .def_readwrite("effects_on_enter", &Spell::effects_on_enter,
+             "If true, apply spell effects to agents that enter the area during a move.")
         .def_readwrite("conditions", &Spell::conditions,
              "List of AttackCondition objects applied to targets (includes name, duration, save rules).")
         .def("__repr__", [](const Spell& s){

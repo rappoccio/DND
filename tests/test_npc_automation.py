@@ -1284,6 +1284,54 @@ def test_control_falls_back_to_weapon_without_control_spell():
     print("✅ test_control_falls_back_to_weapon_without_control_spell passed")
 
 
+def test_control_area_spell_adjacent_falls_back_to_weapon():
+    """An enemy adjacent to an area-control caster: the area centred on it would catch the caster too (net 0),
+    and there is no closer cell to approach to. The caster must still attack, not end its turn idle (the
+    live-play Dryad with Entangle and Tiza next to it)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Dryad", 5, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 6, 5), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)
+    engine.set_agent_spells(bm, npc,
+        [_control_spell("Entangle", rpg.SpellGeometry.Sphere, "Restrained", radius_ft=10)])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferControl)
+
+    calls = []
+    engine.set_render_attack_hook(lambda a, t: calls.append((a, t)))
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert (npc, foe) in calls, "an adjacent enemy the area can't safely catch → weapon attack, not an idle turn"
+    assert not _cond(engine, bm, foe).restrained, "the self-catching area spell must not be cast"
+    print("✅ test_control_area_spell_adjacent_falls_back_to_weapon passed")
+
+
+def test_control_area_spell_sparing_caster_casts_on_adjacent():
+    """An area that spares its caster (Entangle, excludes_caster) costs nothing to drop on an adjacent enemy,
+    so the control caster casts it rather than falling back to its weapon."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Dryad", 5, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 6, 5), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    _arm_melee(engine, bm, npc)
+    ent = _control_spell("Entangle", rpg.SpellGeometry.Sphere, "Restrained", radius_ft=10)
+    ent.excludes_caster = True
+    engine.set_agent_spells(bm, npc, [ent])
+    _automate(bm, npc, rpg.NpcAutomationStrategy.PreferControl)
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+
+    assert status == rpg.FlowStatus.Completed
+    assert _cond(engine, bm, foe).restrained, "the adjacent enemy should be Entangled"
+    assert not _cond(engine, bm, npc).restrained, "the caster is spared by its own Entangle"
+    print("✅ test_control_area_spell_sparing_caster_casts_on_adjacent passed")
+
+
 def test_control_skips_concentration_spell_when_already_concentrating():
     """The concentration guard: a PreferControl NPC already concentrating on a spell does NOT drop it to
     recast a concentration control spell — it falls back to a weapon turn instead (enemy stays un-paralyzed)."""
@@ -2050,6 +2098,8 @@ def run_all():
     test_control_area_targets_cluster()
     test_control_moves_into_range_before_casting()
     test_control_falls_back_to_weapon_without_control_spell()
+    test_control_area_spell_adjacent_falls_back_to_weapon()
+    test_control_area_spell_sparing_caster_casts_on_adjacent()
     test_control_skips_concentration_spell_when_already_concentrating()
     test_heal_targets_most_wounded_ally()
     test_heal_revives_downed_ally_first()
