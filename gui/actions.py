@@ -324,7 +324,8 @@ class ActionMenu:
             Action("reaction_timer",
                    "React untimed" if timeout is None else f"React {timeout}s",
                    GROUP_SESSION),
-            Action("end_combat", "End Combat", GROUP_SESSION),
+            Action("end_combat", "End Encounter" if getattr(app, "tracker_mode", False) else "End Combat",
+                   GROUP_SESSION),
             # D-M7-5: the Table menu (join code, players, lock, rewind, session log), here
             # so the DM can reach it mid-fight, when the setup panel is not drawn.
             Action("table", "Table…", GROUP_SESSION),

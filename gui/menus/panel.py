@@ -15,7 +15,9 @@ action: each row deploys a group of reserves, and the click that does it is hand
 
 import pygame
 
-from constants import COL_PANEL_BORDER, COL_TEXT, PANEL_W
+from constants import (COL_INITIATIVE_CUR, COL_INPUT_ACTIVE, COL_INPUT_BG, COL_LABEL,
+                       COL_PANEL_BORDER, COL_TEXT, PANEL_W)
+from widgets import Button
 
 
 def cbt_btn(app, action_id: str):
@@ -135,4 +137,72 @@ def draw_on_deck_section(app, lx, W, px, y):
         app.screen.blit(app.font_sm.render(label, True, COL_TEXT), (lx, y))
         app.on_deck_item_rects.append((pygame.Rect(lx, y, W, 16), name))
         y += 16
+    return y
+
+
+def draw_tracker_section(app, lx, W, y):
+    """Tracker mode's initiative sheet (plans/INITIATIVE_TRACKER_PLAN.md T3), drawn in place
+    of the engine's initiative list. Returns the new y.
+
+    Collecting: one number field per row (a mob group shares one), then Roll for monsters
+    and Start. Running: the round, Prev / Next, and the order with ↑/↓ on each row; an
+    entry that joins next round (D5) is dimmed. Click targets go to `app._tracker_hits` as
+    (rect, kind, arg), reset every call; `App._tracker_handle_event` acts on them."""
+    app._tracker_hits = []
+    t = app.tracker
+    B = app._BTN_H
+    font = app.font_sm
+    agents = app.bm.placed_agents
+
+    def text(s, x, yy, col=COL_TEXT):
+        app.screen.blit(font.render(s, True, col), (x, yy))
+
+    def button(label, rect, kind, arg=None):
+        Button(rect, label, font=font).draw(app.screen)
+        app._tracker_hits.append((rect, kind, arg))
+
+    hw = (W - 4) // 2
+    if t.phase == "collecting":
+        text("Initiative: click a row, type its total", lx, y, COL_LABEL)
+        y += 18
+        fw = 44
+        for label, idxs, _pc in app._tracker_rows():
+            key = tuple(idxs)
+            editing = app._tracker_edit == key
+            total = t.entry(idxs[0]).total
+            val = app._tracker_edit_text if editing else ("" if total is None else str(total))
+            field = pygame.Rect(lx, y, fw, 18)
+            pygame.draw.rect(app.screen, COL_INPUT_ACTIVE if editing else COL_INPUT_BG,
+                             field, border_radius=3)
+            pygame.draw.rect(app.screen, COL_PANEL_BORDER, field, 1, border_radius=3)
+            s = font.render(val or "—", True, COL_TEXT if val else COL_LABEL)
+            app.screen.blit(s, (field.x + 6, field.centery - s.get_height() // 2))
+            text(label, lx + fw + 8, y + 2)
+            app._tracker_hits.append((pygame.Rect(lx, y, W, 18), "field", key))
+            y += 20
+        y += 4
+        button("Roll for monsters", pygame.Rect(lx, y, hw, B), "roll")
+        button("Start", pygame.Rect(lx + hw + 4, y, W - hw - 4, B), "start")
+        return y + B + 6
+
+    if t.phase == "running":
+        text(f"Round {t.round}", lx, y, COL_INITIATIVE_CUR)
+        y += 18
+        button("◀ Prev", pygame.Rect(lx, y, hw, B), "prev")
+        button("Next ▶", pygame.Rect(lx + hw + 4, y, W - hw - 4, B), "next")
+        y += B + 6
+        aw = 22
+        for i, e in enumerate(t.entries):
+            if e.removed:
+                continue
+            cur = i == t.turn
+            waiting = e.joins_round > t.round
+            col = COL_INITIATIVE_CUR if cur else ((120, 120, 120) if waiting else COL_TEXT)
+            tot = " —" if e.total is None else f"{e.total:2d}"
+            name = agents[e.agent_idx].name if e.agent_idx < len(agents) else "?"
+            text(f"{'▶ ' if cur else '  '}{tot}  {name}{'  (next round)' if waiting else ''}",
+                 lx, y + 2, col)
+            button("↑", pygame.Rect(lx + W - 2 * aw - 2, y, aw, 18), "up", e.agent_idx)
+            button("↓", pygame.Rect(lx + W - aw, y, aw, 18), "down", e.agent_idx)
+            y += 20
     return y

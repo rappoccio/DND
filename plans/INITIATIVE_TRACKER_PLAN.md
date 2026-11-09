@@ -1,7 +1,7 @@
 # Initiative tracker mode — the table rolls, the DM's screen keeps score
 
 **Status 2026-11-09: Step 0 frozen (D1–D5 decided by the user). T1 committed 1b44e2c (222/0).
-T2 implemented (223/0, uncommitted). T3 next.**
+T2 committed 19caef6 (223/0). T3 implemented (223/0, uncommitted). T4 next.**
 
 ## What the user asked for
 
@@ -100,6 +100,23 @@ types them in. The app is a board plus a score sheet.
   adds them with `joins_round = round + 1`, and logs "Ghoul ×3 join at 14 next round".
 - **Tests:** totals sort correctly; Start with blanks; Roll for monsters fills only
   blanks and shares by name; a revealed group is skipped this round and acts next round.
+- **Landed 2026-11-09.** `_begin_encounter` reveals, benches, fills the tracker with every
+  in-play token (blank totals, phase `collecting`) and sets `combat_active` so the combat
+  panel draws, without the engine loop: no roll, no recording, no `_proceed_to_new_turn`.
+  `_mirror_tracker` mirrors an empty order until Start, so `_current_agent_idx()` is −1
+  while totals are collected. The sheet is `menus.panel.draw_tracker_section`; clicks and
+  typing go through `App._tracker_handle_event` (ahead of the arrow/zoom keys), fields
+  commit per keystroke, Tab/Enter walks down the rows. The session row shrinks to **End
+  Encounter** (the `end_combat` id, relabelled in `actions.py`) and Table…; Pause and the
+  reaction timer are dropped. In tracker mode `_advance_turn` is `_tracker_step(+1)`, so
+  `_clear_mob` and any other caller step the tracker; a step first tombstones entries
+  whose token left the board. On Deck joins (fog wake-up or a manual Deploy click) go
+  through `_tracker_join`: blank while collecting, one roll per group and
+  `joins_round = round + 1` once running. Rolls go through `App._tracker_roll` (one
+  seam, so tests can fix the number). `_end_combat` resets the tracker. While running,
+  each token is its own row (a mob group sits together at one total, but Next steps
+  through it member by member). `test_tracker_mode.py` now begins through Begin
+  Encounter, not `_begin_combat`.
 
 ### T4 — HP
 - Click a row or a token → HP box: `−N` (damage, temp first), `+N` (heal, clamped), set

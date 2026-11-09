@@ -42,7 +42,7 @@ except ModuleNotFoundError:
 
 # ── Extracted modules ──────────────────────────────────────────────────────
 from constants import *
-from widgets import Button, TextInput, IntStepper
+from widgets import Button, TextInput, IntStepper, edit_line
 from helpers import (
     _dnd_mod, _mod_str,
     _parse_physical_damage, _parse_magic_damage,
@@ -871,7 +871,10 @@ class App:
         self.tracker_mode         = False
         self._tracker_stopped_net = False  # the toggle stopped the player server
         self.tracker              = Tracker()  # the typed-in turn order; _mirror_tracker
-        self.combat_paused      = False  # True when paused between turns
+        self._tracker_hits        = []    # this frame's sheet click targets: (rect, kind, arg)
+        self._tracker_edit        = None  # the row (tuple of agent idxs) being typed into
+        self._tracker_edit_text   = ""
+        self.combat_paused    = False  # True when paused between turns
         self._seen_armed          = set()  # agent idxs seen holding a droppable weapon this fight
         self.initiative_order     = []    # list[rpg.InitiativeEntry], high→low
         self.initiative_item_rects = []  # list[pygame.Rect], clickable areas for initiative items
@@ -5010,17 +5013,197 @@ class App:
             self._begin_combat()
 
     def _begin_encounter(self):
-        """Tracker mode's Begin Encounter (plans/INITIATIVE_TRACKER_PLAN.md T3): the table
-        rolls initiative and the DM types it in. Not built yet; T1 only gates the button."""
-        self._flash_status("Begin Encounter is not built yet (tracker plan T3)")
+        """Tracker mode's Begin Encounter (plans/INITIATIVE_TRACKER_PLAN.md T3). Reveal and
+        bench as _begin_combat does, then open the initiative sheet: every in-play token
+        gets an entry with a blank total for the DM to type in.
+
+        combat_active goes on, so the combat panel (which holds the sheet) is drawn and the
+        setup tools are put away, but the engine's turn loop never starts: no roll, no
+        recording, no _proceed_to_new_turn. initiative_order stays empty until Start, so
+        _current_agent_idx() is -1 while the totals are collected."""
+        if not self.bm.placed_agents:
+            return
+        self._mark_fog_dirty()
+        self._refresh_fog()
+        self._bench_unrevealed_enemies()
+        bm = self.bm
+        in_play = [i for i, pt in enumerate(bm.placed_agents)
+                   if not pt.removed_from_play and not bm.is_agent_on_deck(i)
+                   and (pt.faction == PC_FACTION
+                        or self.combat.get_agent_stats(bm, i).hp_cur > 0)]
+        if not in_play:
+            self._flash_status("Nothing in play to track")
+            return
+        self.tracker = Tracker()
+        self.tracker.add(in_play)
+        self.tracker.phase = "collecting"
+        self._tracker_edit = None
+        self.combat_active       = True
+        self._fight_started      = time.time()
+        self._seen_armed         = set()
+        self.combat_paused       = False
+        self.initiative_scroll_offset = 0
+        self.combat_panel_scroll = 0
+        self._initiative_autopaged_turn = -1
+        self.combat_log          = []
+        self.combat_log_wire.clear()
+        self._combat_log_file    = "combat_log.txt"
+        with open(self._combat_log_file, "w") as f:
+            f.write("=== ENCOUNTER LOG (tracker mode) ===\n")
+        self._mirror_tracker()
+        self._combat_log_add(f"Encounter begins with {len(in_play)} in play: enter initiative.")
+
+    def _tracker_rows(self) -> list:
+        """The initiative sheet's rows while collecting: (label, [agent_idx…], is_pc). A PC
+        is a row of its own; non-party tokens sharing a name are one row and one roll (D3),
+        labelled "Ghoul ×3". Removed entries are left out. Rows follow entry order."""
+        rows, by_name = [], {}
+        agents = self.bm.placed_agents
+        for e in self.tracker.entries:
+            if e.removed:
+                continue
+            pt = agents[e.agent_idx]
+            if pt.faction == PC_FACTION:
+                rows.append([pt.name, [e.agent_idx], True])
+            elif pt.name in by_name:
+                by_name[pt.name][1].append(e.agent_idx)
+            else:
+                by_name[pt.name] = [pt.name, [e.agent_idx], False]
+                rows.append(by_name[pt.name])
+        return [(f"{n} ×{len(ix)}" if len(ix) > 1 else n, ix, pc) for n, ix, pc in rows]
+
+    def _tracker_roll(self, agent_idx: int) -> int:
+        """One initiative roll for `agent_idx`'s group: its d20 + modifier."""
+        return self.combat.roll_initiative_for(self.bm, agent_idx).total
+
+    def _tracker_roll_monsters(self):
+        """Roll for monsters (D3): one roll_initiative_for per non-party row, filling only
+        the blank totals in it. A total the DM typed is never overwritten."""
+        t = self.tracker
+        if t.phase != "collecting":
+            return
+        for label, idxs, pc in self._tracker_rows():
+            blanks = [i for i in idxs if t.entry(i).total is None]
+            if pc or not blanks:
+                continue
+            total = self._tracker_roll(idxs[0])
+            for i in blanks:
+                t.set_total(i, total)
+            self._combat_log_add(f"{label} rolls initiative {total}.")
+
+    def _tracker_start(self):
+        """Start: sort the typed-in totals (blanks sink to the bottom) and hand round 1 to
+        the top of the order."""
+        t = self.tracker
+        if t.phase != "collecting":
+            return
+        self._tracker_edit = None
+        first = t.start()
+        self._mirror_tracker()
+        if first is not None:
+            self._combat_log_add(f"Round 1: {self.bm.placed_agents[first].name} acts first.")
+
+    def _tracker_step(self, delta: int):
+        """Next (+1) / Prev (−1). Tokens tombstoned off the board (_clear_mob) leave the
+        order first, so the turn never lands on one."""
+        t = self.tracker
+        if t.phase != "running":
+            return
+        for e in t.entries:
+            if not e.removed and self.bm.is_agent_removed_from_play(e.agent_idx):
+                t.remove(e.agent_idx)
+        rnd = t.round
+        idx = t.next() if delta > 0 else t.prev()
+        if idx is None:
+            return
+        self._mirror_tracker()
+        self._mark_fog_dirty()
+        if t.round > rnd:
+            self._combat_log_add(f"Round {t.round}: {self.bm.placed_agents[idx].name} is up.")
+
+    def _tracker_move(self, agent_idx: int, delta: int):
+        """↑ / ↓ on a row: swap it with its neighbour (a manual fix or a delayed turn)."""
+        if self.tracker.move(agent_idx, delta):
+            self._mirror_tracker()
+
+    def _tracker_join(self, idxs, label):
+        """On Deck tokens joining a tracked encounter. While the totals are collected they
+        join with blank totals, to be typed in with everyone else. Once it runs (D5) the
+        group rolls once and is placed at that total, skipped for the rest of this round."""
+        t = self.tracker
+        n = len(idxs)
+        who = f"{label} ×{n} join" if n > 1 else f"{label} joins"
+        if t.phase == "running":
+            total = self._tracker_roll(idxs[0])
+            t.add(idxs, total, joins_round=t.round + 1)
+            self._mirror_tracker()
+            self._combat_log_add(f"{who} at {total} next round.")
+        else:
+            t.add(idxs)
+            self._combat_log_add(f"{who} the encounter: enter initiative.")
+
+    @staticmethod
+    def _tracker_total_ok(s: str) -> bool:
+        """What an initiative field accepts: blank, or an optional minus and two digits."""
+        d = s[1:] if s.startswith("-") else s
+        return len(d) <= 2 and (d == "" or d.isdigit())
+
+    def _tracker_handle_event(self, event) -> bool:
+        """The initiative sheet's clicks and typing. Returns True when the event was the
+        sheet's. A click anywhere else closes the field being typed into and passes on."""
+        if not (self.tracker_mode and self.combat_active):
+            return False
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            hit = next(((k, a) for r, k, a in self._tracker_hits
+                        if r.collidepoint(event.pos)), None)
+            self._tracker_edit = None
+            if hit is None:
+                return False
+            kind, arg = hit
+            if kind == "field":
+                self._tracker_open_field(arg)
+            elif kind == "roll":
+                self._tracker_roll_monsters()
+            elif kind == "start":
+                self._tracker_start()
+            elif kind in ("next", "prev"):
+                self._tracker_step(1 if kind == "next" else -1)
+            elif kind in ("up", "down"):
+                self._tracker_move(arg, -1 if kind == "up" else 1)
+            return True
+        if event.type == pygame.KEYDOWN and self._tracker_edit is not None:
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_TAB):
+                keys = [tuple(ix) for _, ix, _ in self._tracker_rows()]
+                pos = keys.index(self._tracker_edit) if self._tracker_edit in keys else -1
+                self._tracker_edit = None
+                if 0 <= pos < len(keys) - 1:
+                    self._tracker_open_field(keys[pos + 1])
+            elif event.key == pygame.K_ESCAPE:
+                self._tracker_edit = None
+            else:
+                text, _, _ = edit_line(self._tracker_edit_text, None, event,
+                                       accept=self._tracker_total_ok)
+                self._tracker_edit_text = text
+                total = int(text) if text not in ("", "-") else None
+                for i in self._tracker_edit:
+                    self.tracker.set_total(i, total)
+            return True
+        return False
+
+    def _tracker_open_field(self, key):
+        """Start typing into the row keyed by `key` (its agent idxs), showing its total."""
+        e = self.tracker.entry(key[0])
+        self._tracker_edit = key
+        self._tracker_edit_text = "" if e is None or e.total is None else str(e.total)
 
     def _mirror_tracker(self):
         """Copy self.tracker into initiative_order / turn_idx / round_num, so the existing
         initiative drawing shows the typed-in order. Removed entries (D4) are left out; a
-        blank total reads 0. round_num is 0-based here, the tracker's round 1-based."""
+        blank total reads 0. round_num is 0-based here, the tracker's round 1-based. Until
+        Start the order is empty, so nobody is acting while the totals are collected."""
         t = self.tracker
         order, turn = [], None
-        for i, e in enumerate(t.entries):
+        for i, e in enumerate(t.entries if t.phase == "running" else []):
             if e.removed:
                 continue
             if turn is None and i >= t.turn:
@@ -5293,6 +5476,9 @@ class App:
         self._seen_armed           = set()
         self.combat_paused         = False
         self.initiative_order    = []
+        self.tracker             = Tracker()       # tracker mode's sheet goes with it
+        self._tracker_hits       = []
+        self._tracker_edit       = None
         self.initiative_scroll_offset = 0  # reset scroll when combat ends
         self.combat_panel_scroll = 0
         self.turn_idx            = 0
@@ -5367,7 +5553,9 @@ class App:
         for i in idxs:
             self.bm.set_agent_on_deck(i, False)
 
-        if self.combat_active and self.initiative_order:
+        if self.tracker_mode and self.combat_active:
+            self._tracker_join(idxs, name)
+        elif self.combat_active and self.initiative_order:
             cur_aidx = self._current_agent_idx()   # preserve whose turn it is
             base = self.combat.roll_initiative_for(self.bm, idxs[0])
             total = base.total
@@ -5487,6 +5675,10 @@ class App:
 
     def _advance_turn(self):
         """Advance to the next living combatant in initiative order."""
+        if self.tracker_mode:
+            # The table plays the turns: no effect ticks, no NPC drive, just the order.
+            self._tracker_step(1)
+            return
         if not self.initiative_order:
             return
         self._mark_fog_dirty()   # lights tick + positions settle at each turn boundary
@@ -19115,20 +19307,36 @@ class App:
         # coupling the stale-rect guard fakes for the sections M2 has not reached yet.
         self._action_menu = {a.id: a for a in ActionMenu.build(self, self._current_agent_idx())}
         if self.tracker_mode:
-            # The table rolls everything: only the DM's session tools are on offer, so no
-            # action can be drawn or dispatched.
+            # The table rolls everything: only End Encounter and the Table menu are on
+            # offer (no turns to pause, no reactions to time), so no action can be drawn
+            # or dispatched.
             self._action_menu = {k: a for k, a in self._action_menu.items()
-                                 if a.group == "session"}
+                                 if k in ("end_combat", "table")}
 
         y = 10 - self.combat_panel_scroll
 
         # ── Title ──────────────────────────────────────────────────────────
-        txt("⚔  Combat", lx, y, COL_INITIATIVE_CUR, self.font_lg)
+        txt("⚔  Encounter" if self.tracker_mode else "⚔  Combat",
+            lx, y, COL_INITIATIVE_CUR, self.font_lg)
         y += 28
 
         # ── Pause + reaction timer + End Combat row ────────────────────────
         y = panel.draw_action_row(self, panel.menu_group(self, "session"), lx, y, W, gap,
                                   trail=8, font=self.font_sm)
+
+        if self.tracker_mode:
+            # The initiative sheet (T3) in place of the engine's order, then On Deck and
+            # the log. No action rows.
+            self.initiative_item_rects = []
+            self.initiative_scroll_region = pygame.Rect(0, 0, 0, 0)
+            y = panel.draw_tracker_section(self, lx, W, y)
+            y = panel.draw_on_deck_section(self, lx, W, px, y)
+            y += section_gap
+            pygame.draw.line(self.screen, COL_PANEL_BORDER,
+                             (px + 6, y), (px + PANEL_W - 6, y))
+            y += section_gap
+            self._draw_combat_panel_log(txt, lx, W, y, px, sh)
+            return
 
         # ── Initiative list ────────────────────────────────────────────────
         txt("Initiative Order", lx, y, COL_LABEL)
@@ -19200,11 +19408,6 @@ class App:
         pygame.draw.line(self.screen, COL_PANEL_BORDER,
                          (px + 6, y), (px + PANEL_W - 6, y))
         y += section_gap
-
-        if self.tracker_mode:
-            # No action rows in tracker mode: straight from the order to the log.
-            self._draw_combat_panel_log(txt, lx, W, y, px, sh)
-            return
 
         # ── Current combatant info ─────────────────────────────────────────
         cur_idx = self._current_agent_idx()
@@ -19982,6 +20185,11 @@ class App:
             # Map-level pan input (wheel / arrow keys) is suppressed while any
             # menu is open, so scrolling a dialog doesn't also pan the map.
             map_input_allowed = not self._modal_active()
+
+            # ── Tracker mode's initiative sheet: its rows, buttons and the field being
+            # typed into, ahead of the arrow/zoom keys a digit or '-' would otherwise hit.
+            if map_input_allowed and self._tracker_handle_event(event):
+                continue
 
             # ── Dungeon paging overlay (Phase 3): the on-map nav buttons take
             # priority over map/agent clicks so paging never places an agent. ──
