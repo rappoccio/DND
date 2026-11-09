@@ -228,7 +228,7 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
             log_("Spell Sniper: no Disadvantage casting a spell in melee");
         else {
             caster_dis = true;
-            log_("Disadvantage: threatened (enemy within 5 ft)");
+            log_("Disadvantage: threatened (within an enemy's melee reach)");
         }
     }
     if (caster_pa.agent->hasDisadvantage())

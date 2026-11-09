@@ -153,20 +153,27 @@ bool CombatEngine::isThreatened(const BattleMap& bm, int attacker_idx) const noe
     if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size()))
         return false;
 
-    // Ranged Attacks in Close Combat: an enemy within 5 ft that is not Incapacitated. Allies
-    // don't count, and the distance is footprint to footprint, so a Large enemy's near edge is
-    // what matters, not its top-left cell.
+    // Ranged Attacks in Close Combat: the attacker stands within an enemy's melee reach, and that
+    // enemy is not Incapacitated. Reach is the enemy's longest melee weapon (5 ft at least, an
+    // unarmed strike), measured footprint to footprint, and a wall between the two blocks it.
+    // Allies, the downed, and creatures off the map (on deck, tombstoned) don't count.
     const PlacedAgent& atk = agents[static_cast<std::size_t>(attacker_idx)];
-    const int THREAT_DISTANCE = 1;  // 5 feet = 1 cell
+    const int atk_sz = atk.agent->getSize();
 
     for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
         if (i == attacker_idx || rules::alliedFactions(bm, attacker_idx, i)) continue;
         const PlacedAgent& other = agents[static_cast<std::size_t>(i)];
+        if (other.removed_from_play || other.on_deck) continue;
         if (other.agent->getConditions().incapacitated) continue;
         if (other.agent->getStats().hp_cur <= 0) continue;
-        if (footprintDistance(atk.origin, atk.agent->getSize(),
-                              other.origin, other.agent->getSize()) <= THREAT_DISTANCE)
-            return true;
+        int reach_ft = 5;
+        for (const Weapon& w : bm.getAgentWeapons(i))
+            if (!w.name.empty() && w.type == WeaponType::Melee)
+                reach_ft = std::max(reach_ft, w.reach_ft);
+        const int other_sz = other.agent->getSize();
+        if (footprintDistance(atk.origin, atk_sz, other.origin, other_sz) * 5 > reach_ft) continue;
+        if (!bm.hasLineOfSight(other.origin, other_sz, atk.origin, atk_sz)) continue;
+        return true;
     }
     return false;
 }
@@ -2945,7 +2952,7 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
 
     // Log reasons for disadvantage
     if (is_ranged && isThreatened(bm, action.attacker_idx))
-        log_("Disadvantage: threatened (enemy within 5 ft)");
+        log_("Disadvantage: threatened (within an enemy's melee reach)");
     else if (disadv)  // long-range disadvantage
         log_("Disadvantage: long range");
     if (atk_pt.agent->hasDisadvantage())

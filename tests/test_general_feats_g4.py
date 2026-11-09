@@ -111,15 +111,25 @@ def test_sharpshooter_firing_in_melee():
     print("✅ test_sharpshooter_firing_in_melee passed")
 
 
-def _close_combat_scene(bystander_col, bystander_row, size=1, ally=False):
+def _close_combat_scene(bystander_col, bystander_row, size=1, ally=False, reach_ft=None,
+                        on_deck=False):
     """An archer at (5,5) shooting a target well inside normal range, with one more creature
-    placed at the given cell (top-left of its footprint)."""
+    placed at the given cell (top-left of its footprint), optionally wielding a melee weapon
+    of the given reach."""
     bm = setup_battle_map(); engine = setup_combat_engine()
     a = _place(engine, bm, "Archer", 5, 5)
     t = _place(engine, bm, "Tgt", 9, 5)
     cfg = create_test_agent("Bystander", bystander_col, bystander_row)
     cfg.size = size
     b = add_agent_to_battle(engine, bm, cfg)
+    if reach_ft is not None:
+        w = rpg.Weapon()
+        w.name = "Glaive"
+        w.type = rpg.WeaponType.Melee
+        w.reach_ft = reach_ft
+        engine.set_agent_weapons(bm, b, [w, rpg.Weapon(), rpg.Weapon()])
+    if on_deck:
+        bm.set_agent_on_deck(b, True)
     _target(engine, bm, t)
     _arm_ranged(engine, bm, a, _ranged(normal=80, long=320))
     if ally:
@@ -139,6 +149,12 @@ def test_firing_in_melee_needs_an_enemy_within_5_ft():
     assert _disadvantage(engine, bm, a, t), "an adjacent enemy did not impose Disadvantage"
     engine, bm, a, t = _close_combat_scene(3, 3, size=2)         # Large: origin 10 ft, edge 5 ft
     assert _disadvantage(engine, bm, a, t), "a Large enemy's near edge was not counted"
+    engine, bm, a, t = _close_combat_scene(7, 5, reach_ft=5)     # 10 ft, 5-ft weapon
+    assert not _disadvantage(engine, bm, a, t), "an enemy out of its own reach imposed Disadvantage"
+    engine, bm, a, t = _close_combat_scene(7, 5, reach_ft=10)    # 10 ft, reach weapon
+    assert _disadvantage(engine, bm, a, t), "an enemy with 10-ft reach did not impose Disadvantage"
+    engine, bm, a, t = _close_combat_scene(6, 5, on_deck=True)   # adjacent, but in reserve
+    assert not _disadvantage(engine, bm, a, t), "an on-deck reserve imposed Disadvantage"
     print("✅ test_firing_in_melee_needs_an_enemy_within_5_ft passed")
 
 
