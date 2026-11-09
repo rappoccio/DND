@@ -20,11 +20,13 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "gui"))
 sys.path.insert(0, os.path.join(_ROOT, "tests"))
 
+import json
 import shutil
 import tempfile
 
 import pygame
 
+import autosave
 from constants import PC_FACTION
 from gui_driver import cell_center
 from main import App
@@ -600,6 +602,98 @@ def test_dm_view_toggle():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_save_and_resume():
+    """T6: Start and each Next write the turn-boundary autosave; restoring the newest slot
+    into a fresh App (tracker mode off) brings back tracker mode, the order, the ▶, the
+    round and the HP, a cleared mob still off the board."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _setup(tmp, tracker=True)
+        app.autosave_enabled = True
+        app._begin_encounter()
+        for name, tot in TOTALS.items():
+            app.tracker.set_total(_idx(app, name), tot)
+        app._tracker_start()
+        check(autosave.list_slots(app), "Start wrote no autosave")
+        aria, brannor, skarn = (_idx(app, n) for n in ("Aria", "Brannor", "Skarn"))
+        _click(app, "row", skarn)
+        _hp(app, "dmg", 999)                            # cleared off the board
+        _click(app, "row", aria)
+        _hp(app, "dmg", 3)
+        _click(app, "row", brannor)
+        _hp(app, "temp", 4)
+        _click(app, "row", _idx(app, "Gnasher"))         # the row clicks moved the ▶: back
+        for _ in range(4):                              # Aria, Brannor, Gnasher (round 2), Aria
+            app._advance_turn()
+        want = (_order(app), app._current_agent_idx(), app.round_num,
+                {i: _stats(app, i) for i in (aria, brannor)})
+        # Clearing the acting Skarn (last in the order) already wrapped to round 2.
+        check(want[1] == aria and want[2] == 2, f"set-up turn {want[1]} round {want[2]}")
+
+        app2 = App(MAP_PATH, seed=SEED)
+        app2.autosave_enabled = False
+        app2._set_encounter_base(app._save_path)
+        check(not app2.tracker_mode, "a fresh App starts in tracker mode")
+        check(autosave.restore(app2, autosave.list_slots(app)[0]["slot"]), "restore refused")
+        got = (_order(app2), app2._current_agent_idx(), app2.round_num,
+               {i: _stats(app2, i) for i in (aria, brannor)})
+        check(app2.tracker_mode and app2.combat_active, "tracker mode / the fight not back")
+        check(got == want, f"resumed {got}, saved {want}")
+        check(app2.bm.is_agent_removed_from_play(skarn), "the cleared Skarn came back")
+        check(app2.tracker.phase == "running", f"phase {app2.tracker.phase}")
+        _click(app2, "next")                            # the resumed sheet works
+        check(app2._current_agent_idx() == brannor, "Next after the resume")
+        print("✅ test_save_and_resume")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_resume_while_collecting():
+    """T6: a save taken while the totals are still being typed resumes to the sheet, with
+    the totals typed so far; a plain combat save turns tracker mode off."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _setup(tmp, tracker=True)
+        app._begin_encounter()
+        app.tracker.set_total(_idx(app, "Aria"), 17)
+        path = os.path.join(tmp, "combat.json")
+        app._save_combat_state(path)
+        app2 = _setup(tmp, tracker=False)
+        check(app2._load_combat_state(path), "the resume was refused")
+        check(app2.tracker_mode and app2.combat_active, "not back in a tracker encounter")
+        check(app2.tracker.phase == "collecting", f"phase {app2.tracker.phase}")
+        check(app2.tracker.entry(_idx(app2, "Aria")).total == 17, "Aria's total was lost")
+        check(app2._current_agent_idx() == -1, "someone acts before Start")
+
+        plain = _board(tmp, tracker=False)
+        plain._save_combat_state(path)
+        app2._end_combat(award_xp=False)
+        check(app2._load_combat_state(path), "the plain resume was refused")
+        check(not app2.tracker_mode, "a plain combat save left tracker mode on")
+        check(app2.initiative_order, "the plain fight has no order")
+        print("✅ test_resume_while_collecting")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_run_keeps_the_mode():
+    """T6/D2: in a campaign run the mode is saved with the run, and reopening the run
+    puts it back."""
+    from test_campaign_open import _campaign, _open
+    tmp = tempfile.mkdtemp()
+    try:
+        camp, dl = _campaign(tmp)
+        app = _open(dl.root)
+        check(not app.tracker_mode, "a new run opened in tracker mode")
+        check(dm.set_tracker_mode(app, True), "the toggle was refused")
+        with open(dl.run_path()) as f:
+            check(json.load(f).get("tracker_mode") is True, "run.json lacks the mode")
+        check(_open(dl.root).tracker_mode, "reopening the run lost tracker mode")
+        print("✅ test_run_keeps_the_mode")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 class _FakeServer:
     def __init__(self):
         self.stopped = False
@@ -649,6 +743,9 @@ if __name__ == "__main__":
     test_hp_zero()
     test_hp_display_d1()
     test_dm_view_toggle()
+    test_save_and_resume()
+    test_resume_while_collecting()
+    test_run_keeps_the_mode()
     if FAILURES:
         print(f"\n❌ {len(FAILURES)} failure(s)")
         sys.exit(1)

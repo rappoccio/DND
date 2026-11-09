@@ -2,7 +2,7 @@
 
 **Status 2026-11-09: Step 0 frozen (D1–D5 decided by the user). T1 committed 1b44e2c (222/0).
 T2 committed 19caef6 (223/0). T3 committed 4722635 (223/0). T5 + T4 committed 72fb29d
-(223/0). D5 amended + click-to-activate committed a4779f2. T4b implemented (uncommitted). T6 next.**
+(223/0). D5 amended + click-to-activate committed a4779f2. T4b committed a2ff22d. T6 implemented (uncommitted). T7 (live check) next.**
 
 ## What the user asked for
 
@@ -169,6 +169,15 @@ types them in. The app is a board plus a score sheet.
   can stop mid-fight and resume on the same turn with the same HP. Fog and positions are
   already saved.
 - **Tests:** save mid-round, reload, same order / turn / round / HP.
+- **Landed 2026-11-09.** Mid-fight state rides on the existing combat sidecar, which every
+  resume path (Restore Autosave, Load Save File, loading an encounter) already reads:
+  `_save_combat_state` adds `tracker_mode` and `tracker`, HP comes back with the board
+  snapshot, and `_load_combat_state` sets the mode to the save's (the collecting phase
+  resumes too). Tracker mode never reaches `_finish_turn_start`, so
+  `App._tracker_save_turn` writes the same autosave + turn save after Start, each
+  Next/Prev, and a click that moves the ▶. Out of a fight the mode is
+  `run.json`'s `tracker_mode` (campaign runs only): written by the toggle, applied when
+  the run is opened and when a save's run is swapped in.
 
 ### T7 — Live check
 - The user runs a short fight with a fogged room holding an On Deck group. Bugs go to a

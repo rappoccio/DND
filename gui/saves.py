@@ -261,6 +261,8 @@ def swap_run(app, run: dict, effects_dir: str | None, page, reload_map: bool = F
     if app.combat_active:
         app._end_combat(award_xp=False)
     app._save_combat_state()              # no fight now, so this removes the sidecar
+    from menus import dm                  # the run's tracker mode (INITIATIVE_TRACKER T6)
+    dm.set_tracker_mode(app, bool(run.get("tracker_mode", False)))
     app.bm.clear_terrain_effects()
     app.bm.clear_spell_effects()
     app._effect_meta.clear()

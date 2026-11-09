@@ -3499,6 +3499,7 @@ class App:
             self.store, self.dungeon, self.dungeon_page, self._dungeon_manifest_path = old
             return False
         run_control.ensure_first_release(self)    # Reset Dungeon always has a V0
+        dm.set_tracker_mode(self, bool(store.run.get("tracker_mode", False)))   # T6
         for w in filter(None, (layout.calibration_warning(p.id) for p in dungeon.pages)):
             print(f"Warning: {w}")
         self._flash_status(f"{camp.name} / {layout.name} — {page.id}")
@@ -5122,6 +5123,15 @@ class App:
         self._mirror_tracker()
         if first is not None:
             self._combat_log_add(f"Round 1: {self.bm.placed_agents[first].name} acts first.")
+        self._tracker_save_turn()
+
+    def _tracker_save_turn(self):
+        """T6: the turn-boundary saves a running fight writes in _finish_turn_start (the
+        autosave ring and the run's turn save), which tracker mode never reaches. A
+        restore lands on the top of this turn: the order, the ▶, the round and the HP."""
+        if self.autosave_enabled:
+            autosave.save(self)
+            saves.save_turn(self)
 
     def _tracker_step(self, delta: int):
         """Next (+1) / Prev (−1). Tokens tombstoned off the board (_clear_mob) leave the
@@ -5140,6 +5150,7 @@ class App:
         self._mark_fog_dirty()
         if t.round > rnd:
             self._combat_log_add(f"Round {t.round}: {self.bm.placed_agents[idx].name} is up.")
+        self._tracker_save_turn()
 
     def _tracker_move(self, agent_idx: int, delta: int):
         """↑ / ↓ on a row: swap it with its neighbour (a manual fix or a delayed turn)."""
@@ -5230,9 +5241,11 @@ class App:
         """The DM clicks a name in the order or a token on the map: the ▶ goes to it (once
         the order is running and it is in it) and its HP box opens. A box already open on
         it keeps its typed amount."""
-        if self.tracker.jump(agent_idx):
+        was = self.tracker.current()
+        if self.tracker.jump(agent_idx) and self.tracker.current() != was:
             self._mirror_tracker()
             self._mark_fog_dirty()
+            self._tracker_save_turn()
         if self._tracker_hp != agent_idx:
             self._tracker_hp_open(agent_idx)
 
@@ -13655,7 +13668,12 @@ class App:
                  "modifier": e.modifier, "total": e.total}
                 for e in self.initiative_order
             ],
+            # Tracker mode (INITIATIVE_TRACKER_PLAN.md T6): the typed-in order is the turn
+            # loop, so it is what a resume restores. HP rides on the board snapshot.
+            "tracker_mode":  bool(self.tracker_mode),
         }
+        if self.tracker_mode:
+            doc["tracker"] = self.tracker.to_json()
         try:
             atomic_write_json(path, doc)
         except OSError as e:
@@ -13735,6 +13753,19 @@ class App:
         self.turn_idx  = min(max(0, int(doc.get("turn_idx", 0))), max(0, len(order) - 1))
         self.round_num = int(doc.get("round_num", 0))
         self._initiative_autopaged_turn = -1   # re-arm auto-paging for the resumed turn
+        # Tracker mode (T6) follows the save, either way. The toggle refuses mid-fight, so
+        # it runs with the fight held off; the tracker then decides whether one is on.
+        live = self.combat_active
+        self.combat_active = False
+        dm.set_tracker_mode(self, bool(doc.get("tracker_mode", False)))
+        self.combat_active = live
+        if self.tracker_mode:
+            self.tracker = Tracker.from_json(doc.get("tracker") or {})
+            self._tracker_edit = None
+            self._tracker_hp = -1
+            self._mirror_tracker()
+            self.combat_active = self.tracker.phase in ("collecting", "running")
+            return True
         if self.combat_active:
             self.show_terrain = True           # matches how combat start leaves it
             # Re-mirror the current actor's movement budgets, the same way every other

@@ -217,6 +217,10 @@ def set_tracker_mode(app, on: bool) -> bool:
         app._flash_status("End combat before switching tracker mode")
         return False
     app.tracker_mode = on
+    run = getattr(app.store, "run", None)          # a campaign run keeps the mode (D2, T6)
+    if isinstance(run, dict) and bool(run.get("tracker_mode", False)) != on:
+        run["tracker_mode"] = on
+        app.store.save_run()
     if on:
         if app._net is not None:
             app._net.stop()
