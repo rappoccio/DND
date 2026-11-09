@@ -896,7 +896,8 @@ public:
 
     // ── Core attack mechanics ─────────────────────────────────────────────
 
-    // Check if an attacker is "threatened" (within 10 feet of any other agent).
+    // Check if an attacker is "threatened": an enemy (not an ally) within 5 ft that is not
+    // Incapacitated, measured footprint to footprint.
     // Returns true if the attacker should have disadvantage on ranged attacks.
     [[nodiscard]] bool isThreatened(const BattleMap& bm, int attacker_idx) const noexcept;
 

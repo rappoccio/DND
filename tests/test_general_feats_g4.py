@@ -111,6 +111,37 @@ def test_sharpshooter_firing_in_melee():
     print("✅ test_sharpshooter_firing_in_melee passed")
 
 
+def _close_combat_scene(bystander_col, bystander_row, size=1, ally=False):
+    """An archer at (5,5) shooting a target well inside normal range, with one more creature
+    placed at the given cell (top-left of its footprint)."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = _place(engine, bm, "Archer", 5, 5)
+    t = _place(engine, bm, "Tgt", 9, 5)
+    cfg = create_test_agent("Bystander", bystander_col, bystander_row)
+    cfg.size = size
+    b = add_agent_to_battle(engine, bm, cfg)
+    _target(engine, bm, t)
+    _arm_ranged(engine, bm, a, _ranged(normal=80, long=320))
+    if ally:
+        bm.set_agent_faction(a, 1)
+        bm.set_agent_faction(b, 1)
+    return engine, bm, a, t
+
+
+def test_firing_in_melee_needs_an_enemy_within_5_ft():
+    """Ranged Attacks in Close Combat: an enemy within 5 ft, footprint to footprint. It used to
+    be any creature within 10 ft, so an enemy two squares away, or an ally, imposed it."""
+    engine, bm, a, t = _close_combat_scene(7, 5)                 # 10 ft away
+    assert not _disadvantage(engine, bm, a, t), "an enemy 10 ft away imposed Disadvantage"
+    engine, bm, a, t = _close_combat_scene(6, 5, ally=True)      # adjacent ally
+    assert not _disadvantage(engine, bm, a, t), "an adjacent ally imposed Disadvantage"
+    engine, bm, a, t = _close_combat_scene(6, 6)                 # adjacent (diagonal) enemy
+    assert _disadvantage(engine, bm, a, t), "an adjacent enemy did not impose Disadvantage"
+    engine, bm, a, t = _close_combat_scene(3, 3, size=2)         # Large: origin 10 ft, edge 5 ft
+    assert _disadvantage(engine, bm, a, t), "a Large enemy's near edge was not counted"
+    print("✅ test_firing_in_melee_needs_an_enemy_within_5_ft passed")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Crossbow Expert
 # ─────────────────────────────────────────────────────────────────────────────
@@ -379,6 +410,7 @@ def main():
     print("Running General feat tests (G4 — bonus-attack + ranged-penalty)...\n")
     test_sharpshooter_ignores_long_range_disadvantage()
     test_sharpshooter_firing_in_melee()
+    test_firing_in_melee_needs_an_enemy_within_5_ft()
     test_crossbow_expert_firing_in_melee_with_crossbow()
     test_crossbow_expert_only_helps_crossbows()
     test_crossbow_expert_does_not_remove_long_range()
