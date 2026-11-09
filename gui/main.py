@@ -5132,16 +5132,16 @@ class App:
 
     def _tracker_join(self, idxs, label):
         """On Deck tokens joining a tracked encounter. While the totals are collected they
-        join with blank totals, to be typed in with everyone else. Once it runs (D5) the
-        group rolls once and is placed at that total, skipped for the rest of this round."""
+        join with blank totals, to be typed in with everyone else. Once it runs (D5, as
+        amended) the group rolls once and goes straight into the order at that total."""
         t = self.tracker
         n = len(idxs)
         who = f"{label} ×{n} join" if n > 1 else f"{label} joins"
         if t.phase == "running":
             total = self._tracker_roll(idxs[0])
-            t.add(idxs, total, joins_round=t.round + 1)
+            t.add(idxs, total, joins_round=t.round)
             self._mirror_tracker()
-            self._combat_log_add(f"{who} at {total} next round.")
+            self._combat_log_add(f"{who} at {total}.")
         else:
             t.add(idxs)
             self._combat_log_add(f"{who} the encounter: enter initiative.")
@@ -5174,8 +5174,8 @@ class App:
                 self._tracker_step(1 if kind == "next" else -1)
             elif kind in ("up", "down"):
                 self._tracker_move(arg, -1 if kind == "up" else 1)
-            elif kind == "hp_open":
-                self._tracker_hp_open(arg)
+            elif kind == "row":
+                self._tracker_select(arg)
             elif kind == "hp_close":
                 self._tracker_hp = -1
             elif kind == "hp":
@@ -5207,6 +5207,16 @@ class App:
                     self.tracker.set_total(i, total)
             return True
         return False
+
+    def _tracker_select(self, agent_idx: int):
+        """The DM clicks a name in the order or a token on the map: the ▶ goes to it (once
+        the order is running and it is in it) and its HP box opens. A box already open on
+        it keeps its typed amount."""
+        if self.tracker.jump(agent_idx):
+            self._mirror_tracker()
+            self._mark_fog_dirty()
+        if self._tracker_hp != agent_idx:
+            self._tracker_hp_open(agent_idx)
 
     def _tracker_hp_open(self, agent_idx: int):
         """Open the HP box (T4) on `agent_idx`, with an empty amount."""
@@ -20833,8 +20843,8 @@ class App:
                                     # During pause, allow selecting other agents; otherwise keep on current.
                                     if free:
                                         self.selected_idx = hit
-                                    if self.tracker_mode and self._tracker_hp != hit:
-                                        self._tracker_hp_open(hit)    # T4: a token's HP box
+                                    if self.tracker_mode:
+                                        self._tracker_select(hit)     # ▶ to it + its HP box
                                 else:
                                     self._arm_pan_drag(event.pos)
                     else:

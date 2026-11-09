@@ -157,12 +157,28 @@ def test_json_round_trip():
     print("✅ test_json_round_trip")
 
 
+def test_jump():
+    """The DM clicks a name: the turn goes there, the round stays, next goes on from it."""
+    t = _tracker([(0, 20), (1, 15), (2, 10), (3, 5)])
+    check(not t.jump(2), "jumped before start")
+    t.start()
+    t.next()
+    check(t.jump(3) and t.current() == 3 and t.round == 1, "jump forward")
+    check(t.jump(0) and t.current() == 0 and t.round == 1, "jump back")
+    check(t.next() == 1, "next after a jump")
+    t.remove(2)
+    check(not t.jump(2) and t.current() == 1, "jumped onto a removed entry")
+    check(not t.jump(9), "jumped to an agent not in the order")
+    print("✅ test_jump")
+
+
 if __name__ == "__main__":
     test_sort()
     test_ties()
     test_reorder()
     test_skip_dead()
     test_wrap()
+    test_jump()
     test_add_mid_fight()
     test_json_round_trip()
     if FAILURES:

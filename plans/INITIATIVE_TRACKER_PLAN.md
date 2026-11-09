@@ -1,8 +1,8 @@
 # Initiative tracker mode — the table rolls, the DM's screen keeps score
 
 **Status 2026-11-09: Step 0 frozen (D1–D5 decided by the user). T1 committed 1b44e2c (222/0).
-T2 committed 19caef6 (223/0). T3 committed 4722635 (223/0). T5 and T4 implemented
-(223/0, uncommitted). T4b next.**
+T2 committed 19caef6 (223/0). T3 committed 4722635 (223/0). T5 + T4 committed 72fb29d
+(223/0). D5 amended + click-a-name (uncommitted). T4b next.**
 
 ## What the user asked for
 
@@ -54,6 +54,10 @@ types them in. The app is a board plus a score sheet.
 - **D5. Mobs revealed mid-fight roll initiative automatically** (same-name share a roll)
   and **start acting next round**: they are inserted into the order at their total but
   skipped for the rest of the current round.
+  **Amended 2026-11-09 (user):** "there's no 'act' in this mode, just put them into the
+  initiative list." The group still rolls once, but goes straight into the order at its
+  total with no next-round wait. Clicking a name in the running order, or a token on the
+  map, moves the ▶ to it and opens its HP box (`App._tracker_select`).
 
 ## Steps, in order
 

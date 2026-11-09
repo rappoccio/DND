@@ -144,6 +144,15 @@ class Tracker:
                 return e.agent_idx
         return None
 
+    def jump(self, agent_idx: int) -> bool:
+        """Hand the turn straight to `agent_idx` (the DM clicks a name in the order). The
+        round is unchanged. False if it isn't running or the entry is missing or removed."""
+        i = self.index_of(agent_idx)
+        if self.phase != "running" or i < 0 or self.entries[i].removed:
+            return False
+        self.turn = i
+        return True
+
     def prev(self):
         """Step back to the previous entry that acts, wrapping to round − 1 before the
         start. Never goes before round 1's first acting entry: returns None there."""

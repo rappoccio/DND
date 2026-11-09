@@ -146,8 +146,9 @@ def draw_tracker_section(app, lx, W, y):
 
     Collecting: one number field per row (a mob group shares one), then Roll for monsters
     and Start. Running: the round, Prev / Next, and the order with ↑/↓ on each row; an
-    entry that joins next round (D5) is dimmed. A row shows its HP when D1 allows and opens
-    the HP box (T4) on a click; the box sits under the sheet in either phase. Click targets
+    entry that joins a later round is dimmed. A row shows its HP when D1 allows; a click
+    on it moves the ▶ there and opens its HP box (T4), which sits under the sheet in
+    either phase. Click targets
     go to `app._tracker_hits` as (rect, kind, arg), reset every call;
     `App._tracker_handle_event` acts on them."""
     app._tracker_hits = []
@@ -211,7 +212,7 @@ def draw_tracker_section(app, lx, W, y):
             button("↑", pygame.Rect(lx + W - 2 * aw - 2, y, aw, 18), "up", e.agent_idx)
             button("↓", pygame.Rect(lx + W - aw, y, aw, 18), "down", e.agent_idx)
             app._tracker_hits.append((pygame.Rect(lx, y, W - 2 * aw - 4, 18),
-                                      "hp_open", e.agent_idx))
+                                      "row", e.agent_idx))
             y += 20
         y = _draw_hp_box(app, lx, W, y + 4, text, button)
     return y

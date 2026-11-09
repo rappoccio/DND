@@ -323,9 +323,9 @@ def test_roll_for_monsters():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def test_revealed_group_joins_next_round():
-    """D5: a group woken from On Deck mid-fight (the fog path) rolls once, is placed at its
-    total, is skipped for the rest of this round and acts from the next."""
+def test_revealed_group_joins():
+    """D5, as amended: a group woken from On Deck mid-fight (the fog path) rolls once and
+    goes straight into the order at its total, with no wait for the next round."""
     tmp = tempfile.mkdtemp()
     try:
         app = _setup(tmp, tracker=True, foes=("Gnasher", "Ghoul", "Ghoul"))
@@ -344,25 +344,21 @@ def test_revealed_group_joins_next_round():
         app.show_fog = True
         app._agents_in_revealed_rooms = lambda idxs: list(idxs)
         rolls = []
-        app._tracker_roll = lambda i: rolls.append(i) or 20    # beats everyone: the top
+        app._tracker_roll = lambda i: rolls.append(i) or 13    # between Aria and Brannor
         app._deploy_fog_revealed_enemies()
         check(len(rolls) == 1, f"{len(rolls)} rolls for one group")
-        check(all(app.tracker.entry(i).total == 20 for i in ghouls), "ghouls not at 20")
+        check(all(app.tracker.entry(i).total == 13 for i in ghouls), "ghouls not at 13")
+        check(_order(app) == ["Gnasher", "Aria", "Ghoul", "Ghoul", "Brannor"],
+              f"order {_order(app)}")
         check(app._current_agent_idx() == _idx(app, "Aria"), "the join moved the turn")
-        check(any("Ghoul ×2 join at 20 next round" in m for m in app.combat_log),
+        check(any("Ghoul ×2 join at 13." in m for m in app.combat_log),
               f"log {app.combat_log[:3]}")
-
-        seen = []                               # the rest of round 1
-        while app.round_num == 0:
+        for want in (ghouls[0], ghouls[1], _idx(app, "Brannor")):   # this round, in place
             app._advance_turn()
-            seen.append(app._current_agent_idx())
-        check(not set(seen[:-1]) & set(ghouls), "a ghoul acted in the round it joined")
-        check(seen[-1] == ghouls[0] and app.round_num == 1,
-              "the ghouls do not open round 2")
-        app._advance_turn()
-        check(app._current_agent_idx() == ghouls[1], "the second ghoul does not follow")
+            check(app._current_agent_idx() == want and app.round_num == 0,
+                  f"round 1 went to {app._current_agent_idx()}, not {want}")
         app._draw_combat_panel()
-        print("✅ test_revealed_group_joins_next_round")
+        print("✅ test_revealed_group_joins")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -392,6 +388,7 @@ def test_drag_any_token():
         aria, skarn, gnasher = (_idx(app, n) for n in ("Aria", "Skarn", "Gnasher"))
         _drag(app, (2, 3), (3, 3))                      # nobody is acting yet
         check(_pos(app, aria) == (3, 3), f"collecting: Aria at {_pos(app, aria)}")
+        check(app._current_agent_idx() == -1, "a click before Start made someone act")
 
         for name, tot in TOTALS.items():
             app.tracker.set_total(_idx(app, name), tot)
@@ -401,12 +398,15 @@ def test_drag_any_token():
               for i in range(len(app.bm.placed_agents))}
         _drag(app, (8, 8), (6, 8))                      # Skarn, on Gnasher's turn, 10 ft
         check(_pos(app, skarn) == (6, 8), f"Skarn's drag left him at {_pos(app, skarn)}")
+        check(app._current_agent_idx() == skarn, "a token click did not make Skarn active")
+        check(app.round_num == 0, f"a token click changed the round to {app.round_num}")
         _drag(app, (3, 3), (7, 3))                      # Aria runs past Gnasher's reach
         _drag(app, (7, 3), (2, 6))                      # and away from it again
         check(_pos(app, aria) == (2, 6), f"Aria's drags left her at {_pos(app, aria)}")
         after = {i: app.combat.get_agent_stats(app.bm, i).hp_cur for i in hp}
         check(after == hp, f"a drag cost HP (an opportunity attack?): {hp} → {after}")
-        check(app._current_agent_idx() == gnasher, "a drag moved the turn")
+        check(app._current_agent_idx() == aria, "the ▶ did not follow the last token clicked")
+        check(app._tracker_hp == aria, "the token click did not open Aria's HP box")
         check(app._fog_dirty, "the drop did not mark the fog dirty")
         print("✅ test_drag_any_token")
     finally:
@@ -415,7 +415,7 @@ def test_drag_any_token():
 
 def test_drag_wakes_on_deck():
     """T5: a drag that sees into a room reveals it and wakes its On Deck mobs, which join
-    at one roll next round (D5)."""
+    at one roll (D5)."""
     tmp = tempfile.mkdtemp()
     try:
         app = _setup(tmp, tracker=True, foes=("Gnasher", "Ghoul", "Ghoul"))
@@ -437,8 +437,8 @@ def test_drag_wakes_on_deck():
         _drag(app, (2, 3), (4, 5))
         app._refresh_fog()                              # the frame's reveal
         check(not any(app.bm.is_agent_on_deck(i) for i in ghouls), "the drag woke no ghoul")
-        check(all(app.tracker.entry(i).total == 11 and app.tracker.entry(i).joins_round == 2
-                  for i in ghouls), "the ghouls did not join at 11 next round")
+        check(all(app.tracker.entry(i).total == 11 and app.tracker.entry(i).joins_round == 1
+                  for i in ghouls), "the ghouls did not join at 11 this round")
         print("✅ test_drag_wakes_on_deck")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -464,7 +464,7 @@ def test_hp_box():
     try:
         app = _board(tmp, tracker=True)
         aria = _idx(app, "Aria")
-        _click(app, "hp_open", aria)
+        _click(app, "row", aria)
         check(app._tracker_hp == aria, "the row click opened no HP box")
         cur, mx, _ = _stats(app, aria)
         log0 = len(app.combat_log)
@@ -477,13 +477,31 @@ def test_hp_box():
         check(_stats(app, aria) == (mx - 2, mx - 2, 0), f"max clamp: {_stats(app, aria)}")
         check(len(app.combat_log) - log0 == 4, f"{len(app.combat_log) - log0} log lines for 4")
         check(f"{mx - 2}/{mx - 2} HP" in app.combat_log[0], f"PC line {app.combat_log[0]}")
-        _click(app, "hp_open", _idx(app, "Brannor"))     # another row: a fresh box
+        _click(app, "row", _idx(app, "Brannor"))     # another row: a fresh box
         check(app._tracker_hp == _idx(app, "Brannor") and app._tracker_hp_text == "",
               "a second row did not open its own box")
         app._tracker_handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_ESCAPE,
                                                      unicode="", mod=0))
         check(app._tracker_hp == -1, "Esc did not close the box")
         print("✅ test_hp_box")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_row_click_moves_turn():
+    """A click on a name in the order moves the ▶ there (the round stays), opens its HP
+    box, and Next goes on from it."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _board(tmp, tracker=True)                 # Gnasher, Aria, Brannor, Skarn
+        brannor = _idx(app, "Brannor")
+        _click(app, "row", brannor)
+        check(app._current_agent_idx() == brannor, "the click did not move the ▶")
+        check(app.round_num == 0, f"the click changed the round to {app.round_num}")
+        check(app._tracker_hp == brannor, "the click opened no HP box")
+        _click(app, "next")
+        check(app._current_agent_idx() == _idx(app, "Skarn"), "Next did not go on from it")
+        print("✅ test_row_click_moves_turn")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -503,12 +521,12 @@ def test_hp_zero():
         check(app._current_agent_idx() == gnasher, "clearing Skarn moved the turn")
         check(app._tracker_hp == -1, "the box stayed open on a cleared token")
 
-        _click(app, "hp_open", gnasher)                 # the acting monster drops
+        _click(app, "row", gnasher)                 # the acting monster drops
         _hp(app, "dmg", 999)
         check(app._current_agent_idx() == aria, "the turn did not pass from Gnasher to Aria")
         check(_order(app) == ["Aria", "Brannor"], f"order {_order(app)}")
 
-        _click(app, "hp_open", aria)
+        _click(app, "row", aria)
         _hp(app, "dmg", 999)
         check(_stats(app, aria)[0] == 0, "Aria not at 0")
         check(not app.bm.is_agent_removed_from_play(aria), "a PC at 0 left the board")
@@ -531,7 +549,7 @@ def test_hp_display_d1():
         skarn, aria = _idx(app, "Skarn"), _idx(app, "Aria")
         check(app._tracker_hp_shown(aria), "party HP hidden in the table view")
         check(not app._tracker_hp_shown(skarn), "monster HP shown in the table view")
-        _click(app, "hp_open", skarn)
+        _click(app, "row", skarn)
         _hp(app, "dmg", 1)
         check("/" not in app.combat_log[0], f"monster HP in the log: {app.combat_log[0]}")
         app.dm_view = True
@@ -589,10 +607,11 @@ if __name__ == "__main__":
     test_totals_sort()
     test_start_with_blanks()
     test_roll_for_monsters()
-    test_revealed_group_joins_next_round()
+    test_revealed_group_joins()
     test_drag_any_token()
     test_drag_wakes_on_deck()
     test_hp_box()
+    test_row_click_moves_turn()
     test_hp_zero()
     test_hp_display_d1()
     if FAILURES:
