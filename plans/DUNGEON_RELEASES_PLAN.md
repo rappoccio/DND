@@ -76,7 +76,23 @@ The user's calls (2026-11-06): D1, D3, D5, D8.
 `Release`, `Releases…` and `Save Game`. The Table menu, which works mid-fight, gets
 `Save Game`, `Load Save File…`, `Reset Dungeon` and `Save limit`.
 
-**Not in this plan:** rolling a dungeon's *design* back to a release. The snapshot makes it
+### Amendment 2026-11-09 (user's call: "I want the entire state reset, including doors, fog, terrain, mob state")
+
+No release existed in any campaign, so Reset Dungeon only ever said "Make a Release first".
+
+- **D3 (amended). Reset restores everything the release holds**, design included:
+  `dungeon.json` and `maps/` come back from the release (`releases.restore_design`). The
+  design it replaces is moved to `<dungeon>/design_backups/<time>/`, never deleted. The
+  `before reset` save still undoes the play state; a design edit comes back only by hand from
+  that folder.
+- **D4 (amended).** The confirm is a warning: "WARNING: reset the dungeon to V<n>?
+  Creatures, doors, fog, effects and every map edit since then are reverted."
+- **D11 (new). Opening a campaign dungeon with no release makes `V0`** from the files as
+  they are, note `opened` (`run_control.ensure_first_release`), so a reset always has a
+  target. A dungeon already played before this change gets its V0 from its current state.
+
+**Not in this plan:** rolling a dungeon's *design* back to a release (superseded by the
+2026-11-09 amendment). The snapshot makes it
 possible later, but a release's design is read-only history for now.
 
 ## Known risks

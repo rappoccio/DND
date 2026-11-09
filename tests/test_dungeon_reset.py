@@ -2,7 +2,9 @@
 """Release and Reset Dungeon in the App: step 3 of plans/DUNGEON_RELEASES_PLAN.md (D2–D4, D10).
 
   · a release saves the live board first and is refused during a fight;
-  · a reset puts back creatures, fog, doors and effects, and keeps map fixes;
+  · opening a dungeon with no release makes V0 from it, once;
+  · a reset puts back creatures, fog, doors and effects, and reverts map edits, which it
+    moves to design_backups/ rather than deleting;
   · it ends a live fight without awarding XP and removes the combat sidecar;
   · it returns to the release's map and does not write back the map it left;
   · what blocks a restore blocks a reset, and a refusal changes nothing;
@@ -59,10 +61,11 @@ def _idx(app, name):
 
 
 def _released_board(s):
-    """Aria on hall with the door shut and no fog cleared, released as V0."""
+    """Aria on hall with the door shut and no fog cleared, released as V1 (V0 is the empty
+    board the dungeon opened on)."""
     _place(s.app, "Aria", 1, 1)
     r = run_control.make_release(s.app)
-    assert r is not None and r.name == "V0", s.app._status_msg
+    assert r is not None and r.name == "V1", s.app._status_msg
     return r
 
 
@@ -79,11 +82,11 @@ def test_release_saves_the_board_and_refuses_a_fight():
         r = _released_board(s)
         assert [a["name"] for a in rs.creatures(r.start_run(), "hall")["agents"]] == ["Aria"], \
             "the release did not save the live board"
-        assert s.app._status_msg == "Released V0"
+        assert s.app._status_msg == "Released V1"
         _start_fight(s.app)
         assert run_control.make_release(s.app) is None
         assert "Finish combat" in s.app._status_msg
-        assert releases.next_name(s.dl) == "V1", "a release was made during a fight"
+        assert releases.next_name(s.dl) == "V2", "a release was made during a fight"
     print("  ✅ a release saves the board first and is refused during a fight")
 
 
@@ -136,28 +139,48 @@ def test_reset_clears_fog():
     print("  ✅ a reset puts the fog back")
 
 
-def test_reset_keeps_map_fixes():
+def test_reset_reverts_map_edits():
     with _Scene() as s:
         app = s.app
         r = _released_board(s)
+        path = s.dl.write_path("hall", sl.MAP_FILE)
+        with open(os.path.join(r.maps_dir, "hall", sl.MAP_FILE)) as f:
+            released = f.read()
+        with open(s.dl.manifest_path) as f:
+            released_manifest = json.load(f)
         app.bm.add_door(cells=[rpg.Cell(7, 2)])
         app._walls_enabled = True
         app._save_terrain()
-        path = s.dl.write_path("hall", sl.MAP_FILE)
         with open(path) as f:
-            fixed = f.read()
-        manifest_mtime = os.path.getmtime(s.dl.manifest_path)
+            edited = f.read()
+        app.dungeon.page_by_id("tower").ladders = [{"cells": [[1, 1]], "target": [0, 0, 0]}]
+        app._dungeon_save_manifest()
+        with open(s.dl.manifest_path) as f:
+            edited_manifest = json.load(f)
+        assert edited_manifest != released_manifest
 
         assert run_control.reset_to(app, r), app._status_msg
-        assert app._walls_enabled is True, "a map fix was rolled back"
-        assert sorted(d.cell.col for d in app.bm.doors) == [4, 7], "a door fix was rolled back"
+        assert app._walls_enabled is False, "a map edit survived the reset"
+        assert sorted(d.cell.col for d in app.bm.doors) == [4], "a new door survived the reset"
         with open(path) as f:
-            assert f.read() == fixed, "a reset rewrote map.json"
-        assert os.path.getmtime(s.dl.manifest_path) == manifest_mtime, "rewrote dungeon.json"
-        app._save_terrain()
-        with open(path) as f:
-            assert len(json.load(f)["doors"]) == 2, "the next save lost the door fix"
-    print("  ✅ a reset keeps map fixes, and writes no design file")
+            assert f.read() == released, "map.json is not the release's"
+        with open(s.dl.manifest_path) as f:
+            assert json.load(f) == released_manifest, "dungeon.json is not the release's"
+        assert not app.dungeon.page_by_id("tower").ladders, "the live dungeon kept the edit"
+
+        # The edits moved aside, never deleted.
+        root = os.path.join(s.dl.root, releases.DESIGN_BACKUPS_DIR)
+        [backup] = os.listdir(root)
+        with open(os.path.join(root, backup, sl.MAPS_DIR, "hall", sl.MAP_FILE)) as f:
+            assert f.read() == edited, "the replaced map.json was not kept"
+        with open(os.path.join(root, backup, sl.DUNGEON_FILE)) as f:
+            assert json.load(f) == edited_manifest, "the replaced dungeon.json was not kept"
+        assert not [n for n in os.listdir(s.dl.root) if n.startswith(".")], "staging left behind"
+
+        # Reloading from disk gives the same design.
+        again = _open(s.dl.root)
+        assert sorted(d.cell.col for d in again.bm.doors) == [4]
+    print("  ✅ a reset reverts map edits and keeps them in design_backups/")
 
 
 def test_reset_ends_a_fight_without_xp():
@@ -204,13 +227,28 @@ def test_empty_release_clears_the_board():
     print("  ✅ a release with no creatures clears the board")
 
 
+def test_open_makes_v0():
+    with _Scene() as s:
+        app = s.app
+        [v0] = releases.list_releases(s.dl)
+        assert (v0.name, v0.note) == ("V0", "opened")
+        assert _open(s.dl.root) is not None and len(releases.list_releases(s.dl)) == 1, \
+            "a second open made another release"
+
+        _place(app, "Aria", 1, 1)
+        app.bm.open_door(app.bm.doors[0].id)
+        app._save_agents()
+        app._save_terrain()
+        run_control.ask_reset(app)
+        assert app.prompts.live.title == run_control.reset_warning(v0)
+        assert app.prompts.choose_label("Reset to V0").ok
+        assert _names(app) == [] and not app.bm.doors[0].open
+    print("  ✅ opening a dungeon with no release makes V0, once, and Reset reaches it")
+
+
 def test_refusals_change_nothing():
     with _Scene() as s:
         app = s.app
-        run_control.ask_reset(app)
-        assert app._status_msg == "Make a Release first."
-        assert app.prompts.live is None
-
         r = _released_board(s)
         _place(app, "Gnasher", 8, 1)
         app._legendary_queue = [1]
@@ -230,12 +268,23 @@ def test_blocked_creature_is_named():
     with _Scene() as s:
         app = s.app
         r = _released_board(s)
-        app.bm.add_door(cells=[rpg.Cell(1, 1)])      # the map fix lands on Aria's cell
+        app.bm.add_door(cells=[rpg.Cell(1, 1)])      # a map edit lands on Aria's cell
         app._save_terrain()
+        assert run_control.reset_to(app, r), app._status_msg
+        assert _names(app) == ["Aria"], "the reverted edit still blocked her"
+        assert app._status_msg == "Reset to V1", app._status_msg
+
+        # A release whose own map blocks a creature's cell still names it.
+        released = os.path.join(r.maps_dir, "hall", sl.MAP_FILE)
+        with open(released) as f:
+            doc = json.load(f)
+        doc["doors"].append({**doc["doors"][0], "cells": [[1, 1]], "cell": [1, 1]})
+        with open(released, "w") as f:
+            json.dump(doc, f)
         assert run_control.reset_to(app, r), app._status_msg
         assert _names(app) == []
         assert "Aria" in app._status_msg and "Blocked" in app._status_msg, app._status_msg
-    print("  ✅ a released creature on a newly blocked cell is named")
+    print("  ✅ a reverted edit no longer blocks; a creature on a blocked cell is named")
 
 
 def test_seats_stay_and_players_resync():
@@ -248,7 +297,7 @@ def test_seats_stay_and_players_resync():
         assert resync.called, "seated players were not resynced"
         assert app.roster.join_code == code
         assert app._net_turn is None
-        assert app.session_log.tail(True)[-1]["text"] == "The DM reset the dungeon to V0."
+        assert app.session_log.tail(True)[-1]["text"] == "The DM reset the dungeon to V1."
     print("  ✅ seats stay and every player gets a fresh view")
 
 
@@ -258,31 +307,33 @@ def test_menu_rows():
         _place(app, "Aria", 1, 1)
         dm.show_dungeon_menu(app)
         assert app.prompts.choose_label("Release").ok
-        assert releases.next_name(s.dl) == "V1"
+        assert releases.next_name(s.dl) == "V2"
         _place(app, "Gnasher", 8, 1)
         dm.show_dungeon_menu(app)
-        assert app.prompts.choose_label("Release").ok      # V1 has both
+        assert app.prompts.choose_label("Release").ok      # V2 has both
 
-        # Reset Dungeon goes to the newest, after a confirm that can be cancelled.
+        # Reset Dungeon goes to the newest, after a warning that can be cancelled.
         _place(app, "Bat", 2, 2)
         dm.show_dungeon_menu(app)
         assert app.prompts.choose_label("Reset Dungeon").ok
-        assert app.prompts.live.title == "Reset the dungeon to V1?"
+        assert app.prompts.live.title == (
+            "WARNING: reset the dungeon to V2? Creatures, doors, fog, effects and every "
+            "map edit since then are reverted.")
         assert app.prompts.choose_label("Cancel").ok
         assert _names(app) == ["Aria", "Bat", "Gnasher"]
 
         dm.show_dungeon_menu(app)
         assert app.prompts.choose_label("Reset Dungeon").ok
-        assert app.prompts.choose_label("Reset to V1").ok
+        assert app.prompts.choose_label("Reset to V2").ok
         assert _names(app) == ["Aria", "Gnasher"]
 
         # Releases… reaches an older one.
         dm.show_dungeon_menu(app)
         assert app.prompts.choose_label("Releases…").ok
         labels = [o.label for o in app.prompts.live.options]
-        assert labels[0].startswith("V1") and labels[1].startswith("V0"), labels
+        assert labels[0].startswith("V2") and labels[1].startswith("V1"), labels
         assert app.prompts.choose_label(labels[1]).ok
-        assert app.prompts.choose_label("Reset to V0").ok
+        assert app.prompts.choose_label("Reset to V1").ok
         assert _names(app) == ["Aria"]
     print("  ✅ the Dungeon menu reaches Release, Releases… and Reset Dungeon")
 
@@ -300,7 +351,7 @@ def test_outside_a_campaign():
 def main():
     pygame.init()
     tests = [test_release_saves_the_board_and_refuses_a_fight, test_reset_restores_play_state,
-             test_reset_clears_fog, test_reset_keeps_map_fixes,
+             test_reset_clears_fog, test_reset_reverts_map_edits, test_open_makes_v0,
              test_reset_ends_a_fight_without_xp, test_reset_returns_to_the_released_map,
              test_empty_release_clears_the_board, test_refusals_change_nothing,
              test_blocked_creature_is_named, test_seats_stay_and_players_resync,

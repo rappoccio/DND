@@ -451,12 +451,10 @@ def test_panel_buttons():
         assert app.btn_reset_dungeon.rect.top == app.btn_load_save.rect.top
 
         _place(app, "Aria", 1, 1)
-        post_click(app, app.btn_reset_dungeon.rect.center)
-        assert app._status_msg == "Make a Release first."
         release = run_control.make_release(app)
         _place(app, "Gnasher", 8, 1)
         post_click(app, app.btn_reset_dungeon.rect.center)
-        assert app.prompts.live.title == f"Reset the dungeon to {release.name}?"
+        assert app.prompts.live.title == run_control.reset_warning(release)
         assert app.prompts.choose_label(f"Reset to {release.name}").ok
         assert _names(app) == ["Aria"]
 
@@ -480,7 +478,8 @@ def test_table_rows():
 
         dm.show_table_menu(app)
         assert app.prompts.choose_label("Reset Dungeon").ok
-        assert app._status_msg == "Make a Release first."
+        assert app.prompts.live.title.startswith("WARNING: reset the dungeon to V0?")
+        app.prompts.cancel()
 
         dm.show_table_menu(app)
         assert app.prompts.choose_label("Save limit: 10 ▸").ok

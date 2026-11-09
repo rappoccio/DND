@@ -244,11 +244,12 @@ def save_game(app) -> dict | None:
 
 
 # ── Loading ──────────────────────────────────────────────────────────────────
-def swap_run(app, run: dict, effects_dir: str | None, page) -> bool:
+def swap_run(app, run: dict, effects_dir: str | None, page, reload_map: bool = False) -> bool:
     """Make ``run`` the run and show ``page`` from it, on the current design. Any live fight
     ends without XP: it is being thrown away, not finished. The map being left is not
-    written back, and the same map keeps its view. The caller has checked ``page``'s image.
-    Returns False with a flash when the disk refuses or the page will not load."""
+    written back, and the same map keeps its view unless ``reload_map`` (the design under it
+    changed). The caller has checked ``page``'s image. Returns False with a flash when the
+    disk refuses or the page will not load."""
     # A section for the map showing, even an empty one: with none, the load would leave the
     # old creatures on the board.
     rs.map_section(run, page.id)
@@ -265,7 +266,7 @@ def swap_run(app, run: dict, effects_dir: str | None, page) -> bool:
     app._effect_meta.clear()
     app._npc_drive_idx = -1
     app.selected_idx = -1
-    if app.dungeon_page is not None and app.dungeon_page.id != page.id:
+    if reload_map or (app.dungeon_page is not None and app.dungeon_page.id != page.id):
         app.dungeon_page = None
     return app._switch_to_page(page, force=True)
 

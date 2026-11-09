@@ -3465,6 +3465,7 @@ class App:
         if not self._switch_to_page(page, force=True):
             self.store, self.dungeon, self.dungeon_page, self._dungeon_manifest_path = old
             return False
+        run_control.ensure_first_release(self)    # Reset Dungeon always has a V0
         for w in filter(None, (layout.calibration_warning(p.id) for p in dungeon.pages)):
             print(f"Warning: {w}")
         self._flash_status(f"{camp.name} / {layout.name} — {page.id}")

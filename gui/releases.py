@@ -10,6 +10,9 @@
       start/run.json      the board when the release was made, PCs included
       start/effects/
 
+A reset puts a release's design back too (``restore_design``); the design it replaces is
+moved to ``<dungeon>/design_backups/<time>/``.
+
 **A release appears whole or not at all.** It is built in a hidden folder beside the others
 and renamed into place last, so a crash leaves nothing that lists as a release. Nothing here
 overwrites or deletes a release.
@@ -33,6 +36,9 @@ from atomic_io import atomic_write_json
 from dungeon import Dungeon
 
 RELEASE_VERSION = 1
+
+# Where a reset puts the design it replaces (``restore_design``).
+DESIGN_BACKUPS_DIR = "design_backups"
 
 _NAME = re.compile(r"V(\d+)$")
 
@@ -151,6 +157,49 @@ def _copy_start(layout: "sl.DungeonLayout", run_name: str, dungeon: Dungeon,
     if os.path.isdir(effects):
         shutil.copytree(effects, os.path.join(start, sl.EFFECTS_DIR))
     return run.get("current_map") or (entry.id if entry else None)
+
+
+def image(layout: "sl.DungeonLayout", release: Release, map_name: str) -> str | None:
+    """The art ``map_name`` shows once ``release``'s design is back: its own copy, else the
+    library's."""
+    return (sl.find_image(os.path.join(release.maps_dir, map_name), map_name)
+            or sl.find_image(layout.campaign.library_map_dir(map_name), map_name))
+
+
+def restore_design(layout: "sl.DungeonLayout", release: Release) -> str:
+    """Make ``release``'s design the dungeon's: its ``dungeon.json`` and ``maps/``. The design
+    replaced is moved to ``design_backups/<time>/`` first, never deleted, so a reset cannot
+    destroy a map edit. Returns that folder. On failure the dungeon's design is unchanged."""
+    root = os.path.join(layout.root, DESIGN_BACKUPS_DIR, time.strftime("%Y%m%d-%H%M%S"))
+    backup, n = root, 1
+    while os.path.exists(backup):
+        backup, n = f"{root}-{n}", n + 1
+    os.makedirs(backup)
+    shutil.copyfile(layout.manifest_path, os.path.join(backup, sl.DUNGEON_FILE))
+
+    maps = os.path.join(layout.root, sl.MAPS_DIR)
+    old = os.path.join(backup, sl.MAPS_DIR)
+    staged = os.path.join(layout.root, f".{sl.MAPS_DIR}.restore.{os.getpid()}")
+    manifest_tmp = f"{layout.manifest_path}.restore.{os.getpid()}"
+    moved = False
+    try:
+        shutil.copytree(release.maps_dir, staged)
+        shutil.copyfile(release.manifest_path, manifest_tmp)
+        if os.path.isdir(maps):
+            os.rename(maps, old)
+            moved = True
+        os.rename(staged, maps)
+        os.replace(manifest_tmp, layout.manifest_path)
+    except BaseException:
+        if moved and not os.path.isdir(maps):
+            os.rename(old, maps)
+        shutil.rmtree(staged, ignore_errors=True)
+        try:
+            os.remove(manifest_tmp)
+        except OSError:
+            pass
+        raise
+    return backup
 
 
 def create(layout: "sl.DungeonLayout", run_name: str = sl.DEFAULT_RUN,
