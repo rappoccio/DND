@@ -162,6 +162,40 @@ def test_toggle_refused_mid_combat():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_mirror():
+    """T2: _mirror_tracker copies the typed-in order into initiative_order / turn_idx /
+    round_num, so the existing drawing and _current_agent_idx follow the tracker."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _board(tmp, tracker=True)
+        a, b, g, s = (_idx(app, n) for n in ("Aria", "Brannor", "Gnasher", "Skarn"))
+        t = app.tracker
+        t.add([a, b, g, s])
+        for idx, tot in ((a, 11), (b, None), (g, 17), (s, 11)):
+            t.set_total(idx, tot)
+        t.start()
+        t.next()
+        app._mirror_tracker()
+        check([e.agent_idx for e in app.initiative_order] == [g, a, s, b],
+              f"mirrored order {[e.agent_idx for e in app.initiative_order]}")
+        check([e.total for e in app.initiative_order] == [17, 11, 11, 0], "mirrored totals")
+        check(app._current_agent_idx() == a, "the acting agent did not follow the tracker")
+        check(app.round_num == 0, f"round_num {app.round_num} for round 1")
+
+        t.remove(a)                         # the acting entry leaves: the next one shows
+        app._mirror_tracker()
+        check(a not in [e.agent_idx for e in app.initiative_order], "removed entry mirrored")
+        check(app._current_agent_idx() == s, "turn after removing the acting entry")
+        for _ in range(3):                  # Skarn, Brannor, then round 2's Gnasher
+            t.next()
+        app._mirror_tracker()
+        check(app._current_agent_idx() == g and app.round_num == 1, "wrap to round 2")
+        app._draw_combat_panel()            # the existing drawing takes the mirrored order
+        print("✅ test_mirror")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 class _FakeServer:
     def __init__(self):
         self.stopped = False
@@ -198,6 +232,7 @@ if __name__ == "__main__":
     test_no_action_rows()
     test_begin_button_label()
     test_toggle_refused_mid_combat()
+    test_mirror()
     test_player_server_gate()
     if FAILURES:
         print(f"\n❌ {len(FAILURES)} failure(s)")

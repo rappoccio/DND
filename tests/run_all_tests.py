@@ -145,6 +145,8 @@ test_scripts = [
     "test_hardening.py",
     # Initiative tracker mode (plans/INITIATIVE_TRACKER_PLAN.md T1): the flag and the gate.
     "test_tracker_mode.py",
+    # T2: the typed-in turn order (gui/tracker.py), pure Python.
+    "test_tracker.py",
 
     # The masked page image (MULTIPLAYER_PLAN.md M4, D-M4-1) — `GET /map.png`. Kept with
     # the oracles for the same reason as the view: it is the one place the map crosses the

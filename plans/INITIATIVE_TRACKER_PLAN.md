@@ -1,7 +1,7 @@
 # Initiative tracker mode — the table rolls, the DM's screen keeps score
 
-**Status 2026-11-09: Step 0 frozen (D1–D5 decided by the user). T1 implemented (222/0,
-uncommitted). T2 next.**
+**Status 2026-11-09: Step 0 frozen (D1–D5 decided by the user). T1 committed 1b44e2c (222/0).
+T2 implemented (223/0, uncommitted). T3 next.**
 
 ## What the user asked for
 
@@ -81,6 +81,14 @@ types them in. The app is a board plus a score sheet.
   initiative drawing keeps working.
 - **Tests:** `tests/test_tracker.py`: sort, ties, reorder, skip-dead, wrap, add mid-fight,
   JSON round-trip.
+- **Landed 2026-11-09.** Entries are keyed by `agent_idx` (one per agent); `remove`
+  tombstones (`removed` flag), so the entry keeps its place and round-trips. `turn` is a
+  position: `move` on the acting entry hands the turn to the one that was next (a delay).
+  `add` inserts after equal totals and keeps the acting entry acting; `start()` sorts and
+  hands round 1 to the top. Rounds are 1-based in the tracker; `App._mirror_tracker`
+  writes `round_num = round − 1`, leaves removed entries out, and draws a blank total as
+  0. `app.tracker` lives in `App.__init__`; nothing calls the mirror yet (T3 does).
+  `test_tracker_mode.test_mirror` covers the mirror.
 
 ### T3 — Begin Encounter and entering initiative
 - **Begin Encounter:** fog reveal + `_bench_unrevealed_enemies`, as `_begin_combat` does,

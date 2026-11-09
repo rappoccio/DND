@@ -70,6 +70,7 @@ from dungeon import Dungeon, MapPage, dungeon_path_for
 import grid_rescale
 from floor_overlay import FloorAlign
 from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
+from tracker import Tracker
 # S1: every save that a crash could tear goes through this (MULTIPLAYER_PLAN.md).
 from atomic_io import atomic_write_json
 from run_state import keep_current_design
@@ -869,7 +870,8 @@ class App:
         # menus.dm.set_tracker_mode, which refuses mid-combat.
         self.tracker_mode         = False
         self._tracker_stopped_net = False  # the toggle stopped the player server
-        self.combat_paused        = False  # True when paused between turns
+        self.tracker              = Tracker()  # the typed-in turn order; _mirror_tracker
+        self.combat_paused      = False  # True when paused between turns
         self._seen_armed          = set()  # agent idxs seen holding a droppable weapon this fight
         self.initiative_order     = []    # list[rpg.InitiativeEntry], high→low
         self.initiative_item_rects = []  # list[pygame.Rect], clickable areas for initiative items
@@ -5011,6 +5013,25 @@ class App:
         """Tracker mode's Begin Encounter (plans/INITIATIVE_TRACKER_PLAN.md T3): the table
         rolls initiative and the DM types it in. Not built yet; T1 only gates the button."""
         self._flash_status("Begin Encounter is not built yet (tracker plan T3)")
+
+    def _mirror_tracker(self):
+        """Copy self.tracker into initiative_order / turn_idx / round_num, so the existing
+        initiative drawing shows the typed-in order. Removed entries (D4) are left out; a
+        blank total reads 0. round_num is 0-based here, the tracker's round 1-based."""
+        t = self.tracker
+        order, turn = [], None
+        for i, e in enumerate(t.entries):
+            if e.removed:
+                continue
+            if turn is None and i >= t.turn:
+                turn = len(order)       # the acting entry, or the first live one after it
+            ie = rpg.InitiativeEntry()
+            ie.agent_idx = e.agent_idx
+            ie.total     = e.total if e.total is not None else 0
+            order.append(ie)
+        self.initiative_order = order
+        self.turn_idx         = turn or 0
+        self.round_num      = max(0, t.round - 1)
 
     def _tides_initiative_candidates(self) -> list:
         """PCs who may spend Tides of Chaos on Initiative: a living, deployed L3+ Wild Magic
