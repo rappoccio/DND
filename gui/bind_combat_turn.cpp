@@ -40,8 +40,10 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
         .def("roll_advantage",    &CombatEngine::rollAdvantage,   py::arg("sides"), py::arg("modifier") = 0)
         .def("roll_disadvantage", &CombatEngine::rollDisadvantage,py::arg("sides"), py::arg("modifier") = 0)
         .def("grant_pending_advantage", &CombatEngine::grantPendingAdvantage, py::arg("advantage") = true,
+             py::arg("owner") = -1,
              "Grant one-shot advantage (advantage=True) or disadvantage on the NEXT D20 Test\n"
-             "(attack, save, or check). General hook for 'advantage on your next roll' (Tides of Chaos).")
+             "(attack, save, or check). With owner >= 0 only that agent's own attack roll, spell\n"
+             "attack, save vs a spell or Concentration save takes it (Tides of Chaos, Lucky).")
         .def("roll_initiative",
              &CombatEngine::rollInitiative,
              py::arg("battle_map"),

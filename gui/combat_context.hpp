@@ -75,8 +75,23 @@ struct CombatContext {
     // 0 = none). General mechanism for "advantage on your next roll" (Tides of Chaos, etc.);
     // consumed by roll(20)/rollAdvantage/rollDisadvantage/rollToHit. If the roll already has the
     // opposite, the two cancel (5e rule). Only d20 Tests consume it (damage dice ignore it).
+    //
+    // An OWNED grant (owner >= 0: Tides of Chaos, Lucky) belongs to one creature. The anonymous
+    // roll(20) path cannot tell whose d20 it is, so it leaves an owned grant alone; only the
+    // owner's own D20 Test takes it, through consumePendingAdvantageFor at the sites that know
+    // the roller (attack rolls, spell attacks, saves vs spells, Concentration saves). Otherwise
+    // an enemy's next attack would take the sorcerer's Advantage.
     int pending_advantage_{0};
-    int consumePendingAdvantage() noexcept { int a = pending_advantage_; pending_advantage_ = 0; return a; }
+    int pending_advantage_owner_{-1};
+    int consumePendingAdvantage() noexcept {
+        if (pending_advantage_owner_ >= 0) return 0;
+        int a = pending_advantage_; pending_advantage_ = 0; return a;
+    }
+    // The grant for `idx`'s D20 Test: an anonymous one, or one `idx` owns.
+    int consumePendingAdvantageFor(int idx) noexcept {
+        if (pending_advantage_owner_ >= 0 && pending_advantage_owner_ != idx) return 0;
+        int a = pending_advantage_; pending_advantage_ = 0; pending_advantage_owner_ = -1; return a;
+    }
 
     // Agents who spent Tides of Chaos for Advantage on their coming Initiative roll. Per agent,
     // not pending_advantage_: every combatant's Initiative is rolled in one pass, and the
@@ -128,6 +143,7 @@ struct CombatContext {
             {"pending_roll_bonus", pending_roll_bonus_},
             {"pending_damage_bonus", pending_damage_bonus_},
             {"pending_advantage", pending_advantage_},
+            {"pending_advantage_owner", pending_advantage_owner_},
             {"force_max_damage", force_max_damage_},
             {"pending_portent_die", pending_portent_die_},
             {"agent_portent_round_used", portent_rounds},
@@ -146,6 +162,7 @@ struct CombatContext {
         ctx.pending_roll_bonus_ = j.value("pending_roll_bonus", 0);
         ctx.pending_damage_bonus_ = j.value("pending_damage_bonus", 0);
         ctx.pending_advantage_ = j.value("pending_advantage", 0);
+        ctx.pending_advantage_owner_ = j.value("pending_advantage_owner", -1);
         ctx.force_max_damage_ = j.value("force_max_damage", false);
         ctx.pending_portent_die_ = j.value("pending_portent_die", -1);
         if (auto it = j.find("agent_portent_round_used"); it != j.end()) {

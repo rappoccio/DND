@@ -87,6 +87,19 @@ int CombatEngine::damageAbilityMod(const Weapon& w,
 // dndMod (floor-rounding ability modifier) now lives in combat_internal.hpp so every
 // translation unit shares one correct implementation. See note there.
 
+void CombatEngine::foldHeldAdvantage(const BattleMap& bm, int idx, bool& adv, bool& dis) noexcept
+{
+    const int pa = consumePendingAdvantageFor(idx);
+    if (pa > 0) {
+        adv = true;
+        log_("Advantage: {} uses the Advantage held for their next D20 Test", agentName(bm, idx));
+    } else if (pa < 0) {
+        dis = true;
+        log_("Disadvantage: {} takes the Disadvantage held for their next D20 Test",
+             agentName(bm, idx));
+    }
+}
+
 int CombatEngine::auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept
 {
     return rules::auraSaveBonus(bm, agent_idx);

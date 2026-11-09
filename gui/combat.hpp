@@ -883,9 +883,16 @@ public:
     int rollDisadvantage(int sides, int modifier = 0);// min(2dN) + modifier
 
     // Grant one-shot advantage (adv=true) or disadvantage (adv=false) on the NEXT D20 Test,
-    // via pending_advantage_. General "advantage on your next roll" hook (Tides of Chaos, etc.);
-    // it reaches attacks, saves, and checks because they all bottom out in roll(20)/rollToHit.
-    void grantPendingAdvantage(bool adv = true) noexcept { ctx_.pending_advantage_ = adv ? 1 : -1; }
+    // via pending_advantage_. With no `owner` any d20 takes it (roll(20)/rollToHit). With an
+    // `owner` (Tides of Chaos, Lucky) only that creature's own attack roll, spell attack, save vs
+    // a spell or Concentration save takes it; anyone else's roll leaves it waiting.
+    void grantPendingAdvantage(bool adv = true, int owner = -1) noexcept {
+        ctx_.pending_advantage_       = adv ? 1 : -1;
+        ctx_.pending_advantage_owner_ = owner;
+    }
+    // Folds the owner's held grant into a roll's adv/dis flags and logs it. For the D20 Test
+    // sites that know who is rolling.
+    void foldHeldAdvantage(const BattleMap& bm, int idx, bool& adv, bool& dis) noexcept;
 
     // ── Core attack mechanics ─────────────────────────────────────────────
 
@@ -2138,6 +2145,7 @@ private:
     int consumePendingRollBonus() noexcept { return ctx_.consumePendingRollBonus(); }
     int consumePendingDamageBonus() noexcept { return ctx_.consumePendingDamageBonus(); }
     int consumePendingAdvantage() noexcept { return ctx_.consumePendingAdvantage(); }
+    int consumePendingAdvantageFor(int idx) noexcept { return ctx_.consumePendingAdvantageFor(idx); }
 
     CombatDecider* decider_{nullptr};  // nullptr = built-in defaults (RL/headless)
 

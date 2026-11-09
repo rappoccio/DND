@@ -1524,11 +1524,47 @@ def test_tides_of_chaos_grants_advantage():
     assert test.activate_tides_of_chaos(bm_t, idx_t) is True, "activation should succeed"
     assert test.get_agent_stats(bm_t, idx_t).resources["Tides of Chaos"].current == 0, \
         "Tides of Chaos use should be spent"
-    assert test.roll(20) == max(a, b), "next d20 should be rolled with Advantage"
+    assert test.roll(20) == a, "an anonymous d20 (not the sorcerer's) must not take the Advantage"
 
     # Second activation fails: the use is gone (no recharge yet).
     assert test.activate_tides_of_chaos(bm_t, idx_t) is False, "no use left → activation fails"
     print("✅ test_tides_of_chaos_grants_advantage passed")
+
+
+def _swing(eng, bm, attacker, target):
+    x = rpg.Attack(); x.attacker_idx = attacker; x.target_idx = target; x.weapon_idx = 0
+    eng.begin_attack(bm, x)
+    r = eng.last_attack_result()
+    assert r.valid, "the attack did not resolve"
+    return r
+
+
+def test_tides_of_chaos_advantage_is_the_sorcerers():
+    """The Advantage waits for the sorcerer's own attack: an enemy's attack roll in between does
+    not take it (it did: the grant was anyone's next d20). Used once, then gone."""
+    bm, eng, sorc, tgt = _setup(3)
+    _sorcerer(eng, bm, sorc, 3, subclass=rpg.SorcererSubclass.WildMagic)
+    s = eng.get_agent_stats(bm, sorc); s.hp_max = s.hp_cur = 200
+    eng.set_agent_stats(bm, sorc, s)
+    assert eng.activate_tides_of_chaos(bm, sorc)
+
+    assert not _swing(eng, bm, tgt, sorc).advantage, "the enemy took the sorcerer's Advantage"
+    assert _swing(eng, bm, sorc, tgt).advantage, "the sorcerer's attack had no Advantage"
+    assert not _swing(eng, bm, sorc, tgt).advantage, "the Advantage was not one-shot"
+
+    # A spell attack takes it too, and says so in the log.
+    bm, eng, sorc, tgt = _setup(3)
+    _sorcerer(eng, bm, sorc, 3, subclass=rpg.SorcererSubclass.WildMagic)
+    eng.set_agent_spells(bm, sorc, [_attack_spell()])
+    assert eng.activate_tides_of_chaos(bm, sorc)
+    _swing(eng, bm, tgt, sorc)
+    logger = rpg.MessageLogger()
+    eng.set_logger(logger)
+    a = rpg.SpellAction(); a.caster_idx = sorc; a.spell_idx = 0; a.target_indices = [tgt]
+    eng.execute_spell(bm, a)
+    lines = logger.flush()
+    assert any("Advantage held" in line for line in lines), lines
+    print("✅ test_tides_of_chaos_advantage_is_the_sorcerers passed")
 
 
 def test_tides_of_chaos_gating():
@@ -2661,6 +2697,7 @@ if __name__ == "__main__":
     test_tides_of_chaos_resource_granted()
     test_tides_of_chaos_grants_advantage()
     test_tides_of_chaos_gating()
+    test_tides_of_chaos_advantage_is_the_sorcerers()
     test_surge_forced_and_recharges_tides()
     test_surge_unforced_tides_invariant()
     test_maybe_surge_gating()

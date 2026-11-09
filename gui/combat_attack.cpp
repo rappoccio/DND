@@ -737,6 +737,16 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
     int target_ac = (bm && target_idx >= 0)
                         ? calculateAC(*bm, target_idx)
                         : target.getStats().base_ac;
+    // A held one-shot Advantage the attacker owns (Tides of Chaos, Lucky). rollToHit only sees
+    // stats, so it can take an anonymous grant but not tell whose an owned one is.
+    if (bm) {
+        const auto agents = bm->placedAgents();
+        for (std::size_t i = 0; i < agents.size(); ++i)
+            if (agents[i].agent.get() == &attacker) {
+                foldHeldAdvantage(*bm, static_cast<int>(i), advantage, disadvantage);
+                break;
+            }
+    }
     AttackResult r = rollToHit(w, attacker.getStats(), target_ac, advantage, disadvantage,
                                attacker.getConditions().exhaustion_level,
                                target.getStats().blade_warded);

@@ -262,6 +262,8 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
         log_("Advantage: target is stunned");
     }
 
+    foldHeldAdvantage(bm, action.caster_idx, caster_adv, caster_dis);   // Tides of Chaos, Lucky
+
     int d20_val;
     if (caster_adv && caster_dis) {
         d20_val = roll(20);  // Cancel out
@@ -478,6 +480,7 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
         target_adv = true;
         log_("Magic Resistance: {} has Advantage on the save vs magic", agentName(bm, tgt_idx));
     }
+    if (!auto_fail) foldHeldAdvantage(bm, tgt_idx, target_adv, target_dis);   // Tides, Lucky
 
     int save_d20;
     if (auto_fail) {
@@ -3445,6 +3448,7 @@ ConcentrationSaveResult CombatEngine::concentrationSave(
             has_adv = true;  // War Caster: Advantage on concentration saves
     }
     bool has_dis = cond.has_disadvantage;
+    foldHeldAdvantage(bm, agent_idx, has_adv, has_dis);   // Tides of Chaos, Lucky
     int save_d20;
     if (has_adv && has_dis) {
         save_d20 = roll(20);  // Cancel out
@@ -4530,7 +4534,7 @@ bool CombatEngine::activateTidesOfChaos(BattleMap& bm, int idx) noexcept
     }
 
     tides->current -= 1;
-    grantPendingAdvantage(true);                 // Advantage on the next D20 Test
+    grantPendingAdvantage(true, idx);            // Advantage on idx's next D20 Test, nobody else's
     bm.setAgentStats(idx, stats);
 
     log_("{} uses Tides of Chaos: Advantage on the next D20 Test", agentName(bm, idx));

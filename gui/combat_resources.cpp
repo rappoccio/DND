@@ -1005,7 +1005,7 @@ bool CombatEngine::spendLuckForAdvantage(BattleMap& bm, int idx)
     if (!s.hasFeat("Lucky") || s.luck_points <= 0) return false;
     s.luck_points -= 1;
     bm.setAgentStats(idx, s);
-    grantPendingAdvantage(true);   // consumed by the agent's next d20 roll
+    grantPendingAdvantage(true, idx);   // consumed by idx's own next D20 Test, nobody else's
     log_("{} spends a Luck Point for Advantage ({} remaining)",
          agentName(bm, idx), s.luck_points);
     return true;
