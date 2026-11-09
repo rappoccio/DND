@@ -2,7 +2,7 @@
 
 **Status 2026-11-09: Step 0 frozen (D1–D5 decided by the user). T1 committed 1b44e2c (222/0).
 T2 committed 19caef6 (223/0). T3 committed 4722635 (223/0). T5 + T4 committed 72fb29d
-(223/0). D5 amended + click-a-name (uncommitted). T4b next.**
+(223/0). D5 amended + click-to-activate committed a4779f2. T4b implemented (uncommitted). T6 next.**
 
 ## What the user asked for
 
@@ -146,6 +146,13 @@ types them in. The app is a board plus a score sheet.
   banner sits on the map. Off: today's fogged drawing. Reveal (`_refresh_fog`) is
   unaffected either way.
 - **Tests:** toggling shows/hides a fogged mob and leaves `explored_cells()` unchanged.
+- **Landed 2026-11-09.** The button heads the encounter sheet (both phases), not the Fog
+  row: the setup panel holding Fog is put away once an encounter begins, which is when
+  the toggle is needed. `_fog_active()` gains `not dm_view`, so the overlay, the token
+  gate, hover names and door visibility lift together; `_party_fog_active()` and the
+  reveal are untouched. A red "DM VIEW" bar runs across the top of the map
+  (`_draw_dm_view_banner`). `_end_combat` turns it off, since its button goes with the
+  sheet.
 
 ### T5 — Moving tokens
 - The DM drags any token, with no budget and no opportunity attacks; the drop marks fog

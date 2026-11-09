@@ -566,6 +566,40 @@ def test_hp_display_d1():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_dm_view_toggle():
+    """T4b/D1: the sheet's DM view button lifts the fog on the console (a fogged mob is
+    drawn) and shows monster HP; off again, both are hidden. The explored mask never
+    changes. End Encounter turns it off, since its button goes with the sheet."""
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _board(tmp, tracker=True)
+        skarn = _idx(app, "Skarn")
+        app.show_fog = True
+        app.bm.clear_fog()
+        app.bm.set_explored(app.bm.placed_agents[_idx(app, "Aria")].origin, True)
+        explored = sorted((c.col, c.row) for c in app.bm.explored_cells())
+        check(app._agent_fogged(skarn), "Skarn is not fogged in the table view")
+        check(not app._tracker_hp_shown(skarn), "monster HP shown in the table view")
+        _click(app, "dm_view")
+        check(app.dm_view, "the button did not turn DM view on")
+        check(not app._agent_fogged(skarn), "DM view still hides Skarn")
+        check(not app._fog_active(), "DM view still draws the fog")
+        check(app._tracker_hp_shown(skarn), "DM view hides monster HP")
+        check(app._agent_fogged(skarn, party=True), "DM view lifted the party's fog")
+        app._draw_fog_overlay()
+        app._draw_dm_view_banner()
+        _click(app, "dm_view")
+        check(not app.dm_view and app._agent_fogged(skarn), "off did not restore the fog")
+        check(sorted((c.col, c.row) for c in app.bm.explored_cells()) == explored,
+              "the toggle changed the explored mask")
+        _click(app, "dm_view")
+        app._end_combat(award_xp=False)
+        check(not app.dm_view, "DM view outlived the encounter")
+        print("✅ test_dm_view_toggle")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 class _FakeServer:
     def __init__(self):
         self.stopped = False
@@ -614,6 +648,7 @@ if __name__ == "__main__":
     test_row_click_moves_turn()
     test_hp_zero()
     test_hp_display_d1()
+    test_dm_view_toggle()
     if FAILURES:
         print(f"\n❌ {len(FAILURES)} failure(s)")
         sys.exit(1)

@@ -144,6 +144,7 @@ def draw_tracker_section(app, lx, W, y):
     """Tracker mode's initiative sheet (plans/INITIATIVE_TRACKER_PLAN.md T3), drawn in place
     of the engine's initiative list. Returns the new y.
 
+    The DM view toggle (D1, T4b) heads it in either phase.
     Collecting: one number field per row (a mob group shares one), then Roll for monsters
     and Start. Running: the round, Prev / Next, and the order with ↑/↓ on each row; an
     entry that joins a later round is dimmed. A row shows its HP when D1 allows; a click
@@ -165,6 +166,10 @@ def draw_tracker_section(app, lx, W, y):
         app._tracker_hits.append((rect, kind, arg))
 
     hw = (W - 4) // 2
+    # D1: the table view by default; DM view lifts the fog and shows every number.
+    button("DM view: ON" if app.dm_view else "DM view: OFF", pygame.Rect(lx, y, W, B),
+           "dm_view")
+    y += B + 6
     if t.phase == "collecting":
         text("Initiative: click a row, type its total", lx, y, COL_LABEL)
         y += 18

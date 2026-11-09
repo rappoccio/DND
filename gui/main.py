@@ -1416,6 +1416,22 @@ class App:
             x += w + gap
         return rects
 
+    def _draw_dm_view_banner(self):
+        """A red bar across the top of the map while DM view is on (D1), so the screen the
+        table is looking at is never left showing everything by accident."""
+        if not self.dm_view:
+            return
+        t = self.font_md.render("DM VIEW: fog lifted, every token and HP shown",
+                                True, (255, 255, 255))
+        bar = pygame.Rect(0, 0, self._panel_x(), t.get_height() + 10)
+        pygame.draw.rect(self.screen, COL_HP_LOW, bar)
+        self.screen.blit(t, (bar.centerx - t.get_width() // 2, bar.y + 5))
+
+    def _set_dm_view(self, on: bool):
+        """D1's toggle. A view switch only: the explored mask is never touched."""
+        self.dm_view = bool(on)
+        self._combat_log_add("DM view on." if on else "DM view off: table view.")
+
     def _draw_zoom_control(self):
         labels = {"out": "−", "level": f"{self.view_zoom * 100:.0f}%", "in": "+", "fit": "Fit"}
         for key, rect in self._zoom_control_rects().items():
@@ -5176,6 +5192,8 @@ class App:
                 self._tracker_move(arg, -1 if kind == "up" else 1)
             elif kind == "row":
                 self._tracker_select(arg)
+            elif kind == "dm_view":
+                self._set_dm_view(not self.dm_view)
             elif kind == "hp_close":
                 self._tracker_hp = -1
             elif kind == "hp":
@@ -5558,6 +5576,7 @@ class App:
         self.tracker             = Tracker()       # tracker mode's sheet goes with it
         self._tracker_hits       = []
         self._tracker_hp         = -1
+        self.dm_view             = False           # its toggle lives on the sheet
         self._tracker_edit       = None
         self.initiative_scroll_offset = 0  # reset scroll when combat ends
         self.combat_panel_scroll = 0
@@ -16690,8 +16709,10 @@ class App:
 
         Suppressed while a map-authoring modal (lighting / terrain editor) is open so
         the DM can see the whole map they're editing, and off entirely unless the DM
-        has toggled fog on (btn_toggle_fog)."""
+        has toggled fog on (btn_toggle_fog). DM view (D1, `dm_view`) lifts it too: drawing
+        only, never the reveal, which keys on `show_fog` and the explored mask."""
         return (self.show_fog
+                and not self.dm_view
                 and not self.lighting_editor.active
                 and not self.terrain_editor.active)
 
@@ -21315,6 +21336,7 @@ class App:
             self._draw_agent_hover_name()                   # token name shown only under the pointer
             self._draw_staircase_hover()                    # staircase name/label/destination
             self._draw_room_label_hover()                   # "K10. Dining Hall" under the pointer
+            self._draw_dm_view_banner()                     # D1: "DM VIEW" while it is on
             self._draw_zoom_control()                       # − 100% + Fit, bottom-right of the map
             self._draw_panel()                              # config panel (hosts the Floor-nav block)
             net_offer.ensure(self)                          # D-M5-2: the offer, from the menu just built
