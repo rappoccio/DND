@@ -864,6 +864,11 @@ class App:
 
         # ── Combat widget state ───────────────────────────────────────────
         self.combat_active        = False
+        # Initiative tracker mode (plans/INITIATIVE_TRACKER_PLAN.md): the table rolls real
+        # dice; no player server, no NPC automation, no action rows. Set via
+        # menus.dm.set_tracker_mode, which refuses mid-combat.
+        self.tracker_mode         = False
+        self._tracker_stopped_net = False  # the toggle stopped the player server
         self.combat_paused        = False  # True when paused between turns
         self._seen_armed          = set()  # agent idxs seen holding a droppable weapon this fight
         self.initiative_order     = []    # list[rpg.InitiativeEntry], high→low
@@ -5002,6 +5007,11 @@ class App:
         else:
             self._begin_combat()
 
+    def _begin_encounter(self):
+        """Tracker mode's Begin Encounter (plans/INITIATIVE_TRACKER_PLAN.md T3): the table
+        rolls initiative and the DM types it in. Not built yet; T1 only gates the button."""
+        self._flash_status("Begin Encounter is not built yet (tracker plan T3)")
+
     def _tides_initiative_candidates(self) -> list:
         """PCs who may spend Tides of Chaos on Initiative: a living, deployed L3+ Wild Magic
         Sorcerer with a use left (the engine's `arm_tides_for_initiative` check). NPCs are
@@ -6105,7 +6115,8 @@ class App:
         # NPC automation: if this agent is engine-driven (and actually in initiative, not an On Deck
         # reserve), arm the per-frame driver rather than recursing here. The main loop drives ONE
         # automated turn next frame so the board renders between automated turns.
-        if (self.combat_active and self.bm.is_agent_npc_automated(new_idx)
+        if (self.combat_active and not self.tracker_mode
+                and self.bm.is_agent_npc_automated(new_idx)
                 and not self.bm.is_agent_on_deck(new_idx)):
             self._npc_drive_idx = new_idx
 
@@ -6185,7 +6196,9 @@ class App:
         idx = self._npc_drive_idx
         self._npc_drive_idx = -1
         # The agent may have died / been removed between its turn-start and this frame.
-        if not self.combat_active or idx < 0 or idx >= len(self.bm.placed_agents):
+        # Tracker mode never automates: the table runs every creature.
+        if (not self.combat_active or self.tracker_mode
+                or idx < 0 or idx >= len(self.bm.placed_agents)):
             return
         snapshot = self._npc_anim_snapshot()   # display state BEFORE the turn mutates the world
         status = self.combat.run_npc_turn(self.bm, idx)
@@ -19080,6 +19093,11 @@ class App:
         # so a click is tested against exactly the offer that was drawn — the same
         # coupling the stale-rect guard fakes for the sections M2 has not reached yet.
         self._action_menu = {a.id: a for a in ActionMenu.build(self, self._current_agent_idx())}
+        if self.tracker_mode:
+            # The table rolls everything: only the DM's session tools are on offer, so no
+            # action can be drawn or dispatched.
+            self._action_menu = {k: a for k, a in self._action_menu.items()
+                                 if a.group == "session"}
 
         y = 10 - self.combat_panel_scroll
 
@@ -19161,6 +19179,11 @@ class App:
         pygame.draw.line(self.screen, COL_PANEL_BORDER,
                          (px + 6, y), (px + PANEL_W - 6, y))
         y += section_gap
+
+        if self.tracker_mode:
+            # No action rows in tracker mode: straight from the order to the log.
+            self._draw_combat_panel_log(txt, lx, W, y, px, sh)
+            return
 
         # ── Current combatant info ─────────────────────────────────────────
         cur_idx = self._current_agent_idx()
@@ -19630,7 +19653,10 @@ class App:
                                   lx, y, W, gap)
 
         y += section_gap
+        self._draw_combat_panel_log(txt, lx, W, y, px, sh)
 
+    def _draw_combat_panel_log(self, txt, lx, W, y, px, sh):
+        """The combat panel's tail: the log, then the scroll extent and scrollbar."""
         # ── Combat log ─────────────────────────────────────────────────────
         txt("Combat Log:", lx, y, COL_LABEL)
         y += 16
@@ -19765,6 +19791,8 @@ class App:
 
         # ── Begin Combat button (only when agents are placed) ─────────────
         if self.bm.placed_agents:
+            self.btn_begin_combat.text = ("Begin Encounter" if self.tracker_mode
+                                          else "Begin Combat")
             self.btn_begin_combat.draw(self.screen)
 
         # ── Restore Autosave… (always: after a crash the board may still be empty) ──
@@ -20693,7 +20721,10 @@ class App:
 
                 # Begin Combat
                 if _hit(self.btn_begin_combat):
-                    self._start_combat()
+                    if self.tracker_mode:
+                        self._begin_encounter()
+                    else:
+                        self._start_combat()
 
                 # Restore Autosave… — the active encounter's ring, newest first
                 if _hit(self.btn_restore_autosave):
@@ -20940,7 +20971,8 @@ class App:
         # Startup, in the sense the frozen user procedure means it: the join code and the
         # URL are printed before the first frame, by the one entry point that is a running
         # app rather than a constructed one.
-        net_link.start_player_server(self)
+        if not self.tracker_mode:               # tracker mode has no player screens
+            net_link.start_player_server(self)
         self.confirm_overwrites = True
         running = True
         while running:

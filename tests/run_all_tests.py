@@ -143,6 +143,8 @@ test_scripts = [
     "test_reclaim.py",
     # M7, hardening: the roster lock, the limits, the session log, the DM's Table menu.
     "test_hardening.py",
+    # Initiative tracker mode (plans/INITIATIVE_TRACKER_PLAN.md T1): the flag and the gate.
+    "test_tracker_mode.py",
 
     # The masked page image (MULTIPLAYER_PLAN.md M4, D-M4-1) — `GET /map.png`. Kept with
     # the oracles for the same reason as the view: it is the one place the map crosses the
