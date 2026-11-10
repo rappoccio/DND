@@ -8,6 +8,10 @@ creature it targets (a learned "no target" vector when it has none), the actor's
 the archetype token. Illegal candidates are masked out of the softmax. One extra output,
 Defer, scores handing the turn to the engine's fallback chain (what ``l4-macro`` does when
 Level 4's choice matches no legal candidate).
+
+A value head (Step 7's PPO critic) reads the actor's and the archetype's encoded tokens.
+Behaviour cloning never trains it; it is declared last, so a model's other weights initialise
+exactly as before, and a checkpoint saved without it (Step 6) loads with a fresh value head.
 """
 
 from __future__ import annotations
@@ -43,10 +47,15 @@ class EntityPolicy(nn.Module):
         self.score = nn.Sequential(nn.Linear(4 * d, d), nn.GELU(), nn.Linear(d, d), nn.GELU(),
                                    nn.Linear(d, 1))
         self.defer = _mlp(2 * d, d, 1)
+        self.value_head = _mlp(2 * d, d, 1)           # last: see the module doc
 
     def forward(self, b: dict) -> torch.Tensor:
         """``b`` from ``collate``. Returns (B, M + 1) logits: one per candidate (illegal / padded
         ones at NEG), then the Defer logit (hand the turn to the engine's fallback chain)."""
+        return self.forward_value(b)[0]
+
+    def forward_value(self, b: dict) -> tuple[torch.Tensor, torch.Tensor]:
+        """``forward``'s logits and the critic's (B,) value estimate."""
         B, N, _ = b["tokens"].shape
         dev = b["tokens"].device
         x = torch.cat([(self.arch_emb(b["arch"]) + self.slot_emb.weight[0]).unsqueeze(1),
@@ -65,7 +74,9 @@ class EntityPolicy(nn.Module):
                        self_h.unsqueeze(1).expand(-1, M, -1),
                        arch_h.unsqueeze(1).expand(-1, M, -1)], dim=-1)
         logits = self.score(z).squeeze(-1).masked_fill(~b["legal"], NEG)
-        return torch.cat([logits, self.defer(torch.cat([self_h, arch_h], dim=-1))], dim=1)
+        pooled = torch.cat([self_h, arch_h], dim=-1)
+        return (torch.cat([logits, self.defer(pooled)], dim=1),
+                self.value_head(pooled).squeeze(-1))
 
 
 def collate(samples: list[dict], device="cpu") -> dict:
@@ -103,6 +114,10 @@ def load(path: str) -> tuple[EntityPolicy, dict]:
         raise ValueError(f"{path}: trained on feature version {ck.get('feature_version')}, "
                          f"this code builds version {F.FEATURE_VERSION}")
     m = EntityPolicy(**ck["config"])
-    m.load_state_dict(ck["state_dict"])
+    missing, unexpected = m.load_state_dict(ck["state_dict"], strict=False)
+    # A Step 6 checkpoint has no value head; that is the only part allowed to be missing.
+    missing = [k for k in missing if not k.startswith("value_head.")]
+    if missing or unexpected:
+        raise RuntimeError(f"{path}: state dict mismatch (missing {missing}, unexpected {unexpected})")
     m.eval()
     return m, ck

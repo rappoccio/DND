@@ -16,6 +16,9 @@ party makeup in arena traces and on the Playback HUD. Open: the draw rate and th
 generated-party source (Step 3b). Step 4 (archetypes + fallback chain) committed cdac471
 (229/0). Step 5 (macro-actions, policy seam, entity observation) implemented 2026-11-09
 (230/0), committed 5d42944, awaiting the user's check of the choices flagged in its as-built notes.
+Step 6 code committed 16a0b6b (untrained). Step 7 machinery implemented 2026-11-09 (232/0),
+untrained. **No training until Step 3b's generated parties exist** (user, 2026-11-09): order is
+3b → Step 6 training/gate → Step 7 training.
 
 ---
 
@@ -387,6 +390,32 @@ the 2024 encounter-difficulty table.
   past NPC snapshots, so it doesn't overfit to one opponent.
 - Checkpoints are evaluated on the held-out set each epoch, and Playback traces of
   sampled episodes are saved for watching.
+- **Machinery implemented 2026-11-09 (232/0); nothing trained** (user: train only once Step 3b's
+  generated parties give a reasonable spread of PC setups). As built, in `gui/ml/ppo.py` +
+  `tests/test_ml_ppo.py`:
+  - **Rollouts.** The learning side runs at Level 5 through a `Sampler` that draws from the masked
+    softmax (Defer included), seeded per episode, and records features, choice, log-prob, the
+    critic's value and the reward potential. All of a side's decisions form one team trajectory.
+  - **Reward.** ±1 / 0 terminal, plus `shaping × Δφ` between consecutive team decisions, with φ =
+    own HP share − other side's (`arena.side_hp_frac`). It telescopes to the plan's per-round
+    dealt-minus-taken term; credit goes to the decision before each change. Default shaping 0.2.
+  - **Update.** GAE (γ 0.99 per team decision, λ 0.95), clipped PPO, entropy bonus, KL early stop.
+    `EntityPolicy` gained a value head (declared last, so BC init is unchanged; a Step 6 checkpoint
+    loads with a fresh one). The first `value_warmup` iterations train the value head only.
+  - **SelfPlay.** Sides alternate in blocks of `--block` iterations; at each block start the waiting
+    side's weights join its pool (`pool.json`), which also holds `level4`. Each episode's opponent
+    is drawn from the pool and run greedily. The arena now supports it: `pc_mode SelfPlay` needs a
+    PC policy (`pc_model` / `pc_policy_factory`, `--pc-model`); PCs then run at Level 5 and one
+    dispatcher hands each decision to its side's rank. SelfPlay with no PC policy is refused (it
+    used to stub to Heuristic). New NPC policy name `ppo` (= `bc`: a checkpoint, greedy).
+  - **Eval** every `--eval-every` iterations: greedy, held-out, paired seeds against the same fights
+    with that side at Level 4 (cached once per run as `baseline_eval.json`). Each evaluated
+    checkpoint is kept (`<side>_it<N>.pt`), the best by paired diff is `<side>_best.pt`, and the first
+    `--eval-traces` fights are Playback traces in `traces/it<N>/`.
+  - `policy.load`'s cache is keyed by mtime too, since `*_latest.pt` is rewritten each iteration.
+  - **Not built:** resuming a run (optimizer state isn't saved).
+  - CLI: `python3 gui/ml/ppo.py --init ml_runs/bc.pt --out ml_runs/ppo_h --iterations 200 --jobs 16`;
+    SelfPlay adds `--pc-mode SelfPlay --pc-init …`.
 
 ### Step 8 — Distill to per-archetype trees
 - For each archetype, fit a `DecisionTreeClassifier` (depth-capped, about 8–12) on

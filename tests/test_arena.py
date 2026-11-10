@@ -202,20 +202,42 @@ def test_round_cap_is_a_draw():
 
 def test_policy_and_mode_are_applied_and_checked():
     sc = arena.generate_scenario(4242)
-    o = arena.run_episode(sc, 5, "level1", "SelfPlay")
-    assert o["npc_policy"] == "level1" and o["pc_mode"] == "SelfPlay" and o["pc_policy"] == "level4"
+    o = arena.run_episode(sc, 5, "level1", "Heuristic")
+    assert o["npc_policy"] == "level1" and o["pc_mode"] == "Heuristic" and o["pc_policy"] == "level4"
     ar = arena.arena()
     bm = ar.app.bm
-    for i, pt in enumerate(bm.placed_agents):
-        if i >= len(sc.agents):
-            break                              # a summon placed mid-fight
-        assert bm.is_agent_npc_automated(i)
-        want = 1 if pt.faction == arena.NPC_FACTION else arena.PC_HEURISTIC_LEVEL
-        assert bm.get_agent_npc_automation_difficulty(i) == want, pt.name
-    for bad in (("level9", "Heuristic"), ("level4", "Human")):
+
+    def levels(pc_want):
+        for i, pt in enumerate(bm.placed_agents):
+            if i >= len(sc.agents):
+                break                          # a summon placed mid-fight
+            assert bm.is_agent_npc_automated(i)
+            want = 1 if pt.faction == arena.NPC_FACTION else pc_want
+            assert bm.get_agent_npc_automation_difficulty(i) == want, pt.name
+    levels(arena.PC_HEURISTIC_LEVEL)
+
+    # SelfPlay (Step 7): the PCs run at Level 5 and only PC decisions reach the PC policy.
+    asked = []
+
+    def pc_factory(eng, bm_, seed):
+        def rank(idx, archetype, actions):
+            asked.append(bm_.placed_agents[idx].faction)
+            return [i for i, a in enumerate(actions) if a.legal][:1]
+        return rank
+    o = arena.run_episode(sc, 5, "level1", "SelfPlay", pc_policy_factory=pc_factory)
+    assert o["pc_mode"] == "SelfPlay" and o["pc_policy"] == "policy"
+    assert asked and set(asked) == {arena.PC_FACTION}
+    bm = ar.app.bm
+    levels(arena.PC_POLICY_LEVEL)
+
+    bad_calls = [(("level9", "Heuristic"), {}), (("level4", "Human"), {}),
+                 (("level4", "SelfPlay"), {}),                       # SelfPlay with no PC policy
+                 (("level4", "Heuristic"), {"pc_policy_factory": pc_factory}),
+                 (("ppo", "Heuristic"), {})]                         # a model policy, no model
+    for args, kw in bad_calls:
         try:
-            arena.run_episode(sc, 5, *bad)
-            assert False, f"{bad} accepted"
+            arena.run_episode(sc, 5, *args, **kw)
+            assert False, f"{args} {kw} accepted"
         except ValueError:
             pass
     print("✅ test_policy_and_mode_are_applied_and_checked passed")

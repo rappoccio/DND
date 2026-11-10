@@ -265,6 +265,8 @@ test_scripts = [
     "test_npc_macro_actions.py",
     # Step 6: behaviour cloning of Level 4 (gui/ml/).
     "test_ml_bc.py",
+    # Step 7: PPO machinery (gui/ml/ppo.py); tiny runs only.
+    "test_ml_ppo.py",
     "test_vitality.py",
     "test_resource.py",
     "test_bonus_actions.py",

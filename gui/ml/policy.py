@@ -19,14 +19,21 @@ import torch
 from ml import features as F
 from ml import model as Mdl
 
-_CACHE: dict[str, Mdl.EntityPolicy] = {}
+_CACHE: dict[tuple, Mdl.EntityPolicy] = {}
+_CACHE_MAX = 16
 
 
 def load(path: str) -> Mdl.EntityPolicy:
+    """The checkpoint at ``path``, cached by path *and* modification time: a PPO run rewrites
+    its ``*_latest.pt`` every iteration, and a worker must not keep the old weights."""
     path = os.path.abspath(path)
-    if path not in _CACHE:
-        _CACHE[path] = Mdl.load(path)[0]
-    return _CACHE[path]
+    st = os.stat(path)
+    key = (path, st.st_mtime_ns, st.st_size)
+    if key not in _CACHE:
+        if len(_CACHE) >= _CACHE_MAX:
+            _CACHE.clear()
+        _CACHE[key] = Mdl.load(path)[0]
+    return _CACHE[key]
 
 
 @torch.no_grad()

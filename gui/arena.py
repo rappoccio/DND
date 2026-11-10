@@ -15,7 +15,8 @@ that mirrors the GUI's turn chain (``_proceed_to_new_turn`` → ``_finish_turn_s
 ``_drive_npc_turn_if_pending`` → ``_advance_turn``) with every creature automated:
 
   · both sides are driven by ``run_npc_turn``: the NPCs at ``npc_policy``'s level, the PCs at
-    Level 4 (``pc_mode`` ``Heuristic``; ``SelfPlay`` runs as ``Heuristic`` until Step 7);
+    Level 4 (``pc_mode`` ``Heuristic``) or, in ``SelfPlay``, at Level 5 through a learned PC
+    policy (``pc_model`` / ``pc_policy_factory``, Step 7);
   · a parked reaction window (``AwaitingDecision``) is answered by ``auto_reaction``, the
     side's policy: Level 4 rules take any reaction the engine offers. Episodes never block.
 
@@ -60,10 +61,15 @@ SIDES = {PC_FACTION: "pc", NPC_FACTION: "npc"}
 NPC_POLICIES = {"level1": 1, "level2": 2, "level3": 3, "level4": 4,
                 # Python-driven macro-action policies (Step 5), run at Level 5 through set_npc_policy.
                 "l4-macro": 5, "random-macro": 5,
-                # Step 6: a trained gui/ml checkpoint (``model=`` / ``--model``).
-                "bc": 5}
+                # Step 6: a trained gui/ml checkpoint (``model=`` / ``--model``), run greedily.
+                "bc": 5,
+                # Step 7: a PPO checkpoint; the same as "bc" (greedy) unless a trainer installs its
+                # own sampling factory. The name is what the outcome records.
+                "ppo": 5}
+MODEL_POLICIES = ("bc", "ppo")       # NPC policies that run a gui/ml checkpoint
 PC_MODES = ("Heuristic", "SelfPlay")
 PC_HEURISTIC_LEVEL = 4
+PC_POLICY_LEVEL = 5                   # SelfPlay: PCs ask the installed policy (Step 7)
 ROUND_CAP = 20                        # a fight still going after this many rounds is a draw
 TRACE_SAMPLE = 10                     # D13: arena episodes keep a trace 1 time in 10 (seeded)
 HELDOUT_MOD = 5                       # 1 scenario in 5 is held out (by content hash)
@@ -407,32 +413,51 @@ class Arena:
     def run_episode(self, scenario: Scenario, seed: int, npc_policy: str = "level4",
                     pc_mode: str = "Heuristic", *, trace_path: str | None = None,
                     round_cap: int = ROUND_CAP, model: str | None = None,
-                    policy_factory=None) -> dict:
-        """``model``: the checkpoint the ``bc`` policy runs. ``policy_factory``: a factory
-        (engine, battle map, seed) -> rank installed in place of ``npc_policy``'s own; the
-        name still sets the NPCs' level and is what the outcome records."""
+                    policy_factory=None, pc_model: str | None = None,
+                    pc_policy_factory=None) -> dict:
+        """``model``: the checkpoint a ``bc`` / ``ppo`` policy runs. ``policy_factory``: a
+        factory (engine, battle map, seed) -> rank installed in place of ``npc_policy``'s own;
+        the name still sets the NPCs' level and is what the outcome records.
+
+        ``SelfPlay`` needs a PC policy: ``pc_model`` (a checkpoint, run greedily) or
+        ``pc_policy_factory``. The PCs then run at Level 5 and the engine's one policy slot
+        holds a dispatcher that hands each decision to its own side's rank."""
         if npc_policy not in NPC_POLICIES:
             raise ValueError(f"unknown npc_policy {npc_policy!r} ({sorted(NPC_POLICIES)})")
         if pc_mode not in PC_MODES:
             raise ValueError(f"unknown pc_mode {pc_mode!r} ({PC_MODES})")
-        if npc_policy == "bc" and policy_factory is None:
+        if npc_policy in MODEL_POLICIES and policy_factory is None:
             if not model:
-                raise ValueError("npc_policy 'bc' needs a model checkpoint")
+                raise ValueError(f"npc_policy {npc_policy!r} needs a model checkpoint")
             from ml import policy as ml_policy      # torch is loaded only when a model runs
             policy_factory = ml_policy.factory(model)
+        if pc_mode == "SelfPlay" and pc_policy_factory is None:
+            if not pc_model:
+                raise ValueError("pc_mode 'SelfPlay' needs a PC policy (pc_model or pc_policy_factory)")
+            from ml import policy as ml_policy
+            pc_policy_factory = ml_policy.factory(pc_model)
+        if pc_mode == "Heuristic" and (pc_model or pc_policy_factory is not None):
+            raise ValueError("a PC policy needs pc_mode 'SelfPlay'")
         t0 = time.perf_counter()
         bm, eng = self.load_board(scenario.map, scenario.terrain, seed)
+        npc_rank = None
         if policy_factory is not None:
-            eng.set_npc_policy(policy_factory(eng, bm, seed))
+            npc_rank = policy_factory(eng, bm, seed)
         elif npc_policy in MACRO_POLICIES:
-            eng.set_npc_policy(MACRO_POLICIES[npc_policy](eng, bm, seed))
+            npc_rank = MACRO_POLICIES[npc_policy](eng, bm, seed)
+        pc_rank = pc_policy_factory(eng, bm, seed) if pc_policy_factory is not None else None
+        if pc_rank is not None:
+            eng.set_npc_policy(_side_dispatch(bm, npc_rank, pc_rank))
+        elif npc_rank is not None:
+            eng.set_npc_policy(npc_rank)
         agents = copy.deepcopy(scenario.agents)
         npc_level = NPC_POLICIES[npc_policy]
+        pc_level = PC_POLICY_LEVEL if pc_rank is not None else PC_HEURISTIC_LEVEL
         for a in agents:
             pc_side = int(a.get("faction", 0)) == PC_FACTION
             a["is_npc_automated"] = True
             a["on_deck"] = False
-            a["npc_automation_difficulty_level"] = PC_HEURISTIC_LEVEL if pc_side else npc_level
+            a["npc_automation_difficulty_level"] = pc_level if pc_side else npc_level
         self.load_agents(agents)
         t_loaded = time.perf_counter()
         fight = _Fight(self.app, eng, bm, round_cap)
@@ -450,8 +475,8 @@ class Arena:
         outcome = fight.run()
         outcome.update({"scenario_hash": scenario.hash, "split": scenario.split,
                         "seed": int(seed), "npc_policy": npc_policy, "pc_mode": pc_mode,
-                        # SelfPlay stubs to Heuristic until Step 7 trains a PC policy.
-                        "pc_policy": "level4",
+                        "pc_policy": ("level4" if pc_rank is None else
+                                      os.path.basename(pc_model) if pc_model else "policy"),
                         "load_s": round(t_loaded - t0, 4),
                         "fight_s": round(time.perf_counter() - t_loaded, 4)})
         if trace is not None:
@@ -492,6 +517,16 @@ def random_macro_policy(eng, bm, seed: int):
 
 
 MACRO_POLICIES = {"l4-macro": l4_macro_policy, "random-macro": random_macro_policy}
+
+
+def _side_dispatch(bm, npc_rank, pc_rank):
+    """One rank for the engine's single policy slot: each decision goes to the acting
+    creature's side (a summon is on its summoner's). A side with no rank of its own runs at
+    Level 4 and is never asked, but answers ``[]`` (the fallback chain) if it is."""
+    def rank(idx, archetype, actions):
+        r = pc_rank if bm.placed_agents[idx].faction == PC_FACTION else npc_rank
+        return r(idx, archetype, actions) if r is not None else []
+    return rank
 
 
 def _unique_names(agents: list) -> None:
@@ -551,6 +586,17 @@ def _vitality_target(bm, src: int) -> int:
 
 # ── The turn loop ───────────────────────────────────────────────────────────
 
+def side_hp_frac(bm, faction: int) -> float:
+    """A side's remaining HP as a share of its maximum, over every creature in play (the
+    fallen count at 0). Step 7's reward shaping reads it at each decision."""
+    cur = tot = 0
+    for pt in bm.placed_agents:
+        if pt.faction == faction and not pt.removed_from_play:
+            cur += max(0, pt.stats.hp_cur)
+            tot += max(1, pt.stats.hp_max)
+    return cur / tot if tot else 0.0
+
+
 class _Fight:
     """The GUI's turn chain with every creature automated and no human anywhere."""
 
@@ -587,12 +633,7 @@ class _Fight:
         return out
 
     def _hp_frac(self, faction: int) -> float:
-        cur = tot = 0
-        for pt in self.bm.placed_agents:
-            if pt.faction == faction and not pt.removed_from_play:
-                cur += max(0, pt.stats.hp_cur)
-                tot += max(1, pt.stats.hp_max)
-        return round(cur / tot, 4) if tot else 0.0
+        return round(side_hp_frac(self.bm, faction), 4)
 
     def _resolve_parks(self, status) -> bool:
         """Answer parked reaction windows until the flow completes. False: it never did."""
@@ -784,7 +825,8 @@ def _episode_job(job: dict) -> dict:
         trace_path = os.path.join(job["trace_dir"], f"ep{job['k']:06d}_{sc.hash[:10]}.jsonl")
     t0 = time.perf_counter()
     out = run_episode(sc, seed, job["npc_policy"], job["pc_mode"], trace_path=trace_path,
-                      round_cap=job["round_cap"], model=job.get("model"))
+                      round_cap=job["round_cap"], model=job.get("model"),
+                      pc_model=job.get("pc_model"))
     out["episode"] = job["k"]
     out["wall_s"] = round(time.perf_counter() - t0, 4)
     out["scenario"] = sc.meta
@@ -845,11 +887,13 @@ def main(argv=None) -> int:
         p.add_argument("--trace-dir", default=None,
                        help="keep traces here for a seeded 1-in-10 sample of episodes")
         p.add_argument("--trace-all", action="store_true", help="trace every episode")
-        p.add_argument("--model", default=None, help="checkpoint for --npc-policy bc")
+        p.add_argument("--model", default=None, help="checkpoint for --npc-policy bc / ppo")
+        p.add_argument("--pc-model", default=None, help="PC checkpoint for --pc-mode SelfPlay")
     a = ap.parse_args(argv)
     # Paths are the caller's, relative to where they ran; the Arena then works from gui/.
     a.out = os.path.abspath(a.out) if a.out else None
     a.model = os.path.abspath(a.model) if a.model else None
+    a.pc_model = os.path.abspath(a.pc_model) if a.pc_model else None
     a.trace_dir = os.path.abspath(a.trace_dir) if a.trace_dir else None
     a.map = [os.path.abspath(m) for m in a.map] if a.map else None
     a.party = [os.path.abspath(p) for p in a.party] if a.party else None
@@ -865,7 +909,7 @@ def main(argv=None) -> int:
     jobs = [{"base_seed": a.seed, "k": k, "split": a.split, "maps": maps,
              "parties": a.party, "npc_policy": a.npc_policy, "pc_mode": a.pc_mode,
              "round_cap": a.round_cap, "trace_dir": a.trace_dir, "trace_all": a.trace_all,
-             "model": a.model}
+             "model": a.model, "pc_model": a.pc_model}
             for k in range(a.episodes)]
     out_f = None
     if a.out:
