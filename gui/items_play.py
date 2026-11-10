@@ -16,7 +16,8 @@ import copy
 
 import rpg_battle_map as rpg
 import placed_items as pi
-from helpers import edge_key
+from helpers import (edge_key, is_blank_scroll, make_spell_scroll, parse_scroll_dc,
+                     scroll_spell_names, SCROLL_DC_TABLE)
 from run_state import door_key
 
 ARMOR_SLOTS = ("Helmet", "Chest", "Leggings", "Boots", "Gloves", "Cloak")
@@ -561,6 +562,36 @@ def show_items_menu(app, anchor=None):
         (f"Keys ({len(all_design_keys(app))})…", lambda: show_keys_list(app, anchor)),
     ]
     app._ask_dm("action", "Items", rows, anchor=anchor)
+
+
+def finish_spell_scroll(app, record, done):
+    """SS2 (SPELL_SCROLLS_PLAN.md): the item picker's finish hook. A blank catalog Spell Scroll
+    asks for its spell, then its save DC and attack (prefilled from the DMG table, S2), and
+    ``done`` gets the made scroll. Anything else passes straight through. Esc at either step
+    adds nothing."""
+    if not is_blank_scroll(record):
+        done(record)
+        return
+    names = set(scroll_spell_names(app.all_spells))
+
+    def _spell(sp):
+        if not isinstance(sp, dict) or sp.get("name") not in names:
+            return
+        level = max(0, min(9, int(sp.get("level", 0) or 0)))
+        dc, atk = SCROLL_DC_TABLE[level]
+
+        def _dc(text):
+            parsed = parse_scroll_dc(text)
+            if parsed is None:
+                app._flash_status(f"Not a DC: {text!r} — want e.g. \"15\" or \"15 +7\".")
+                return
+            done(make_spell_scroll(record, sp, *parsed))
+
+        app.name_prompt.show(f"{dc} +{atk}", _dc,
+                             title=f"Spell Scroll ({sp['name']}): save DC and attack bonus")
+
+    app.spell_selection_dialog.show(_spell, title="Spell Scroll: choose its spell",
+                                    allow_names=names)
 
 
 def _catalog_dialog(app, kind):

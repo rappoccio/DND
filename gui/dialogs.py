@@ -4574,6 +4574,17 @@ class ItemSelectionDialog:
         self.search_text = ""
         self._search_caret = None
         self._frames_since_show = 0
+        # finish(record, done): a chance to complete a pick before it is delivered — a blank
+        # Spell Scroll asks for its spell and DC (SPELL_SCROLLS_PLAN.md SS2). None ⇒ deliver as is.
+        self.finish = None
+
+    def _deliver(self, item):
+        if not self.selected_callback:
+            return
+        if self.finish is not None:
+            self.finish(item, self.selected_callback)
+        else:
+            self.selected_callback(item)
 
     def show(self, callback):
         self.visible = True
@@ -4633,8 +4644,7 @@ class ItemSelectionDialog:
                 return True
             elif event.key == pygame.K_RETURN:
                 if len(self.filtered_items) == 1:
-                    if self.selected_callback:
-                        self.selected_callback(self.filtered_items[0])
+                    self._deliver(self.filtered_items[0])
                     self.dismiss()
                     return True
             else:
@@ -4661,8 +4671,7 @@ class ItemSelectionDialog:
                         item_rect = pygame.Rect(self.rect.x + self.PAD, item_y,
                                                 self.rect.w - self.PAD * 2, self.ITEM_H)
                         if item_rect.collidepoint(*event.pos):
-                            if self.selected_callback:
-                                self.selected_callback(item)
+                            self._deliver(item)
                             self.dismiss()
                             return True
             else:

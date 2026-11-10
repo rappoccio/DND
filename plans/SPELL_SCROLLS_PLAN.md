@@ -40,12 +40,14 @@ Changes to this set need a dated amendment with a reason, agreed by the user.
   rows' spell tags are shifted down in C++.
 - **A2 (schema):** the made scroll's own `name` is `Spell Scroll (<spell>)` (an `Item` has no
   `label`); `type: "Scroll"` is what marks it. A blank catalog scroll (no spell) is never discarded.
+- **A3 (S2, the DM's fields):** one text prompt, `"15 +7"`, rather than two fields. A bare `"17"`
+  gives attack 17 − 8 = +9, which is how the DMG table pairs them on every row.
 
 ## Steps (after sign-off)
 
 | # | Step | Status |
 |---|------|--------|
 | SS1 | **Model + engine.** `ItemType::Scroll`; binding; catalog entry; the cost path deletes a spent scroll's row; class-list gate if Q1 says so. Tests: cast uses the scroll's DC and no slot, the row is gone afterwards, save → load keeps an unused scroll, the gate refuses or allows as Q1 decides. | done 2026-11-10 (uncommitted): `Item::Scroll`; `Stats::reads_any_scroll` (bound, saved, snapshot); `discardSpentScrolls` (A1); use_item refuses a scroll; long rest skips scrolls. `helpers`: `SCROLL_DC_TABLE`, `spell_classes` (spells_raw.json + 17 non-SRD extras), `scroll_spell_names`, `can_read_scroll` (EK/AT read Wizard), `make_spell_scroll`, `is_blank_scroll`; the S5 gate in `item_spell_entries`. `items.json` "Spell Scroll". `test_spell_scrolls.py` (8); suite 240/0 |
-| SS2 | **Making a scroll (DM).** A spell picker + DC/attack fields (prefilled from S2) wherever Spell Scroll is picked from the catalog: Items dialog, chest contents, Place item. | |
+| SS2 | **Making a scroll (DM).** A spell picker + DC/attack fields (prefilled from S2) wherever Spell Scroll is picked from the catalog: Items dialog, chest contents, Place item. | done 2026-11-10 (uncommitted): `ItemSelectionDialog.finish` hook (every caller of the shared item picker: Items dialog, chest contents, Place item) → `items_play.finish_spell_scroll`: spell picker limited to `scroll_spell_names`, then one prompt "DC +attack" prefilled from the table (A3); `helpers.parse_scroll_dc`. Esc at either step adds nothing. `test_spell_scrolls_gui.py` (5); suite 241/0 |
 | SS3 | **Play + NPCs.** Menu label, side panel, player sheet (reuse the E4 helpers); an automated caster carrying a scroll uses it through the existing chooser. Tests. | |
 | SS4 | **Live check** by the DM, then `known_limitations.md`. | |

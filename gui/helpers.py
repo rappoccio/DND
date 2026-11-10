@@ -1478,6 +1478,23 @@ def make_spell_scroll(template: dict, spell_record: dict, dc: int | None = None,
     return rec
 
 
+def parse_scroll_dc(text: str):
+    """The DM's "DC [attack]" answer for a scroll: "15" → (15, 7) (the DMG table always pairs
+    attack = DC − 8), "15 +6" / "15/6" / "DC 15 +6" → (15, 6). None if it isn't that shape."""
+    t = text.strip().upper()
+    if t.startswith("DC"):
+        t = t[2:]
+    try:
+        nums = [int(p) for p in t.replace("/", " ").replace(",", " ").replace("+", " ").split()]
+    except ValueError:
+        return None
+    if len(nums) == 1:
+        nums.append(nums[0] - 8)
+    if len(nums) != 2 or not (1 <= nums[0] <= 30) or not (0 <= nums[1] <= 20):
+        return None
+    return nums[0], nums[1]
+
+
 def is_blank_scroll(d: dict) -> bool:
     """The bare catalog "Spell Scroll" (no spell chosen yet) — SS2 asks for one before it lands."""
     return d.get("type") == "Scroll" and not d.get("item_spell_groups")

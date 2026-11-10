@@ -612,6 +612,7 @@ class App:
         self.armor_selection_dialog = ArmorSelectionDialog(list(self.armor_name_to_dict.values()), self.font_sm, self.font_md)
         self.weapon_selection_dialog = WeaponSelectionDialog(list(self.weapon_name_to_dict.values()), self.font_sm, self.font_md)
         self.item_selection_dialog = ItemSelectionDialog(self.all_items, self.font_sm, self.font_md)
+        self.item_selection_dialog.finish = lambda rec, done: items_play.finish_spell_scroll(self, rec, done)
         self.armor_dialog = ArmorDialog(self.font_sm, self.font_md)
         self.weapons_dialog = WeaponsDialog(self.font_sm, self.font_md)
         self.items_dialog = ItemsDialog(self.font_sm, self.font_md)
