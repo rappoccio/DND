@@ -96,10 +96,16 @@ def outcome_text(trace: sim_trace.Trace) -> str:
     if f is None:
         return "cut short (no footer)"
     winner = f.get("winner")
-    who = f"faction {winner} won" if winner is not None else "no winner"
-    rnd = f.get("rounds")              # the recorder's round_num: zero-based, as on turns
-    return f"{f.get('reason', '?')} · {who} · ended in round " + (
-        str(int(rnd) + 1) if isinstance(rnd, int) else "?")
+    rnd = f.get("rounds")
+    if trace.header.get("arena"):
+        # gui/arena.py: the winner is a side, and rounds counts the rounds played.
+        who = {"pc": "PCs won", "npc": "NPCs won"}.get(winner, "no winner")
+        last = str(int(rnd)) if isinstance(rnd, int) else "?"
+    else:
+        # The GUI recorder: a faction, and round_num, zero-based as on turns.
+        who = f"faction {winner} won" if winner is not None else "no winner"
+        last = str(int(rnd) + 1) if isinstance(rnd, int) else "?"
+    return f"{f.get('reason', '?')} · {who} · ended in round {last}"
 
 
 # ── The mode ─────────────────────────────────────────────────────────────────
@@ -432,6 +438,32 @@ class Playback:
                 f" · NPC policy {h.get('npc_policy', '?')} · PCs {h.get('pc_mode', '?')}"
                 f"{done}")
 
+    def party_lines(self) -> list[tuple[str, str]]:
+        """The party box under the HUD line: a title, then one ``(text, state)`` per PC, where
+        state is ``actor`` (its turn), ``down`` (0 HP on the board) or ``up``. Empty when the
+        trace has no PCs."""
+        party = sim_trace.trace_party(self.trace.header)
+        if not party:
+            return []
+        sc = self.trace.header.get("scenario") or {}
+        title = "Party"
+        if sc:
+            title += (f" · L{sc.get('party_level', '?')} · {sc.get('difficulty', '?')}"
+                      f" vs {', '.join(sc.get('mobs', []))}")
+        t = self.current_turn()
+        agents = self.app.bm.placed_agents
+        by_name = {pt.name: i for i, pt in enumerate(agents)}
+        lines = [(title, "title")]
+        for p in party:
+            i = by_name.get(p["name"], -1)
+            state = "up"
+            if t is not None and i == t.actor:
+                state = "actor"
+            elif i >= 0 and (agents[i].stats.hp_cur <= 0 or agents[i].conditions.dead):
+                state = "down"
+            lines.append((f"{p['name']} — {p['class']}", state))
+        return lines
+
     def draw_map_layer(self):
         """The acting token's ring and the HUD line, over the board."""
         app = self.app
@@ -449,6 +481,20 @@ class Playback:
         bg.fill((0, 0, 0, 180))
         app.screen.blit(bg, (8, 8))
         app.screen.blit(label, (16, 12))
+        # The party box, under the HUD line.
+        colors = {"title": COL_LABEL, "up": COL_TEXT, "actor": COL_ACTOR, "down": (110, 110, 120)}
+        rows = [app.font_sm.render(txt + ("  (down)" if st == "down" else ""), True, colors[st])
+                for txt, st in self.party_lines()]
+        if rows:
+            top = 8 + bg.get_height() + 6
+            box = pygame.Surface((max(r.get_width() for r in rows) + 16,
+                                  sum(r.get_height() + 2 for r in rows) + 8), pygame.SRCALPHA)
+            box.fill((0, 0, 0, 160))
+            app.screen.blit(box, (8, top))
+            y = top + 4
+            for r in rows:
+                app.screen.blit(r, (16, y))
+                y += r.get_height() + 2
 
     def draw_panel(self):
         app = self.app

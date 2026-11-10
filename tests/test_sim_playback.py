@@ -139,6 +139,10 @@ def test_playback_of_a_recorded_fight():
         assert len(app.bm.placed_agents) == len(playback.roster(tr))
         assert app.roster.controlled_by("dm") == dm_owned, "seats followed the trace's board"
         _expect(app, turns[0].snapshot)
+        # A GUI trace has no `party` field: the HUD's party box derives it from the agents.
+        names = [txt.split(" — ")[0] for txt, st in pb.party_lines() if st != "title"]
+        assert {"Aria", "Brannor"} <= set(names), names
+        assert not {"Gnasher", "Skarn"} & set(names), names
         imp = _idx(app, "Imp")
         assert app.bm.placed_agents[imp].removed_from_play, "a tombstone in the trace shows"
 

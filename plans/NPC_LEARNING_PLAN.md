@@ -10,8 +10,10 @@ NN training). Levels 1–4 and the "clamp to Level 4 until trained" behaviour st
 
 Status: **Step 0 decisions D1–D13 FROZEN 2026-11-09**, including the user-checked role table.
 Step 0 Dockerfile edit made; it awaits the user's image rebuild + verification.
-Step 1 (trace recorder) committed 4fcba0b; Step 2 (Playback) implemented 2026-11-09 (227/0),
-awaiting the user's live check; Step 3 (arena) next.
+Step 1 (trace recorder) committed 4fcba0b; Step 2 (Playback) committed a386c7a (227/0),
+live-checked by the user 2026-11-09; Step 3 (arena) committed 2026-11-09 (228/0), with the
+party makeup in arena traces and on the Playback HUD. Open: the draw rate and the
+generated-party source (Step 3b).
 
 ---
 
@@ -195,6 +197,49 @@ the 2024 encounter-difficulty table.
   parallelism. That throughput sizes Steps 6–7.
 - A round cap ends the episode as a draw.
 - Test: a fixed scenario + seed gives an identical outcome twice.
+- **Implemented 2026-11-09 (228/0).** As built, in `gui/arena.py` + `tests/test_arena.py`:
+  - **Board loading.** A headless `App` is used **only as the loader** (`_load_map_png`,
+    `_load_terrain`, `_load_agents`, so spells, class features, armor and NPC spell groups
+    load exactly as in the GUI). It is built on a temp copy of a tiny map, so nothing is
+    written beside `maps/`. Each episode gets a bare `CombatEngine(seed)`.
+  - **Fight loop.** The fight is an engine-only loop that mirrors the GUI's turn chain.
+    Both sides run through `run_npc_turn`: NPCs at the policy's level, PCs at Level 4.
+    Reactions are answered by `auto_reaction`, which takes the first option the engine
+    offers; Vitality of the Tree targets the most-wounded ally within 10 ft.
+  - **Not modelled** (human-driven in the GUI today): legendary actions, Keeper of Souls,
+    Tides of Chaos on initiative, and Thief's Reflexes.
+  - **Scenarios.** A party is drawn from a saved party source: an agents file, a single-PC
+    file, or a campaign `pcs/` directory. The default is the tracked
+    `maps/TestDNDMap_agents.json` party. Mobs are drawn from the bestiary by the SRD 5.2 XP
+    budget (party level × Low/Moderate/High × party size) in a melee/ranged/caster mix.
+    The groups are placed 6–12 cells' walk apart in the map's largest open region.
+  - **Split.** Held out = sha256 of (map, terrain, each creature's name/side/cell) mod 5 == 0.
+  - **Outcome.** Each episode reports the winner (`pc`/`npc`/None) and the reason
+    (`victory`/`round_cap`, plus `stuck`/`no_initiative` as guards), along with rounds,
+    turns, reactions, creatures standing, HP fraction per side, and timings.
+  - **Round cap and traces.** The round cap defaults to 20. Traces are kept for a seeded
+    1-in-10 sample (`--trace-dir`), or for every episode with `--trace-all`, and an arena
+    trace opens in Playback.
+  - **CLI.** `python3 gui/arena.py run|bench --episodes N --jobs N --split train|heldout
+    --npc-policy levelK --pc-mode Heuristic|SelfPlay --out x.jsonl --trace-dir d/`.
+  - **Benchmark** (container, 18 cores): one core runs ~0.04 s/episode, about 86k
+    episodes/hour and ~12,900 turns/s inside fights. `--jobs 4` runs ~122k episodes/hour.
+    About 80% of an episode is board loading (map analysis), the obvious thing to cache if
+    Step 7 needs more.
+  - **Engine fix found by the arena.** An automated *PC* cast leveled spells with
+    `slot_level = 0`, which charged the spell's own level. With no slot at that level, the
+    cast was free: a Warlock with only 5th-level pact slots cast Command 18 times in one
+    fight. Fixed in `combat_turn.cpp` (`npcCastSlotLevel`): an automated PC now pays the
+    lowest slot at or above the spell's level, and the teleport-to-reach path pays it too.
+    NPCs are unchanged, so the determinism golden is unchanged.
+  - **Open, for the user:** about 35% of episodes are draws at the 20-round cap. They are
+    slow grinds, not stalemates: in 54 of 55 sampled draws the mobs had lost more than 10%
+    of their HP. Ranged (kiting) mixes are over-represented, and the one tracked party is
+    weak (its Rogue is at −2 to hit). Raise the cap, add parties, or score draws by HP
+    before Step 9's win-rate gate.
+  - **Not yet built:** D12's *generated* parties (the role-table generator: build templates
+    per class/subclass/role across four tiers). It plugs in as another party source; it
+    is proposed as Step 3b.
 
 ### Step 4 — Archetypes + fallbacks
 - `enum class NpcArchetype { Melee, Ranged, Blaster, Controller, HealerSupport }`, plus

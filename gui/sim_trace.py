@@ -93,6 +93,52 @@ def snapshot_from_list(items: list | None) -> dict | None:
             for s in items}
 
 
+# ── The party makeup (header ``party``; Playback's party box) ──────────────────
+
+PC_FACTION = 2
+
+
+def char_level(t: dict) -> int:
+    """A saved agent's character level, 1–20."""
+    lv = t.get("agent_char_level")
+    if lv is None:
+        lv = sum(int(v) for v in (t.get("agent_class_levels") or {}).values()) or 1
+    return max(1, min(20, int(lv)))
+
+
+def class_text(t: dict) -> str:
+    """``Warlock (Fiend) 9``, or each class of a multiclass: ``Fighter 5 / Wizard (Evoker) 4``.
+    A creature with no class is ``-``."""
+    def one(cls, lv):
+        sub = t.get(f"agent_{cls.lower()}_subclass")
+        sub = f" ({sub})" if sub and sub not in ("NONE", "None") else ""
+        return f"{cls}{sub} {lv}"
+    levels = t.get("agent_class_levels") or {}
+    if isinstance(levels, dict) and len(levels) > 1:
+        return " / ".join(one(c, lv) for c, lv in levels.items())
+    cls = t.get("agent_class") or "None"
+    return "-" if cls == "None" else one(cls, char_level(t))
+
+
+def _is_npc(t: dict) -> bool:
+    sd = t.get("stats") or {}
+    return bool(sd["is_npc"] if "is_npc" in sd else t.get("is_npc", False))
+
+
+def party_makeup(agents: list) -> list[dict]:
+    """The PCs (PC side, not NPC allies) as name, class text and level."""
+    return [{"name": a["name"], "class": class_text(a), "level": char_level(a)}
+            for a in agents or []
+            if int(a.get("faction", 0)) == PC_FACTION and not _is_npc(a)]
+
+
+def trace_party(header: dict) -> list[dict]:
+    """The header's ``party`` (arena traces), else one derived from its agents (GUI traces)."""
+    if header.get("party") is not None:
+        return list(header["party"])
+    return party_makeup((header.get("agents") or {}).get("agents"))
+
+
 # ── Writing ─────────────────────────────────────────────────────────────────
 
 class TraceWriter:

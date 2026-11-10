@@ -258,6 +258,8 @@ test_scripts = [
     "test_sim_trace.py",
     # NPC_LEARNING_PLAN.md Step 2: GUI Playback of a trace (gui/playback.py).
     "test_sim_playback.py",
+    # NPC_LEARNING_PLAN.md Step 3: the headless arena (gui/arena.py).
+    "test_arena.py",
     "test_vitality.py",
     "test_resource.py",
     "test_bonus_actions.py",

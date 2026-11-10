@@ -1375,6 +1375,23 @@ static std::string npcLowerName(std::string s) noexcept
     return s;
 }
 
+// The slot an automated cast spends. An NPC (is_npc) pays N/day uses and a class feature its named
+// resource, so both pass 0 as before. A PC the driver automates pays a real slot: the lowest one at or
+// above the spell's level, which is what made it castable (castableSpells). Passing 0 there let
+// executeSpell charge the spell's own level, a no-op when that level has no slot left: a Warlock with
+// only 5th-level pact slots cast Command every round for free (NPC_LEARNING_PLAN.md Step 3 arena).
+static int npcCastSlotLevel(const BattleMap& bm, int agent_idx, int spell_idx) noexcept
+{
+    const auto spells = bm.getAgentSpells(agent_idx);
+    if (spell_idx < 0 || static_cast<std::size_t>(spell_idx) >= spells.size()) return 0;
+    const Spell& sp = spells[static_cast<std::size_t>(spell_idx)];
+    const Agent::Stats st = bm.getAgentStats(agent_idx);
+    if (st.is_npc || sp.level <= 0 || !sp.resource_name.empty()) return 0;
+    for (int lvl = sp.level; lvl <= 9; ++lvl)
+        if (st.spell_slots_remaining[static_cast<std::size_t>(lvl - 1)] > 0) return lvl;
+    return 0;
+}
+
 NpcAutomationStrategy CombatEngine::resolveStrategy(const BattleMap& bm, int agent_idx) const noexcept
 {
     // The difficulty-level → role → strategy override (NPC_AUTOMATION_PLAN.md "Difficulty is an
@@ -2339,7 +2356,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                     SpellAction cast;
                     cast.caster_idx     = agent_idx;
                     cast.spell_idx      = st.conceal_spell_idx;
-                    cast.slot_level     = 0;               // NPC mode: spends an N/day use, not a player slot
+                    cast.slot_level     = npcCastSlotLevel(bm, agent_idx, st.conceal_spell_idx);
                     cast.target_indices = { agent_idx };   // self-buff: apply Invisible to the caster
                     log_("NPC {} bonus-casts {} to vanish", agentName(bm, agent_idx),
                          bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(st.conceal_spell_idx)].name);
@@ -2360,7 +2377,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                 SpellAction cast;
                 cast.caster_idx     = agent_idx;
                 cast.spell_idx      = st.conceal_spell_idx;
-                cast.slot_level     = 0;          // NPC mode: spends an N/day use, not a player slot
+                cast.slot_level     = npcCastSlotLevel(bm, agent_idx, st.conceal_spell_idx);
                 cast.target_indices = { agent_idx };   // self-buff: apply Invisible to the caster
                 log_("NPC {} casts {} to vanish", agentName(bm, agent_idx),
                      bm.getAgentSpells(agent_idx)[static_cast<std::size_t>(st.conceal_spell_idx)].name);
@@ -2628,9 +2645,14 @@ bool CombatEngine::npcTeleportEscape(BattleMap& bm, int agent_idx) noexcept
     //    Forcecaged/boxed NPC teleportAgent rolls the CHA save; on a failure the attempt is still spent
     //    (RAW) — we end the turn either way and never re-try other cells (mirrors placeTeleportedAgents).
     {
+        const int slot = npcCastSlotLevel(bm, agent_idx, spellIdx);   // an automated PC pays a slot
         PlacedAgent& pam = bm.placedAgentMut(agent_idx);
         Spell& sm = pam.spells[static_cast<std::size_t>(spellIdx)];
         Agent::Stats& stats = pam.agent->getStats();
+        if (slot > 0) {
+            int& left = stats.spell_slots_remaining[static_cast<std::size_t>(slot - 1)];
+            left = std::max(0, left - 1);
+        }
         if (sm.level > 0) stats.markLeveledSpellCast(sm.level);
         if (sm.uses_max > 0) sm.uses_remaining = std::max(0, sm.uses_remaining - 1);
         if (sm.recharge_min > 0) sm.expended = true;
@@ -2756,7 +2778,7 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
     SpellAction action;
     action.caster_idx     = agent_idx;
     action.spell_idx      = plan.spell_idx;
-    action.slot_level     = 0;               // NPC mode: spends an N/day use or a cantrip, not a player slot
+    action.slot_level     = npcCastSlotLevel(bm, agent_idx, plan.spell_idx);
     action.aoe_col        = plan.aim.col;
     action.aoe_row        = plan.aim.row;
     action.target_indices = {};              // engine computes the area's targets (resolveAoeTargets)
@@ -3304,7 +3326,7 @@ FlowStatus CombatEngine::runCasterTurn(BattleMap& bm, int agent_idx, CasterInten
     SpellAction action;
     action.caster_idx     = agent_idx;
     action.spell_idx      = plan.spell_idx;
-    action.slot_level     = 0;               // NPC mode: spends an N/day use or a cantrip, not a player slot
+    action.slot_level     = npcCastSlotLevel(bm, agent_idx, plan.spell_idx);
     action.aoe_col        = plan.aim.col;
     action.aoe_row        = plan.aim.row;
     action.target_indices = plan.target_indices;   // explicit targets (Single/Multiple/Heal/Support)
