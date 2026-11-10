@@ -2202,10 +2202,10 @@ class StatsDialog:
         subclasses = {
             "Barbarian": ["NONE", "Berserker", "WildHeart", "WorldTree", "Zealot"],
             "Fighter": ["NONE", "Champion", "BattleMaster", "PsiWarrior", "EldritchKnight"],
-            "Druid": ["NONE", "CircleOfMoon", "CircleOfLand", "CircleOfSea", "CircleOfStars", "CircleOfSpores", "CircleOfWildfire"],
+            "Druid": ["NONE", "CircleOfMoon", "CircleOfLand", "CircleOfSea", "CircleOfStars"],
             "Monk": ["NONE", "WarriorOfTheOpenHand", "WarriorOfMercy", "WarriorOfShadow", "WarriorOfFourElements"],
-            "Paladin": ["NONE", "OathOfDevotion", "OathOftheMountedWarrior", "OathOfRedemption", "OathOfVengeance", "OathOfAncients", "OathOfGlory"],
-            "Wizard": ["NONE", "Abjurer", "Diviner", "Evoker", "Illusionist"],
+            "Paladin": ["NONE", "OathOfDevotion", "OathOfVengeance", "OathOfAncients", "OathOfGlory"],
+            "Wizard": ["NONE", "Abjurer", "Diviner", "Evoker"],
             "Warlock": ["NONE", "Archfey", "Celestial", "Fiend", "GreatOldOne"],
             "Rogue": ["NONE", "ArcaneTrickster", "Assassin", "Soulknife", "Thief"],
             "Cleric": ["NONE", "LifeDomain", "LightDomain", "TrickeryDomain", "WarDomain", "GraveDomain"],

@@ -54,7 +54,8 @@ separate from the five NPC archetypes in D2.
 Each subclass gets a primary role and an optional secondary one. The generator builds the
 **primary** about 75% of the time and the **secondary** about 25%. Each role has its own
 build template (spell list, weapons, feats), so a Light Cleric built as CC really carries
-control spells. Wizard Illusionist isn't implemented, so it's excluded.
+control spells. Wizard Illusionist isn't implemented, so it's excluded (removed from the engine's
+enums 2026-11-09, along with Druid Spores / Wildfire and Paladin Mounted Warrior / Redemption).
 
 | Class | Subclass | Primary | Secondary | Why (guess) | User check |
 | --- | --- | --- | --- | --- | --- |
@@ -245,6 +246,34 @@ the 2024 encounter-difficulty table.
   - **Not yet built:** D12's *generated* parties (the role-table generator: build templates
     per class/subclass/role across four tiers). It plugs in as another party source; it
     is proposed as Step 3b.
+
+### Step 3b — Generated parties (DRAFT 2026-11-09, for the user's check; not frozen)
+D12's second party source: PCs built from the role table, so training sees a large, balanced
+spread of party setups. **Training (Steps 6 and 7) waits for this.**
+
+Prerequisite done 2026-11-09 (uncommitted): the five enum-only subclasses (Druid Spores /
+Wildfire, Paladin Mounted Warrior / Redemption, Wizard Illusionist) were removed from the engine
+enums, the bindings and the GUI lists. The remaining Paladin values are pinned, since snapshots
+store the oath as an int. The D&D Beyond importer now knows Paladin Ancients / Glory and the four
+Ranger subclasses. 232/0.
+
+| #   | Proposed decision |
+| --- | ----------------- |
+| B1  | **Code + data.** `gui/party_gen.py` (a pure function of a seed) + `gui/pc_templates.json` (hand-authored build data). It emits the same save-format agent record the importer builds, so every loader path is unchanged. The arena takes it as a party source named `generated`. |
+| B2  | **Scope.** Exactly the 48 subclasses in the role table, each built as its primary or its secondary role (94 builds; Assassin and Soulknife have no secondary). |
+| B3  | **Level.** A tier is drawn uniformly (1–4, 5–10, 11–16, 17–20), then a level uniformly within it. All four PCs share the level. The mob budget follows from it, as today. |
+| B4  | **Composition.** The plan's templates (50% balanced / 30% four distinct primaries / 20% skewed). A role slot draws a subclass with weight 3 where that role is its primary and 1 where it is its secondary, which gives the 75/25 split. The skewed 20% picks one of: two DEF and no SUP; no DEF; two casters + two ST; three ST + SUP. |
+| B5  | **Ability scores.** Standard array 15/14/13/12/10/8, placed by class priority, plus background +2/+1. ASIs at 4/8/12/16 take the primary ability to 20 first; the build's feat (if it has one) takes the first ASI. Level 19's Epic Boon is ignored. |
+| B6  | **HP.** Max hit die at level 1, then the fixed average, plus CON mod per level (+ Tough / Durable as the engine applies them). |
+| B7  | **AC.** A per-class armor kit: heavy = Chain Mail, then Plate from level 9; medium = 15 + DEX (max 2); light = 12 + DEX; Barbarian / Monk unarmored (the engine's Unarmored Defense); shield where the build has one. Encoded through `stats.ac` as the importer does, since the armor catalog is small. |
+| B8  | **Magic items.** Weapon +1 from level 5, +2 from 11, +3 from 17. No AC items. |
+| B9  | **Spells.** Each (class, role) build has a ranked list per spell level, using spells from `spells.json` only. The generator takes cantrips, then fills the class's 2024 prepared count from the highest castable level down. Always-prepared subclass spells (domain / oath / circle) come on top, from the same tables the GUI uses. |
+| B10 | **Sub-choices per build:** fighting style (as a feat), Hunter's Prey, Primal Companion (Land), Warlock invocations, Metamagic, Land type, Blessed Strikes, and so on, fixed per build. |
+| B11 | **Names**, e.g. `Cleric (Light·MT) 7`; deterministic, unique within the party. |
+| B12 | **Tests.** Every build at levels 1, 5, 11 and 17 loads in the engine with every spell / weapon resolved and sane HP / AC / slots; the same seed gives the same party; over many draws the composition proportions hold; an arena episode on a generated party runs. |
+| B13 | **Source mix.** In the arena's default pool, `generated` is drawn 80% of the time and the tracked party file 20%. |
+
+Review aid: `tools/print_party.py` renders a build (or a seed's party) as a short character sheet.
 
 ### Step 4 — Archetypes + fallbacks
 - `enum class NpcArchetype { Melee, Ranged, Blaster, Controller, HealerSupport }`, plus

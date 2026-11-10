@@ -778,8 +778,8 @@ Druid: WIS full caster, INT+WIS saves; Wild Shape resource (L2+, 2/3/4 uses, sho
 ### Deferred — Wild Shape mechanics
 - **Circle of the Moon L2**: bonus-action shift to beast form (turn-economy)
 - **Circle of the Moon L6+**: increased durability, better damage
-- **Circle of Wildfire**: Wildfire Spirit summon (needs summoning system)
-- **Circle of Spores**: Symbiotic Entity (passive aura feature)
+- **Circle of Wildfire / Circle of Spores**: removed from the `DruidCircle` enum 2026-11-09 (never
+  implemented); re-add the enum values along with the mechanics.
 - **Circle of Land**: Land Circle Spells, Preserve Life (circle-specific deferred)
 
 ---

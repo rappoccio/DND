@@ -30,7 +30,7 @@ reference counts in the combat sources on 2026-07-07.
 | Rogue     |   [x]   |    4/4     | —                                       |
 | Sorcerer  |   [x]   |    4/4     | —                                       |
 | Warlock   |   [x]   |    4/4     | Invocation Lessons                      |
-| Wizard    |   [x]   |    3/4     | Illusionist                             |
+| Wizard    |   [x]   |    3/3     | —                                       |
 
 ---
 
@@ -132,7 +132,8 @@ reference counts in the combat sources on 2026-07-07.
       "safe targets" set), Empowered Evocation (L10, +INT to one Evocation damage roll), Overchannel
       (L14, max damage on a level 1-5 spell; first use free, then escalating Necrotic self-damage).
       Overchannel armed via the Evoker's right-click menu. `test_evoker.py`.
-- [ ] **Illusionist** (Illusory Self / Malleable Illusions — stub)
+- ~~Illusionist~~ — removed from the enums 2026-11-09 (never implemented; with Druid Spores /
+  Wildfire and Paladin Mounted Warrior / Redemption). Re-add the enum value with the mechanics.
 
 ---
 
@@ -141,5 +142,5 @@ reference counts in the combat sources on 2026-07-07.
 1. ~~**Paladin — Oath of Devotion**: finish per `OATH_OF_DEVOTION_PLAN.md` (build order Slice 2 → 3 → 1 → 4 → 5).~~
 2. ~~**Paladin — other 3 oaths**~~
 3. ~~**Warlock — Archfey** patron~~.
-4. **Wizard — Illusionist** subclass mechanics (Evoker done).
+4. ~~**Wizard — Illusionist**~~ — removed from the enums 2026-11-09 (see above).
 5. **Cleanup:** Barbarian L14 GUI buttons; Bard Countercharm / Dance L14 (both scope-deferred).

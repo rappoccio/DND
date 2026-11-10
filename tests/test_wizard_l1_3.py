@@ -130,7 +130,6 @@ def test_wizard_subclass_selection():
         rpg.WizardSubclass.Abjurer,
         rpg.WizardSubclass.Diviner,
         rpg.WizardSubclass.Evoker,
-        rpg.WizardSubclass.Illusionist,
     ]
 
     for subclass in subclasses:

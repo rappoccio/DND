@@ -58,29 +58,28 @@ SUBCLASS_KEY = {
     "Paladin": "agent_paladin_oath", "Wizard": "agent_wizard_subclass",
     "Warlock": "agent_warlock_subclass", "Rogue": "agent_rogue_subclass",
     "Cleric": "agent_cleric_subclass", "Bard": "agent_bard_subclass",
-    "Sorcerer": "agent_sorcerer_subclass",
+    "Sorcerer": "agent_sorcerer_subclass", "Ranger": "agent_ranger_subclass",
 }
 SUBCLASS_ENUMS = {
     "Barbarian": ["Berserker", "WildHeart", "WorldTree", "Zealot"],
     "Fighter": ["Champion", "BattleMaster", "PsiWarrior", "EldritchKnight"],
-    "Druid": ["CircleOfMoon", "CircleOfLand", "CircleOfSea", "CircleOfStars",
-              "CircleOfSpores", "CircleOfWildfire"],
+    "Druid": ["CircleOfMoon", "CircleOfLand", "CircleOfSea", "CircleOfStars"],
     "Monk": ["WarriorOfTheOpenHand", "WarriorOfMercy", "WarriorOfShadow",
              "WarriorOfFourElements"],
-    "Paladin": ["OathOfDevotion", "OathOftheMountedWarrior", "OathOfRedemption",
-                "OathOfVengeance"],
-    "Wizard": ["Abjurer", "Diviner", "Evoker", "Illusionist"],
+    "Paladin": ["OathOfDevotion", "OathOfVengeance", "OathOfAncients", "OathOfGlory"],
+    "Wizard": ["Abjurer", "Diviner", "Evoker"],
     "Warlock": ["Archfey", "Celestial", "Fiend", "GreatOldOne"],
     "Rogue": ["ArcaneTrickster", "Assassin", "Soulknife", "Thief"],
     "Cleric": ["LifeDomain", "LightDomain", "TrickeryDomain", "WarDomain", "GraveDomain"],
     "Bard": ["Dance", "Glamour", "Lore", "Valor"],
     "Sorcerer": ["Aberrant", "Clockwork", "Draconic", "WildMagic"],
+    "Ranger": ["Hunter", "BeastMaster", "FeyWanderer", "GloomStalker"],
 }
 # DDB subclass display name (normalized) → our enum value, for the cases a normalized
 # or substring match can't reach (school-of-X → X-er, suffixed sorcery names, etc.).
 SUBCLASS_ALIASES = {
     "schoolofabjuration": "Abjurer", "schoolofdivination": "Diviner",
-    "schoolofevocation": "Evoker", "schoolofillusion": "Illusionist",
+    "schoolofevocation": "Evoker",
     "draconicbloodline": "Draconic", "draconicsorcery": "Draconic",
     "clockworksoul": "Clockwork", "aberrantmind": "Aberrant", "aberrantsorcery": "Aberrant",
     "wildmagicsorcery": "WildMagic", "thecollegeoflore": "Lore",
@@ -525,7 +524,7 @@ def build_agent(data, catalogs, faction=0):
     for k in ("agent_barbarian_subclass", "agent_fighter_subclass", "agent_druid_circle",
               "agent_monk_subclass", "agent_paladin_oath", "agent_wizard_subclass",
               "agent_warlock_subclass", "agent_rogue_subclass", "agent_cleric_subclass",
-              "agent_bard_subclass", "agent_sorcerer_subclass"):
+              "agent_bard_subclass", "agent_sorcerer_subclass", "agent_ranger_subclass"):
         agent[k] = "NONE"
     if cls_name in SUBCLASS_KEY:
         agent[SUBCLASS_KEY[cls_name]] = match_subclass(cls_name, sub_ddb)

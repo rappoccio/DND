@@ -1468,8 +1468,6 @@ void bindTypes(py::module_& m) {
         .value("CircleOfLand", CircleOfLand)
         .value("CircleOfSea", CircleOfSea)
         .value("CircleOfStars", CircleOfStars)
-        .value("CircleOfSpores", CircleOfSpores)
-        .value("CircleOfWildfire", CircleOfWildfire)
         .export_values();
 
     // ── Monk Subclass Enum (2024 D&D) ────────────────────────────────────
@@ -1485,8 +1483,6 @@ void bindTypes(py::module_& m) {
     py::enum_<PaladinOath>(m, "PaladinOath")
         .value("NONE", PaladinOathNone)
         .value("OathOfDevotion", OathOfDevotionPath)
-        .value("OathOftheMountedWarrior", OathOftheMountedWarriorPath)
-        .value("OathOfRedemption", OathOfRedemptionPath)
         .value("OathOfVengeance", OathOfVengeancePath)
         .value("OathOfAncients", OathOfAncientsPath)
         .value("OathOfGlory", OathOfGloryPath)
@@ -1525,7 +1521,6 @@ void bindTypes(py::module_& m) {
         .value("Abjurer", AbjurerPath)
         .value("Diviner", DivinierPath)
         .value("Evoker", EvokerPath)
-        .value("Illusionist", IllusionistPath)
         .export_values();
 
     // ── Sorcerer Subclass Enum (2024 D&D) ────────────────────────────────────

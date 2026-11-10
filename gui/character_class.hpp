@@ -211,7 +211,7 @@ enum WildHeartPower {
 // ── Wizard Subclass Enum (2024 D&D) ──────────────────────────────────
 enum WizardSubclass {
     WizardSubclassNone = 0,
-    AbjurerPath, DivinierPath, EvokerPath, IllusionistPath,
+    AbjurerPath, DivinierPath, EvokerPath,   // Illusionist removed 2026-11-09: never implemented
     NumWizardSubclass
 };
 
@@ -278,7 +278,7 @@ enum FighterSubclass {
 // ── Druid Circle Enum (2024 D&D) ──────────────────────────────────────
 enum DruidCircle {
     DruidCircleNone = 0,
-    CircleOfMoon, CircleOfLand, CircleOfSea, CircleOfStars, CircleOfSpores, CircleOfWildfire,
+    CircleOfMoon, CircleOfLand, CircleOfSea, CircleOfStars,   // Spores, Wildfire removed 2026-11-09: never implemented
     NumDruidCircle
 };
 
@@ -292,8 +292,11 @@ enum MonkSubclass {
 // ── Paladin Oath Enum (2024 D&D) ────────────────────────────────────
 enum PaladinOath {
     PaladinOathNone = 0,
-    OathOfDevotionPath, OathOftheMountedWarriorPath, OathOfRedemptionPath, OathOfVengeancePath,
-    OathOfAncientsPath, OathOfGloryPath,
+    OathOfDevotionPath = 1,
+    // 2, 3 were Mounted Warrior and Redemption, never implemented (removed 2026-11-09). The
+    // values below stay pinned: snapshots store the oath as an int.
+    OathOfVengeancePath = 4,
+    OathOfAncientsPath = 5, OathOfGloryPath = 6,
     NumPaladinOath
 };
 
