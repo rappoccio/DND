@@ -84,6 +84,29 @@
   "ac_bonus": 5
  },
  {
+  "name": "Shield of Initiative +2",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": true,
+  "mastery": "None",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "is_shield": true,
+  "ac_bonus": 4,
+  "rarity": "Rare",
+  "description": "+2 Shield of Initiative. While holding this shield you gain a +2 bonus to AC on top of the shield's normal +2, and a +2 bonus to Initiative."
+ },
+ {
   "name": "Club",
   "type": "melee",
   "reach_ft": 5,
@@ -182,6 +205,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": true
+ },
+ {
+  "name": "Club (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Slow",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 1,
+    "die_size": 4
+   },
+   {
+    "type": "Bludgeoning",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": true,
+  "description": "Vicious Club. This magic weapon deals an extra 2d6 Bludgeoning damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Dagger",
@@ -284,6 +339,38 @@
   "light": true
  },
  {
+  "name": "Dagger (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 20,
+  "long_range_ft": 60,
+  "finesse": true,
+  "thrown": true,
+  "proficient": true,
+  "off_hand": true,
+  "mastery": "Nick",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 4
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": true,
+  "description": "Vicious Dagger. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Greatclub",
   "type": "melee",
   "reach_ft": 5,
@@ -382,6 +469,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": false
+ },
+ {
+  "name": "Greatclub (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Push",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 1,
+    "die_size": 8
+   },
+   {
+    "type": "Bludgeoning",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Greatclub. This magic weapon deals an extra 2d6 Bludgeoning damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Handaxe",
@@ -484,6 +603,38 @@
   "light": true
  },
  {
+  "name": "Handaxe (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 20,
+  "long_range_ft": 60,
+  "finesse": false,
+  "thrown": true,
+  "proficient": true,
+  "off_hand": true,
+  "mastery": "Vex",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Slashing",
+    "num_dice": 1,
+    "die_size": 6
+   },
+   {
+    "type": "Slashing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": true,
+  "description": "Vicious Handaxe. This magic weapon deals an extra 2d6 Slashing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Javelin",
   "type": "melee",
   "reach_ft": 5,
@@ -582,6 +733,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": false
+ },
+ {
+  "name": "Javelin (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 30,
+  "long_range_ft": 120,
+  "finesse": false,
+  "thrown": true,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Slow",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 6
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Javelin. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Light Hammer",
@@ -684,6 +867,38 @@
   "light": true
  },
  {
+  "name": "Light Hammer (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 20,
+  "long_range_ft": 60,
+  "finesse": false,
+  "thrown": true,
+  "proficient": true,
+  "off_hand": true,
+  "mastery": "Nick",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 1,
+    "die_size": 4
+   },
+   {
+    "type": "Bludgeoning",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": true,
+  "description": "Vicious Light Hammer. This magic weapon deals an extra 2d6 Bludgeoning damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Mace",
   "type": "melee",
   "reach_ft": 5,
@@ -784,6 +999,38 @@
   "light": false
  },
  {
+  "name": "Mace (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Sap",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 1,
+    "die_size": 6
+   },
+   {
+    "type": "Bludgeoning",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Mace. This magic weapon deals an extra 2d6 Bludgeoning damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Mace of Terror",
   "type": "melee",
   "reach_ft": 5,
@@ -810,6 +1057,34 @@
   "requires_attunement": true,
   "spell_dc": 15,
   "item_spell_groups": {"2": ["Fear"]}
+ },
+ {
+  "name": "Saint Markovia's Thighbone",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Sap",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 1,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "rarity": "Legendary",
+  "requires_attunement": true,
+  "description": "The thighbone of Saint Markovia, with the properties of a Mace of Disruption. When you hit a Fiend or an Undead with it, that creature takes an extra 2d6 Radiant damage. Once per day the wielder can call on its Disruption: a Fiend or Undead struck must succeed on a DC 15 Wisdom saving throw or take 25 Radiant damage; on a success it is Frightened until the end of the wielder's next turn. It sheds Bright Light in a 20-foot radius and Dim Light for 20 more feet."
  },
  {
   "name": "Quarterstaff",
@@ -912,6 +1187,68 @@
   "light": false
  },
  {
+  "name": "Quarterstaff (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Topple",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 1,
+    "die_size": 6
+   },
+   {
+    "type": "Bludgeoning",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Quarterstaff. This magic weapon deals an extra 2d6 Bludgeoning damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
+  "name": "Staff of Power",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Topple",
+  "bonus_hit": 2,
+  "bonus_damage": 2,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 1,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "rarity": "Very Rare",
+  "requires_attunement": true,
+  "charges": {"max": 10, "regain": "long_rest"},
+  "charge_spells": {"1": ["Magic Missile", "Ray of Enfeeblement"], "2": ["Levitate"], "5": ["Cone of Cold", "Fireball", "Hold Monster", "Lightning Bolt", "Wall of Force"], "6": ["Globe of Invulnerability"]},
+  "description": "A magic Quarterstaff with a +2 bonus to attack and damage rolls. While holding it you gain a +2 bonus to Armor Class, saving throws and spell attack rolls. It has 10 charges, all regained at dawn. Spells (your spell save DC), cost in charges: Cone of Cold 5, Fireball 5, Globe of Invulnerability 6, Hold Monster 5, Levitate 2, Lightning Bolt 5, Magic Missile 1, Ray of Enfeeblement 1, Wall of Force 5. Fireball and Lightning Bolt are cast at 3rd level."
+ },
+ {
   "name": "Sickle",
   "type": "melee",
   "reach_ft": 5,
@@ -1010,6 +1347,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": true
+ },
+ {
+  "name": "Sickle (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": true,
+  "mastery": "Nick",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Slashing",
+    "num_dice": 1,
+    "die_size": 4
+   },
+   {
+    "type": "Slashing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": true,
+  "description": "Vicious Sickle. This magic weapon deals an extra 2d6 Slashing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Spear",
@@ -1112,6 +1481,38 @@
   "light": false
  },
  {
+  "name": "Spear (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 20,
+  "long_range_ft": 60,
+  "finesse": false,
+  "thrown": true,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Sap",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 6
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Spear. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Dart",
   "type": "ranged",
   "reach_ft": 5,
@@ -1210,6 +1611,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": false
+ },
+ {
+  "name": "Dart (Vicious)",
+  "type": "ranged",
+  "reach_ft": 5,
+  "normal_range_ft": 20,
+  "long_range_ft": 60,
+  "finesse": true,
+  "thrown": true,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Vex",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 4
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Dart. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Light Crossbow",
@@ -1312,6 +1745,38 @@
   "light": false
  },
  {
+  "name": "Light Crossbow (Vicious)",
+  "type": "ranged",
+  "reach_ft": 5,
+  "normal_range_ft": 80,
+  "long_range_ft": 320,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Slow",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 8
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Light Crossbow. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Shortbow",
   "type": "ranged",
   "reach_ft": 5,
@@ -1410,6 +1875,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": false
+ },
+ {
+  "name": "Shortbow (Vicious)",
+  "type": "ranged",
+  "reach_ft": 5,
+  "normal_range_ft": 80,
+  "long_range_ft": 320,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Vex",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 6
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Shortbow. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Sling",
@@ -1512,6 +2009,38 @@
   "light": false
  },
  {
+  "name": "Sling (Vicious)",
+  "type": "ranged",
+  "reach_ft": 5,
+  "normal_range_ft": 30,
+  "long_range_ft": 120,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Slow",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 1,
+    "die_size": 4
+   },
+   {
+    "type": "Bludgeoning",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Sling. This magic weapon deals an extra 2d6 Bludgeoning damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Battleaxe",
   "type": "melee",
   "reach_ft": 5,
@@ -1610,6 +2139,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": false
+ },
+ {
+  "name": "Battleaxe (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Topple",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Slashing",
+    "num_dice": 1,
+    "die_size": 8
+   },
+   {
+    "type": "Slashing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Battleaxe. This magic weapon deals an extra 2d6 Slashing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Flail",
@@ -1712,6 +2273,38 @@
   "light": false
  },
  {
+  "name": "Flail (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Sap",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 1,
+    "die_size": 8
+   },
+   {
+    "type": "Bludgeoning",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Flail. This magic weapon deals an extra 2d6 Bludgeoning damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Glaive",
   "type": "melee",
   "reach_ft": 10,
@@ -1810,6 +2403,38 @@
   "sprite_path": "",
   "heavy": true,
   "light": false
+ },
+ {
+  "name": "Glaive (Vicious)",
+  "type": "melee",
+  "reach_ft": 10,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Graze",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Slashing",
+    "num_dice": 1,
+    "die_size": 10
+   },
+   {
+    "type": "Slashing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": true,
+  "light": false,
+  "description": "Vicious Glaive. This magic weapon deals an extra 2d6 Slashing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Greataxe",
@@ -1912,6 +2537,38 @@
   "light": false
  },
  {
+  "name": "Greataxe (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Cleave",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Slashing",
+    "num_dice": 1,
+    "die_size": 12
+   },
+   {
+    "type": "Slashing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": true,
+  "light": false,
+  "description": "Vicious Greataxe. This magic weapon deals an extra 2d6 Slashing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Greatsword",
   "type": "melee",
   "reach_ft": 5,
@@ -2010,6 +2667,38 @@
   "sprite_path": "",
   "heavy": true,
   "light": false
+ },
+ {
+  "name": "Greatsword (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Graze",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Slashing",
+    "num_dice": 2,
+    "die_size": 6
+   },
+   {
+    "type": "Slashing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": true,
+  "light": false,
+  "description": "Vicious Greatsword. This magic weapon deals an extra 2d6 Slashing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Halberd",
@@ -2112,6 +2801,38 @@
   "light": false
  },
  {
+  "name": "Halberd (Vicious)",
+  "type": "melee",
+  "reach_ft": 10,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Cleave",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Slashing",
+    "num_dice": 1,
+    "die_size": 10
+   },
+   {
+    "type": "Slashing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": true,
+  "light": false,
+  "description": "Vicious Halberd. This magic weapon deals an extra 2d6 Slashing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Lance",
   "type": "melee",
   "reach_ft": 10,
@@ -2210,6 +2931,38 @@
   "sprite_path": "",
   "heavy": true,
   "light": false
+ },
+ {
+  "name": "Lance (Vicious)",
+  "type": "melee",
+  "reach_ft": 10,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Topple",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 10
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": true,
+  "light": false,
+  "description": "Vicious Lance. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Longsword",
@@ -2312,6 +3065,94 @@
   "light": false
  },
  {
+  "name": "Longsword (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Sap",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Slashing",
+    "num_dice": 1,
+    "die_size": 8
+   },
+   {
+    "type": "Slashing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Longsword. This magic weapon deals an extra 2d6 Slashing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
+  "name": "Luck Blade (Longsword)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Sap",
+  "bonus_hit": 1,
+  "bonus_damage": 1,
+  "physical_damage_types": [
+   {
+    "type": "Slashing",
+    "num_dice": 1,
+    "die_size": 8
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "rarity": "Legendary",
+  "requires_attunement": true,
+  "description": "You gain a +1 bonus to attack and damage rolls made with this magic weapon. While it is on your person you gain a +1 bonus to saving throws. Luck: once per day, reroll one failed d20 Test (one Luck Point, spent like the Lucky feat's)."
+ },
+ {
+  "name": "Sunsword",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": true,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Sap",
+  "bonus_hit": 2,
+  "bonus_damage": 2,
+  "physical_damage_types": [],
+  "magic_damage_types": [
+   {
+    "type": "Radiant",
+    "num_dice": 1,
+    "die_size": 8
+   }
+  ],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "rarity": "Legendary",
+  "requires_attunement": true,
+  "description": "The hilt of Sergei von Zarovich's blade, now a sentient sun blade (INT 11, WIS 17, CHA 16, chaotic good; it longs to destroy Strahd). Its blade of radiance is always on: a Longsword with the Finesse property, +2 to attack and damage rolls, dealing Radiant damage instead of Slashing. When you hit an Undead with it, the target takes an extra 1d8 Radiant damage. It sheds sunlight, Bright Light 15 ft and Dim Light 15 ft more."
+ },
+ {
   "name": "Maul",
   "type": "melee",
   "reach_ft": 5,
@@ -2410,6 +3251,38 @@
   "sprite_path": "",
   "heavy": true,
   "light": false
+ },
+ {
+  "name": "Maul (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Topple",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 2,
+    "die_size": 6
+   },
+   {
+    "type": "Bludgeoning",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": true,
+  "light": false,
+  "description": "Vicious Maul. This magic weapon deals an extra 2d6 Bludgeoning damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Morningstar",
@@ -2512,6 +3385,38 @@
   "light": false
  },
  {
+  "name": "Morningstar (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Sap",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 8
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Morningstar. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Pike",
   "type": "melee",
   "reach_ft": 10,
@@ -2610,6 +3515,38 @@
   "sprite_path": "",
   "heavy": true,
   "light": false
+ },
+ {
+  "name": "Pike (Vicious)",
+  "type": "melee",
+  "reach_ft": 10,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Push",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 10
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": true,
+  "light": false,
+  "description": "Vicious Pike. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Rapier",
@@ -2712,6 +3649,38 @@
   "light": false
  },
  {
+  "name": "Rapier (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": true,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Vex",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 8
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Rapier. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Scimitar",
   "type": "melee",
   "reach_ft": 5,
@@ -2810,6 +3779,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": true
+ },
+ {
+  "name": "Scimitar (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": true,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": true,
+  "mastery": "Nick",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Slashing",
+    "num_dice": 1,
+    "die_size": 6
+   },
+   {
+    "type": "Slashing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": true,
+  "description": "Vicious Scimitar. This magic weapon deals an extra 2d6 Slashing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Shortsword",
@@ -2912,6 +3913,65 @@
   "light": true
  },
  {
+  "name": "Shortsword (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": true,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": true,
+  "mastery": "Vex",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 6
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": true,
+  "description": "Vicious Shortsword. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
+  "name": "Yarik's Shortsword",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": true,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": true,
+  "mastery": "Vex",
+  "bonus_hit": 1,
+  "bonus_damage": 1,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": true,
+  "rarity": "Rare",
+  "description": "A +1 Shortsword. Once per day its wielder can cast Crusader's Mantle from it (concentration)."
+ },
+ {
   "name": "Trident",
   "type": "melee",
   "reach_ft": 5,
@@ -3010,6 +4070,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": false
+ },
+ {
+  "name": "Trident (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 20,
+  "long_range_ft": 60,
+  "finesse": false,
+  "thrown": true,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Topple",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 8
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Trident. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Warhammer",
@@ -3112,6 +4204,38 @@
   "light": false
  },
  {
+  "name": "Warhammer (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Push",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 1,
+    "die_size": 8
+   },
+   {
+    "type": "Bludgeoning",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Warhammer. This magic weapon deals an extra 2d6 Bludgeoning damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "War Pick",
   "type": "melee",
   "reach_ft": 5,
@@ -3210,6 +4334,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": false
+ },
+ {
+  "name": "War Pick (Vicious)",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Sap",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 8
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious War Pick. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Whip",
@@ -3312,6 +4468,38 @@
   "light": false
  },
  {
+  "name": "Whip (Vicious)",
+  "type": "melee",
+  "reach_ft": 10,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": true,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Slow",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Slashing",
+    "num_dice": 1,
+    "die_size": 4
+   },
+   {
+    "type": "Slashing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Whip. This magic weapon deals an extra 2d6 Slashing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Blowgun",
   "type": "ranged",
   "reach_ft": 5,
@@ -3410,6 +4598,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": false
+ },
+ {
+  "name": "Blowgun (Vicious)",
+  "type": "ranged",
+  "reach_ft": 5,
+  "normal_range_ft": 25,
+  "long_range_ft": 100,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Vex",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 1
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Blowgun. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Hand Crossbow",
@@ -3512,6 +4732,38 @@
   "light": true
  },
  {
+  "name": "Hand Crossbow (Vicious)",
+  "type": "ranged",
+  "reach_ft": 5,
+  "normal_range_ft": 30,
+  "long_range_ft": 120,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": true,
+  "mastery": "Vex",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 6
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": true,
+  "description": "Vicious Hand Crossbow. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Heavy Crossbow",
   "type": "ranged",
   "reach_ft": 5,
@@ -3610,6 +4862,38 @@
   "sprite_path": "",
   "heavy": true,
   "light": false
+ },
+ {
+  "name": "Heavy Crossbow (Vicious)",
+  "type": "ranged",
+  "reach_ft": 5,
+  "normal_range_ft": 100,
+  "long_range_ft": 400,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Push",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 10
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": true,
+  "light": false,
+  "description": "Vicious Heavy Crossbow. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "Longbow",
@@ -3712,6 +4996,38 @@
   "light": false
  },
  {
+  "name": "Longbow (Vicious)",
+  "type": "ranged",
+  "reach_ft": 5,
+  "normal_range_ft": 150,
+  "long_range_ft": 600,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Slow",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 8
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": true,
+  "light": false,
+  "description": "Vicious Longbow. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Musket",
   "type": "ranged",
   "reach_ft": 5,
@@ -3812,6 +5128,38 @@
   "light": false
  },
  {
+  "name": "Musket (Vicious)",
+  "type": "ranged",
+  "reach_ft": 5,
+  "normal_range_ft": 40,
+  "long_range_ft": 120,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Slow",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 12
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": true,
+  "light": false,
+  "description": "Vicious Musket. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
+ },
+ {
   "name": "Pistol",
   "type": "ranged",
   "reach_ft": 5,
@@ -3910,6 +5258,38 @@
   "sprite_path": "",
   "heavy": false,
   "light": false
+ },
+ {
+  "name": "Pistol (Vicious)",
+  "type": "ranged",
+  "reach_ft": 5,
+  "normal_range_ft": 30,
+  "long_range_ft": 90,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": true,
+  "mastery": "Vex",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Piercing",
+    "num_dice": 1,
+    "die_size": 10
+   },
+   {
+    "type": "Piercing",
+    "num_dice": 2,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "description": "Vicious Pistol. This magic weapon deals an extra 2d6 Piercing damage to any creature it hits (the weapon's own damage type).",
+  "rarity": "Rare"
  },
  {
   "name": "UnarmedFire",

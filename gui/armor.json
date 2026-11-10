@@ -110,5 +110,18 @@
     "damage_reduction": 2,
     "requires_strength": false,
     "str_requirement": 0
+  },
+  {
+    "name": "Helm of Brilliance",
+    "description": "A helm set with diamonds, rubies, fire opals and opals. While wearing it you have Resistance to Fire damage. Any Undead that starts its turn within 30 feet of you takes 1d6 Radiant damage, and a weapon you hold deals an extra 1d6 Fire damage on a hit. Spells (save DC 18): Daylight 3/day, Fireball 3/day, Prismatic Spray 1/day, Wall of Fire 1/day.",
+    "rarity": "Very Rare",
+    "magic_damage_multipliers": [1.0, 1.0, 0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": false,
+    "str_requirement": 0,
+    "requires_attunement": true,
+    "spell_dc": 18,
+    "item_spell_groups": {"3": ["Daylight", "Fireball"], "1": ["Prismatic Spray", "Wall of Fire"]}
   }
 ]

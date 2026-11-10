@@ -210,5 +210,18 @@
     "quantity": 1,
     "consumable": true,
     "sprite_path": ""
-  }    
+  },
+  {
+    "name": "Holy Symbol of Ravenkind",
+    "description": "A platinum amulet shaped like the sun, with a large crystal at its center: the holy symbol sacred to the good-hearted faithful of Barovia, delivered to the paladin Lugdana by a giant raven. Requires attunement by a good-aligned cleric or paladin. It has 10 charges, all regained at dawn. Hold Vampires (1 charge): vampires and vampire spawn within 30 feet must succeed on a DC 15 Wisdom saving throw or be Paralyzed for 1 minute, repeating the save at the end of each of their turns.",
+    "type": "Wondrous",
+    "action_type": "NoAction",
+    "rarity": "Legendary",
+    "range": 0,
+    "quantity": 1,
+    "consumable": false,
+    "sprite_path": "",
+    "requires_attunement": true,
+    "charges": {"max": 10, "regain": "long_rest"}
+  }
 ]
