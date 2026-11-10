@@ -4087,11 +4087,14 @@ class WeaponSelectionDialog:
 # toggle just flips its "attuned" key and the caller's _dict_to_* carries it onto the item.
 
 def _is_enspelled(d: dict) -> bool:
-    return bool(d.get("item_spell_groups") or d.get("charge_spells"))
+    """Spells, a charge pool, passive bonuses (RAVENLOFT M1) or attunement: a magic item whose
+    state is its own, so it never stacks and its row shows its summary."""
+    return bool(d.get("item_spell_groups") or d.get("charge_spells") or d.get("item_bonuses")
+                or d.get("charges") or d.get("requires_attunement"))
 
 
 def _needs_attunement(d: dict) -> bool:
-    return bool(d.get("name")) and bool(d.get("requires_attunement")) and _is_enspelled(d)
+    return bool(d.get("name")) and bool(d.get("requires_attunement"))
 
 
 def _attune_rect(row_rect: pygame.Rect, right_inset: int = 4) -> pygame.Rect:

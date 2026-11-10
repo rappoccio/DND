@@ -21,6 +21,7 @@
 #include "map_configs.hpp"
 #include "character_class.hpp"
 #include "item.hpp"
+#include "rules.hpp"             // carriedItemBonuses
 #include "bindings_internal.hpp"
 
 namespace py = pybind11;
@@ -318,6 +319,16 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              &CombatEngine::calculateAC,
              py::arg("battle_map"), py::arg("agent_idx"),
              "Calculate total AC for agent (base AC + armor + DEX + shield + temp mods).")
+        .def("carried_item_bonuses",
+             [](const CombatEngine&, const BattleMap& bm, int agent_idx) {
+                 const auto& agents = bm.placedAgents();
+                 if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
+                     return ItemBonuses{};
+                 return rules::carriedItemBonuses(agents[static_cast<std::size_t>(agent_idx)]);
+             },
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "RAVENLOFT M1: the summed passive bonuses of the agent's carried, switched-on items\n"
+             "(class-limited spell bonuses only when the agent has that class).")
         .def("aura_save_bonus",
              &CombatEngine::auraSaveBonus,
              py::arg("battle_map"), py::arg("agent_idx"),

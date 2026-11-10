@@ -316,8 +316,10 @@ def _item_spells(app, idx: int) -> list[dict]:
                     "readable": all(can_read_scroll(stats, n) for n in r.item_spells.spell_names())}
         return {"item":    r.name,
                 "attuned": bool(r.item_spells.attuned) if r.item_spells.requires_attunement else None,
-                "spells":  item_spells_summary(r.item_spells) if r.item_spells.active() else []}
-    return [_row(r) for r in rows if r.name and not r.item_spells.empty()]
+                "spells":  item_spells_summary(r.item_spells) if r.item_spells.attuned_or_free() else []}
+    # RAVENLOFT M1: an item with passive bonuses only lists them as its one line.
+    return [_row(r) for r in rows
+            if r.name and (not r.item_spells.empty() or r.item_spells.bonuses.any())]
 
 
 def _band(stats, cond) -> str:

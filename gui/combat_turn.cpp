@@ -98,7 +98,8 @@ std::vector<InitiativeEntry> CombatEngine::rollInitiative(const BattleMap& bm)
         InitiativeEntry e;
         e.agent_idx = i;
         e.d20 = rollInitiativeD20(bm, i, s);
-        e.modifier  = s.initiativeModifier();
+        e.modifier  = s.initiativeModifier()
+                    + rules::carriedItemBonuses(agents[static_cast<std::size_t>(i)]).initiative;  // M1
         e.total     = e.d20 + e.modifier;
         entries.push_back(e);
     }
@@ -129,7 +130,8 @@ InitiativeEntry CombatEngine::rollInitiativeFor(const BattleMap& bm, int agent_i
         return e;
     Agent::Stats s = bm.getAgentStats(agent_idx);
     e.d20 = rollInitiativeD20(bm, agent_idx, s);
-    e.modifier = s.initiativeModifier();
+    e.modifier = s.initiativeModifier()
+               + rules::carriedItemBonuses(agents[static_cast<std::size_t>(agent_idx)]).initiative;  // M1
     e.total    = e.d20 + e.modifier;
 
     // ── Boon of Fate (epic boon): refresh the once-per-combat use at initiative ─
@@ -3925,7 +3927,8 @@ double CombatEngine::npcSaveChance(const BattleMap& bm, int caster_idx, int targ
         case SaveWis: score = ts.wis;   prof = ts.save_prof_wis;   break;
         default:      score = ts.cha;   prof = ts.save_prof_cha;   break;
     }
-    const int mod = dndMod(score) + (prof ? ts.prof_bonus : 0) + auraSaveBonus(bm, target_idx);
+    const int mod = dndMod(score) + (prof ? ts.prof_bonus : 0) + auraSaveBonus(bm, target_idx)
+                  + rules::carriedItemBonuses(tp).saves;   // RAVENLOFT M1
 
     const bool adv = tp.agent->hasAdvantage() || saveAdvantageFor(bm, target_idx, sp.save_ability);
     const bool dis = tp.agent->hasDisadvantage() || curseSaveDisadvantage(bm, target_idx, sp.save_ability);
@@ -4024,7 +4027,7 @@ void CombatEngine::npcLogCastAnalysis(const BattleMap& bm, int caster_idx, int s
                 default:      return "CHA";
             }
         };
-        const int dc = rules::spellSaveDc(bm.getAgentStats(caster_idx));
+        const int dc = rules::spellSaveDcFor(bm.placedAgents()[static_cast<std::size_t>(caster_idx)], sp);
         for (int t : target_indices) {
             if (t < 0 || t >= n || t == caster_idx) continue;
             log_("Analysis: {} vs {} — {:.0f}% to save ({} save, DC {})",

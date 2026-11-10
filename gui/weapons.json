@@ -104,6 +104,7 @@
   "is_shield": true,
   "ac_bonus": 4,
   "rarity": "Rare",
+  "item_bonuses": {"initiative": 2},
   "description": "+2 Shield of Initiative. While holding this shield you gain a +2 bonus to AC on top of the shield's normal +2, and a +2 bonus to Initiative."
  },
  {
@@ -1246,6 +1247,7 @@
   "requires_attunement": true,
   "charges": {"max": 10, "regain": "long_rest"},
   "charge_spells": {"1": ["Magic Missile", "Ray of Enfeeblement"], "2": ["Levitate"], "5": ["Cone of Cold", "Fireball", "Hold Monster", "Lightning Bolt", "Wall of Force"], "6": ["Globe of Invulnerability"]},
+  "item_bonuses": {"ac": 2, "saves": 2, "spell_attack": 2},
   "description": "A magic Quarterstaff with a +2 bonus to attack and damage rolls. While holding it you gain a +2 bonus to Armor Class, saving throws and spell attack rolls. It has 10 charges, all regained at dawn. Spells (your spell save DC), cost in charges: Cone of Cold 5, Fireball 5, Globe of Invulnerability 6, Hold Monster 5, Levitate 2, Lightning Bolt 5, Magic Missile 1, Ray of Enfeeblement 1, Wall of Force 5. Fireball and Lightning Bolt are cast at 3rd level."
  },
  {
@@ -3122,6 +3124,7 @@
   "light": false,
   "rarity": "Legendary",
   "requires_attunement": true,
+  "item_bonuses": {"saves": 1},
   "description": "You gain a +1 bonus to attack and damage rolls made with this magic weapon. While it is on your person you gain a +1 bonus to saving throws. Luck: once per day, reroll one failed d20 Test (one Luck Point, spent like the Lucky feat's)."
  },
  {

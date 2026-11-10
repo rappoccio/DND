@@ -53,9 +53,13 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 
 // ── ItemSpells (carried by Weapon here, and by Item / Armor on the board) ──────
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
+    ItemBonuses,
+    ac, initiative, saves, spell_attack, spell_dc, spell_class)
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     ItemSpells,
     requires_attunement, spell_dc, spell_attack, spell_groups, charge_spells,
-    charges_max, charges_regain, spell_overrides_json, attuned, uses_remaining, charges)
+    charges_max, charges_regain, spell_overrides_json, bonuses, attuned, uses_remaining, charges)
 
 // ── Weapon / Spell ───────────────────────────────────────────────────────────
 // Both are carried BY VALUE inside engine state (InFlightAttack::w snapshots the

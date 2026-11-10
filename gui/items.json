@@ -223,5 +223,44 @@
     "sprite_path": "",
     "requires_attunement": true,
     "charges": {"max": 10, "regain": "long_rest"}
+  },
+  {
+    "name": "Rod of the Pact Keeper +1",
+    "description": "While holding this rod, you gain a +1 bonus to spell attack rolls and to the saving throw DCs of your Warlock spells. In addition, you can regain one spell slot as a Magic action while holding the rod; you can't use this property again until you finish a Long Rest. Requires attunement by a Warlock.",
+    "type": "Wondrous",
+    "action_type": "NoAction",
+    "rarity": "Uncommon",
+    "range": 0,
+    "quantity": 1,
+    "consumable": false,
+    "sprite_path": "",
+    "requires_attunement": true,
+    "item_bonuses": {"spell_attack": 1, "spell_dc": 1, "spell_class": "Warlock"}
+  },
+  {
+    "name": "Rod of the Pact Keeper +2",
+    "description": "While holding this rod, you gain a +2 bonus to spell attack rolls and to the saving throw DCs of your Warlock spells. In addition, you can regain one spell slot as a Magic action while holding the rod; you can't use this property again until you finish a Long Rest. Requires attunement by a Warlock.",
+    "type": "Wondrous",
+    "action_type": "NoAction",
+    "rarity": "Rare",
+    "range": 0,
+    "quantity": 1,
+    "consumable": false,
+    "sprite_path": "",
+    "requires_attunement": true,
+    "item_bonuses": {"spell_attack": 2, "spell_dc": 2, "spell_class": "Warlock"}
+  },
+  {
+    "name": "Rod of the Pact Keeper +3",
+    "description": "While holding this rod, you gain a +3 bonus to spell attack rolls and to the saving throw DCs of your Warlock spells. In addition, you can regain one spell slot as a Magic action while holding the rod; you can't use this property again until you finish a Long Rest. Requires attunement by a Warlock.",
+    "type": "Wondrous",
+    "action_type": "NoAction",
+    "rarity": "Very Rare",
+    "range": 0,
+    "quantity": 1,
+    "consumable": false,
+    "sprite_path": "",
+    "requires_attunement": true,
+    "item_bonuses": {"spell_attack": 3, "spell_dc": 3, "spell_class": "Warlock"}
   }
 ]

@@ -1813,7 +1813,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
 
                 // Roll attack using spellcasting ability mod, not normal attack bonus
                 int d20_val = roll(20);
-                int mod = rules::spellAttackMod(caster_stats);
+                int mod = rules::spellAttackModFor(caster_pa, sp);   // item bonuses (RAVENLOFT M1)
                 if (tgt_stats.blade_warded) {   // Blade Ward: -1d4 to attacks against the target
                     int ward_d4 = roll(4);
                     mod -= ward_d4;
@@ -2374,7 +2374,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
                     if (cond_item && cond_item->spell_dc > 0) {
                         cond.save_dc = cond_item->spell_dc;
                     } else if (spell_cond.save_dc_ability == SaveSpellcasterMod) {
-                        cond.save_dc = rules::spellSaveDc(caster_stats);
+                        cond.save_dc = rules::spellSaveDcFor(caster_pa, sp);   // item bonuses (M1)
                     } else {
                         cond.save_dc = rules::spellSaveDcFromAbility(caster_stats, spell_cond.save_dc_ability);
                     }
@@ -5296,8 +5296,7 @@ bool CombatEngine::applyCounterspell(BattleMap& bm, int reactor_idx, int caster_
     // itself is cast and the resource is gone; only the *countered* spell keeps its slot).
     spendCounterspellCost(bm, reactor_idx);
     // 2024 Counterspell: the original caster makes a CON save vs the counterspeller's spell save DC.
-    const Agent::Stats rs = bm.getAgentStats(reactor_idx);
-    const int dc = rules::spellSaveDc(rs);
+    const int dc = rules::holderSpellSaveDc(bm.placedAgents()[static_cast<std::size_t>(reactor_idx)]);
     const Agent::Stats cs = bm.getAgentStats(caster_idx);
     const int save_mod = abilityMod(cs.con) + (cs.save_prof_con ? cs.prof_bonus : 0);
     const int d20      = roll(20);
@@ -5438,8 +5437,7 @@ void CombatEngine::resolveCounterspellEffect(BattleMap& bm, InFlightCast& c)
 {
     const int reactor = c.action.caster_idx;             // the counterspeller
     const int target  = c.counter_target_caster;         // the caster being countered
-    const Agent::Stats rs = bm.getAgentStats(reactor);
-    const int dc = rules::spellSaveDc(rs);
+    const int dc = rules::holderSpellSaveDc(bm.placedAgents()[static_cast<std::size_t>(reactor)]);
     const Agent::Stats cs = bm.getAgentStats(target);
     const int save_mod = abilityMod(cs.con) + (cs.save_prof_con ? cs.prof_bonus : 0);
     const int d20 = roll(20), total = d20 + save_mod;

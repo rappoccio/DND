@@ -10445,11 +10445,12 @@ class App:
 
     def _carried_item_spells(self, agent_idx: int) -> list:
         """(row, ItemSpells) for every carried item, weapon and worn armor piece (D9) that
-        has spells, attuned or not."""
+        has spells or passive bonuses (RAVENLOFT M1), attuned or not."""
         rows = (list(self.combat.get_agent_items(self.bm, agent_idx))
                 + list(self.combat.get_agent_weapons(self.bm, agent_idx))
                 + list(self.combat.get_agent_armor(self.bm, agent_idx)))
-        return [(r, r.item_spells) for r in rows if r.name and not r.item_spells.empty()]
+        return [(r, r.item_spells) for r in rows
+                if r.name and (not r.item_spells.empty() or r.item_spells.bonuses.any())]
 
     def _draw_item_spells_panel(self, agent_idx: int, lx: int, y: int, txt) -> int:
         """The side panel's 'Item spells' block (E4): one header per item, then its spell
@@ -10470,7 +10471,7 @@ class App:
                     lx, y, (170, 200, 220) if readable else (130, 130, 150), self.font_sm)
                 y += 14
                 continue
-            if not s.active():
+            if not s.attuned_or_free():
                 txt(f"  {name} (not attuned)", lx, y, (130, 130, 150), self.font_sm)
                 y += 14
                 continue

@@ -19,6 +19,26 @@
 
 namespace rpg {
 
+// Passive bonuses from a carried magic item (RAVENLOFT_ITEMS_PLAN.md M1): the Staff of Power's
+// +2 AC / saves / spell attack, the Shield of Initiative's +2 Initiative, the Rod of the Pact
+// Keeper's +N Warlock spell attack and DC. Live while the item is carried (D9) and attuned when
+// it requires attunement (D5); bonuses from several items add up.
+struct ItemBonuses {
+    int ac{0};
+    int initiative{0};
+    int saves{0};
+    int spell_attack{0};
+    int spell_dc{0};
+    // spell_attack / spell_dc only for a caster with this class (CharacterClass code; the Rod's
+    // "your Warlock spells"); 0 = any caster. The engine does not tag a spell with the class that
+    // cast it, so a multiclass Warlock gets the bonus on all their own spells.
+    int spell_class{0};
+
+    [[nodiscard]] bool any() const noexcept {
+        return ac || initiative || saves || spell_attack || spell_dc;
+    }
+};
+
 struct ItemSpells {
     // "99" uses/day = at will (D3), the mob convention: never decremented.
     static constexpr int kAtWill = 99;
@@ -39,6 +59,8 @@ struct ItemSpells {
     // Python applies it when it resolves the catalog record.
     std::string spell_overrides_json{};
 
+    ItemBonuses bonuses{};   // M1 passive bonuses; all zero on an ordinary item
+
     // ── Runtime (saved with the item, not authored) ─────────────────────────
     bool attuned{false};
     std::map<std::string, int> uses_remaining{};   // per spell in spell_groups (not at-will ones)
@@ -48,9 +70,19 @@ struct ItemSpells {
         return spell_groups.empty() && charge_spells.empty();
     }
 
+    // Anything to save or show beyond a plain item: spells, a pool, bonuses or attunement.
+    [[nodiscard]] bool magical() const noexcept {
+        return !empty() || charges_max > 0 || bonuses.any() || requires_attunement;
+    }
+
+    // D5: is the item switched on for whoever carries it (attuned, or no attunement needed)?
+    [[nodiscard]] bool attunedOrFree() const noexcept {
+        return !requires_attunement || attuned;
+    }
+
     // D5: does this item grant its spells to whoever carries it right now?
     [[nodiscard]] bool active() const noexcept {
-        return !empty() && (!requires_attunement || attuned);
+        return !empty() && attunedOrFree();
     }
 
     // D7: the item's spell list is the union of both cost models, in authored order.

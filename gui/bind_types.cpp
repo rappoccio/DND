@@ -1086,6 +1086,18 @@ void bindTypes(py::module_& m) {
     // ── Weapon ────────────────────────────────────────────────────────────────
     // ── ItemSpells (plans/ENSPELLED_ITEMS_PLAN.md) — carried by Weapon, Armor, Item ──
     // The map fields convert to Python dicts BY COPY: mutate a dict, then assign it back.
+    // RAVENLOFT_ITEMS_PLAN.md M1: passive bonuses while carried (and attuned if required).
+    py::class_<ItemBonuses>(m, "ItemBonuses")
+        .def(py::init<>())
+        .def_readwrite("ac",           &ItemBonuses::ac)
+        .def_readwrite("initiative",   &ItemBonuses::initiative)
+        .def_readwrite("saves",        &ItemBonuses::saves)
+        .def_readwrite("spell_attack", &ItemBonuses::spell_attack)
+        .def_readwrite("spell_dc",     &ItemBonuses::spell_dc)
+        .def_readwrite("spell_class",  &ItemBonuses::spell_class,
+             "CharacterClass code the spell_attack/spell_dc bonus is limited to; 0 = any caster.")
+        .def("any", &ItemBonuses::any);
+
     py::class_<ItemSpells>(m, "ItemSpells")
         .def(py::init<>())
         .def_readonly_static("AT_WILL", &ItemSpells::kAtWill)
@@ -1102,11 +1114,15 @@ void bindTypes(py::module_& m) {
         .def_readwrite("charges_regain",      &ItemSpells::charges_regain)
         .def_readwrite("spell_overrides_json", &ItemSpells::spell_overrides_json,
              "JSON text {spell: {spells.json field: value}}, applied by Python.")
+        .def_readwrite("bonuses",             &ItemSpells::bonuses, "Passive ItemBonuses (M1).")
         .def_readwrite("attuned",             &ItemSpells::attuned)
         .def_readwrite("uses_remaining",      &ItemSpells::uses_remaining,
              "{spell name: uses left today} for N/day spells (at-will ones are absent).")
         .def_readwrite("charges",             &ItemSpells::charges, "Current pool charges.")
         .def("empty",       &ItemSpells::empty)
+        .def("magical",     &ItemSpells::magical,
+             "Spells, a pool, bonuses or attunement: anything beyond a plain item.")
+        .def("attuned_or_free", &ItemSpells::attunedOrFree)
         .def("active",      &ItemSpells::active,
              "True if it grants its spells now: has spells and is attuned or needs no attunement.")
         .def("spell_names", &ItemSpells::spellNames)

@@ -1161,6 +1161,7 @@ def _item_spells_from_dict(d: dict):
     s.charges_regain = str(charges.get("regain", "long_rest") or "long_rest")
     overrides = d.get("spell_overrides")
     s.spell_overrides_json = json.dumps(overrides) if overrides else ""
+    _item_bonuses_from_dict(s.bonuses, d.get("item_bonuses"))
     s.attuned = bool(d.get("attuned", False))
     s.refill()
     saved_uses = d.get("item_spell_uses")
@@ -1175,9 +1176,42 @@ def _item_spells_from_dict(d: dict):
     return s
 
 
+# RAVENLOFT_ITEMS_PLAN.md M1: "item_bonuses": {"ac": 2, "initiative": 2, "saves": 2,
+# "spell_attack": 2, "spell_dc": 1, "spell_class": "Warlock"} — every key optional.
+_ITEM_BONUS_KEYS = ("ac", "initiative", "saves", "spell_attack", "spell_dc")
+
+
+def _item_bonuses_from_dict(b, raw):
+    """Fill the rpg.ItemBonuses ``b`` (in place) from an item record's item_bonuses dict."""
+    raw = raw if isinstance(raw, dict) else {}
+    for k in _ITEM_BONUS_KEYS:
+        setattr(b, k, int(raw.get(k, 0) or 0))
+    cls = raw.get("spell_class")
+    b.spell_class = int(getattr(rpg.CharacterClass, cls, 0)) if isinstance(cls, str) else int(cls or 0)
+
+
+def _item_bonuses_to_dict(b) -> dict:
+    out = {k: getattr(b, k) for k in _ITEM_BONUS_KEYS if getattr(b, k)}
+    if out and b.spell_class:
+        out["spell_class"] = rpg.CharacterClass(b.spell_class).name
+    return out
+
+
+def item_bonuses_line(b) -> str:
+    """'+2 AC, +2 saves, +2 spell attack' — '' when the item has no bonuses."""
+    if not b.any():
+        return ""
+    labels = {"ac": "AC", "initiative": "Initiative", "saves": "saves",
+              "spell_attack": "spell attack", "spell_dc": "spell save DC"}
+    line = ", ".join(f"{getattr(b, k):+d} {labels[k]}" for k in _ITEM_BONUS_KEYS if getattr(b, k))
+    if b.spell_class and (b.spell_attack or b.spell_dc):
+        line += f" ({rpg.CharacterClass(b.spell_class).name} spells)"
+    return line
+
+
 def _item_spells_to_dict(s) -> dict:
     """The JSON keys for an rpg.ItemSpells, to merge into its item's record ({} if none)."""
-    if s.empty():
+    if not s.magical():
         return {}
     out = {
         "requires_attunement": s.requires_attunement,
@@ -1196,6 +1230,9 @@ def _item_spells_to_dict(s) -> dict:
                           "current": s.charges}
     if s.spell_overrides_json:
         out["spell_overrides"] = json.loads(s.spell_overrides_json)
+    bonuses = _item_bonuses_to_dict(s.bonuses)
+    if bonuses:
+        out["item_bonuses"] = bonuses
     return out
 
 
@@ -1557,10 +1594,13 @@ def item_spell_label(combat, bm, idx: int, sp) -> str:
 def item_spells_summary(s) -> list[str]:
     """One line per cost group of an item's spells, for item info and sheets:
     ['Fear 2/2'], ['Protection from Evil and Good at will', 'Cure Wounds 1/1'],
-    ['charges 5/7: Burning Hands (1), Fireball (3)']. [] for an ordinary item."""
+    ['charges 5/7: Burning Hands (1), Fireball (3)']. A line of passive bonuses comes first
+    ('+2 AC, +2 saves', RAVENLOFT M1). [] for an ordinary item."""
+    bonus = item_bonuses_line(s.bonuses)
     if s.empty():
-        return []
-    lines = [f"{name} {item_spell_status(s, name)}"
+        return [bonus] if bonus else []
+    lines = [bonus] if bonus else []
+    lines += [f"{name} {item_spell_status(s, name)}"
              for _, names in sorted(s.spell_groups.items(), reverse=True) for name in names]
     if s.charges_max > 0 and s.charge_spells:
         pool = ", ".join(f"{name} ({cost})"

@@ -258,24 +258,81 @@ inline bool itemSpellCastable(const PlacedAgent& pa, const Spell& sp) noexcept
     return is && is->active() && is->canCast(sp.name, sp.item_charge_cost);
 }
 
-// D1: the item's authored save DC / spell attack bonus when it has one, else the holder's own.
+// ── Passive item bonuses (RAVENLOFT_ITEMS_PLAN.md M1) ───────────────────────
+// The sum of the bonuses of every item the creature carries (D9: items rows, weapons rows,
+// worn armor) that is switched on (attuned, or needing no attunement: D5). A spell_class
+// bonus counts only for a holder with that class; `with_class_bonuses` false leaves those
+// out (an item-cast spell is the item's, not "your Warlock spell").
+inline ItemBonuses carriedItemBonuses(const PlacedAgent& pa, bool with_class_bonuses = true) noexcept
+{
+    ItemBonuses total{};
+    const Agent::Stats& s = pa.agent->getStats();
+    auto add = [&](const std::string& name, const ItemSpells& is) {
+        if (name.empty() || !is.attunedOrFree() || !is.bonuses.any()) return;
+        const ItemBonuses& b = is.bonuses;
+        total.ac         += b.ac;
+        total.initiative += b.initiative;
+        total.saves      += b.saves;
+        const bool class_ok = b.spell_class <= 0 ||
+            (with_class_bonuses && s.hasClass(static_cast<CharacterClass>(b.spell_class)));
+        if (class_ok) {
+            total.spell_attack += b.spell_attack;
+            total.spell_dc     += b.spell_dc;
+        }
+    };
+    for (const Item& it : pa.items)     add(it.name, it.item_spells);
+    for (const Weapon& w : pa.weapons)  add(w.name, w.item_spells);
+    for (const Armor& a : pa.armor)     add(a.name, a.item_spells);
+    return total;
+}
+
+// The holder's own spell save DC / spell attack bonus, items included (Counterspell, and every
+// spell that does not use an item's authored value).
+inline int holderSpellSaveDc(const PlacedAgent& pa) noexcept
+{
+    return spellSaveDc(pa.agent->getStats()) + carriedItemBonuses(pa).spell_dc;
+}
+
+inline int holderSpellAttackMod(const PlacedAgent& pa) noexcept
+{
+    return spellAttackMod(pa.agent->getStats()) + carriedItemBonuses(pa).spell_attack;
+}
+
+// D1: the item's authored save DC / spell attack bonus when it has one, else the holder's own
+// with their item bonuses (M1). A spell cast from an item that uses the holder's DC (the Staff
+// of Power's) takes the general bonuses but not a class-restricted one (the Rod's).
 inline int spellSaveDcFor(const PlacedAgent& pa, const Spell& sp) noexcept
 {
     const ItemSpells* is = itemSpellsFor(pa, sp);
-    return (is && is->spell_dc > 0) ? is->spell_dc : spellSaveDc(pa.agent->getStats());
+    if (is && is->spell_dc > 0) return is->spell_dc;
+    return spellSaveDc(pa.agent->getStats()) + carriedItemBonuses(pa, is == nullptr).spell_dc;
 }
 
 inline int spellAttackModFor(const PlacedAgent& pa, const Spell& sp) noexcept
 {
     const ItemSpells* is = itemSpellsFor(pa, sp);
-    return (is && is->spell_attack > 0) ? is->spell_attack : spellAttackMod(pa.agent->getStats());
+    if (is && is->spell_attack > 0) return is->spell_attack;
+    return spellAttackMod(pa.agent->getStats()) + carriedItemBonuses(pa, is == nullptr).spell_attack;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Armor Class
 // ─────────────────────────────────────────────────────────────────────────────
 
+inline int calculateACBeforeItemBonuses(const BattleMap& bm, int agent_idx) noexcept;
+
+// AC, plus the passive AC bonus of carried magic items (M1: the Staff of Power's +2). Applies to
+// NPCs too: an NPC's published AC does not include an item the DM handed it.
 inline int calculateAC(const BattleMap& bm, int agent_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
+        return 10;  // default AC
+    return calculateACBeforeItemBonuses(bm, agent_idx) +
+           carriedItemBonuses(agents[static_cast<std::size_t>(agent_idx)]).ac;
+}
+
+inline int calculateACBeforeItemBonuses(const BattleMap& bm, int agent_idx) noexcept
 {
     const auto& agents = bm.placedAgents();
     if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size())
@@ -620,7 +677,8 @@ inline int saveModFor(const BattleMap& bm, CombatContext& ctx, int agent_idx, Sa
             ctx.logger_->log(std::format("Bane: -{} to {} save", bane_d4,
                                           agents[static_cast<std::size_t>(agent_idx)].agent->name()));
     }
-    return m + auraSaveBonus(bm, agent_idx);
+    return m + auraSaveBonus(bm, agent_idx) +
+           carriedItemBonuses(agents[static_cast<std::size_t>(agent_idx)]).saves;   // M1
 }
 
 // Ability-scoped save Advantage (Phase 0.3) — the symmetric counterpart to
