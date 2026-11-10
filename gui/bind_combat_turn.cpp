@@ -904,6 +904,12 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              &CombatEngine::removeSpellFromAgent,
              py::arg("battle_map"), py::arg("idx"), py::arg("spell_idx"),
              "Remove spell at spell_idx from agent[idx]'s list.")
+        .def("discard_spent_scrolls",
+             &CombatEngine::discardSpentScrolls,
+             py::arg("battle_map"), py::arg("idx"),
+             "Erase agent[idx]'s spent spell scrolls (SPELL_SCROLLS_PLAN.md S3), keeping any whose\n"
+             "spell is still live (concentration, a condition or effect it made). Later item\n"
+             "spell tags are shifted; the scroll's own entries are untagged. Returns the count.")
         .def("spend_spell_slot",
              &CombatEngine::spendSpellSlot,
              py::arg("battle_map"), py::arg("idx"), py::arg("level"),

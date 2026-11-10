@@ -11,7 +11,7 @@ namespace rpg {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Item — a carried, usable piece of gear: potions and thrown flasks today (Acid,
-//  Alchemist's Fire, Holy Water, Net); scrolls later.
+//  Alchemist's Fire, Holy Water, Net), enspelled items and spell scrolls.
 //
 //  Data-driven from items.json exactly the way spells come from spells.json: the
 //  catalog is authored as JSON, the GUI turns a record into one of these (see
@@ -25,7 +25,9 @@ struct Item {
     // carrying it unlocks every chest / door named in `opens`.
     // Wondrous = no Use Item effect of its own (a lute, an icon): it exists to carry
     // item_spells, whose spells bring their own casting time (ENSPELLED_ITEMS_PLAN.md D8).
-    enum ItemType_t   { Heal = 0, Thrown, Key, Wondrous, NumItemType_t };
+    // Scroll = a spell scroll (SPELL_SCROLLS_PLAN.md): a Wondrous item holding one use of one
+    // spell at a fixed DC/attack. Spent, it is discarded (discardSpentScrolls); it never refills.
+    enum ItemType_t   { Heal = 0, Thrown, Key, Wondrous, Scroll, NumItemType_t };
     // Action economy cost of using it. NoAction = free (e.g. an always-on trinket).
     // AttackReplacement is the thrown-item cost: "when you take the Attack action, you can
     // replace one of your attacks with throwing this" — so a Fighter with Extra Attack can

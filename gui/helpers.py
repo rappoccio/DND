@@ -4,6 +4,7 @@
 
 import json
 import math
+import os
 
 import rpg_battle_map as rpg
 
@@ -1313,11 +1314,15 @@ def item_spell_entries(combat, bm, idx: int, spell_catalog: dict) -> list:
         (rpg.SpellItemSource.FromWeapon, combat.get_agent_weapons(bm, idx)),
         (rpg.SpellItemSource.FromArmor,  combat.get_agent_armor(bm, idx)),
     )
+    stats = combat.get_agent_stats(bm, idx)
     for source, rows in sources:
         for slot, row in enumerate(rows):
             spells = row.item_spells
             if not row.name or not spells.active():
                 continue
+            if (source == rpg.SpellItemSource.FromItem and row.type == rpg.ItemType.Scroll
+                    and not all(can_read_scroll(stats, n) for n in spells.spell_names())):
+                continue                 # SPELL_SCROLLS S5: unreadable, so not offered
             overrides = json.loads(spells.spell_overrides_json) if spells.spell_overrides_json else {}
             grants = [(name, 0) for _, names in sorted(spells.spell_groups.items()) for name in names]
             if spells.charges_max > 0:
@@ -1345,6 +1350,7 @@ def sync_item_spells(combat, bm, idx: int, spell_catalog: dict):
     can follow."""
     if not (0 <= idx < len(bm.placed_agents)):
         return None
+    combat.discard_spent_scrolls(bm, idx)   # SPELL_SCROLLS S3: a used scroll is gone
     current = list(combat.get_agent_spells(bm, idx))
     wanted = item_spell_entries(combat, bm, idx, spell_catalog)
     wanted_keys = [_item_spell_key(sp) for sp in wanted]
@@ -1366,6 +1372,115 @@ def sync_item_spells(combat, bm, idx: int, spell_catalog: dict):
         return None
     combat.set_agent_spells(bm, idx, kept)
     return moved
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Spell scrolls (plans/SPELL_SCROLLS_PLAN.md)
+#
+#  A made scroll is an items.json "Spell Scroll" record carrying one use of one
+#  spell (item_spell_groups {"1": [spell]}) at a fixed spell_dc / spell_attack
+#  (S1, S2). It is readable only by a creature with the spell on one of its class
+#  lists, or with the DM's reads_any_scroll tick (S5).
+# ─────────────────────────────────────────────────────────────────────────────
+
+SPELL_SCROLL = "Spell Scroll"
+
+# S2 — 2024 DMG Spell Scroll table: spell level → (save DC, attack bonus).
+SCROLL_DC_TABLE = {0: (13, 5), 1: (13, 5), 2: (13, 5), 3: (15, 7), 4: (15, 7),
+                   5: (17, 9), 6: (17, 9), 7: (18, 10), 8: (18, 10), 9: (19, 11)}
+
+# Class lists for real spells in spells.json that spells_raw.json (the SRD import) lacks.
+_EXTRA_SPELL_CLASSES = {
+    "Arms of Hadar":      {"Warlock"},
+    "Blade Ward":         {"Bard", "Sorcerer", "Warlock", "Wizard"},
+    "Booming Blade":      {"Sorcerer", "Warlock", "Wizard"},
+    "Hunger of Hadar":    {"Warlock"},
+    "Mind Sliver":        {"Sorcerer", "Warlock", "Wizard"},
+    "Power Word Fortify": {"Bard", "Cleric"},
+    "Silvery Barbs":      {"Bard", "Sorcerer", "Wizard"},
+    "Summon Aberration":  {"Warlock", "Wizard"},
+    "Summon Beast":       {"Druid", "Ranger"},
+    "Summon Celestial":   {"Cleric", "Paladin"},
+    "Summon Construct":   {"Wizard"},
+    "Summon Elemental":   {"Druid", "Ranger", "Wizard"},
+    "Summon Fey":         {"Druid", "Ranger", "Warlock", "Wizard"},
+    "Summon Fiend":       {"Warlock", "Wizard"},
+    "Summon Shadowspawn": {"Warlock", "Wizard"},
+    "Summon Undead":      {"Warlock", "Wizard"},
+    "Toll the Dead":      {"Cleric", "Warlock", "Wizard"},
+}
+
+_spell_classes_cache = None
+
+
+def spell_classes(name: str) -> set:
+    """The classes whose spell list has ``name`` (spells_raw.json + the extras). Empty for
+    a monster ability or anything unknown — no scroll can hold those."""
+    global _spell_classes_cache
+    if _spell_classes_cache is None:
+        _spell_classes_cache = {k: set(v) for k, v in _EXTRA_SPELL_CLASSES.items()}
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spells_raw.json")
+        try:
+            with open(path) as f:
+                for r in json.load(f):
+                    names = {c.get("name") for c in r.get("classes") or [] if c.get("name")}
+                    if names:
+                        _spell_classes_cache.setdefault(r.get("name"), set()).update(names)
+        except (OSError, ValueError) as e:
+            print(f"⚠ spells_raw.json unreadable ({e}) — scroll class lists limited to extras")
+    return _spell_classes_cache.get(name, set())
+
+
+def scroll_spell_names(all_spells) -> list:
+    """The spells.json names a scroll can hold (S1): those on some class list, by level then name."""
+    recs = [d for d in all_spells if spell_classes(d.get("name", ""))]
+    return [d["name"] for d in sorted(recs, key=lambda d: (int(d.get("level", 0) or 0), d["name"]))]
+
+
+def creature_spell_lists(stats) -> set:
+    """The class spell lists ``stats`` casts from: each class with levels, plus Wizard for an
+    Eldritch Knight or Arcane Trickster (their spells come from the Wizard list)."""
+    out = {name for name, c in rpg.CharacterClass.__members__.items()
+           if name != "None" and stats.has_class(c)}
+    if stats.has_class(rpg.CharacterClass.Fighter) \
+            and stats.fighter_subclass == rpg.FighterSubclass.EldritchKnight:
+        out.add("Wizard")
+    if stats.has_class(rpg.CharacterClass.Rogue) \
+            and stats.rogue_subclass == rpg.RogueSubclass.ArcaneTrickster:
+        out.add("Wizard")
+    return out
+
+
+def can_read_scroll(stats, spell: str) -> bool:
+    """S5: the spell is on one of the creature's class lists, or the DM ticked reads_any_scroll."""
+    return bool(stats.reads_any_scroll) or bool(spell_classes(spell) & creature_spell_lists(stats))
+
+
+def make_spell_scroll(template: dict, spell_record: dict, dc: int | None = None,
+                      attack: int | None = None) -> dict:
+    """A made scroll's record (S1): the catalog ``template`` holding one use of ``spell_record``
+    at ``dc`` / ``attack``, defaulting from the DMG table by spell level (S2)."""
+    name = spell_record["name"]
+    level = max(0, min(9, int(spell_record.get("level", 0) or 0)))
+    d_dc, d_atk = SCROLL_DC_TABLE[level]
+    rec = {k: v for k, v in template.items()
+           if k not in ("item_spell_groups", "item_spell_uses", "spell_dc", "spell_attack")}
+    rec.update({
+        "name": f"{SPELL_SCROLL} ({name})",
+        "type": "Scroll",
+        "action_type": "NoAction",
+        "consumable": True,
+        "quantity": 1,
+        "item_spell_groups": {"1": [name]},
+        "spell_dc": int(dc) if dc else d_dc,
+        "spell_attack": int(attack) if attack else d_atk,
+    })
+    return rec
+
+
+def is_blank_scroll(d: dict) -> bool:
+    """The bare catalog "Spell Scroll" (no spell chosen yet) — SS2 asks for one before it lands."""
+    return d.get("type") == "Scroll" and not d.get("item_spell_groups")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -456,6 +456,7 @@ test_scripts = [
     "test_enspelled_lifecycle.py",
     "test_enspelled_gui.py",
     "test_enspelled_npc.py",
+    "test_spell_scrolls.py",
     "test_green_slaad.py",
     "test_npc_multiattack.py",
     "test_permanently_armed.py",

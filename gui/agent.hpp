@@ -213,6 +213,9 @@ namespace rpg {
       // turn-start approximation of the Sentinel feat); has_branches_of_the_tree → a STR-save-or-Grappled.
       bool has_sentinel{false};
       bool has_branches_of_the_tree{false};
+      // Spell scrolls (SPELL_SCROLLS_PLAN.md S5): a scroll's spell must be on one of this
+      // creature's class lists; this DM tick lets it read any scroll (a classless monster).
+      bool reads_any_scroll{false};
 
       // ── Initiative ────────────────────────────────────────────────────
       // When true, prof_bonus is also added to the initiative roll

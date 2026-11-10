@@ -57,6 +57,7 @@ def dict_to_stats(stats_dict):
     stats.has_cunning_action = bool(stats_dict.get("has_cunning_action", False))
     stats.has_sentinel = bool(stats_dict.get("has_sentinel", False))
     stats.has_branches_of_the_tree = bool(stats_dict.get("has_branches_of_the_tree", False))
+    stats.reads_any_scroll = bool(stats_dict.get("reads_any_scroll", False))
     stats.save_prof_str = bool(stats_dict.get("save_prof_str", False))
     stats.save_prof_dex = bool(stats_dict.get("save_prof_dex", False))
     stats.save_prof_con = bool(stats_dict.get("save_prof_con", False))

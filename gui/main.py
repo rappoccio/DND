@@ -14041,6 +14041,7 @@ class App:
                     "has_offhand_attack": s.has_offhand_attack,
                     "has_sentinel":             s.has_sentinel,
                     "has_branches_of_the_tree": s.has_branches_of_the_tree,
+                    "reads_any_scroll":         s.reads_any_scroll,
                     "spellcasting_ability": _INT_TO_ABILITY.get(s.spellcasting_ability, "cha"),
                     "temp_hp": s.temp_hp,
                     "available_hit_points": s.available_hit_points,

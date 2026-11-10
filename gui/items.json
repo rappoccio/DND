@@ -177,6 +177,17 @@
     "sprite_path": ""
   },
   {
+    "name": "Spell Scroll",
+    "description": "A scroll bearing the words of a single spell, written in a mystical cipher. If the spell is on your class's spell list, you can read the scroll and cast its spell without Material components, using the scroll's save DC and attack bonus. Otherwise the scroll is unintelligible. Casting the spell takes its normal casting time. Once the spell is cast, the scroll disintegrates.",
+    "type": "Scroll",
+    "action_type": "NoAction",
+    "rarity": "Varies",
+    "range": 0,
+    "quantity": 1,
+    "consumable": true,
+    "sprite_path": ""
+  },
+  {
     "name": "Key",
     "description": "Unlocks the chests and doors it was made for.",
     "type": "Key",

@@ -16,6 +16,7 @@
 #include "battle_map.hpp"
 #include "combat_internal.hpp"
 
+#include <algorithm>
 #include <array>
 #include <map>
 #include <string>
@@ -123,6 +124,51 @@ void CombatEngine::addSpellToAgent(BattleMap& bm, int idx, Spell s) noexcept
 void CombatEngine::removeSpellFromAgent(BattleMap& bm, int idx, int spell_idx) noexcept
 {
     bm.removeSpellFromAgent(idx, spell_idx);
+}
+
+int CombatEngine::discardSpentScrolls(BattleMap& bm, int idx) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return 0;
+    PlacedAgent& pa = bm.placedAgentMut(idx);
+    const Agent::Conditions cond = bm.getAgentConditions(idx);
+
+    // Is spell entry j (cast by this agent) still holding something up?
+    auto live = [&](int j) {
+        if (cond.concentrating && cond.concentrating_on == pa.spells[static_cast<std::size_t>(j)].name)
+            return true;
+        for (const auto& ac : conditions_.all())
+            if (ac.caster_idx == idx && ac.spell_idx == j) return true;
+        for (const auto& eff : bm.activeSpellEffects())
+            if (eff.caster_idx == idx && eff.spell_idx == j) return true;
+        for (const auto& te : bm.activeTerrainEffects())
+            if (te.source_agent_idx == idx && te.spell_idx == j) return true;
+        return false;
+    };
+
+    int erased = 0;
+    for (int slot = static_cast<int>(pa.items.size()) - 1; slot >= 0; --slot) {
+        const Item& it = pa.items[static_cast<std::size_t>(slot)];
+        if (it.type != Item::Scroll || it.item_spells.empty()) continue;   // a blank scroll holds nothing
+        const auto names = it.item_spells.spellNames();
+        if (std::any_of(names.begin(), names.end(),
+                        [&](const std::string& n) { return it.item_spells.canCast(n, 0); }))
+            continue;                                       // not spent yet
+        std::vector<int> own;                               // this scroll's spell entries
+        for (int j = 0; j < static_cast<int>(pa.spells.size()); ++j) {
+            const Spell& sp = pa.spells[static_cast<std::size_t>(j)];
+            if (sp.item_source == Spell::FromItem && sp.item_slot == slot && sp.item_name == it.name)
+                own.push_back(j);
+        }
+        if (std::any_of(own.begin(), own.end(), live)) continue;
+
+        log_("{}'s {} disintegrates", agentName(bm, idx), it.name);
+        pa.items.erase(pa.items.begin() + slot);
+        for (int j : own) pa.spells[static_cast<std::size_t>(j)].item_slot = -1;
+        for (auto& sp : pa.spells)
+            if (sp.item_source == Spell::FromItem && sp.item_slot > slot) --sp.item_slot;
+        ++erased;
+    }
+    return erased;
 }
 
 bool CombatEngine::spendSpellSlot(BattleMap& bm, int idx, int level) noexcept

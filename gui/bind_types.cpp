@@ -370,6 +370,9 @@ void bindTypes(py::module_& m) {
         .def_readwrite("can_cast_spell",       &Agent::Stats::can_cast_spell)
         .def_readwrite("has_sentinel",             &Agent::Stats::has_sentinel)
         .def_readwrite("has_branches_of_the_tree", &Agent::Stats::has_branches_of_the_tree)
+        .def_readwrite("reads_any_scroll",         &Agent::Stats::reads_any_scroll,
+             "DM override (SPELL_SCROLLS_PLAN.md S5): can cast from any spell scroll, "
+             "whatever its class lists.")
         .def_readwrite("spellcasting_ability", &Agent::Stats::spellcasting_ability)
         // Initiative
         .def_readwrite("initiative_prof", &Agent::Stats::initiative_prof)
@@ -1719,6 +1722,7 @@ void bindTypes(py::module_& m) {
         .value("Thrown", Item::Thrown)
         .value("Key",    Item::Key)
         .value("Wondrous", Item::Wondrous)
+        .value("Scroll",   Item::Scroll)
         .export_values();
 
     py::enum_<Item::ItemAction_t>(m, "ItemAction")

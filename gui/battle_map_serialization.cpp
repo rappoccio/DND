@@ -94,7 +94,7 @@ namespace {
     X(spellcasting_ability) X(num_attacks) X(multiattack) X(bonus_attacks_remaining) \
     X(bonus_actions_max) X(bonus_actions_remaining) X(has_cunning_action) \
     X(has_offhand_attack) X(can_cast_spell) X(has_sentinel) \
-    X(has_branches_of_the_tree) X(initiative_prof) X(class_levels) X(character_class) \
+    X(has_branches_of_the_tree) X(reads_any_scroll) X(initiative_prof) X(class_levels) X(character_class) \
     X(char_level) X(spell_slots_max) X(spell_slots_remaining) X(darkvision_range) \
     X(truesight_range) X(devilssight_range) X(blindsight_range) X(is_npc) \
     X(leveled_spell_cast_this_turn) X(temp_hp) X(rage_thp_source_idx) \

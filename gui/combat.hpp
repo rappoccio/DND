@@ -837,6 +837,12 @@ public:
     void setAgentSpells(BattleMap& bm, int idx, std::vector<Spell> spells) noexcept;
     void addSpellToAgent(BattleMap& bm, int idx, Spell s) noexcept;
     void removeSpellFromAgent(BattleMap& bm, int idx, int spell_idx) noexcept;
+    // Spell scrolls (SPELL_SCROLLS_PLAN.md S3): erase agent[idx]'s spent scroll rows. A scroll whose
+    // spell is still live (a condition, spell effect or terrain effect it made, or the holder's
+    // concentration on it) is kept until that ends, so no stored spell index goes stale. Spell
+    // tags pointing past an erased row are shifted down; the scroll's own entries are untagged
+    // (item_slot -1, uncastable) for sync_item_spells to drop. Returns how many were erased.
+    int discardSpentScrolls(BattleMap& bm, int idx) noexcept;
     // Expend one player spell slot of `level` (1-9) for agent[idx], clamped at 0.
     // Used by the GUI Wish flow to charge Wish's own 9th-level slot while the
     // duplicated spell is cast for free (SpellAction.free_cast). No-op for NPCs

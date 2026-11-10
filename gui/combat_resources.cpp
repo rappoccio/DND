@@ -130,8 +130,9 @@ UseItemResult CombatEngine::useItem(BattleMap& bm, int user_idx, int item_slot, 
     if (item_slot < 0 || item_slot >= static_cast<int>(inv.size())) return res;
     const Item item = inv[static_cast<std::size_t>(item_slot)];   // by value: the row may be erased below
     if (item.quantity <= 0) return res;
-    // A Wondrous item has no Use Item effect: it only casts its item_spells (ENSPELLED D8).
-    if (item.type == Item::Wondrous) return res;
+    // A Wondrous item has no Use Item effect: it only casts its item_spells (ENSPELLED D8). Nor
+    // does a scroll: its spell is cast from the spell menu.
+    if (item.type == Item::Wondrous || item.type == Item::Scroll) return res;
 
     // The user has to be able to act: no rummaging through your pack while dead or Incapacitated
     // (which covers Unconscious/Paralyzed/Stunned — see applyIncapacitated).
@@ -1302,9 +1303,11 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
         // Enspelled items (ENSPELLED_ITEMS_PLAN.md E2): every carried item, weapon and worn armor
         // piece refills its N/day groups and its charge pool. Attunement doesn't matter: the item
         // regains its uses whoever holds it. Items on the floor or in a chest don't (known limit).
+        // A spell scroll never refills (SPELL_SCROLLS_PLAN.md S3).
         {
             PlacedAgent& rpa = bm.placedAgentMut(agent_idx);
-            for (auto& it : rpa.items)   if (!it.item_spells.empty()) it.item_spells.refill();
+            for (auto& it : rpa.items)
+                if (!it.item_spells.empty() && it.type != Item::Scroll) it.item_spells.refill();
             for (auto& w  : rpa.weapons) if (!w.item_spells.empty())  w.item_spells.refill();
             for (auto& a  : rpa.armor)   if (!a.item_spells.empty())  a.item_spells.refill();
         }
