@@ -260,6 +260,8 @@ test_scripts = [
     "test_sim_playback.py",
     # NPC_LEARNING_PLAN.md Step 3: the headless arena (gui/arena.py).
     "test_arena.py",
+    # Step 3b: generated parties (gui/party_gen.py, gui/pc_templates.json).
+    "test_party_gen.py",
     # NPC_LEARNING_PLAN.md Step 4: archetypes + the Level 5/6 fallback chain.
     "test_npc_archetypes.py",
     "test_npc_macro_actions.py",

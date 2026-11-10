@@ -300,7 +300,8 @@ def test_decision_in_trace_and_hud():
 
 def test_arena_trace_records_decisions():
     """An arena episode's trace carries a decision on the NPC turns that reached the resolver."""
-    sc = arena.generate_scenario(3)
+    # The tracked party: plain Level 4 PCs (a generated party's signature PCs decide by Policy).
+    sc = arena.generate_scenario(3, parties=["maps/TestDNDMap_agents.json"])
     with tempfile.TemporaryDirectory() as td:
         path = os.path.join(td, "ep.jsonl")
         arena.run_episode(sc, 3, "level4", trace_path=path)

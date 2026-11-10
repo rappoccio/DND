@@ -51,6 +51,7 @@ for _p in (_GUI_DIR, os.path.join(_REPO, "tools")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import party_gen                     # noqa: E402
 import rpg_battle_map as rpg          # noqa: E402
 import sim_trace                      # noqa: E402
 import xp                             # noqa: E402
@@ -74,6 +75,8 @@ ROUND_CAP = 20                        # a fight still going after this many roun
 TRACE_SAMPLE = 10                     # D13: arena episodes keep a trace 1 time in 10 (seeded)
 HELDOUT_MOD = 5                       # 1 scenario in 5 is held out (by content hash)
 PARTY_SIZE = 4
+GENERATED = "generated"               # party source: PCs built by party_gen (Step 3b)
+GENERATED_SHARE = 0.8                 # B13: its share of draws when other sources are in the pool
 MAX_PARKS_PER_TURN = 64               # a reaction loop this long is an engine bug, not a fight
 
 # SRD 5.2 "XP Budget per Character" (SRD_CC_v5.2.pdf p.201-202): level -> (Low, Moderate, High).
@@ -163,8 +166,19 @@ def load_party_source(path: str) -> list[dict]:
 
 
 def default_party_sources() -> list[str]:
-    """The tracked party: the PCs in ``maps/TestDNDMap_agents.json``."""
-    return ["maps/TestDNDMap_agents.json"]
+    """Generated parties (Step 3b) and the tracked party, the PCs in
+    ``maps/TestDNDMap_agents.json``; ``pick_party_source`` draws them 80 / 20."""
+    return [GENERATED, "maps/TestDNDMap_agents.json"]
+
+
+def pick_party_source(rng: random.Random, parties: list[str]) -> str:
+    """``generated`` takes GENERATED_SHARE of the draws when the pool has other sources too
+    (B13); a pool without it is drawn uniformly, as before."""
+    if GENERATED in parties and len(parties) > 1:
+        if rng.random() < GENERATED_SHARE:
+            return GENERATED
+        return rng.choice([p for p in parties if p != GENERATED])
+    return rng.choice(parties)
 
 
 def default_maps() -> list[tuple[str, str | None]]:
@@ -355,12 +369,16 @@ class Arena:
         maps = list(maps or default_maps())
         parties = list(parties or default_party_sources())
         map_path, terrain = rng.choice(maps)
-        source = rng.choice(parties)
-        pool = self._party(source)
-        if not pool:
-            raise ValueError(f"no PCs in party source {source}")
-        party = [copy.deepcopy(p) for p in
-                 (rng.sample(pool, party_size) if len(pool) > party_size else pool)]
+        source = pick_party_source(rng, parties)
+        generated = None
+        if source == GENERATED:
+            party, generated = party_gen.generate_party(rng.randrange(2 ** 31))
+        else:
+            pool = self._party(source)
+            if not pool:
+                raise ValueError(f"no PCs in party source {source}")
+            party = [copy.deepcopy(p) for p in
+                     (rng.sample(pool, party_size) if len(pool) > party_size else pool)]
         level = round(sum(_char_level(p) for p in party) / len(party))
         difficulty = rng.choice(DIFFICULTIES)
         budget = XP_BUDGET[level][DIFFICULTIES.index(difficulty)] * len(party)
@@ -407,6 +425,8 @@ class Arena:
                 "party": party_makeup(party),
                 "party_level": level, "difficulty": difficulty, "xp_budget": budget,
                 "xp_spent": spent, "mob_mix": mix, "mobs": [a["name"] for a in mob_agents]}
+        if generated:
+            meta["generated_party"] = generated
         return Scenario(map=map_path, terrain=terrain, agents=party + mob_agents, meta=meta)
 
     # ── one fight ──
@@ -446,18 +466,34 @@ class Arena:
         elif npc_policy in MACRO_POLICIES:
             npc_rank = MACRO_POLICIES[npc_policy](eng, bm, seed)
         pc_rank = pc_policy_factory(eng, bm, seed) if pc_policy_factory is not None else None
+        agents = copy.deepcopy(scenario.agents)
+        # Heuristic PCs with signature spells (generated parties, B9a) run Level 4 with their
+        # signatures first, through the policy seam at Level 5. PCs without any stay plain Level 4.
+        signatures = {}
+        if pc_rank is None:
+            signatures = {i: list(a["signature_spells"]) for i, a in enumerate(agents)
+                          if int(a.get("faction", 0)) == PC_FACTION and a.get("signature_spells")}
+        pc_policy_name = ("level4" if pc_rank is None else
+                          os.path.basename(pc_model) if pc_model else "policy")
+        if signatures:
+            pc_rank = signature_policy(eng, bm, signatures)
+            pc_policy_name = "level4+signatures"
         if pc_rank is not None:
             eng.set_npc_policy(_side_dispatch(bm, npc_rank, pc_rank))
         elif npc_rank is not None:
             eng.set_npc_policy(npc_rank)
-        agents = copy.deepcopy(scenario.agents)
         npc_level = NPC_POLICIES[npc_policy]
-        pc_level = PC_POLICY_LEVEL if pc_rank is not None else PC_HEURISTIC_LEVEL
-        for a in agents:
+        for i, a in enumerate(agents):
             pc_side = int(a.get("faction", 0)) == PC_FACTION
             a["is_npc_automated"] = True
             a["on_deck"] = False
-            a["npc_automation_difficulty_level"] = pc_level if pc_side else npc_level
+            if not pc_side:
+                level = npc_level
+            elif pc_policy_factory is not None or i in signatures:
+                level = PC_POLICY_LEVEL
+            else:
+                level = PC_HEURISTIC_LEVEL
+            a["npc_automation_difficulty_level"] = level
         self.load_agents(agents)
         t_loaded = time.perf_counter()
         fight = _Fight(self.app, eng, bm, round_cap)
@@ -475,8 +511,7 @@ class Arena:
         outcome = fight.run()
         outcome.update({"scenario_hash": scenario.hash, "split": scenario.split,
                         "seed": int(seed), "npc_policy": npc_policy, "pc_mode": pc_mode,
-                        "pc_policy": ("level4" if pc_rank is None else
-                                      os.path.basename(pc_model) if pc_model else "policy"),
+                        "pc_policy": pc_policy_name,
                         "load_s": round(t_loaded - t0, 4),
                         "fight_s": round(time.perf_counter() - t_loaded, 4)})
         if trace is not None:
@@ -517,6 +552,52 @@ def random_macro_policy(eng, bm, seed: int):
 
 
 MACRO_POLICIES = {"l4-macro": l4_macro_policy, "random-macro": random_macro_policy}
+
+
+def signature_policy(eng, bm, signatures: dict):
+    """Level 4 with build-defining spells first (Step 3b, B9a). ``signatures``: agent index ->
+    spell names, best first. A creature with any of them castable now (a legal candidate) casts
+    the first such spell; otherwise it plays Level 4's own choice through the macro path, like
+    ``l4-macro``. A concentration signature is passed over while the caster concentrates, and a
+    heal only targets an ally below half HP (Level 4's own threshold)."""
+    heal = rpg.NpcMacroKind.Heal
+
+    def rank(idx, archetype, actions):
+        names = signatures.get(idx)
+        if names:
+            me = bm.placed_agents[idx]
+            spells = me.spells
+            concentrating = me.conditions.concentrating
+            agents = bm.placed_agents
+            for name in names:
+                best, best_key = -1, None
+                for i, a in enumerate(actions):
+                    si = int(a.spell_idx)
+                    if not a.legal or not (0 <= si < len(spells)) or spells[si].name != name:
+                        continue
+                    if concentrating and spells[si].requires_concentration:
+                        continue
+                    t = int(a.target_agent)
+                    if a.kind == heal:
+                        if not (0 <= t < len(agents)):
+                            continue
+                        st = agents[t].stats
+                        frac = st.hp_cur / max(1, st.hp_max)
+                        if frac >= 0.5:
+                            continue
+                        key = frac
+                    elif 0 <= t < len(agents):
+                        o = agents[t].origin
+                        key = float(max(abs(o.col - me.origin.col), abs(o.row - me.origin.row)))
+                    else:
+                        key = 0.0
+                    if best < 0 or key < best_key:
+                        best, best_key = i, key
+                if best >= 0:
+                    return [best]
+        want = eng.npc_heuristic_macro_action(bm, idx)
+        return [i for i, a in enumerate(actions) if same_macro(a, want)][:1]
+    return rank
 
 
 def _side_dispatch(bm, npc_rank, pc_rank):

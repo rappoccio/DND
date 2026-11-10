@@ -18,7 +18,8 @@ generated-party source (Step 3b). Step 4 (archetypes + fallback chain) committed
 (230/0), committed 5d42944, awaiting the user's check of the choices flagged in its as-built notes.
 Step 6 code committed 16a0b6b (untrained). Step 7 machinery implemented 2026-11-09 (232/0),
 untrained. **No training until Step 3b's generated parties exist** (user, 2026-11-09): order is
-3b → Step 6 training/gate → Step 7 training.
+3b → **Ranger subclasses (user, 2026-11-10: code them up before any training)** → Step 6
+training/gate → Step 7 training. Step 3b implemented 2026-11-10 (233/0).
 
 ---
 
@@ -247,7 +248,7 @@ the 2024 encounter-difficulty table.
     per class/subclass/role across four tiers). It plugs in as another party source; it
     is proposed as Step 3b.
 
-### Step 3b — Generated parties (DRAFT 2026-11-09, for the user's check; not frozen)
+### Step 3b — Generated parties (decisions B1–B13 FROZEN 2026-11-09, with the user's B5 / B9a changes)
 D12's second party source: PCs built from the role table, so training sees a large, balanced
 spread of party setups. **Training (Steps 6 and 7) waits for this.**
 
@@ -263,17 +264,44 @@ Ranger subclasses. 232/0.
 | B2  | **Scope.** Exactly the 48 subclasses in the role table, each built as its primary or its secondary role (94 builds; Assassin and Soulknife have no secondary). |
 | B3  | **Level.** A tier is drawn uniformly (1–4, 5–10, 11–16, 17–20), then a level uniformly within it. All four PCs share the level. The mob budget follows from it, as today. |
 | B4  | **Composition.** The plan's templates (50% balanced / 30% four distinct primaries / 20% skewed). A role slot draws a subclass with weight 3 where that role is its primary and 1 where it is its secondary, which gives the 75/25 split. The skewed 20% picks one of: two DEF and no SUP; no DEF; two casters + two ST; three ST + SUP. |
-| B5  | **Ability scores.** Standard array 15/14/13/12/10/8, placed by class priority, plus background +2/+1. ASIs at 4/8/12/16 take the primary ability to 20 first; the build's feat (if it has one) takes the first ASI. Level 19's Epic Boon is ignored. |
+| B5  | **Ability scores** (user, 2026-11-09): min-maxed point buy, final scores **17 / 16 / 14 / 10 / 8 / 8** (15/15/14/10/8/8 bought + background +2/+1), placed by the build's ability priority (main ability 17, second 16, CON or the third 14). ASIs at 4/8/12/16 take the main ability to 20 first; the build's feat (if it has one) takes the first ASI. Level 19's Epic Boon is ignored. |
 | B6  | **HP.** Max hit die at level 1, then the fixed average, plus CON mod per level (+ Tough / Durable as the engine applies them). |
 | B7  | **AC.** A per-class armor kit: heavy = Chain Mail, then Plate from level 9; medium = 15 + DEX (max 2); light = 12 + DEX; Barbarian / Monk unarmored (the engine's Unarmored Defense); shield where the build has one. Encoded through `stats.ac` as the importer does, since the armor catalog is small. |
 | B8  | **Magic items.** Weapon +1 from level 5, +2 from 11, +3 from 17. No AC items. |
 | B9  | **Spells.** Each (class, role) build has a ranked list per spell level, using spells from `spells.json` only. The generator takes cantrips, then fills the class's 2024 prepared count from the highest castable level down. Always-prepared subclass spells (domain / oath / circle) come on top, from the same tables the GUI uses. |
+| B9a | **Build-defining abilities** (user, 2026-11-09): each build names 2–4 signature abilities (e.g. Light Cleric: Radiance of the Dawn, Fireball; Evoker: Fireball, Sculpt Spells; Battle Master: Trip / Menacing maneuvers; Gloom Stalker: Dread Ambusher). Spells among them are always prepared first, ahead of the ranked list, and feature choices are set to match. **In fights** (user, 2026-11-09): an automated PC with signature spells tries one first whenever a legal candidate casts it, before Level 4's own choice; otherwise it plays Level 4. Per agent, arena only: PCs without signatures (the tracked party, every NPC) run plain Level 4, so the determinism golden is untouched. A signature concentration spell is skipped while the PC is already concentrating. Signature *features* (Dread Ambusher, maneuvers, …) are on the sheet and fire as the executors already use them. |
 | B10 | **Sub-choices per build:** fighting style (as a feat), Hunter's Prey, Primal Companion (Land), Warlock invocations, Metamagic, Land type, Blessed Strikes, and so on, fixed per build. |
 | B11 | **Names**, e.g. `Cleric (Light·MT) 7`; deterministic, unique within the party. |
 | B12 | **Tests.** Every build at levels 1, 5, 11 and 17 loads in the engine with every spell / weapon resolved and sane HP / AC / slots; the same seed gives the same party; over many draws the composition proportions hold; an arena episode on a generated party runs. |
 | B13 | **Source mix.** In the arena's default pool, `generated` is drawn 80% of the time and the tracked party file 20%. |
 
 Review aid: `tools/print_party.py` renders a build (or a seed's party) as a short character sheet.
+
+- **Implemented 2026-11-10 (233/0).** As built, in `gui/party_gen.py`,
+  `gui/pc_templates.json` (signature moves adjusted by the user), `gui/arena.py`,
+  `tools/print_party.py` and `tests/test_party_gen.py`:
+  - **Records** are the importer's save format plus `signature_spells`, `signature_features` and
+    `pc_build` (ignored by the loaders). The GUI's loader grants subclass / oath / patron spells and
+    class features, as for any saved PC. The engine adds Draconic Resilience HP itself.
+  - **Spells.** Signatures first (cantrips too: Blade Ward), then the ranked lists round-robin from
+    the highest castable level down, so a high-level caster keeps low-level staples. Highest level:
+    2024 progression per caster type; Eldritch Knight / Arcane Trickster use a third-caster table
+    for what they prepare, and the engine supplies their slots. A short list can leave a build
+    under its prepared count (a level-11 Ranger prepares 8 of 10).
+  - **AC.** No armor pieces; `stats.ac` is back-solved so base + DEX is the kit's AC; a shield is a
+    real off-hand Shield (+2); Defense (+1) is folded into the base. Barbarian / Monk / Dance Bard /
+    Draconic Sorcerer / Armor of Shadows get the engine's own formulas.
+  - **Arena.** The default party pool is `generated` + the tracked file, drawn 80 / 20; a pool
+    without `generated` draws uniformly, as before. Scenario meta gains `generated_party` (seed,
+    template, roles, level, builds). PCs with signature spells run at Level 5 through
+    `signature_policy`: the first signature with a legal candidate is cast (nearest enemy target; a
+    heal only on an ally below half HP; a concentration signature skipped while concentrating),
+    else Level 4's choice through the macro path (`l4-macro`'s parity, ~8% of decisions Defer to
+    the chain). The outcome records `pc_policy: level4+signatures`.
+  - **Also fixed:** `sim_trace.class_text` now shows Druid circles and Paladin oaths.
+  - **First look** (400 train episodes, Level 4 mobs): generated parties win 68%, NPCs 17%, draws
+    15% (tracked party: 47 / 26 / 27). By difficulty, NPCs win 5% at Low, 16% at Moderate, 29% at
+    High. For the user: NPC wins are the training signal, so Steps 6–7 may want harder budgets.
 
 ### Step 4 — Archetypes + fallbacks
 - `enum class NpcArchetype { Melee, Ranged, Blaster, Controller, HealerSupport }`, plus

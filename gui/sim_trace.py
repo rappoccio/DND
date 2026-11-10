@@ -129,7 +129,9 @@ def class_text(t: dict) -> str:
     """``Warlock (Fiend) 9``, or each class of a multiclass: ``Fighter 5 / Wizard (Evoker) 4``.
     A creature with no class is ``-``."""
     def one(cls, lv):
-        sub = t.get(f"agent_{cls.lower()}_subclass")
+        field = {"Druid": "agent_druid_circle", "Paladin": "agent_paladin_oath"}.get(
+            cls, f"agent_{cls.lower()}_subclass")
+        sub = t.get(field)
         sub = f" ({sub})" if sub and sub not in ("NONE", "None") else ""
         return f"{cls}{sub} {lv}"
     levels = t.get("agent_class_levels") or {}

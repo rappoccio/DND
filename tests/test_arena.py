@@ -201,7 +201,8 @@ def test_round_cap_is_a_draw():
 
 
 def test_policy_and_mode_are_applied_and_checked():
-    sc = arena.generate_scenario(4242)
+    # The tracked party: no signature spells, so Heuristic PCs are plain Level 4.
+    sc = arena.generate_scenario(4242, parties=["maps/TestDNDMap_agents.json"])
     o = arena.run_episode(sc, 5, "level1", "Heuristic")
     assert o["npc_policy"] == "level1" and o["pc_mode"] == "Heuristic" and o["pc_policy"] == "level4"
     ar = arena.arena()
