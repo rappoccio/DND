@@ -2440,6 +2440,9 @@ void BattleMap::initNpcSpellGroups(int agent_idx,
 
     // Initialize uses_max and uses_remaining for each spell based on its group
     for (auto& spell : pa.spells) {
+        // An item-granted spell is paid for by its item (ENSPELLED_ITEMS_PLAN.md E2), even when
+        // the creature also knows the same spell innately.
+        if (spell.item_source != Spell::NoItem) continue;
         for (const auto& [uses_per_day, spell_names] : groups) {
             // Check if this spell is in this group
             if (std::find(spell_names.begin(), spell_names.end(), spell.name) != spell_names.end()) {

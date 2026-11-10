@@ -278,14 +278,16 @@ def give_item(app, actor: int, m, armor_slot: int | None = None) -> bool:
             app._combat_log_add(f"{name} takes off {worn.name} and drops it.")
         armor[armor_slot] = m.armor
         app.combat.set_agent_armor(app.bm, actor, armor)
+        app._sync_item_spells(actor)
         app._combat_log_add(f"{name} puts on {m.name} ({ARMOR_SLOTS[armor_slot]}).")
         return True
     it = m.item
     if m.label:
         it.name = m.label
     inv = list(app.combat.get_agent_items(app.bm, actor))
-    for row in inv:
-        if row.name == it.name and row.type == it.type:
+    # An enspelled item never stacks: its uses and attunement are its own (D0).
+    for row in ([] if not it.item_spells.empty() else inv):
+        if row.name == it.name and row.type == it.type and row.item_spells.empty():
             row.quantity += max(1, it.quantity)
             if it.type == rpg.ItemType.Key:
                 row.opens = sorted(set(row.opens) | set(it.opens))
@@ -293,6 +295,7 @@ def give_item(app, actor: int, m, armor_slot: int | None = None) -> bool:
     else:
         inv.append(it)
     app.combat.set_agent_items(app.bm, actor, inv)
+    app._sync_item_spells(actor)
     app._combat_log_add(f"{name} takes {it.name}.")
     return True
 

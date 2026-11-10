@@ -453,6 +453,7 @@ test_scripts = [
     "test_placed_items.py",
     "test_enspelled_items.py",
     "test_enspelled_cost.py",
+    "test_enspelled_lifecycle.py",
     "test_green_slaad.py",
     "test_npc_multiattack.py",
     "test_permanently_armed.py",

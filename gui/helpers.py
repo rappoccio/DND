@@ -1279,3 +1279,90 @@ def _item_to_dict(it) -> dict:
         "sprite_path": it.sprite_path,
         **_item_spells_to_dict(it.item_spells),
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Enspelled items E3 — the grant / revoke lifecycle (plans/ENSPELLED_ITEMS_PLAN.md)
+#
+#  A creature's item-granted spells are derived, never authored: they are rebuilt from
+#  what it carries (D9) every time that can change. The engine owns the cost state on
+#  the item itself (D0), so a rebuild never touches uses or charges — it only re-tags
+#  spell entries with the item's current slot.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def is_item_spell(sp) -> bool:
+    """True for a spell granted by a carried item (tagged by item_spell_entries)."""
+    return sp.item_source != rpg.SpellItemSource.NoItem
+
+
+def _item_spell_key(sp) -> tuple:
+    return (int(sp.item_source), sp.item_slot, sp.item_name, sp.name, sp.item_charge_cost)
+
+
+def item_spell_entries(combat, bm, idx: int, spell_catalog: dict) -> list:
+    """The tagged Spells creature ``idx`` gets from its carried items right now.
+
+    Items rows, weapons rows and worn armor slots (D9) whose ItemSpells is active (D5:
+    attuned, or no attunement needed). Each N/day group spell and each pool spell becomes
+    one entry — a spell in both models gets both. ``spell_catalog`` maps name → spells.json
+    record; the item's spell_overrides (D3a) are applied over a copy. A name missing from
+    the catalog is skipped with a warning."""
+    out = []
+    sources = (
+        (rpg.SpellItemSource.FromItem,   combat.get_agent_items(bm, idx)),
+        (rpg.SpellItemSource.FromWeapon, combat.get_agent_weapons(bm, idx)),
+        (rpg.SpellItemSource.FromArmor,  combat.get_agent_armor(bm, idx)),
+    )
+    for source, rows in sources:
+        for slot, row in enumerate(rows):
+            spells = row.item_spells
+            if not row.name or not spells.active():
+                continue
+            overrides = json.loads(spells.spell_overrides_json) if spells.spell_overrides_json else {}
+            grants = [(name, 0) for _, names in sorted(spells.spell_groups.items()) for name in names]
+            if spells.charges_max > 0:
+                grants += [(name, cost) for cost, names in sorted(spells.charge_spells.items())
+                           for name in names]
+            for name, cost in grants:
+                record = spell_catalog.get(name)
+                if record is None:
+                    print(f"⚠ {row.name}: spell '{name}' not in spells.json — not granted")
+                    continue
+                sp = _dict_to_spell({**record, **overrides.get(name, {})})
+                sp.item_source, sp.item_slot = source, slot
+                sp.item_name, sp.item_charge_cost = row.name, cost
+                out.append(sp)
+    return out
+
+
+def sync_item_spells(combat, bm, idx: int, spell_catalog: dict):
+    """Rebuild creature ``idx``'s item-granted spell entries from what it carries now (E3).
+
+    Its own spells keep their order; item entries that still match are kept in place,
+    stale ones (the item left, moved slot, or lost attunement) are dropped and new ones
+    appended. Returns None when nothing changed, else ``moved``: for each new spell index,
+    the old index it came from (None for a newly granted entry) — so per-index metadata
+    can follow."""
+    if not (0 <= idx < len(bm.placed_agents)):
+        return None
+    current = list(combat.get_agent_spells(bm, idx))
+    wanted = item_spell_entries(combat, bm, idx, spell_catalog)
+    wanted_keys = [_item_spell_key(sp) for sp in wanted]
+    kept, moved, have = [], [], set()
+    for j, sp in enumerate(current):
+        if is_item_spell(sp):
+            k = _item_spell_key(sp)
+            if k not in wanted_keys or k in have:
+                continue
+            have.add(k)
+        kept.append(sp)
+        moved.append(j)
+    for k, sp in zip(wanted_keys, wanted):
+        if k not in have:
+            have.add(k)
+            kept.append(sp)
+            moved.append(None)
+    if moved == list(range(len(current))):
+        return None
+    combat.set_agent_spells(bm, idx, kept)
+    return moved

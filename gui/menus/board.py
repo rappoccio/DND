@@ -24,7 +24,7 @@ import os
 
 import rpg_battle_map as rpg
 
-from helpers import _dict_to_armor, _dict_to_item, _dict_to_weapon
+from helpers import _dict_to_armor, _dict_to_item, _dict_to_weapon, is_item_spell
 from net.roster import DM_PRINCIPAL_ID, Role
 
 
@@ -98,6 +98,7 @@ def show_agent_menu(app, hit, pos):
                 else:
                     cpp_weapons.append(rpg.Weapon())
             app.combat.set_agent_weapons(app.bm, h, cpp_weapons)
+            app._sync_item_spells(h)
             # Keep has_offhand_attack in sync with the off-hand toggles.
             stats = app.combat.get_agent_stats(app.bm, h)
             stats.has_offhand_attack = any(
@@ -108,8 +109,10 @@ def show_agent_menu(app, hit, pos):
                                 app.combat, app.bm)
     def _open_spells(h=hit):
         pt2 = app.bm.placed_agents[h]
+        # Own spells only: item-granted entries are derived from the inventory (E3).
         spell_dicts = [app._spell_to_dict(h, j, s)
-                       for j, s in enumerate(app.combat.get_agent_spells(app.bm, h))]
+                       for j, s in enumerate(app.combat.get_agent_spells(app.bm, h))
+                       if not is_item_spell(s)]
         def _open_spell_selector():
             app.spell_selection_dialog.show(app.spell_dialog._on_spell_selected)
         app.spell_dialog.open(
@@ -129,6 +132,7 @@ def show_agent_menu(app, hit, pos):
                 else:
                     cpp_armor.append(rpg.Armor())
             app.combat.set_agent_armor(app.bm, h, cpp_armor)
+            app._sync_item_spells(h)
         app.armor_dialog.open(app.screen, h, pt2.name, armor_array,
                               app.armor_selection_dialog, _on_armor_done)
     def _open_items(h=hit):
@@ -139,6 +143,7 @@ def show_agent_menu(app, hit, pos):
                 app.bm, h,
                 [_dict_to_item(d) for d in app.items_dialog.current_items
                  if d.get("name")])
+            app._sync_item_spells(h)
         app.items_dialog.open(app.screen, h, pt2.name, item_array,
                                app.item_selection_dialog, _on_items_done)
     def _edit_safe_targets(h=hit):

@@ -52,6 +52,7 @@ from helpers import (
     _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL,
     _spell_to_dict, _dict_to_spell,
     _item_to_dict, _dict_to_item,
+    is_item_spell, sync_item_spells,
     _condition_to_dict, _dict_to_condition,
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
     compute_summon_loadout, edge_key, edge_from_key, door_touch_cells, _weapon_slot_is_empty,
@@ -2300,6 +2301,7 @@ class App:
         init_npc_spell_groups. No-op for non-casters."""
         spell_names = mob_record.get("spell_indices", [])
         if not spell_names:
+            self._sync_item_spells(agent_idx)     # a non-caster can still carry an enspelled item
             return
         cpp_spells = []
         for spell_name in spell_names:
@@ -2340,6 +2342,7 @@ class App:
             self._agent_meta[agent_idx] = {
                 "is_npc": True, "npc_spell_groups": npc_spell_groups,
                 "npc_spell_recharge": recharge_map}
+        self._sync_item_spells(agent_idx)
 
     # ─────────────────────────────────────────────────────────────────────
     #  Grid coordinate helpers
@@ -4406,6 +4409,7 @@ class App:
         self.combat.set_agent_spells(self.bm, new_idx, clip["spells"])
         self.combat.set_agent_items(self.bm, new_idx, clip.get("items", []))
         self.combat.set_agent_armor(self.bm, new_idx, clip["armor"])
+        self._sync_item_spells(new_idx)
 
         # NPC innate-spell groups, so a copied NPC caster can still cast.
         meta = clip["meta"]
@@ -4826,6 +4830,7 @@ class App:
         if blades_changed:
             offhand = True
         self.combat.set_agent_weapons(self.bm, agent_idx, cpp_weapons)
+        self._sync_item_spells(agent_idx)
         stats.has_offhand_attack = offhand
         self.combat.set_agent_stats(self.bm, agent_idx, stats)
         # Refresh attack overlay if this is the currently selected agent.
@@ -6251,6 +6256,9 @@ class App:
             self._update_attack_overlay()
             return
         self._turn_start_idx  = new_idx
+        # Engine-side inventory changes (a throw, a disarm, a used-up row shifting the rest) can
+        # leave an item spell's tag pointing at the wrong slot; re-derive before the turn.
+        self._sync_item_spells(new_idx)
         self._trace_begin_turn(new_idx)   # before begin_turn_flow, whose log lines are this turn's
         self._reaction_finish = self._finish_turn_start
         status = self.combat.begin_turn_flow(self.bm, new_idx, True)
@@ -6871,6 +6879,7 @@ class App:
         # Verify the slot was cleared
         weapons_after = list(self.combat.get_agent_weapons(self.bm, cur_idx))
         print(f"[_drop_weapon DEBUG] After set_agent_weapons: weapons_after[{slot_idx}].name = '{weapons_after[slot_idx].name}'")
+        self._sync_item_spells(cur_idx)
         self._combat_log_add(f"{agent.name} drops {weapon.name}.")
 
 
@@ -6895,6 +6904,7 @@ class App:
         if not self.bm.pick_up_item(item.id, agent_idx, slot):
             self._combat_log_add(f"{agent.name} can't pick up {name}.")
             return
+        self._sync_item_spells(agent_idx)
 
         # A weapon taken into the main hand is the pact weapon again (also repairs items saved
         # before map items kept pact_weapon).
@@ -10398,7 +10408,43 @@ class App:
         self._update_reach()
         self._update_attack_overlay()
 
+    # ── Enspelled items E3 (plans/ENSPELLED_ITEMS_PLAN.md) ─────────────────────
+    def _sync_item_spells(self, agent_idx: int):
+        """Rebuild one creature's item-granted spells from what it carries now; per-index spell
+        metadata follows the entries that moved. Call after anything that changes its items,
+        weapons, worn armor or attunement."""
+        if not hasattr(self, "_spell_catalog") or len(self._spell_catalog) != len(self.all_spells):
+            self._spell_catalog = {d.get("name"): d for d in self.all_spells}
+        moved = sync_item_spells(self.combat, self.bm, agent_idx, self._spell_catalog)
+        if moved is None:
+            return
+        old = {j: m for (a, j), m in self._spell_metadata.items() if a == agent_idx}
+        for j in old:
+            del self._spell_metadata[(agent_idx, j)]
+        spells = self.combat.get_agent_spells(self.bm, agent_idx)
+        for new_j, old_j in enumerate(moved):
+            if old_j is not None:
+                if old_j in old:
+                    self._spell_metadata[(agent_idx, new_j)] = old[old_j]
+                continue
+            d = self._spell_catalog.get(spells[new_j].name, {})
+            self._spell_metadata[(agent_idx, new_j)] = {
+                "terrain_effect": d.get("terrain_effect"),
+                "hatch_pattern": d.get("hatch_pattern"),
+                "terrain_color": d.get("terrain_color"),
+                "level": d.get("level", 0),
+                "upcast_dice_bonus": d.get("upcast_dice_bonus", 0),
+            }
+
+    def _sync_all_item_spells(self):
+        for i in range(len(self.bm.placed_agents)):
+            self._sync_item_spells(i)
+
     def _on_spell_done(self, agent_idx: int, spells: list[dict]):
+        # The Spells dialog lists the creature's own spells only (item entries are derived);
+        # drop any item entries before the dialog's list replaces them, then re-grant.
+        for j in [j for (a, j) in self._spell_metadata if a == agent_idx]:
+            del self._spell_metadata[(agent_idx, j)]
         cpp_spells = []
         for j, d in enumerate(spells):
             cpp_spells.append(_dict_to_spell(d))
@@ -10413,6 +10459,7 @@ class App:
             self._spell_metadata[(agent_idx, j)] = meta
         self._grant_class_features(agent_idx, cpp_spells)
         self.combat.set_agent_spells(self.bm, agent_idx, cpp_spells)
+        self._sync_item_spells(agent_idx)
 
     def _grant_class_features(self, agent_idx: int, cpp_spells: list):
         """Append always-prepared class features (Channel Divinity options, etc.) from
@@ -14029,7 +14076,8 @@ class App:
                                        self.combat.get_agent_armor(self.bm, i))
                 },
                 "spell_indices": [s.name
-                                  for s in self.combat.get_agent_spells(self.bm, i)],
+                                  for s in self.combat.get_agent_spells(self.bm, i)
+                                  if not is_item_spell(s)],   # item spells are re-derived (E3)
                 # Carried consumables. Full dicts (not just names) so the quantity left mid-campaign
                 # and any hand-tuned dice survive the round-trip without re-reading items.json.
                 "items": [_item_to_dict(it)
@@ -14094,6 +14142,8 @@ class App:
                 npc_recharge, npc_uses, npc_expended = {}, {}, {}
                 spells = self.combat.get_agent_spells(self.bm, i)
                 for spell in spells:
+                    if is_item_spell(spell):   # paid for by its item, which saves its own uses
+                        continue
                     if spell.uses_max > 0:  # N/day or recharge spell → record its group + count
                         npc_groups.setdefault(str(spell.uses_max), []).append(spell.name)
                         npc_uses[spell.name] = spell.uses_remaining
@@ -16221,6 +16271,9 @@ class App:
         self._attack_cells_melee = []
         self._attack_cells_rnorm = []
         self._attack_cells_rlong = []
+
+        # Item-granted spells are derived from the restored items, weapons and armor (E3).
+        self._sync_all_item_spells()
 
         # The agent list was just rebuilt, so every cached ownership index is stale.
         self._sync_roster_tokens()
