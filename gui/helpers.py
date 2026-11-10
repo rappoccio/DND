@@ -2,6 +2,7 @@
 #  helpers.py  –  Utility functions for D&D mechanics and serialization
 # ─────────────────────────────────────────────────────────────────────────────
 
+import json
 import math
 
 import rpg_battle_map as rpg
@@ -411,6 +412,8 @@ def _weapon_to_dict(w) -> dict:
                         "dot_damage_type":     c.dot_damage_type.name,
                         "prevents_healing":    c.prevents_healing}
                        for c in w.conditions],
+        # Enspelled weapons (the Mace of Terror): uses left and `attuned` travel with the weapon.
+        **_item_spells_to_dict(w.item_spells),
     }
 
 
@@ -543,6 +546,7 @@ def _dict_to_weapon(d: dict):
             conditions.append(c)
     w.conditions = conditions
 
+    w.item_spells = _item_spells_from_dict(d)
     return w
 
 
@@ -749,6 +753,7 @@ def _dict_to_armor(d: dict):
     phys_mults = list(phys_mults) + [1.0] * 3
     a.physical_damage_multipliers = phys_mults[:3]
 
+    a.item_spells = _item_spells_from_dict(d)
     return a
 
 
@@ -764,6 +769,7 @@ def _armor_to_dict(a) -> dict:
         "damage_reduction": a.damage_reduction,
         "requires_strength": a.requires_strength,
         "str_requirement": a.str_requirement,
+        **_item_spells_to_dict(a.item_spells),
     }
 
 
@@ -1108,6 +1114,80 @@ def _dict_to_spell(d: dict):
 #  they silently reset on save/reload.
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Enspelled-item fields (plans/ENSPELLED_ITEMS_PLAN.md) — shared by items, weapons
+#  and armor. The JSON keys are flat on the item record:
+#    requires_attunement, spell_dc, spell_attack, item_spell_groups, charges {max,
+#    regain}, charge_spells, spell_overrides          — authored
+#    attuned, item_spell_uses {spell: n}, charges.current — runtime, saved with the item
+#  A record with neither item_spell_uses nor charges.current is fresh from the catalog
+#  and starts full.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _int_keyed_groups(raw) -> dict:
+    """{"2": ["Fear"]} → {2: ["Fear"]}; anything malformed is dropped."""
+    out = {}
+    for k, names in (raw or {}).items():
+        try:
+            n = int(k)
+        except (TypeError, ValueError):
+            continue
+        if n > 0 and isinstance(names, list):
+            out[n] = [str(x) for x in names]
+    return out
+
+
+def _item_spells_from_dict(d: dict):
+    """Build an rpg.ItemSpells from an item/weapon/armor record."""
+    s = rpg.ItemSpells()
+    s.requires_attunement = bool(d.get("requires_attunement", False))
+    s.spell_dc     = int(d.get("spell_dc", 0) or 0)
+    s.spell_attack = int(d.get("spell_attack", 0) or 0)
+    s.spell_groups  = _int_keyed_groups(d.get("item_spell_groups"))
+    s.charge_spells = _int_keyed_groups(d.get("charge_spells"))
+    charges = d.get("charges") if isinstance(d.get("charges"), dict) else {}
+    s.charges_max    = int(charges.get("max", 0) or 0)
+    s.charges_regain = str(charges.get("regain", "long_rest") or "long_rest")
+    overrides = d.get("spell_overrides")
+    s.spell_overrides_json = json.dumps(overrides) if overrides else ""
+    s.attuned = bool(d.get("attuned", False))
+    s.refill()
+    saved_uses = d.get("item_spell_uses")
+    if isinstance(saved_uses, dict):
+        uses = dict(s.uses_remaining)
+        for name, n in saved_uses.items():
+            if name in uses:
+                uses[name] = max(0, min(int(n), uses[name]))
+        s.uses_remaining = uses
+    if "current" in charges:
+        s.charges = max(0, min(int(charges["current"]), s.charges_max))
+    return s
+
+
+def _item_spells_to_dict(s) -> dict:
+    """The JSON keys for an rpg.ItemSpells, to merge into its item's record ({} if none)."""
+    if s.empty():
+        return {}
+    out = {
+        "requires_attunement": s.requires_attunement,
+        "attuned":             s.attuned,
+        "item_spell_groups":   {str(n): list(names) for n, names in s.spell_groups.items()},
+        "item_spell_uses":     dict(s.uses_remaining),
+    }
+    if s.spell_dc:
+        out["spell_dc"] = s.spell_dc
+    if s.spell_attack:
+        out["spell_attack"] = s.spell_attack
+    if s.charge_spells:
+        out["charge_spells"] = {str(n): list(names) for n, names in s.charge_spells.items()}
+    if s.charges_max:
+        out["charges"] = {"max": s.charges_max, "regain": s.charges_regain,
+                          "current": s.charges}
+    if s.spell_overrides_json:
+        out["spell_overrides"] = json.loads(s.spell_overrides_json)
+    return out
+
+
 def _dict_to_item(d: dict):
     """Convert an item dict (from items.json or a save) into a C++ rpg.Item."""
     it = rpg.Item()
@@ -1155,6 +1235,7 @@ def _dict_to_item(d: dict):
     it.quantity = int(d.get("quantity", 1))
     it.consumable = bool(d.get("consumable", True))
     it.sprite_path = d.get("sprite_path", "") or ""
+    it.item_spells = _item_spells_from_dict(d)
     return it
 
 
@@ -1186,4 +1267,5 @@ def _item_to_dict(it) -> dict:
         "quantity": it.quantity,
         "consumable": it.consumable,
         "sprite_path": it.sprite_path,
+        **_item_spells_to_dict(it.item_spells),
     }

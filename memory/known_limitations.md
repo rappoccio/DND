@@ -1259,3 +1259,9 @@ Planned in `EPIC_BOONS_PLAN.md` (SRD 5.2 p.88, 7 boons). Locked scope decisions:
   Shadows* is also **PC-only** — automated NPCs never activate it (no `runNpcTurn` arming).
 
 </details>
+
+## Enspelled items (plans/ENSPELLED_ITEMS_PLAN.md)
+
+- **Item spells are cast at the spell's base level** (D6). Items whose text says "cast at Nth
+  level" (e.g. the Icon of Ravenloft's Cure Wounds) are modeled at the catalog level; there is no
+  per-item cast level yet.

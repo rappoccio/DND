@@ -51,6 +51,12 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     contested, escape_dc,
     curse_kind, kickback_dice, kickback_die_size, kickback_damage_type)
 
+// ── ItemSpells (carried by Weapon here, and by Item / Armor on the board) ──────
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
+    ItemSpells,
+    requires_attunement, spell_dc, spell_attack, spell_groups, charge_spells,
+    charges_max, charges_regain, spell_overrides_json, attuned, uses_remaining, charges)
+
 // ── Weapon / Spell ───────────────────────────────────────────────────────────
 // Both are carried BY VALUE inside engine state (InFlightAttack::w snapshots the
 // resolved weapon mid-attack; ActiveEffect::spell is the cast-time copy a persistent
@@ -68,7 +74,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     magicDamageRolls, physicalDamageRolls,
     damage_dice, damage_dice_count, damage_modifier, range_short_feet, range_long_feet,
     bonus_hit, bonus_damage, ac_bonus,
-    conditions, condition_rider, sprite_path)
+    conditions, condition_rider, sprite_path, item_spells)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Spell,

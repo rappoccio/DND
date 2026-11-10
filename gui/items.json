@@ -1,5 +1,28 @@
 [
   {
+    "name": "Doss Lute",
+    "description": "An Instrument of the Bards. While attuned to it and playing it, you can cast each of its spells once, using your own spell save DC. Each spell can't be cast from the lute again until the next dawn.",
+    "type": "Wondrous",
+    "action_type": "NoAction",
+    "rarity": "Uncommon",
+    "range": 0,
+    "quantity": 1,
+    "consumable": false,
+    "sprite_path": "",
+    "requires_attunement": true,
+    "item_spell_groups": {
+      "1": [
+        "Animal Friendship",
+        "Fly",
+        "Invisibility",
+        "Levitate",
+        "Protection from Evil and Good",
+        "Protection from Energy",
+        "Protection from Poison"
+      ]
+    }
+  },
+  {
     "name": "Potion of Healing",
     "description": "As a Bonus Action, you can drink this potion or administer it to another creature within 5 feet of yourself. The creature regains 2d4 + 2 Hit Points.",
     "type": "Heal",
@@ -120,6 +143,25 @@
     "sprite_path": ""
   },
   {
+    "name": "Icon of Ravenloft",
+    "description": "A 12-inch-tall statuette made of the purest silver, weighing 10 pounds.",
+    "type": "Wondrous",
+    "action_type": "NoAction",
+    "rarity": "Legendary",
+    "range": 0,
+    "quantity": 1,
+    "consumable": false,
+    "sprite_path": "",
+    "requires_attunement": true,
+    "item_spell_groups": {
+      "99": ["Protection from Evil and Good"],
+      "1": ["Cure Wounds"]
+    },
+    "spell_overrides": {
+      "Protection from Evil and Good": {"requires_concentration": false}
+    }
+  },
+  {
     "name": "Net",
     "description": "When you take the Attack action, you can replace one of your attacks with throwing a Net. Target a creature you can see within 15 feet of yourself. The target must succeed on a Dexterity saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus) or have the Restrained condition until it escapes. The target succeeds automatically if it is Huge or larger. To escape, the target or a creature within 5 feet of it must take an action to make a DC 10 Strength (Athletics) check.",
     "type": "Thrown",
@@ -145,5 +187,17 @@
     "quantity": 1,
     "consumable": false,
     "sprite_path": ""
-  }
+  },
+  {
+    "name": "Manual of Bodily Health",
+    "description": "This book contains health and nutrition tips, and its words are charged with magic. If you spend 48 hours over a period of 6 days or fewer studying the book’s contents and practicing its guidelines, your Constitution increases by 2, to a maximum of 30. The manual then loses its magic but regains it in a century.",
+    "type": "Buff",
+    "action_type": "NoAction",
+    "rarity": "Very Rare",
+    "range": 0,
+    "opens": [],
+    "quantity": 1,
+    "consumable": true,
+    "sprite_path": ""
+  }    
 ]

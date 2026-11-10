@@ -1081,6 +1081,36 @@ void bindTypes(py::module_& m) {
         .value("RepeatSave", OnDamage_t::RepeatSave);
 
     // ── Weapon ────────────────────────────────────────────────────────────────
+    // ── ItemSpells (plans/ENSPELLED_ITEMS_PLAN.md) — carried by Weapon, Armor, Item ──
+    // The map fields convert to Python dicts BY COPY: mutate a dict, then assign it back.
+    py::class_<ItemSpells>(m, "ItemSpells")
+        .def(py::init<>())
+        .def_readonly_static("AT_WILL", &ItemSpells::kAtWill)
+        .def_readwrite("requires_attunement", &ItemSpells::requires_attunement)
+        .def_readwrite("spell_dc",            &ItemSpells::spell_dc,
+             "Save DC for its spells; 0 = the holder's own.")
+        .def_readwrite("spell_attack",        &ItemSpells::spell_attack,
+             "Spell attack bonus for its spells; 0 = the holder's own.")
+        .def_readwrite("spell_groups",        &ItemSpells::spell_groups,
+             "{uses/day: [spell names]}; 99 = at will. Each spell has its own N uses.")
+        .def_readwrite("charge_spells",       &ItemSpells::charge_spells,
+             "{charge cost: [spell names]} drawn from the shared pool.")
+        .def_readwrite("charges_max",         &ItemSpells::charges_max)
+        .def_readwrite("charges_regain",      &ItemSpells::charges_regain)
+        .def_readwrite("spell_overrides_json", &ItemSpells::spell_overrides_json,
+             "JSON text {spell: {spells.json field: value}}, applied by Python.")
+        .def_readwrite("attuned",             &ItemSpells::attuned)
+        .def_readwrite("uses_remaining",      &ItemSpells::uses_remaining,
+             "{spell name: uses left today} for N/day spells (at-will ones are absent).")
+        .def_readwrite("charges",             &ItemSpells::charges, "Current pool charges.")
+        .def("empty",       &ItemSpells::empty)
+        .def("active",      &ItemSpells::active,
+             "True if it grants its spells now: has spells and is attuned or needs no attunement.")
+        .def("spell_names", &ItemSpells::spellNames)
+        .def("uses_per_day", &ItemSpells::usesPerDay)
+        .def("refill",      &ItemSpells::refill,
+             "Fill every N/day spell and the charge pool to max.");
+
     py::class_<Weapon>(m, "Weapon")
         .def(py::init<>())
         .def_readwrite("name",             &Weapon::name)
@@ -1136,6 +1166,8 @@ void bindTypes(py::module_& m) {
             "True when a recharge weapon has been spent and is waiting on its recharge roll.")
         .def_readwrite("conditions",       &Weapon::conditions)
         .def_readwrite("condition_rider",  &Weapon::condition_rider)
+        .def_readwrite("item_spells",      &Weapon::item_spells,
+            "Spells cast from this weapon while carried (ItemSpells); empty on ordinary weapons.")
         .def("__repr__", [](const Weapon& w){
             std::string dmg_str;
             if (!w.physicalDamageRolls.empty()) {
@@ -1193,6 +1225,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("damage_reduction",          &Armor::damage_reduction)
         .def_readwrite("requires_strength",         &Armor::requires_strength)
         .def_readwrite("str_requirement",           &Armor::str_requirement)
+        .def_readwrite("item_spells",               &Armor::item_spells,
+             "Spells cast from this armor while worn (ItemSpells); empty on ordinary armor.")
         .def("__repr__", [](const Armor& a){
             return "<Armor '" + a.name + "' AC+" + std::to_string(a.ac_bonus) + " DR" + std::to_string(a.damage_reduction) + ">"; });
 
@@ -1673,6 +1707,7 @@ void bindTypes(py::module_& m) {
         .value("Heal",   Item::Heal)
         .value("Thrown", Item::Thrown)
         .value("Key",    Item::Key)
+        .value("Wondrous", Item::Wondrous)
         .export_values();
 
     py::enum_<Item::ItemAction_t>(m, "ItemAction")
@@ -1710,6 +1745,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("quantity",    &Item::quantity)
         .def_readwrite("consumable",  &Item::consumable)
         .def_readwrite("sprite_path", &Item::sprite_path)
+        .def_readwrite("item_spells", &Item::item_spells,
+             "Spells cast from this item (ItemSpells); empty on ordinary items.")
         .def("__repr__", [](const Item& it){
             const bool thrown = (it.type == Item::Thrown);
             const int n  = thrown ? it.damage.num_dice : it.healing.num_dice;

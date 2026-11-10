@@ -14021,13 +14021,12 @@ class App:
                 # attacks). Trailing empty (nameless) slots are dropped. The loader accepts BOTH this
                 # list form and the legacy {main_hand,off_hand,ranged} dict for back-compat.
                 "weapons": _weapons_to_list(self.combat.get_agent_weapons(self.bm, i)),
+                # Slot → armor name. An enspelled piece is saved as its full dict instead, so its
+                # uses, charges and `attuned` survive (ENSPELLED_ITEMS_PLAN.md D0).
                 "armor": {
-                    "helmet": self.combat.get_agent_armor(self.bm, i)[0].name or "",
-                    "chest": self.combat.get_agent_armor(self.bm, i)[1].name or "",
-                    "leggings": self.combat.get_agent_armor(self.bm, i)[2].name or "",
-                    "boots": self.combat.get_agent_armor(self.bm, i)[3].name or "",
-                    "gloves": self.combat.get_agent_armor(self.bm, i)[4].name or "",
-                    "cloak": self.combat.get_agent_armor(self.bm, i)[5].name or "",
+                    slot: (_armor_to_dict(a) if not a.item_spells.empty() else (a.name or ""))
+                    for slot, a in zip(("helmet", "chest", "leggings", "boots", "gloves", "cloak"),
+                                       self.combat.get_agent_armor(self.bm, i))
                 },
                 "spell_indices": [s.name
                                   for s in self.combat.get_agent_spells(self.bm, i)],
@@ -16104,7 +16103,9 @@ class App:
             if armor_dict_new and isinstance(armor_dict_new, dict):
                 for slot_idx, slot_name in enumerate(SLOT_NAMES):
                     armor_name = armor_dict_new.get(slot_name, "")
-                    if armor_name and armor_name in self.armor_name_to_dict:
+                    if isinstance(armor_name, dict):          # an enspelled piece, saved whole
+                        cpp_armor[slot_idx] = _dict_to_armor(armor_name)
+                    elif armor_name and armor_name in self.armor_name_to_dict:
                         armor_def = self.armor_name_to_dict[armor_name]
                         cpp_armor[slot_idx] = _dict_to_armor(armor_def)
             else:

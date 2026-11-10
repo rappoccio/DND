@@ -204,8 +204,8 @@ def show_use_item_menu(app, pos):
         return
 
     def _affordable(it) -> bool:
-        if it.type == rpg.ItemType.Key:
-            return False                 # a key is never "used" — it opens locks it fits
+        if it.type in (rpg.ItemType.Key, rpg.ItemType.Wondrous):
+            return False                 # a key opens locks; a Wondrous item only casts its spells
         if it.action_type == rpg.ItemAction.AttackReplacement:
             return app._can_replace_attack(idx)
         if it.action_type == rpg.ItemAction.BonusAction:

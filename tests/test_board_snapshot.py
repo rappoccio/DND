@@ -144,6 +144,7 @@ def test_field_lists_match_structs():
             ("Resource",            "resource.hpp",   board),
             ("Item",                "item.hpp",       board),
             ("Armor",               "armor.hpp",      board),
+            ("ItemSpells",          "item_spells.hpp", shared),
             ("Weapon",              "weapon.hpp",     shared),
             ("Spell",               "spell.hpp",      shared),
             ("AttackCondition",     "condition.hpp",  shared)]:

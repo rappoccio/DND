@@ -50,13 +50,13 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Item,
     name, description, type, action_type, range, healing, damage, save_ability,
     condition_applied, only_vs_fiend_undead, max_target_size, escape_dc,
-    opens, quantity, consumable, sprite_path)
+    opens, quantity, consumable, sprite_path, item_spells)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Armor,
     name, description, ac_bonus, ac_base, grants_disadvantage, dex_mod_cap,
     magic_damage_multipliers, physical_damage_multipliers, damage_reduction,
-    requires_strength, str_requirement)
+    requires_strength, str_requirement, item_spells)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     ActiveTerrainEffect,

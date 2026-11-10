@@ -23,7 +23,9 @@ struct Item {
     // creature, which resolves as a saving throw (see the Thrown block below).
     // Key = a key (plans/ITEMS_AND_CHESTS_PLAN.md P1): never used from the Use Item menu;
     // carrying it unlocks every chest / door named in `opens`.
-    enum ItemType_t   { Heal = 0, Thrown, Key, NumItemType_t };
+    // Wondrous = no Use Item effect of its own (a lute, an icon): it exists to carry
+    // item_spells, whose spells bring their own casting time (ENSPELLED_ITEMS_PLAN.md D8).
+    enum ItemType_t   { Heal = 0, Thrown, Key, Wondrous, NumItemType_t };
     // Action economy cost of using it. NoAction = free (e.g. an always-on trinket).
     // AttackReplacement is the thrown-item cost: "when you take the Attack action, you can
     // replace one of your attacks with throwing this" — so a Fighter with Extra Attack can
@@ -76,6 +78,8 @@ struct Item {
     int  quantity{1};        // how many are carried; each use decrements it
     bool consumable{true};   // false ⇒ reusable: quantity never drops
     std::string sprite_path{};
+
+    ItemSpells item_spells{};   // spells cast from it (ENSPELLED_ITEMS_PLAN.md); empty = none
 };
 
 // An item lying on the map (or inside a chest). Dropped and thrown weapons are Weapon

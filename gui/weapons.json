@@ -784,6 +784,34 @@
   "light": false
  },
  {
+  "name": "Mace of Terror",
+  "type": "melee",
+  "reach_ft": 5,
+  "normal_range_ft": 0,
+  "long_range_ft": 0,
+  "finesse": false,
+  "thrown": false,
+  "proficient": true,
+  "off_hand": false,
+  "mastery": "Sap",
+  "bonus_hit": 0,
+  "bonus_damage": 0,
+  "physical_damage_types": [
+   {
+    "type": "Bludgeoning",
+    "num_dice": 1,
+    "die_size": 6
+   }
+  ],
+  "magic_damage_types": [],
+  "sprite_path": "",
+  "heavy": false,
+  "light": false,
+  "requires_attunement": true,
+  "spell_dc": 15,
+  "item_spell_groups": {"2": ["Fear"]}
+ },
+ {
   "name": "Quarterstaff",
   "type": "melee",
   "reach_ft": 5,

@@ -3,6 +3,7 @@
 #include <array>
 #include <string>
 #include "agent.hpp"
+#include "item_spells.hpp"
 
 namespace rpg {
 
@@ -27,6 +28,9 @@ struct Armor {
     // Properties (STR requirements for later)
     bool requires_strength{false};
     int str_requirement{0};
+
+    // Spells cast from it while worn (ENSPELLED_ITEMS_PLAN.md D9); empty = none.
+    ItemSpells item_spells{};
 };
 
 }  // namespace rpg

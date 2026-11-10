@@ -130,6 +130,8 @@ UseItemResult CombatEngine::useItem(BattleMap& bm, int user_idx, int item_slot, 
     if (item_slot < 0 || item_slot >= static_cast<int>(inv.size())) return res;
     const Item item = inv[static_cast<std::size_t>(item_slot)];   // by value: the row may be erased below
     if (item.quantity <= 0) return res;
+    // A Wondrous item has no Use Item effect: it only casts its item_spells (ENSPELLED D8).
+    if (item.type == Item::Wondrous) return res;
 
     // The user has to be able to act: no rummaging through your pack while dead or Incapacitated
     // (which covers Unconscious/Paralyzed/Stunned — see applyIncapacitated).

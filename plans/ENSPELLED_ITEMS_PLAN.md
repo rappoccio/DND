@@ -1,0 +1,69 @@
+# Enspelled Items Plan
+
+Weapons, armor and items that cast spells without spending spell slots. First examples:
+**Mace of Terror** (`weapons.json`, Fear 2/day, DC 15), **Doss Lute** and **Icon of Ravenloft**
+(`items.json`). Spell scrolls come later and reuse the same mechanism (see *Future*).
+
+## Step 0 — decisions (frozen 2026-11-10)
+
+Changes to this set need a dated amendment with a reason, agreed by the user.
+
+| # | Decision |
+|---|----------|
+| D0 | **Charges live on the item, not on the spell.** An item's remaining uses survive handing it to an ally, a chest, the floor and save/load. Dropping and picking up an item never refills it. |
+| D1 | **Save DC / spell attack.** An item may author `spell_dc` / `spell_attack`; when it doesn't, the holder's own values are used. Items meant for non-casters (the mace) should author `spell_dc`. |
+| D2 | **Item casts are exempt from the one-slot-per-turn rule** (`canCastLeveledSpell`). The 2024 rule is about expending slots; item casts expend none. |
+| D3 | **`"99"` = at will**, same convention as mobs (`AT_WILL_USES` in `read_stats_from_csv.py`). For items the engine never decrements a 99 group, and the UI shows "at will", not "99/day". |
+| D3a | **`spell_overrides`** — `{spell name: {spells.json field: value}}`, applied over the catalog record before the spell is granted. Generic: any field. First use: the Icon's Protection from Evil and Good with `requires_concentration: false`. |
+| D4 | **Two cost models, both in v1**, and an item may have both: per-spell N/day (`item_spell_groups`, key = uses/day) and a shared charge pool (`charges` + `charge_spells`, key = cost per cast). A pool spell is castable only when the pool has ≥ its cost. |
+| D5 | **Attunement.** `requires_attunement: true` items grant nothing until the DM ticks *Attuned* for that creature. Items without the flag grant their spells just by being carried. More than 3 attuned items shows a **warning**, not a block. The attune switch is the hook for curses later. |
+| D6 | **Item spells cast at the spell's base level.** "Cast at Nth level" items are a known limitation (`memory/known_limitations.md` § Enspelled items). |
+| D7 | **No `spell_indices` on items.** The spell list is derived from the union of `item_spell_groups` and `charge_spells`; a second list could only drift. |
+| D8 | **New `ItemType` `Wondrous`**: an item with no Use Item effect of its own (lute, icon). Its spells carry their own casting time; its `action_type` is `NoAction`. |
+| D9 | **"Carried" means:** an `items` row for items, any `weapons` row for weapons, a worn `armor` slot for armor. |
+
+### JSON schema (items.json / weapons.json / armor.json)
+
+```json
+"requires_attunement": true,
+"spell_dc": 15,                     // optional (D1)
+"spell_attack": 7,                  // optional (D1)
+"item_spell_groups": {"1": ["Fly", "Levitate"], "99": ["Light"]},
+"charges": {"max": 7, "regain": "long_rest"},
+"charge_spells": {"1": ["Burning Hands"], "3": ["Fireball"], "4": ["Wall of Fire"]},
+"spell_overrides": {"Protection from Evil and Good": {"requires_concentration": false}}
+```
+
+Runtime state, saved with the item (not authored): `attuned`, per-spell uses remaining for the
+groups, and current charges for the pool.
+
+### Split of responsibilities
+
+- **Python** resolves catalog records: it reads the item's spell names, looks them up in
+  `spells.json`, applies `spell_overrides`, and hands the engine ready-made `Spell` objects tagged
+  with their source item (the same place NPC spells are resolved today).
+- **C++** owns cost and state: castability, decrementing uses/charges, DC/attack override at
+  resolve time, the long-rest refill. A tagged spell takes a new cost branch in the cast path
+  (`combat_spells.cpp` "Decrement resources") and in the castable-spells list, ahead of the
+  `resource_name` / NPC / slot branches, so it behaves the same for PCs and NPCs.
+
+## Steps
+
+| # | Step | Status |
+|---|------|--------|
+| E1 | **Data model + loaders.** New fields on `Item`, `Weapon`, `Armor` (D0–D5 schema + runtime state); `ItemType::Wondrous`; bindings; `_dict_to_item` / `_item_to_dict` and the weapon/armor equivalents round-trip every field. Tests: the three example items parse; save → load keeps uses, charges and `attuned`. | done 2026-11-10 (uncommitted) — `item_spells.hpp` `ItemSpells` carried by value on all three; snapshot mappings; enspelled armor saves as a full dict; `test_enspelled_items.py` |
+| E2 | **Engine cost path.** `Spell` gains a source-item tag (kind + carried index/slot + item name) and, for pool spells, a charge cost. Castable list and cast path check/spend the item's state; 99 never decrements; D2 exemption; `spell_dc`/`spell_attack` used when set. `applyLongRest` refills groups to max and pools to `charges.max`. Tests: PC with no slots casts Fear from the mace; uses run out; pool costs gate correctly; at-will never runs out; DC 15 used; long rest refills; a Bard who also knows Fear keeps both entries independent. | pending |
+| E3 | **Grant / revoke lifecycle.** Python helper rebuilds a creature's item-granted spell entries from its carried + attuned items (applying `spell_overrides`). Called on: attune toggle, give/drop/pick up/chest transfer, equip/unequip weapon or armor, encounter/save load, mob spawn. Tests: unattuned item grants nothing; attuning grants; dropping removes; a different creature picking it up gets the *remaining* uses. | pending |
+| E4 | **GUI.** *Attuned* checkbox per inventory row for `requires_attunement` items, with the >3 warning. Spell menu labels: `Fear (Mace of Terror) 2/2`, `… at will`, pool items show `charges 5/7` and per-spell cost. Item info shows the spells. Player-server character sheet shows the same. | pending |
+| E5 | **NPC automation.** Automated NPCs/PCs use item spells through the existing chooser (they arrive as ordinary castable spells). Tests: an automated mace-wielder casts Fear; an NPC with no uses left doesn't. | pending |
+| E6 | **Live check** with the three example items, then update `known_limitations.md`. | pending |
+
+## Future (not in this plan)
+
+- **Spell scrolls**: a consumable carrying `{"1": [spell]}` and a fixed DC/attack (DMG table); the
+  row is deleted when its last use is spent. Class-list check ("can you read it") TBD.
+- Cast-at-higher-level items (D6).
+- Non-full recharges ("regains 1d6+1 charges at dawn"), and "destroyed on the last charge" rolls.
+- Curses triggered by attunement.
+- **Manual of Bodily Health** (`type: Buff`, a permanent stat increase) — a different mechanic.
+  Until it is implemented, an unknown `type` loads as Heal, so it shows as a 0-HP potion.

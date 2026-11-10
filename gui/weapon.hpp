@@ -11,6 +11,7 @@
 #include <vector>
 #include "condition.hpp"
 #include "damage.hpp"  // For MagicDamageRoll and PhysicalDamageRoll
+#include "item_spells.hpp"
 
 namespace rpg {
 
@@ -127,6 +128,10 @@ struct Weapon {
     // Carried on the Weapon so any code path that drops one — a THROW, the GUI's manual drop —
     // lands it with the right sprite. Empty ⇒ the GUI draws its amber fallback box.
     std::string sprite_path = "";
+
+    // Spells cast from it while carried (ENSPELLED_ITEMS_PLAN.md D9): the Mace of Terror's
+    // Fear. Empty on every ordinary weapon.
+    ItemSpells item_spells{};
 
     // Can this weapon end up on the ground (Unconscious, Frightened, Command "Drop", a Wild Magic
     // surge, the GUI's manual drop)? Not a natural or innate attack: permanently_armed, the
