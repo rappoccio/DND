@@ -162,36 +162,75 @@ def offer_cleave(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, 
     app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Cleave (Mastery)", options)
 
 
-def offer_sudden_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, weapon_idx):
-    """Stalker's Flurry — Sudden Strike (Gloom Stalker L11): immediately after a Dreadful Strike
-    hit, optionally make one FREE additional attack with the same weapon against a creature within
-    5 ft of the target. Routes through the shared extra-attack flow with slot="action" so it does
-    NOT consume the bonus action (it's a free attack granted by the feature). Clearing
-    sudden_strike_available stops a re-offer.
+def offer_dreadful_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
+    """Gloom Stalker Dreadful Strike: after a weapon hit, optionally spend a Dread Ambusher use for
+    +2d6 Psychic (2d8 at L11), once per turn. Applied in C++ (apply_dreadful_strike_effect). At L11
+    the engine then leaves stalkers_flurry_pending, and the Stalker's Flurry choice follows before
+    on_done (a pending weapon-Mastery prompt) runs."""
+    def _then():
+        if on_done:
+            on_done()
+        else:
+            app._update_attack_overlay()
 
-    v1 sequencing: like GWM Hew, accepting forgoes any remaining Attack-action attacks (the extra
-    attack takes over the pending sequence). The "within 5 ft of the target" constraint is left to
-    the player's target click (noted in the prompt). Mass Fear (the alternative L11 effect) is
-    deferred — see known_limitations.md."""
-    def _apply(do):
-        app._combat_log_add(atk_msg)
+    def _apply(use_it):
         c = app.combat.get_agent_conditions(app.bm, atk_idx)
-        c.sudden_strike_available = False
-        app.combat.set_agent_conditions(app.bm, atk_idx, c)
-        app._flush_combat_log()
-        if do:
-            # Forgo any leftover action attacks so the free Sudden Strike sets up cleanly.
-            app.attacks_remaining = 0
-            app._attack_sequence_slot = ""
-            app.pending_attack_slot = ""
-            app._start_extra_attack(weapon_idx=weapon_idx, offhand=False, slot="action",
-                                     label="Stalker's Flurry: Sudden Strike (target within 5 ft)")
-        app._update_attack_overlay()
+        if use_it and app.combat.apply_dreadful_strike_effect(app.bm, atk_idx, result):
+            dmg_parts = app._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+            dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+            app._combat_log_add(
+                f"{atk_name}→{tgt_name}: HIT {result.total_damage}{app._damage_breakdown_str(result)} "
+                f"{dmg_type_str}{' CRIT!' if result.critical else ''}{' — DOWN' if result.target_down else ''}")
+            app._flush_combat_log()
+            if result.target_down:
+                app._drop_concentration_for_agent(target_idx)
+            if app.combat.get_agent_conditions(app.bm, atk_idx).stalkers_flurry_pending:
+                offer_stalkers_flurry(app, atk_idx, atk_name, tgt_name, _then)
+                return
+        else:
+            c.dreadful_strike_available = False   # declined: this hit's offer is gone
+            app.combat.set_agent_conditions(app.bm, atk_idx, c)
+            app._combat_log_add(atk_msg)
+            app._flush_combat_log()
+        _then()
+    stats = app.combat.get_agent_stats(app.bm, atk_idx)
+    da = stats.get_resource("Dread Ambusher")
+    left = da.current if da else 0
     options = [
-        ("Sudden Strike: free extra attack", lambda: _apply(True)),
-        ("Skip Sudden Strike", lambda: _apply(False)),
+        (f"Dreadful Strike: +{stats.dreadful_strike_dice}d{stats.dreadful_strike_die_size} Psychic "
+         f"({left} left)", lambda: _apply(True)),
+        ("Skip Dreadful Strike", lambda: _apply(False)),
     ]
-    app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Sudden Strike", options)
+    app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Dreadful Strike", options,
+                   on_cancel=lambda: _apply(False))
+
+
+def offer_stalkers_flurry(app, atk_idx, atk_name, tgt_name, then):
+    """Stalker's Flurry (Gloom Stalker L11), right after Dreadful Strike: Sudden Strike (arms one free
+    attack with the same weapon vs a different creature within 5 ft — taken from the "Sudden Strike"
+    row), Mass Fear (the target and each creature within 10 ft save vs WIS or are Frightened until
+    the Ranger's next turn), or neither."""
+    def _pick(option):
+        app.combat.choose_stalkers_flurry(app.bm, atk_idx, option)
+        if option == 1:
+            app._combat_log_add(f"{atk_name}: Sudden Strike armed — use the Sudden Strike row once "
+                                f"the Attack action's swings are done.")
+        app._flush_combat_log()
+        then()
+    c = app.combat.get_agent_conditions(app.bm, atk_idx)
+    c.sudden_strike_available = True          # probe: would Sudden Strike have a target?
+    app.combat.set_agent_conditions(app.bm, atk_idx, c)
+    has_second = bool(app.combat.sudden_strike_targets(app.bm, atk_idx))
+    c.sudden_strike_available = False
+    app.combat.set_agent_conditions(app.bm, atk_idx, c)
+    options = []
+    if has_second:
+        options.append(("Sudden Strike: a free attack vs a creature within 5 ft", lambda: _pick(1)))
+    options.append((f"Mass Fear: {tgt_name} and creatures within 10 ft save or are Frightened",
+                    lambda: _pick(2)))
+    options.append(("Neither", lambda: _pick(0)))
+    app._ask_actor(atk_idx, "action", f"{atk_name}: Stalker's Flurry", options,
+                   on_cancel=lambda: _pick(0))
 
 
 def offer_divine_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):

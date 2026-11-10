@@ -141,7 +141,7 @@ _BON_RUN_ESCAPE    = ("grapple_esc", "telekinetic_feat")
 # their `economy`: none of them costs the Bonus Action, which is why spending it must
 # not take them (`actions._BONUS_ECONOMY`).
 _BON_RUN_UNBANDED  = ("grapple_drop", "use_item", "extinguish", "escape_net",
-                      "haste_action", "horde_breaker")
+                      "haste_action", "horde_breaker", "sudden_strike")
 
 # The Archfey trio, named on its own only because the rider selector's label is the one
 # thing in §7 the draw pass WRITES back to the app. See the draw site.
@@ -182,7 +182,7 @@ _BON_RUN_BAND      = (
     # Psi Warrior: Telekinetic Movement (the feat's shove is in _BON_RUN_ESCAPE)
     "telekinetic_psi",
     # Ranger
-    "dread_ambusher", "tireless", "natures_veil",
+    "tireless", "natures_veil",
     # Soulknife Rogue
     "psychic_teleport", "psychic_veil",
     # Shadow Monk
@@ -917,6 +917,7 @@ class App:
         self.pending_attack_offhand   = None  # None = derive from slot; True/False overrides proficiency
         self.pending_attack_resource  = None  # resource name to spend on a valid attack (e.g. "War Priest")
         self.pending_horde_breaker_targets = []  # Horde Breaker: the only creatures the armed attack may strike
+        self.pending_sudden_strike_targets = []  # Sudden Strike (Gloom Stalker L11): likewise
         # Cleave weapon mastery: awaiting a 2nd-target click. {"attacker","first","weapon"} or None.
         # Resolved out-of-band (no attacks_remaining / bonus-action accounting): Cleave is part of
         # the Attack action, not a bonus action.
@@ -1004,6 +1005,8 @@ class App:
         self.pending_telekinetic       = False # Psi Warrior Telekinetic Movement: awaiting target click
         self.pending_flurry_target     = False # Monk Flurry of Blows: awaiting target click
         self.pending_vitality_target   = False # World Tree Vitality of the Tree: awaiting target click (within a parked turn-start window)
+        self.pending_shadowy_dodge_cell = False # Shadowy Dodge: awaiting a teleport cell (within a parked AfterAttack window)
+        self._shadowy_dodge_option_index = -1   # the chosen AfterAttack option to submit once a cell is picked
         self._vitality_option_index    = -1    # the chosen reaction option index to submit once a target is picked
         self.pending_flurry_atk_idx    = -1    # attacker index for Flurry
         self.pending_flurry_rider_option = -1  # Open Hand rider option (0=Knockdown, 1=Push, 2=DenyReaction, -1=None)
@@ -1878,6 +1881,9 @@ class App:
         self.btn_cbt_horde_breaker = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Horde Breaker (Extra Attack)",
                                           (190, 100, 70), (225, 135, 100), self.font_md)
+        self.btn_cbt_sudden_strike = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Sudden Strike (Extra Attack)",
+                                          (80, 90, 130), (110, 120, 170), self.font_md)
         # Boon of Dimensional Travel — Blink Steps: a ≤30-ft teleport armed right after the Attack/Magic
         # action; clicking enters a destination pick (see _resolve_blink_steps). Deep-violet like teleports.
         self.btn_cbt_blink_steps = Button(pygame.Rect(px, dummy_y, W, B),
@@ -1953,9 +1959,6 @@ class App:
         self.btn_cbt_telekinetic_psi = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Telekinetic Movement",
                                           (140, 160, 210), (170, 190, 240), self.font_md)
-        self.btn_cbt_dread_ambusher = Button(pygame.Rect(px, dummy_y, W, B),
-                                          "Dread Ambusher",
-                                          (80, 90, 130), (110, 120, 170), self.font_md)
         self.btn_cbt_intimidating_presence = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Intimidating Presence (Bonus Action)",
                                           (180, 80, 60), (220, 110, 90), self.font_md)
@@ -4886,6 +4889,9 @@ class App:
             # (the paladin itself always qualifies). Seed the agent's own budget so real moves get it.
             if self.combat.has_aura_of_alacrity(self.bm, agent_idx):
                 walk += 10
+            # Gloom Stalker Ambusher's Leap: +10 ft on the first turn of each combat (begin_turn sets it).
+            if cond.ambushers_leap:
+                walk += 10
             # World Tree Branches of the Tree: a failed save zeroes the target's Speed until end of turn
             # (canAgentMove also blocks the move); reflect it in the budget/overlay so the UI agrees.
             # Forcecage traps the creature in place the same way (it can still act, just not walk out).
@@ -5886,6 +5892,9 @@ class App:
         # Arcane Charge (EK L15): teleport up to 30 ft after Action Surge.
         if self.arcane_charge_pending:
             self._resolve_arcane_charge(cell)
+        # Shadowy Dodge (Gloom Stalker L15): the teleport cell, inside a parked AfterAttack window.
+        elif self.pending_shadowy_dodge_cell:
+            self._resolve_shadowy_dodge_cell(cell)
         # Blink Steps (Boon of Dimensional Travel): teleport up to 30 ft after the action.
         elif self.blink_steps_pending:
             self._resolve_blink_steps(cell)
@@ -6116,6 +6125,8 @@ class App:
         self._aoe_aim                    = None   # M5e E-8: an unconfirmed aim
         self._di_wish_free               = False  # F-M5e-12: an unused Greater DI Wish
         self.pending_horde_breaker_targets = []   # rides along with pending_attack_slot
+        self.pending_sudden_strike_targets = []   # rides along with pending_attack_slot
+        self.pending_shadowy_dodge_cell  = False
 
     # The arms `_target_pick_armed` reads, with the idle value each rests at. Every field
     # `_clear_pending_target_picks` resets is either here or in `_TARGET_PICK_COMPANIONS`;
@@ -6135,7 +6146,7 @@ class App:
         ("pending_vow_of_enmity", False), ("pending_inspiring_smite", False),
         ("pending_path_to_the_grave", False),
         ("pending_telekinetic", False), ("pending_flurry_target", False),
-        ("pending_vitality_target", False), ("_legendary_target_pick", False),
+        ("pending_vitality_target", False), ("pending_shadowy_dodge_cell", False), ("_legendary_target_pick", False),
         ("pending_cleave", None), ("pending_sweep", None),
         ("pending_rally", None), ("pending_feint", None),
         ("pending_use_item", -1), ("pending_elemental_burst", -1),
@@ -6155,6 +6166,7 @@ class App:
         "pending_summon_idx", "pending_summon_slot_level", "pending_summon_monster",
         "pending_summon_spirit", "pending_summon_free_cast", "summon_hover_cell",
         "_aoe_aim", "_di_wish_free", "pending_horde_breaker_targets",
+        "pending_sudden_strike_targets",
     )
 
     def _target_pick_armed(self) -> bool:
@@ -7739,6 +7751,16 @@ class App:
             hb.horde_breaker_used      = True   # before the swing: it must not re-arm itself
             hb.horde_breaker_available = False
             self.combat.set_agent_conditions(self.bm, atk_idx, hb)
+        if self.pending_sudden_strike_targets:
+            if target_idx not in self.pending_sudden_strike_targets:
+                self._combat_log_add("Sudden Strike: pick a different creature within 5 ft of the "
+                                     "Dreadful Strike target.")
+                self._flush_combat_log()
+                return
+            self.pending_sudden_strike_targets = []
+            ss = self.combat.get_agent_conditions(self.bm, atk_idx)
+            ss.sudden_strike_available = False   # spent with this swing
+            self.combat.set_agent_conditions(self.bm, atk_idx, ss)
         action = rpg.Attack(atk_idx, target_idx, self.pending_weapon_idx)
         action.is_offhand = (slot == "bonus") if self.pending_attack_offhand is None else self.pending_attack_offhand
         action.attack_slot = slot  # Pass the slot type to C++ ("action" or "bonus")
@@ -7875,7 +7897,7 @@ class App:
         has_interception = False
         has_sentinel_guard = False
         has_soul_of_vengeance = False
-        has_sudden_strike = False
+        has_dreadful_strike = False
         has_homing_strike = False
         if result.valid:
             atk_cond = self.combat.get_agent_conditions(self.bm, atk_idx)
@@ -7900,6 +7922,10 @@ class App:
                 has_elemental_move = True
             elif result.hit and atk_cond and atk_cond.divine_strike_available:
                 has_divine_strike = True
+            # Dreadful Strike (Gloom Stalker): an on-hit Psychic rider, like Divine Strike. At L11 its
+            # prompt chains the Stalker's Flurry choice (Sudden Strike / Mass Fear / neither).
+            elif result.hit and atk_cond and atk_cond.dreadful_strike_available:
+                has_dreadful_strike = True
             elif result.hit and atk_cond and atk_cond.psionic_strike_available:
                 has_psionic_strike = True
             elif result.hit and atk_cond and atk_cond.grappler_punch_grab_available:
@@ -7959,12 +7985,6 @@ class App:
             # the Vow of Enmity may counter-strike. Flagged on the attacker (the sworn foe); fires on hit OR miss.
             elif atk_cond and atk_cond.soul_of_vengeance_available:
                 has_soul_of_vengeance = True
-            # Stalker's Flurry — Sudden Strike (Gloom Stalker L11): a Dreadful Strike hit grants one
-            # FREE extra weapon attack (no action/bonus cost). Flagged on the attacker by the engine
-            # when the Dreadful Strike rider fires; offered last (an attacker's own rider shadows it
-            # this swing, like GWM Hew). Mass Fear (the alternative) is deferred — see known_limitations.
-            elif atk_cond and atk_cond.sudden_strike_available:
-                has_sudden_strike = True
 
         # FLAG: Move to C++
         # Format attack message
@@ -8067,6 +8087,8 @@ class App:
                 riders.offer_brutal_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
             elif has_divine_strike:
                 riders.offer_divine_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
+            elif has_dreadful_strike:
+                riders.offer_dreadful_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
             elif has_psionic_strike:
                 riders.offer_psionic_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
             elif has_punch_and_grab:
@@ -8105,8 +8127,6 @@ class App:
                 riders.offer_topple(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
             elif has_cleave:
                 riders.offer_cleave(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
-            elif has_sudden_strike:
-                riders.offer_sudden_strike(self, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, action.weapon_idx)
             else:
                 self._combat_log_add(atk_msg)
 
@@ -8123,7 +8143,7 @@ class App:
 
             # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
             # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-            has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_peerless_aim or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_sudden_strike
+            has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_peerless_aim or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_protective_field or has_interception or has_dreadful_strike
             if not has_rider:
                 # Check if more attacks are queued (action or bonus)
                 if has_more_attacks:
@@ -8322,6 +8342,20 @@ class App:
         self.pending_horde_breaker_targets = targets
         self._start_extra_attack(weapon_idx=c.horde_breaker_weapon, offhand=False, slot="action",
                                  label="Horde Breaker (a creature within 5 ft of the first target)")
+        self._update_attack_overlay()
+
+    def _start_sudden_strike(self, atk_idx: int):
+        """Stalker's Flurry — Sudden Strike (Gloom Stalker L11): arm the free attack the player chose
+        when Dreadful Strike landed — the same weapon, against a different creature within 5 ft of
+        that target. The engine lists the legal targets; `_resolve_combat_attack` refuses any other
+        click and spends the feature (sudden_strike_available) when the swing is made."""
+        targets = list(self.combat.sudden_strike_targets(self.bm, atk_idx))
+        if not targets:
+            return
+        c = self.combat.get_agent_conditions(self.bm, atk_idx)
+        self.pending_sudden_strike_targets = targets
+        self._start_extra_attack(weapon_idx=c.dreadful_strike_weapon, offhand=False, slot="action",
+                                 label="Sudden Strike (a creature within 5 ft of the first target)")
         self._update_attack_overlay()
 
     def _start_gwm_hew(self, atk_idx: int):
@@ -10391,6 +10425,13 @@ class App:
     # Always-prepared Ranger subclass spells by subclass and Ranger level (2024 PHB).
     # (Summon Fey at L9 is intentionally omitted — not yet in spells.json; see known_limitations.)
     _RANGER_SUBCLASS_SPELLS = {
+        "GloomStalker": {
+            3: ["Disguise Self"],
+            5: ["Rope Trick"],
+            9: ["Fear"],
+            13: ["Greater Invisibility"],
+            17: ["Seeming"],
+        },
         "FeyWanderer": {
             3: ["Charm Person"],
             5: ["Misty Step"],
@@ -11379,6 +11420,13 @@ class App:
                 title = (
                     f"{agents[ctx.reactor_idx].name} may react ({choices}) vs "
                     f"{agents[ctx.source_idx].name}'s {kind}!")
+            elif ctx.window == rpg.ReactionWindow.OnAttackDeclared:
+                title = (
+                    f"{agents[ctx.reactor_idx].name} may react before {agents[ctx.source_idx].name}'s "
+                    f"attack roll — Shadowy Dodge!")
+            elif ctx.window == rpg.ReactionWindow.AfterAttack:
+                title = (
+                    f"{agents[ctx.reactor_idx].name}: Shadowy Dodge — teleport up to 30 ft?")
             elif ctx.window == rpg.ReactionWindow.OnD20Seen:
                 feats = [o.feature for o in ctx.options
                          if o.kind == rpg.ReactionOptionKind.Feature]
@@ -11432,6 +11480,8 @@ class App:
             # Vitality of the Tree needs a target pick before submitting; everything else submits at once.
             if feature == "VitalityOfTheTree":
                 return lambda i=i: self._begin_vitality_target_pick(i)
+            if feature == "ShadowyDodgeTeleportPick":
+                return lambda i=i: self._begin_shadowy_dodge_pick(i)
             return lambda i=i: self._submit_reaction(i)
         # The first prompt on the bus (M1 Step 2). The owner is the REACTOR's controller,
         # not the actor's: an opportunity attack belongs to the creature taking it, which
@@ -11495,6 +11545,52 @@ class App:
               f"src={src} ({name}), window={pd.ctx.window if pd.active else 'n/a'}")
         self._combat_log_add(f"{name}: click a creature within 10 ft to grant temporary HP (Vitality of the Tree).")
         self._flush_combat_log()
+
+    def _begin_shadowy_dodge_pick(self, option_index: int):
+        """Shadowy Dodge (Gloom Stalker L15): the player chose to pick the teleport cell. The
+        AfterAttack window stays parked until _resolve_shadowy_dodge_cell submits it."""
+        self._shadowy_dodge_option_index = option_index
+        self.pending_shadowy_dodge_cell = True
+        pd = self.combat.pending_decision()
+        idx = pd.ctx.reactor_idx if pd.active else -1
+        agents = self.bm.placed_agents
+        name = agents[idx].name if 0 <= idx < len(agents) else "?"
+        self._combat_log_add(f"{name}: click an unoccupied cell you can see within 30 ft "
+                             f"(your own cell to stay put) — Shadowy Dodge.")
+        self._flush_combat_log()
+
+    def _resolve_shadowy_dodge_cell(self, cell):
+        """Submit the parked Shadowy Dodge teleport with the clicked cell. A click on the Ranger's own
+        cell stays put; an illegal cell re-prompts."""
+        pd = self.combat.pending_decision()
+        if not pd.active or pd.ctx.window != rpg.ReactionWindow.AfterAttack:
+            self.pending_shadowy_dodge_cell = False   # stale arm: the window is gone
+            self._shadowy_dodge_option_index = -1
+            return
+        idx = pd.ctx.reactor_idx
+        origin = self.bm.placed_agents[idx].origin
+        resp = rpg.ReactionResponse()
+        if cell.col == origin.col and cell.row == origin.row:
+            resp.option = next((i for i, o in enumerate(pd.ctx.options)
+                                if o.kind == rpg.ReactionOptionKind.Skip), -1)
+        elif not self.combat.is_shadowy_dodge_destination(self.bm, idx, cell):
+            self._combat_log_add("Shadowy Dodge: pick an unoccupied cell you can see within 30 ft.")
+            self._flush_combat_log()
+            return   # keep the pick armed
+        else:
+            resp.option = self._shadowy_dodge_option_index
+            resp.cell_col, resp.cell_row = cell.col, cell.row
+        self.pending_shadowy_dodge_cell = False
+        self._shadowy_dodge_option_index = -1
+        status = self.combat.submit_decision(self.bm, resp)
+        self._flush_combat_log()
+        self._mark_fog_dirty()   # the teleport moved the token
+        self._sync_spell_effect_cache()
+        self._update_attack_overlay()
+        if status == rpg.FlowStatus.AwaitingDecision:
+            self._show_pending_reaction_menu()
+        else:
+            self._reaction_finish()
 
     def _vitality_in_range(self, src: int, target: int) -> bool:
         """10 ft (2-cell) footprint Chebyshev check, mirroring C++ threateningAgents(src, 2)."""
@@ -19180,6 +19276,10 @@ class App:
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
                     self._start_horde_breaker(idx)
+            if action_id == "sudden_strike":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._start_sudden_strike(idx)
             if action_id == "blink_steps":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents) and self._blink_steps_ready(idx):
@@ -19268,26 +19368,6 @@ class App:
             if action_id == "telekinetic_psi":
                 self.pending_telekinetic = True
                 self.hint = "Click a creature to move with Telekinetic Movement"
-            if action_id == "dread_ambusher":
-                idx = self._current_agent_idx()
-                if 0 <= idx < len(self.bm.placed_agents):
-                    stats = self.combat.get_agent_stats(self.bm, idx)
-                    da = stats.get_resource("Dread Ambusher")
-                    cond = self.combat.get_agent_conditions(self.bm, idx)
-                    if (da and da.current > 0 and not cond.dread_ambusher_used and
-                            not cond.dreadful_strike_armed):
-                        if self.combat.spend_resource(self.bm, idx, "Dread Ambusher", 1):
-                            cond.dreadful_strike_armed = True
-                            cond.dread_ambusher_used = True
-                            self.combat.set_agent_conditions(self.bm, idx, cond)
-                            # Ambusher's Leap: +10 ft Speed this turn.
-                            self.move_remaining_walk += 10
-                            self._update_reach()
-                            dn = stats.dreadful_strike_dice
-                            dz = stats.dreadful_strike_die_size
-                            self._combat_log_add(
-                                f"{self.bm.placed_agents[idx].name}: Dread Ambusher — "
-                                f"next weapon hit deals +{dn}d{dz} Psychic, +10 ft Speed.")
             if action_id == "tireless":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):

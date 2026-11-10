@@ -1467,6 +1467,80 @@ def test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click():
     print("✅ test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click passed")
 
 
+def test_sudden_strike_is_offered_from_the_engine_list_and_checks_the_click():
+    """Stalker's Flurry's Sudden Strike, once chosen, is a free row fed by the engine's
+    `sudden_strike_targets`; arming it limits the next attack click to those creatures and the
+    swing spends it (RANGER_SUBCLASSES_PLAN.md R2). Dread Ambusher no longer has a row: Dreadful
+    Strike is offered on the hit."""
+    from net.roster import DM_PRINCIPAL_ID
+    app = _app()
+    aria = _reclass(app, "Aria", rpg.CharacterClass.Ranger, 11,
+                    ranger_subclass=rpg.RangerSubclass.GloomStalker)
+    skarn, cyra, brannor = _idx(app, "Skarn"), _idx(app, "Cyra"), _idx(app, "Brannor")
+    assert "dread_ambusher" not in _ids(app, aria), "Dreadful Strike is an on-hit rider now"
+    assert "sudden_strike" not in _bonus(app, aria), "nothing armed"
+
+    app.bm.set_agent_faction(cyra, app.bm.get_agent_faction(skarn))
+    assert app.combat.teleport_agent(app.bm, cyra, 4, 4)
+    _set_conditions(app, aria, sudden_strike_available=True, dreadful_strike_target=skarn,
+                    dreadful_strike_weapon=0)
+    assert list(app.combat.sudden_strike_targets(app.bm, aria)) == [cyra]
+    assert "sudden_strike" in _bonus(app, aria)
+    assert _by_id(app, aria)["sudden_strike"].economy == "free"
+    app.attacks_remaining = 1
+    assert "sudden_strike" not in _bonus(app, aria), "the Attack action still has a swing left"
+    app.attacks_remaining = 0
+
+    _draw(app)
+    assert app.perform("sudden_strike", DM_PRINCIPAL_ID) is True
+    assert app.pending_attack_slot == "action" and app.pending_sudden_strike_targets == [cyra]
+    app._resolve_combat_attack(brannor)              # not a legal Sudden Strike target
+    assert app.combat.get_agent_conditions(app.bm, aria).sudden_strike_available
+    assert app.pending_sudden_strike_targets == [cyra], "a refused click keeps the pick armed"
+    app._resolve_combat_attack(cyra)
+    assert not app.combat.get_agent_conditions(app.bm, aria).sudden_strike_available
+    assert app.pending_sudden_strike_targets == []
+    print("✅ test_sudden_strike_is_offered_from_the_engine_list_and_checks_the_click passed")
+
+
+def test_shadowy_dodge_cell_pick_submits_the_parked_window():
+    """Shadowy Dodge's "pick a cell" option arms a map pick; an illegal cell keeps it armed and a
+    legal one submits the parked AfterAttack window, which teleports the Ranger (R2, D6)."""
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Ranger, 15,
+                    ranger_subclass=rpg.RangerSubclass.GloomStalker)
+    skarn = _idx(app, "Skarn")
+    app.bm.set_agent_faction(cyra, app.bm.get_agent_faction(skarn) + 1)
+    sk = app.bm.placed_agents[skarn].origin
+    assert app.combat.teleport_agent(app.bm, cyra, sk.col + 1, sk.row)
+    w = rpg.Weapon(); w.name = "Club"; w.type = rpg.WeaponType.Melee; w.reach_ft = 5
+    w.range_short_feet = 5; w.range_long_feet = 5; w.proficient = True
+    app.combat.set_agent_weapons(app.bm, skarn, [w, rpg.Weapon(), rpg.Weapon()])
+
+    assert app.combat.begin_attack(app.bm, rpg.Attack(skarn, cyra, 0)) == rpg.FlowStatus.AwaitingDecision
+    ctx = app.combat.pending_decision().ctx
+    assert ctx.window == rpg.ReactionWindow.OnAttackDeclared
+    resp = rpg.ReactionResponse()
+    resp.option = next(i for i, o in enumerate(ctx.options) if o.feature == "ShadowyDodge")
+    assert app.combat.submit_decision(app.bm, resp) == rpg.FlowStatus.AwaitingDecision
+    ctx = app.combat.pending_decision().ctx
+    assert ctx.window == rpg.ReactionWindow.AfterAttack
+    app._begin_shadowy_dodge_pick(
+        next(i for i, o in enumerate(ctx.options) if o.feature == "ShadowyDodgeTeleportPick"))
+    assert app.pending_shadowy_dodge_cell
+
+    app._resolve_shadowy_dodge_cell(rpg.Cell(sk.col, sk.row))       # occupied
+    assert app.pending_shadowy_dodge_cell and app.combat.pending_decision().active
+    me = app.bm.placed_agents[cyra].origin
+    dest = next(rpg.Cell(me.col + dc, me.row + dr) for dr in range(-6, 7) for dc in range(-6, 7)
+                if app.combat.is_shadowy_dodge_destination(app.bm, cyra, rpg.Cell(me.col + dc, me.row + dr)))
+    app._resolve_shadowy_dodge_cell(dest)
+    at = app.bm.placed_agents[cyra].origin
+    assert (at.col, at.row) == (dest.col, dest.row)
+    assert not app.pending_shadowy_dodge_cell and not app.combat.pending_decision().active
+    print("✅ test_shadowy_dodge_cell_pick_submits_the_parked_window passed")
+
+
 def test_cunning_action_is_all_three_or_none():
     """One flag offers the whole row; a row with two of three would be a layout bug no
     availability test could see, which is what the smoke suite's row check is for."""
@@ -1759,6 +1833,8 @@ if __name__ == "__main__":
         test_drop_grapple_and_free_from_net_are_outside_the_band()
         test_bite_grappled_asks_the_engine_for_the_pairing()
         test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click()
+        test_sudden_strike_is_offered_from_the_engine_list_and_checks_the_click()
+        test_shadowy_dodge_cell_pick_submits_the_parked_window()
         test_cunning_action_is_all_three_or_none()
         test_the_two_telekinetic_options_are_two_widgets()
         test_every_action_carries_an_economy_from_the_vocabulary()

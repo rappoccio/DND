@@ -1615,6 +1615,12 @@ public:
     //     cast in the window is reflected. Both are also the building blocks of beginAttack (3b).
     [[nodiscard]] bool determineAdvantage(BattleMap& bm, InFlightAttack& s);
     [[nodiscard]] AttackResult applyAttackResult(BattleMap& bm, InFlightAttack& s);
+    //   rollInFlightAttack → the roll (resolveAttack) + post-roll promotions, between the two phases.
+    void rollInFlightAttack(BattleMap& bm, InFlightAttack& s);
+    // Shadowy Dodge plumbing shared by the inline and suspendable attack paths.
+    void takeShadowyDodge(BattleMap& bm, InFlightAttack& s);
+    void shadowyDodgeFollowUp(BattleMap& bm, int idx, int col, int row);
+    [[nodiscard]] std::vector<ReactionOption> shadowyDodgeTeleportOptions() const;
 
     // The defender's OnHit reaction options against a just-resolved attack: Shield (negate, if its
     // +5 AC would flip the hit to a miss) and Uncanny Dodge (halve the damage). Both cost the
@@ -1653,6 +1659,42 @@ public:
     // target, not an ally, alive and in play, within 5 ft of the original target, not yet attacked
     // this turn, and within reach + line of sight of the armed weapon. Empty when not armed.
     [[nodiscard]] std::vector<int> hordeBreakerTargets(const BattleMap& bm, int attacker_idx) const;
+
+    // ── Gloom Stalker (Ranger subclass) ─────────────────────────────────────
+    // Dreadful Strike (L3): a weapon hit by a Gloom Stalker with Dread Ambusher uses left, once per
+    // turn, flags dreadful_strike_available. Applying it spends a use and deals 2d6 Psychic (2d8 at L11)
+    // to dreadful_strike_target, added to `result`; at L11 it leaves stalkers_flurry_pending for the
+    // Stalker's Flurry choice. Returns true iff the damage was dealt.
+    bool applyDreadfulStrikeEffect(BattleMap& bm, int attacker_idx, AttackResult& result);
+    // Stalker's Flurry (L11), right after Dreadful Strike: 0 = neither, 1 = Sudden Strike (arms
+    // sudden_strike_available — one free attack with the same weapon), 2 = Mass Fear. Returns true iff
+    // a pending choice was resolved.
+    bool chooseStalkersFlurry(BattleMap& bm, int attacker_idx, int option);
+    // Mass Fear: the target and every other creature within 10 ft of it (allies too; never the Ranger)
+    // makes a WIS save vs the Ranger's spell save DC or is Frightened of it until the start of the
+    // Ranger's next turn. Returns how many became Frightened.
+    int applyMassFear(BattleMap& bm, int ranger_idx, int target_idx);
+    // Sudden Strike: the creatures the armed free attack may strike — a different creature within 5 ft
+    // of the Dreadful Strike target, not an ally, alive and in play, in reach/range + LoS of the same
+    // weapon. Empty unless sudden_strike_available.
+    [[nodiscard]] std::vector<int> suddenStrikeTargets(const BattleMap& bm, int attacker_idx) const;
+    // The automated Ranger's half (D3/D4): spend a pending Dreadful Strike on a target still standing,
+    // then pick Sudden Strike when it has a target, else Mass Fear. A no-op when nothing is pending.
+    void autoDreadfulStrike(BattleMap& bm, int attacker_idx);
+    // Umbral Sight (L3): `viewer` sees the Gloom Stalker `ranger_idx` only by Darkvision — every cell of
+    // the Ranger in (non-magical) Darkness, the viewer an enemy with Darkvision reaching it and no
+    // Truesight / Blindsight / Devil's Sight that would — so the Ranger is Invisible to it.
+    [[nodiscard]] bool umbralSightHides(const BattleMap& bm, int viewer_idx, int ranger_idx) const;
+    // Shadowy Dodge (L15): when a creature makes an attack roll against the Ranger, its Reaction imposes
+    // Disadvantage on that roll (before the d20); afterwards, hit or miss, it may teleport up to 30 ft to
+    // an unoccupied space it can see.
+    [[nodiscard]] bool canShadowyDodge(const BattleMap& bm, int defender_idx, int attacker_idx) const;
+    bool applyShadowyDodge(BattleMap& bm, int defender_idx);
+    [[nodiscard]] bool isShadowyDodgeDestination(const BattleMap& bm, int idx, Cell dest) const;
+    // The automated destination (D6): the nearest legal cell that, for every enemy, is out of its reach
+    // or out of its line of sight. {-1,-1} when there is none, or when the Ranger already stands in one.
+    [[nodiscard]] Cell shadowyDodgeDestination(const BattleMap& bm, int idx) const;
+    bool shadowyDodgeTeleport(BattleMap& bm, int idx, Cell dest);
 
     // Beguiling Defenses (Archfey Warlock L10) — OnHit defender reaction. After a creature the warlock
     // can see hits it, the warlock may reduce the damage by half AND force the attacker to make a WIS

@@ -31,6 +31,14 @@
 
 namespace rpg {
 
+// Gloom Stalker Ambusher's Leap: the +10 ft walk an NPC driver's own movement seed adds on the first
+// turn of combat (beginTurn sets the flag; the engine and GUI budgets add it themselves).
+static int ambushersLeapFt(const BattleMap& bm, int agent_idx)
+{
+    return bm.getAgentConditions(agent_idx).ambushers_leap ? 10 : 0;
+}
+
+
 namespace {
     // File-local damage-type name for DoT log lines (combat_attack.cpp's magicDamageName
     // lives in its own anonymous namespace and is not visible in this TU).
@@ -241,12 +249,22 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Mark that this agent has now taken a turn in the current combat. Drives the Assassin's
     // Assassinate Advantage (vs creatures that haven't acted yet). Per-combat marker reset at
     // combat start (GUI _start_combat); never cleared in Agent::turn().
+    // Gloom Stalker Ambusher's Leap: "at the start of your first turn of each combat, your Speed
+    // increases by 10 feet until the end of that turn". Flagged here for every movement seed (this
+    // one below, the GUI's _reset_movement, the NPC drivers' via ambushersLeapFt) and cleared on any
+    // later turn.
     {
         Agent::Conditions tc = bm.getAgentConditions(agent_idx);
-        if (!tc.has_taken_turn_this_combat) {
+        const bool first_turn = !tc.has_taken_turn_this_combat;
+        const bool leap = first_turn && stats.hasClass(CharacterClass::Ranger) &&
+                          stats.ranger_subclass == GloomStalkerPath &&
+                          stats.classLevel(CharacterClass::Ranger) >= 3;
+        if (first_turn || tc.ambushers_leap != leap) {
             tc.has_taken_turn_this_combat = true;
+            tc.ambushers_leap = leap;
             bm.setAgentConditions(agent_idx, tc);
         }
+        if (leap) log_("{}: Ambusher's Leap (+10 ft Speed this turn)", agent_name);
     }
 
     // Paladin Oath of Vengeance — Avenging Angel: Frightful Aura. When this creature starts its turn
@@ -1029,6 +1047,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Aura of Alacrity (Paladin Oath of Glory L7): +10 ft Speed while in a Glory paladin's aura (the
     // paladin itself always qualifies). A budget bonus for this turn — no stat mutation.
     if (hasAuraOfAlacrity(bm, agent_idx)) speed_bonus += 10;
+    if (cond.ambushers_leap) speed_bonus += 10;   // Gloom Stalker Ambusher's Leap (first turn of combat)
     // seedMoveBudgets clamps each to >= 0, exactly as the four std::max calls here did.
     mv_.seedMoveBudgets(agent_idx,
                         stats.speed_walk + speed_bonus - move_penalty,
@@ -1537,7 +1556,7 @@ FlowStatus CombatEngine::runFleeTurn(BattleMap& bm, int agent_idx, int fear_idx)
     st.agent_idx = agent_idx;
     const Agent::Stats s = bm.getAgentStats(agent_idx);
     bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
-        s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+        s.speed_walk + ambushersLeapFt(bm, agent_idx), s.speed_fly, s.speed_swim, s.speed_burrow);
 
     const auto& pa  = bm.placedAgents();
     const Cell  me  = pa[static_cast<std::size_t>(agent_idx)].origin;
@@ -1996,7 +2015,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         // then applies the exhaustion penalty). Skip on a resume — we are mid-turn and must not refill.
         const Agent::Stats s = bm.getAgentStats(agent_idx);
         bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
-            s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+            s.speed_walk + ambushersLeapFt(bm, agent_idx), s.speed_fly, s.speed_swim, s.speed_burrow);
     }
 
     // Live kite flag: usually just policy.kite, but a PreferHide Route-D agent (no stealth tools) flips this
@@ -2329,8 +2348,39 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         }
     }
 
+    // Gloom Stalker (D3/D4): spend a pending Dreadful Strike on the hit that offered it, then take the
+    // Sudden Strike it may have armed — between swings, so "immediately after" holds and a park→resume
+    // re-enters here. Returns true iff the Sudden Strike parked.
+    const auto gloomAfterHit = [&]() -> bool {
+        autoDreadfulStrike(bm, agent_idx);
+        if (st.sudden_strike_launched) return false;
+        const std::vector<int> ss = suddenStrikeTargets(bm, agent_idx);
+        if (ss.empty()) return false;
+        int pick = ss.front();
+        for (int j : ss)
+            if (bm.getAgentStats(j).hp_cur < bm.getAgentStats(pick).hp_cur) pick = j;
+        Agent::Conditions c = bm.getAgentConditions(agent_idx);
+        const int w = c.dreadful_strike_weapon;
+        c.sudden_strike_available = false;   // BEFORE the swing
+        bm.setAgentConditions(agent_idx, c);
+        st.sudden_strike_launched = true;
+        Attack a;
+        a.attacker_idx = agent_idx;
+        a.target_idx   = pick;
+        a.weapon_idx   = w;
+        a.attack_slot  = "action";
+        log_("{}: Sudden Strike — a free attack against {}", agentName(bm, agent_idx), agentName(bm, pick));
+        renderAttack(agent_idx, pick);
+        recordNpcAnnounce(agent_idx, pick,
+            std::format("{} attacks {} with {} (Sudden Strike)!", agentName(bm, agent_idx),
+                        agentName(bm, pick),
+                        bm.getAgentWeapons(agent_idx)[static_cast<std::size_t>(w)].name));
+        return beginAttack(bm, a) == FlowStatus::AwaitingDecision;
+    };
+
     if (st.phase == NpcTurnState::Attacking) {
         while (true) {
+            if (gloomAfterHit()) return FlowStatus::AwaitingDecision;
             if (st.attacks_remaining <= 0) {
                 if (st.pending_segments.empty()) break;   // recipe exhausted (or legacy single-weapon done)
                 // Advance to the next recipe segment; skip invalid slots / empty weapons (empty-slot ruling).
@@ -2397,6 +2447,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
             // attack resolved inline → next swing
         }
 
+        if (gloomAfterHit()) return FlowStatus::AwaitingDecision;
         // Horde Breaker (Hunter L3, D10): the attack loop armed it, hit or miss — always take it when a
         // valid target exists. Weakest valid creature first (finish it); ties keep index order.
         if (!st.horde_breaker_launched) {
@@ -2886,7 +2937,7 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
         st.cast_moving = true;                           // resume-marker: re-plan + cast if the move parks
         const Agent::Stats s = bm.getAgentStats(agent_idx);
         bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
-            s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+            s.speed_walk + ambushersLeapFt(bm, agent_idx), s.speed_fly, s.speed_swim, s.speed_burrow);
 
         Cell dest{};
         // The nearest attackable enemy (default priority), or the macro-action's aim creature.
@@ -3436,7 +3487,7 @@ FlowStatus CombatEngine::runCasterTurn(BattleMap& bm, int agent_idx, CasterInten
         st.cast_moving = true;                           // resume-marker: re-plan + cast if the move parks
         const Agent::Stats s = bm.getAgentStats(agent_idx);
         bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
-            s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+            s.speed_walk + ambushersLeapFt(bm, agent_idx), s.speed_fly, s.speed_swim, s.speed_burrow);
 
         Cell dest{};
         if (npcFindApproachCell(bm, agent_idx, plan.approach_target, dest) && dest != curOrigin()) {
@@ -4302,7 +4353,7 @@ FlowStatus CombatEngine::runMoveMacroTurn(BattleMap& bm, int agent_idx, const Np
     Agent& me = *agents[static_cast<std::size_t>(agent_idx)].agent;
     {
         const Agent::Stats s = bm.getAgentStats(agent_idx);
-        me.initMovement(s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+        me.initMovement(s.speed_walk + ambushersLeapFt(bm, agent_idx), s.speed_fly, s.speed_swim, s.speed_burrow);
     }
     const std::string name = agentName(bm, agent_idx);
     using K = NpcMacroKind;

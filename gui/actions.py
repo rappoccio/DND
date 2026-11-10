@@ -100,6 +100,7 @@ _BONUS_ECONOMY = {
     "bite_grappled":         ECONOMY_ATTACK,   # or a mid-multiattack slot
     "haste_action":          ECONOMY_ACTION,   # Haste's extra Action IS the option
     "horde_breaker":         ECONOMY_FREE,     # Hunter: the feature grants the extra attack
+    "sudden_strike":         ECONOMY_FREE,     # Gloom Stalker L11: Stalker's Flurry grants it
 
     # ── inside the band, and Action-costing with it ──
     "turn_undead":           ECONOMY_ACTION,
@@ -608,6 +609,11 @@ class ActionMenu:
         # and the extra attack is armed into the same pending-attack state.
         if app.attacks_remaining == 0 and app.combat.horde_breaker_targets(app.bm, agent_idx):
             out.append(Action("horde_breaker", "Horde Breaker (Extra Attack)", GROUP_BONUS))
+        # Sudden Strike (Gloom Stalker L11): chosen as Dreadful Strike's Stalker's Flurry effect, it
+        # armed one free attack with the same weapon vs a creature within 5 ft of that target. Same
+        # placement and hold-back as Horde Breaker.
+        if app.attacks_remaining == 0 and app.combat.sudden_strike_targets(app.bm, agent_idx):
+            out.append(Action("sudden_strike", "Sudden Strike (Extra Attack)", GROUP_BONUS))
 
         # ── F11, closed: Open Hand L11 Fleet Step ──
         # The one option in §7 whose gate is the OPPOSITE of the band's. Step of the
@@ -982,12 +988,6 @@ class ActionMenu:
 
         # ── Ranger ──
         if cls == CC.Ranger:
-            da = _res(stats, "Dread Ambusher")
-            if (stats.ranger_subclass == rpg.RangerSubclass.GloomStalker and lvl >= 3
-                    and da > 0 and not cond.dread_ambusher_used
-                    and not cond.dreadful_strike_armed):
-                out.append(Action("dread_ambusher",
-                                  f"Dread Ambusher ({da})", GROUP_BONUS))
             tl = _res(stats, "Tireless")
             if not app.action_used and lvl >= 10 and tl > 0:
                 out.append(Action("tireless", f"Tireless ({tl})", GROUP_BONUS))

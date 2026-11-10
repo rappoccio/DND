@@ -108,7 +108,7 @@ namespace {
     X(ranger_subclass) X(hunter_prey) X(defensive_tactics) X(primal_companion) \
     X(hunters_mark_target) X(hunters_mark_dice) X(hunters_mark_die_size) \
     X(hunters_mark_damage_type) X(dread_ambusher) X(dreadful_strike_dice) \
-    X(dreadful_strike_die_size) X(fey_dreadful_strikes) \
+    X(dreadful_strike_die_size) X(umbral_sight_dv) X(fey_dreadful_strikes) \
     X(fey_dreadful_strikes_die_size) X(wild_shape_active) X(wild_shape_form_name) \
     X(wild_shape_saved_ac) X(wild_shape_saved_str) X(wild_shape_saved_dex) \
     X(wild_shape_saved_con) X(wild_shape_saved_weapons) X(starry_form_active) \
@@ -162,8 +162,9 @@ namespace {
     X(horde_breaker_origin) X(horde_breaker_weapon) X(attacked_this_turn) \
     X(shd_resist_magic_mask) X(shd_resist_physical_mask) \
     X(superior_prey_used) X(bestial_fury_used) X(fey_dreadful_strikes_used) \
-    X(multiattack_def_hit_by) X(dreadful_strike_armed) X(dread_ambusher_used) \
-    X(sudden_strike_available) X(berserker_frenzy_used) X(vitality_used_this_turn) \
+    X(multiattack_def_hit_by) X(dreadful_strike_available) X(dreadful_strike_used) \
+    X(dreadful_strike_target) X(dreadful_strike_weapon) X(stalkers_flurry_pending) \
+    X(ambushers_leap) X(sudden_strike_available) X(berserker_frenzy_used) X(vitality_used_this_turn) \
     X(branches_speed_zeroed) X(brutal_strike_used_this_turn) \
     X(zealot_divine_fury_used) X(pull_of_death_turn) X(grave_cursed_by) X(keeper_of_souls_pending) X(fanatical_focus_used) X(brutal_strike_available) \
     X(hamstrung) X(sundering_target_idx) X(staggered_next_save) X(radiant_soul_used) \

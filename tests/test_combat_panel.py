@@ -794,7 +794,7 @@ def build_output():
     # 45/46 — Ranger.
     _reclass(app, "Cyra", rpg.CharacterClass.Ranger, 3,
              ranger_subclass=rpg.RangerSubclass.GloomStalker)
-    out += cap.capture("45 ranger, gloom stalker 3 — Cyra (dread_ambusher)")
+    out += cap.capture("45 ranger, gloom stalker 3 — Cyra (no row: Dreadful Strike is offered on a hit)")
     _reclass(app, "Cyra", rpg.CharacterClass.Ranger, 14,
              ranger_subclass=rpg.RangerSubclass.BeastMaster)
     out += cap.capture("46 ranger, beast master 14 — Cyra "

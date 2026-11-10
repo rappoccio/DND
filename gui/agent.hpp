@@ -678,10 +678,11 @@ namespace rpg {
       int  hunters_mark_damage_type{3};                          // MagicDamage_t (3 = Force for HM; 7 = Psychic for Hex)
 
       // ── Gloom Stalker (Ranger subclass) — Dread Ambusher ────────────────
-      // Initiative Bonus (passive) + the Dreadful Strike class action (arms a one-hit Psychic rider).
+      // Initiative Bonus (passive) + Dreadful Strike (an on-hit Psychic rider, "Dread Ambusher" uses).
       bool dread_ambusher{false};        // +WIS modifier to Initiative rolls (set at GloomStalker L3+)
       int  dreadful_strike_dice{2};      // Dreadful Strike rider: 2 dice (2d6 → 2d8 at L11 Stalker's Flurry)
       int  dreadful_strike_die_size{6};  // 6 = d6; becomes 8 at L11
+      bool umbral_sight_dv{false};       // Umbral Sight's Darkvision (60, or +60) is already in darkvision_range
 
       // ── Fey Wanderer (Ranger subclass) — Dreadful Strikes (distinct from Gloom's) ──
       // L3: a weapon hit deals +1d4 Psychic (→1d6 at L11), once per turn, no resource.
@@ -1066,9 +1067,12 @@ namespace rpg {
       bool bestial_fury_used{false};        // Beast Master L11 Bestial Fury: companion's HM-marked Force splash already applied this turn (once/turn)
       bool fey_dreadful_strikes_used{false}; // Fey Wanderer L3 Dreadful Strikes Psychic rider already applied this turn (once/turn)
       std::vector<int> multiattack_def_hit_by{}; // Hunter L7 Multiattack Defense: indices of creatures that hit me this turn (their other attacks vs me get Disadvantage)
-      bool dreadful_strike_armed{false};    // Gloom Stalker Dread Ambusher: next weapon hit this turn deals +Xd6 Psychic (consumed on the hit)
-      bool dread_ambusher_used{false};      // Gloom Stalker Dread Ambusher class action already used this turn (once/turn)
-      bool sudden_strike_available{false};  // Gloom Stalker L11 Stalker's Flurry: a Dreadful Strike hit grants one free extra attack (GUI prompt)
+      bool dreadful_strike_available{false}; // Gloom Stalker: this weapon hit may take Dreadful Strike (GUI prompt / NpcDriver)
+      bool dreadful_strike_used{false};     // Gloom Stalker: Dreadful Strike already used this turn (once/turn)
+      int  dreadful_strike_target{-1};      // the creature the offered (or just-landed) Dreadful Strike hit
+      int  dreadful_strike_weapon{-1};      // that hit's weapon slot (Sudden Strike uses "the same weapon")
+      bool stalkers_flurry_pending{false};  // Gloom Stalker L11: Dreadful Strike just landed — Sudden Strike / Mass Fear / neither
+      bool sudden_strike_available{false};  // Gloom Stalker L11 Stalker's Flurry: Sudden Strike chosen — one free extra attack is armed
       bool berserker_frenzy_used{false};    // Berserker Frenzy bonus already applied this turn
       bool vitality_used_this_turn{false};  // World Tree Vitality of the Tree turn-start grant used this turn
       bool branches_speed_zeroed{false};    // World Tree Branches of the Tree: target's Speed is 0 until the end of THIS turn (set on a failed save, cleared in turn())
@@ -1165,6 +1169,7 @@ namespace rpg {
       bool zealous_blessing{false};         // Zealot Zealous Presence: grants Advantage on attack rolls and saves until the granter's next turn
       int  zealous_blessing_by{-1};         // index of the Zealot who granted zealous_blessing; cleared in CombatEngine::beginTurn as that Zealot's turn begins (mirrors goaded_by)
       // ── Per-COMBAT marker (NOT reset in turn()) ─────────────────────────────
+      bool ambushers_leap{false};           // Gloom Stalker Ambusher's Leap: +10 ft walk this turn (set by beginTurn on the first turn of combat)
       bool has_taken_turn_this_combat{false}; // set true at the start of this agent's first turn (CombatEngine::beginTurn); drives Assassin "Assassinate" Advantage vs creatures that haven't acted yet. Reset to false at combat start (GUI _start_combat).
       // ── Monk Phase 0 Features ────────────────────────────────────────────────
       bool uncanny_metabolism_used_this_combat{false}; // L2: restore Focus + heal on initiative roll (once per combat)
@@ -1240,8 +1245,11 @@ namespace rpg {
       conditions_.bestial_fury_used            = false;
       conditions_.fey_dreadful_strikes_used    = false;
       conditions_.multiattack_def_hit_by.clear();
-      conditions_.dreadful_strike_armed        = false;
-      conditions_.dread_ambusher_used          = false;
+      conditions_.dreadful_strike_available    = false;
+      conditions_.dreadful_strike_used         = false;
+      conditions_.dreadful_strike_target       = -1;
+      conditions_.dreadful_strike_weapon       = -1;
+      conditions_.stalkers_flurry_pending      = false;
       conditions_.sudden_strike_available      = false;
       conditions_.vitality_used_this_turn      = false;
       conditions_.branches_speed_zeroed        = false;

@@ -434,9 +434,18 @@ def _make_gloom(engine, bm, idx, level=3, wis=16):
     engine.set_agent_weapons(bm, idx, [_weapon(), rpg.Weapon(), rpg.Weapon()])
 
 
-def _arm_dreadful(engine, bm, idx):
+def _take_dreadful(engine, bm, idx, r):
+    """The hit offered Dreadful Strike; take it (the GUI prompt / NpcDriver call this)."""
+    assert engine.get_agent_conditions(bm, idx).dreadful_strike_available, "the hit offers Dreadful Strike"
+    assert engine.apply_dreadful_strike_effect(bm, idx, r), "Dreadful Strike applies"
+    return r
+
+
+def _new_turn(engine, bm, idx):
+    """Clear the once-per-turn mark (as the Ranger's next turn would)."""
     c = engine.get_agent_conditions(bm, idx)
-    c.dreadful_strike_armed = True
+    c.dreadful_strike_used = False
+    c.dreadful_strike_available = False
     engine.set_agent_conditions(bm, idx, c)
 
 
@@ -499,54 +508,56 @@ def test_stalkers_flurry_upgrades_die_l11():
 def test_dreadful_strike_adds_psychic():
     bm, engine, a, t, other = _fresh()
     _make_gloom(engine, bm, a, level=3)
-    _arm_dreadful(engine, bm, a)
-    r = _land(engine, bm, a, t)
+    r = _take_dreadful(engine, bm, a, _land(engine, bm, a, t))
     amt = _dreadful_amount(r)
     assert amt is not None and 2 <= amt <= 12, f"Dreadful Strike adds 2d6 Psychic, got {amt}"
     assert PSYCHIC in [int(x) for x in r.magic_damage_types], "Dreadful Strike tags Psychic damage"
+    assert engine.get_agent_stats(bm, a).get_resource("Dread Ambusher").current == 2, "a use is spent"
     print("✅ test_dreadful_strike_adds_psychic")
 
 
-def test_dreadful_strike_requires_arming():
-    bm, engine, a, t, other = _fresh()
-    _make_gloom(engine, bm, a, level=3)   # NOT armed
-    r = _land(engine, bm, a, t)
-    assert _dreadful_amount(r) is None, "no Dreadful Strike damage until the class action arms it"
-    print("✅ test_dreadful_strike_requires_arming")
-
-
-def test_dreadful_strike_consumed_after_one_hit():
+def test_dreadful_strike_is_offered_not_automatic():
     bm, engine, a, t, other = _fresh()
     _make_gloom(engine, bm, a, level=3)
-    _arm_dreadful(engine, bm, a)
-    r1 = _land(engine, bm, a, t)
-    assert _dreadful_amount(r1) is not None, "the armed hit gets Dreadful Strike"
+    r = _land(engine, bm, a, t)
+    assert _dreadful_amount(r) is None, "the hit only offers Dreadful Strike"
     c = engine.get_agent_conditions(bm, a)
-    assert not c.dreadful_strike_armed, "Dreadful Strike disarms after it lands"
-    fired = False
-    for _ in range(20):
-        r2 = _attack(engine, bm, a, t)
-        if r2.hit and _dreadful_amount(r2) is not None:
-            fired = True
-            break
-        _target(engine, bm, t, hp=400)
-    assert not fired, "Dreadful Strike fires only once per arming"
-    print("✅ test_dreadful_strike_consumed_after_one_hit")
+    assert c.dreadful_strike_available and c.dreadful_strike_target == t and c.dreadful_strike_weapon == 0
+    assert engine.get_agent_stats(bm, a).get_resource("Dread Ambusher").current == 3, "nothing spent yet"
+    print("✅ test_dreadful_strike_is_offered_not_automatic")
+
+
+def test_dreadful_strike_once_per_turn():
+    bm, engine, a, t, other = _fresh()
+    _make_gloom(engine, bm, a, level=3)
+    _take_dreadful(engine, bm, a, _land(engine, bm, a, t))
+    c = engine.get_agent_conditions(bm, a)
+    assert c.dreadful_strike_used and not c.dreadful_strike_available
+    _land(engine, bm, a, t)
+    assert not engine.get_agent_conditions(bm, a).dreadful_strike_available, "no second offer this turn"
+    print("✅ test_dreadful_strike_once_per_turn")
+
+
+def test_dreadful_strike_needs_a_use():
+    bm, engine, a, t, other = _fresh()
+    _make_gloom(engine, bm, a, level=3, wis=10)     # 1 use
+    _take_dreadful(engine, bm, a, _land(engine, bm, a, t))
+    _new_turn(engine, bm, a)
+    _land(engine, bm, a, t)
+    assert not engine.get_agent_conditions(bm, a).dreadful_strike_available, "no uses left → no offer"
+    print("✅ test_dreadful_strike_needs_a_use")
 
 
 def test_dreadful_strike_l11_uses_2d8():
     bm, engine, a, t, other = _fresh()
-    _make_gloom(engine, bm, a, level=11)
     seen = []
-    for _ in range(60):
-        _arm_dreadful(engine, bm, a)     # re-arm each swing
-        r = _attack(engine, bm, a, t)
-        if r.hit:
-            amt = _dreadful_amount(r)
-            if amt is not None:
-                seen.append(amt)
+    for _ in range(40):
+        _make_gloom(engine, bm, a, level=11)       # refills the Dread Ambusher uses
+        _new_turn(engine, bm, a)
+        r = _take_dreadful(engine, bm, a, _land(engine, bm, a, t))
+        seen.append(_dreadful_amount(r))
+        engine.choose_stalkers_flurry(bm, a, 0)
         _target(engine, bm, t, hp=400)
-    assert seen, "Dreadful Strike fired at least once"
     assert all(2 <= x <= 16 for x in seen), f"2d8 stays in [2,16], got {seen}"
     assert max(seen) > 12, f"a 2d8 rider should sometimes exceed 12 (2d6 max), got max {max(seen)}"
     print("✅ test_dreadful_strike_l11_uses_2d8")
@@ -1116,25 +1127,27 @@ def test_superior_hunters_defense_halves_damage():
 #  Phase 3 — Gloom Stalker L11 Stalker's Flurry: Sudden Strike (free extra attack)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_sudden_strike_available_at_l11():
+def test_stalkers_flurry_pending_at_l11():
     bm, engine, a, t, other = _fresh()
     _make_gloom(engine, bm, a, level=11)
-    _arm_dreadful(engine, bm, a)
-    _land(engine, bm, a, t)
-    assert engine.get_agent_conditions(bm, a).sudden_strike_available, \
-        "a Dreadful Strike hit at L11 grants the Sudden Strike free extra attack"
-    print("✅ test_sudden_strike_available_at_l11")
+    _take_dreadful(engine, bm, a, _land(engine, bm, a, t))
+    assert engine.get_agent_conditions(bm, a).stalkers_flurry_pending, \
+        "Dreadful Strike at L11 opens the Stalker's Flurry choice"
+    assert engine.choose_stalkers_flurry(bm, a, 1)
+    c = engine.get_agent_conditions(bm, a)
+    assert c.sudden_strike_available and not c.stalkers_flurry_pending, "Sudden Strike chosen → armed"
+    print("✅ test_stalkers_flurry_pending_at_l11")
 
 
-def test_sudden_strike_not_before_l11():
+def test_no_stalkers_flurry_before_l11():
     bm, engine, a, t, other = _fresh()
-    _make_gloom(engine, bm, a, level=10)            # Dreadful Strike fires, Stalker's Flurry does not
-    _arm_dreadful(engine, bm, a)
-    r = _land(engine, bm, a, t)
+    _make_gloom(engine, bm, a, level=10)
+    r = _take_dreadful(engine, bm, a, _land(engine, bm, a, t))
     assert _dreadful_amount(r) is not None, "Dreadful Strike still fires at L10"
-    assert not engine.get_agent_conditions(bm, a).sudden_strike_available, \
-        "no Sudden Strike before Gloom Stalker L11"
-    print("✅ test_sudden_strike_not_before_l11")
+    c = engine.get_agent_conditions(bm, a)
+    assert not c.stalkers_flurry_pending and not c.sudden_strike_available, \
+        "no Stalker's Flurry before Gloom Stalker L11"
+    print("✅ test_no_stalkers_flurry_before_l11")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

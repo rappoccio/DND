@@ -815,9 +815,9 @@ void Agent::Stats::applyClassResources(CharacterClass cls, int level) {
       if (ranger_subclass == GloomStalkerPath && level >= 3) {
         // Initiative Bonus: add your WIS modifier to Initiative rolls (initiativeModifier).
         dread_ambusher = true;
-        // Dreadful Strike: a class action that arms +2d6 Psychic on your next weapon hit this
-        // turn (+10 ft Speed that turn — Ambusher's Leap, applied GUI-side). Becomes 2d8 at L11
-        // (Stalker's Flurry). Uses = WIS modifier (min 1) per Long Rest, once per turn.
+        // Dreadful Strike: on a weapon hit, +2d6 Psychic (2d8 at L11, Stalker's Flurry), offered once
+        // per turn (applyAttackResult → applyDreadfulStrikeEffect). Uses = WIS modifier (min 1) per
+        // Long Rest. Ambusher's Leap (+10 ft on the first turn of combat) is set in beginTurn.
         dreadful_strike_dice     = 2;
         dreadful_strike_die_size = (level >= 11) ? 8 : 6;
         int wis_mod = _mod(wis);
@@ -827,6 +827,12 @@ void Agent::Stats::applyClassResources(CharacterClass cls, int level) {
         resources["Dread Ambusher"] = da;
         // Iron Mind (L7): proficiency in Wisdom saving throws.
         if (level >= 7) save_prof_wis = true;
+        // Umbral Sight (L3): Darkvision 60 ft, or +60 ft if you already have it. Applied once —
+        // umbral_sight_dv round-trips with darkvision_range, so a save/load re-init doesn't stack it.
+        if (!umbral_sight_dv) {
+          darkvision_range = (darkvision_range > 0) ? darkvision_range + 60 : 60;
+          umbral_sight_dv = true;
+        }
       }
 
       // ── Fey Wanderer (subclass) — Dreadful Strikes ──────────────────────

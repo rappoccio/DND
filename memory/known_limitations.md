@@ -1092,6 +1092,14 @@ L3 Dreadful Strikes (first weapon hit each turn +1d4→1d6 Psychic at L11, no re
 
 Hunter L11 Superior Hunter's Prey (after the mark takes HM damage, splash a fresh roll of the same dice to the nearest enemy ≤30 ft of the mark, once/turn). Hunter L15 Superior Hunter's Defense (OnHit defender reaction, like Uncanny Dodge — v1 resists only the triggering hit). Gloom L11 Sudden Strike (one free extra attack). In-dialog Hunter's Prey / Defensive Tactics pickers. Deferred: Gloom L11 Mass Fear, L15 Shadowy Dodge (needs a pre-roll defender-disadvantage window + teleport), L3 Umbral Sight (lighting model), Phase-2 follow-ups (favored-enemy free-cast accounting, re-mark-on-kill, spell-attack marks, Roving armor gate). See [[ranger_progress]].
 
+**Gloom Stalker update — RANGER_SUBCLASSES_PLAN.md R2 (2026-11-10).** Dreadful Strike is now an on-hit choice (GUI prompt / NpcDriver), Ambusher's Leap is automatic, and Mass Fear, Umbral Sight and Shadowy Dodge are built; the Gloom Stalker spells are always prepared. What remains approximate:
+- **Mass Fear never includes the Ranger itself**, even when it stands within 10 ft of the target (RAW "each creature" would). It does include the Ranger's allies. It doesn't yet get Beguiling Twist's Advantage for a Fey Wanderer (R3 folds the non-spell Charm/Fear sources into one helper).
+- **Dreadful Strike is not offered on an Opportunity Attack**: the OA path runs no rider chain (GUI) and the NpcDriver only spends it on its own turn. The flag clears at the Ranger's next turn.
+- **Sudden Strike, in the GUI, is taken from a free row once the Attack action's swings are done** (like Horde Breaker), not strictly "immediately". The NpcDriver takes it between swings.
+- **Shadowy Dodge covers weapon attacks only**: spell attack rolls go through the cast flow, which has no pre-roll window. In the GUI it isn't offered against an Opportunity Attack (OAs resolve inline, as with Shield). The "space you can see" test is line of sight only.
+- **Umbral Sight changes attack rolls only** (Advantage for the Ranger, Disadvantage against it). It doesn't hide the Ranger from targeting, perception or the fog of war.
+- **Ambusher's Leap adds walking speed only** (as Speedy and Aura of Alacrity do).
+
 </details>
 
 <details>

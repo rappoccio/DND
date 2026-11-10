@@ -118,6 +118,7 @@ def cancel_attack(app) -> None:
     with them. A punch that was armed swaps its weapon back."""
     app.pending_attack_slot = ""
     app.pending_horde_breaker_targets = []
+    app.pending_sudden_strike_targets = []
     snap = app._attack_arm_snapshot
     app._attack_arm_snapshot = None
     if snap is not None:
@@ -142,6 +143,15 @@ def cancel_vitality(app) -> None:
     app.pending_vitality_target = False
     app._vitality_option_index  = -1
     _say(app, "Vitality of the Tree not used.")
+    app._submit_reaction_skip()
+
+
+def cancel_shadowy_dodge(app) -> None:
+    """Shadowy Dodge's cell pick sits inside a parked AfterAttack window: a cancel stays put by
+    submitting the window's Skip, as Vitality's does."""
+    app.pending_shadowy_dodge_cell  = False
+    app._shadowy_dodge_option_index = -1
+    _say(app, "Shadowy Dodge: staying put.")
     app._submit_reaction_skip()
 
 
@@ -336,6 +346,9 @@ def _summon_title(app) -> str:
 ARMS: tuple[Arm, ...] = (
     Arm("arcane_charge_pending", False, CELL, _t("Arcane Charge: choose where to teleport"),
         _flag("arcane_charge_pending", False, "Arcane Charge")),
+    Arm("pending_shadowy_dodge_cell", False, CELL,
+        _t("Shadowy Dodge: choose where to teleport (30 ft)"), cancel_shadowy_dodge,
+        actor=_reactor, in_window=True),
     Arm("blink_steps_pending", False, CELL, _t("Blink Steps: choose where to teleport"),
         _flag("blink_steps_pending", False, "Blink Steps")),
     Arm("pending_psychic_teleport", False, CELL, _t("Psychic Teleportation: choose a destination"),
@@ -446,6 +459,8 @@ WIRED = frozenset({
     "pending_shadow_step", "pending_steps_of_fey", "pending_misty_escape",
     "pending_wild_magic_teleport", "pending_warping_implosion", "pending_shadow_darkness",
     "pending_elemental_burst", "jump_overlay_active",
+    # Ranger R2 — Shadowy Dodge's teleport, inside its parked AfterAttack window
+    "pending_shadowy_dodge_cell",
     # M5d.4 — multi-picks
     "pending_mantle_active", "pending_invoke_duplicity", "pending_move_duplicity",
     "pending_swap_duplicity",

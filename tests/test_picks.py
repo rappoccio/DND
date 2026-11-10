@@ -448,6 +448,20 @@ def test_a_cancelled_vitality_submits_its_skip():
     print("✅ test_a_cancelled_vitality_submits_its_skip")
 
 
+def test_a_cancelled_shadowy_dodge_stays_put():
+    """Shadowy Dodge's teleport cell is picked inside the parked AfterAttack window, so its
+    cancel submits the window's Skip (stay put), exactly as Vitality's does."""
+    app, kira, _ = _aria_turn()
+    skips = []
+    app._submit_reaction_skip = lambda: skips.append(True)
+    app.pending_shadowy_dodge_cell = True
+    app._shadowy_dodge_option_index = 1
+    _esc(app)
+    assert skips == [True], "the Skip was not submitted"
+    assert not app.pending_shadowy_dodge_cell and app._shadowy_dodge_option_index == -1
+    print("✅ test_a_cancelled_shadowy_dodge_stays_put")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Every arm (M5d.2 – M5d.4)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -455,8 +469,9 @@ def test_a_cancelled_vitality_submits_its_skip():
 def test_every_wired_arm_projects_and_cancels():
     """Each wired arm, armed on Aria's turn, is posted to Kira with its own kind and title;
     her cancel runs its cancel, which leaves it idle, and the offer comes back. Vitality
-    needs a live window, and the jump its own landing set: both are checked on their own."""
-    skip = {"pending_vitality_target", "jump_overlay_active"}
+    needs a live window, and the jump its own landing set: both are checked on their own (as is
+    Shadowy Dodge's cell, which is Vitality's case)."""
+    skip = {"pending_vitality_target", "jump_overlay_active", "pending_shadowy_dodge_cell"}
     for arm in net_picks.ARMS:
         if arm.name not in net_picks.WIRED or arm.name in skip:
             continue
@@ -1951,6 +1966,7 @@ if __name__ == "__main__":
         test_a_cancelled_hew_is_refunded()
         test_a_cancelled_sweep_continues_the_sequence()
         test_a_cancelled_vitality_submits_its_skip()
+        test_a_cancelled_shadowy_dodge_stays_put()
         test_every_wired_arm_projects_and_cancels()
         test_an_unwired_arm_holds_the_offer()
         test_a_parked_window_holds_every_pick_but_vitality()

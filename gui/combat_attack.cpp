@@ -1068,6 +1068,98 @@ std::vector<int> CombatEngine::hordeBreakerTargets(const BattleMap& bm, int atta
     return out;
 }
 
+// ── Shadowy Dodge (Gloom Stalker L15) ─────────────────────────────────────────────────────────
+bool CombatEngine::canShadowyDodge(const BattleMap& bm, int defender_idx, int attacker_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (defender_idx < 0 || defender_idx >= n || attacker_idx < 0 || attacker_idx >= n) return false;
+    if (defender_idx == attacker_idx || bm.isAgentOnDeck(defender_idx)) return false;
+    const Agent::Conditions cond = bm.getAgentConditions(defender_idx);
+    if (!canTakeReaction(cond) || cond.dead) return false;
+    const Agent::Stats s = bm.getAgentStats(defender_idx);
+    if (s.hp_cur <= 0) return false;
+    return s.hasClass(CharacterClass::Ranger) && s.ranger_subclass == GloomStalkerPath &&
+           s.classLevel(CharacterClass::Ranger) >= 15;
+}
+
+bool CombatEngine::applyShadowyDodge(BattleMap& bm, int defender_idx)
+{
+    if (defender_idx < 0 || defender_idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    Agent::Conditions c = bm.getAgentConditions(defender_idx);
+    if (!canTakeReaction(c)) return false;
+    c.reaction_used = true;
+    bm.setAgentConditions(defender_idx, c);
+    log_("{} uses Shadowy Dodge — the attack roll has Disadvantage", agentName(bm, defender_idx));
+    return true;
+}
+
+bool CombatEngine::isShadowyDodgeDestination(const BattleMap& bm, int idx, Cell dest) const
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    const PlacedAgent& me = agents[static_cast<std::size_t>(idx)];
+    const int sz = me.agent->getSize();
+    if (dest.col == me.origin.col && dest.row == me.origin.row) return false;
+    if (footprintDistance(me.origin, sz, Cell{dest.col, dest.row}, sz) > 6) return false;   // 30 ft
+    for (int r = 0; r < sz; ++r)
+        for (int c = 0; c < sz; ++c)
+            if (!isValidTeleportDestination(bm, dest.col + c, dest.row + r)) return false;
+    if (bm.agentOccupancy(Cell{dest.col, dest.row}, sz, idx) != 0) return false;           // unoccupied
+    return bm.hasLineOfSight(me.origin, sz, Cell{dest.col, dest.row}, sz);                 // a space you can see
+}
+
+Cell CombatEngine::shadowyDodgeDestination(const BattleMap& bm, int idx) const
+{
+    const Cell none{-1, -1};
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (idx < 0 || idx >= n) return none;
+    const PlacedAgent& me = agents[static_cast<std::size_t>(idx)];
+    const int sz = me.agent->getSize();
+    // D6: a cell is safe when, for every enemy, it is out of that enemy's melee reach OR out of its
+    // line of sight. Reach is the enemy's longest melee weapon (5 ft at least), as isThreatened has it.
+    struct Foe { Cell origin; int size; int reach_cells; };
+    std::vector<Foe> foes;
+    for (int i = 0; i < n; ++i) {
+        if (i == idx || rules::alliedFactions(bm, idx, i)) continue;
+        const PlacedAgent& o = agents[static_cast<std::size_t>(i)];
+        if (o.removed_from_play || o.on_deck) continue;
+        if (o.agent->getConditions().dead || o.agent->getStats().hp_cur <= 0) continue;
+        int reach_ft = 5;
+        for (const Weapon& w : bm.getAgentWeapons(i))
+            if (!w.name.empty() && w.type == WeaponType::Melee) reach_ft = std::max(reach_ft, w.reach_ft);
+        foes.push_back({o.origin, o.agent->getSize(), reach_ft / 5});
+    }
+    const auto safe = [&](Cell at) {
+        for (const Foe& f : foes)
+            if (footprintDistance(at, sz, f.origin, f.size) <= f.reach_cells &&
+                bm.hasLineOfSight(f.origin, f.size, at, sz)) return false;
+        return true;
+    };
+    if (safe(me.origin)) return none;   // already out of every enemy's reach (or sight): stay put
+    Cell best = none;
+    int best_d = 1 << 30;
+    for (int dr = -6 - (sz - 1); dr <= 6 + (sz - 1); ++dr)
+        for (int dc = -6 - (sz - 1); dc <= 6 + (sz - 1); ++dc) {
+            const Cell at{me.origin.col + dc, me.origin.row + dr};
+            if (!isShadowyDodgeDestination(bm, idx, at) || !safe(at)) continue;
+            const int d = footprintDistance(me.origin, sz, at, sz);
+            if (d < best_d) { best = at; best_d = d; }   // nearest first; ties keep row-major order
+        }
+    return best;
+}
+
+bool CombatEngine::shadowyDodgeTeleport(BattleMap& bm, int idx, Cell dest)
+{
+    if (!isShadowyDodgeDestination(bm, idx, dest)) return false;
+    const Cell from = bm.placedAgents()[static_cast<std::size_t>(idx)].origin;
+    if (!teleportAgent(bm, idx, dest.col, dest.row)) return false;
+    log_("{} teleports {} ft (Shadowy Dodge)", agentName(bm, idx),
+         5 * std::max(std::abs(dest.col - from.col), std::abs(dest.row - from.row)));
+    return true;
+}
+
 bool CombatEngine::canParry(const BattleMap& bm, int defender_idx) const
 {
     const auto& agents = bm.placedAgents();
@@ -2337,15 +2429,49 @@ FlowStatus CombatEngine::beginAttack(BattleMap& bm, const Attack& action)
         s.active = false;
         return FlowStatus::Completed;
     }
+    return advanceAttack(bm);
+}
+
+// The roll itself: d20 + damage into s.r, then the post-roll promotions. Shared by the inline and
+// suspendable paths so a pre-roll window (Shadowy Dodge) sits in front of the same sequence.
+void CombatEngine::rollInFlightAttack(BattleMap& bm, InFlightAttack& s)
+{
     auto agents = bm.placedAgents();
-    const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(action.attacker_idx)];
-    const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
-    s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage,
-                        &bm, action.target_idx);
+    const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(s.action.attacker_idx)];
+    const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(s.action.target_idx)];
+    s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, s.action.no_ability_damage,
+                        &bm, s.action.target_idx);
     forceAutoHit(bm, s);   // vampire Bite vs a creature it has Grappled: a missed roll still hits
     maybeUnerringStrike(bm, s);  // Oath of Glory L20 Living Legend: promote the first weapon miss to a hit
     maybePeerlessAim(bm, s);     // Boon of Combat Prowess: NPC boon-holders auto-promote their first miss
-    return advanceAttack(bm);
+    s.rolled = true;
+}
+
+// Shadowy Dodge accepted: the reaction is spent and the roll (not yet made) takes Disadvantage.
+void CombatEngine::takeShadowyDodge(BattleMap& bm, InFlightAttack& s)
+{
+    if (!applyShadowyDodge(bm, s.action.target_idx)) return;
+    s.dis = true;
+    s.shadowy_dodge = true;
+}
+
+// Shadowy Dodge's teleport, after the attack: a decided cell, else the engine's own pick (D6).
+void CombatEngine::shadowyDodgeFollowUp(BattleMap& bm, int idx, int col, int row)
+{
+    const Cell dest = (col >= 0 && row >= 0) ? Cell{col, row} : shadowyDodgeDestination(bm, idx);
+    if (dest.col < 0 || !shadowyDodgeTeleport(bm, idx, dest))
+        log_("{} stays put (Shadowy Dodge)", agentName(bm, idx));
+}
+
+std::vector<ReactionOption> CombatEngine::shadowyDodgeTeleportOptions() const
+{
+    std::vector<ReactionOption> opts;
+    opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Shadowy Dodge: teleport (safest cell)",
+                                  "ShadowyDodgeTeleport"});
+    opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Shadowy Dodge: teleport (pick a cell)",
+                                  "ShadowyDodgeTeleportPick"});
+    opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Stay put", ""});
+    return opts;
 }
 
 // advanceAttack — drive the in-flight attack. If a defender Shield window should open (GUI path only),
@@ -2355,6 +2481,25 @@ FlowStatus CombatEngine::beginAttack(BattleMap& bm, const Attack& action)
 FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
 {
     InFlightAttack& s = in_flight_attack_;
+    // Shadowy Dodge (Gloom Stalker L15): the target may react BEFORE the d20 is rolled, imposing
+    // Disadvantage. Offered once; submitDecision applies the choice and comes back here to roll.
+    if (!s.rolled) {
+        if (s.interactive && !s.preroll_offered) {
+            s.preroll_offered = true;
+            if (canShadowyDodge(bm, s.action.target_idx, s.action.attacker_idx)) {
+                ReactionCtx ctx;
+                ctx.window      = ReactionWindow::OnAttackDeclared;
+                ctx.reactor_idx = s.action.target_idx;
+                ctx.source_idx  = s.action.attacker_idx;
+                ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                                     "Shadowy Dodge (Disadvantage, then teleport)", "ShadowyDodge"});
+                ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+                pending_decision_ = PendingDecision{true, ctx};   // suspend; GUI resumes via submitDecision
+                return FlowStatus::AwaitingDecision;
+            }
+        }
+        rollInFlightAttack(bm, s);
+    }
     // OnD20Seen window (BEFORE Shield): nearby creatures may lower the roll. Build the reactor list
     // once (post-roll), then offer each in turn. submitDecision advances d20_cursor on each resume, so
     // a Skip simply moves to the next reactor; a lowering reaction that flips the hit to a miss then
@@ -2415,7 +2560,25 @@ FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
         return FlowStatus::AwaitingDecision;
     }
     pending_decision_.active = false;
-    last_attack_result_ = applyAttackResult(bm, s);
+    if (!s.applied) {
+        last_attack_result_ = applyAttackResult(bm, s);
+        s.applied = true;
+    }
+    // Shadowy Dodge, second half: "whether the attack hits or misses, you can then teleport up to
+    // 30 feet". Offered once, to a Ranger still on its feet.
+    if (s.interactive && s.shadowy_dodge && !s.after_offered) {
+        s.after_offered = true;
+        const int d = s.action.target_idx;
+        if (bm.getAgentStats(d).hp_cur > 0 && !bm.getAgentConditions(d).incapacitated) {
+            ReactionCtx ctx;
+            ctx.window      = ReactionWindow::AfterAttack;
+            ctx.reactor_idx = d;
+            ctx.source_idx  = s.action.attacker_idx;
+            ctx.options     = shadowyDodgeTeleportOptions();
+            pending_decision_ = PendingDecision{true, ctx};
+            return FlowStatus::AwaitingDecision;
+        }
+    }
     s.active = false;
     return FlowStatus::Completed;
 }
@@ -2855,6 +3018,18 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Advantage: attacker is invisible");
     }
 
+    // Gloom Stalker Umbral Sight: a Ranger entirely in Darkness is Invisible to a creature that relies
+    // on Darkvision to see it — Advantage on the Ranger's attacks against that creature, Disadvantage on
+    // that creature's attacks against the Ranger.
+    if (umbralSightHides(bm, action.target_idx, action.attacker_idx)) {
+        adv = true;
+        log_("Advantage: Umbral Sight (unseen in Darkness by a creature relying on Darkvision)");
+    }
+    if (umbralSightHides(bm, action.attacker_idx, action.target_idx)) {
+        dis = true;
+        log_("Disadvantage: Umbral Sight (the target is unseen in Darkness to the attacker's Darkvision)");
+    }
+
     // Rogue Steady Aim: the bonus action grants advantage on this attack (consumed below).
     if (atk_cond.steady_aim) {
         adv = true;
@@ -3090,14 +3265,19 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     InFlightAttack s;
     s.action = action;
     if (!determineAdvantage(bm, s)) return s.r;          // illegal/blocked attack (valid == false)
-    auto agents = bm.placedAgents();
-    const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(action.attacker_idx)];
-    const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
-    s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, action.no_ability_damage,
-                        &bm, action.target_idx);
-    forceAutoHit(bm, s);   // vampire Bite vs a creature it has Grappled: a missed roll still hits
-    maybeUnerringStrike(bm, s);  // Oath of Glory L20 Living Legend: promote the first weapon miss to a hit
-    maybePeerlessAim(bm, s);     // Boon of Combat Prowess: NPC boon-holders auto-promote their first miss
+    // Auto/RL Shadowy Dodge (inline via the decider): the target's pre-roll Disadvantage reaction.
+    if (decider_ && canShadowyDodge(bm, action.target_idx, action.attacker_idx)) {
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::OnAttackDeclared;
+        ctx.reactor_idx = action.target_idx;
+        ctx.source_idx  = action.attacker_idx;
+        ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                             "Shadowy Dodge (Disadvantage, then teleport)", "ShadowyDodge"});
+        ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option == 0) takeShadowyDodge(bm, s);
+    }
+    rollInFlightAttack(bm, s);
     // Auto/RL OnD20Seen window (inline): nearby creatures may LOWER the roll (Bend Luck / Cutting
     // Words / Silvery Barbs) before it commits — runs BEFORE Shield so a lowered-to-miss attack opens
     // no Shield window (shouldOfferDefenderShield is gated on r.hit).
@@ -3142,6 +3322,18 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
     // Auto/RL Soul of Vengeance (Oath of Vengeance L15): if the attacker is under a paladin's Vow of
     // Enmity, that paladin may make a melee counter-strike. Also a pure reaction; never alters this attack.
     maybeSoulOfVengeanceInline(bm, action, r);
+    // Auto/RL Shadowy Dodge, second half: hit or miss, the Ranger may teleport up to 30 ft.
+    if (decider_ && s.shadowy_dodge && bm.getAgentStats(action.target_idx).hp_cur > 0 &&
+        !bm.getAgentConditions(action.target_idx).incapacitated) {
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::AfterAttack;
+        ctx.reactor_idx = action.target_idx;
+        ctx.source_idx  = action.attacker_idx;
+        ctx.options     = shadowyDodgeTeleportOptions();
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option == 0 || resp.option == 1)
+            shadowyDodgeFollowUp(bm, action.target_idx, resp.cell_col, resp.cell_row);
+    }
     return r;
 }
 
@@ -4143,43 +4335,27 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
-    // ── Gloom Stalker (Ranger subclass) — Dreadful Strike rider — AUTOMATIC ─
-    // The Dread Ambusher class action arms dreadful_strike_armed for one weapon hit this turn. On
-    // that hit, add 2d6 Psychic (2d8 at L11 Stalker's Flurry), apply the target's Psychic
-    // multiplier, then disarm. Mirrors the Hunter's Mark rider's HP/temp-HP bookkeeping; the
-    // updated condition is written back (the shared updated_atk_cond is persisted by later blocks).
-    if (r.hit && is_weapon_atk && updated_atk_cond.dreadful_strike_armed &&
-        atk_stats.dreadful_strike_dice > 0) {
-        const int type = static_cast<int>(MagicDamage_t::Psychic);
-        int raw = 0;
-        for (int i = 0; i < atk_stats.dreadful_strike_dice; ++i)
-            raw += roll(atk_stats.dreadful_strike_die_size);
-        const float mult = tgt_stats.magic_damage_multipliers[static_cast<std::size_t>(type)];
-        const int ds = static_cast<int>(static_cast<float>(raw) * mult);
-
-        r.total_damage += ds;
-        r.damage_breakdown.push_back({"dreadful strike", ds});
-        r.magic_damage_types.push_back(MagicDamage_t::Psychic);
-        int overflow = std::max(0, ds - tgt_stats.temp_hp);
-        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - ds);
-        tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
-        r.hp_after = tgt_stats.hp_cur;
-        r.target_down = (r.hp_after <= 0);
-        updated_atk_cond.dreadful_strike_armed = false;
-        // Stalker's Flurry (Gloom Stalker L11): immediately after Dreadful Strike, you may make one
-        // additional weapon attack (Sudden Strike) against a creature within 5 ft of the target.
-        // Flag it so the GUI offers the free extra attack (mirrors Horde Breaker / GWM Hew).
-        if (atk_stats.ranger_subclass == GloomStalkerPath && atk_stats.classLevel(CharacterClass::Ranger) >= 11)
-            updated_atk_cond.sudden_strike_available = true;
-        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
-        log_("Dreadful Strike: +{} Psychic ({}d{})", ds, atk_stats.dreadful_strike_dice,
-             atk_stats.dreadful_strike_die_size);
+    // ── Gloom Stalker (Ranger subclass) — Dreadful Strike — OFFERED on a weapon hit ─
+    // "When you attack a creature and hit it with a weapon, you can deal an extra 2d6 Psychic damage"
+    // (2d8 at L11), once per turn, WIS-mod uses ("Dread Ambusher") per Long Rest. The hit only offers
+    // it: the GUI prompts (riders.offer_dreadful_strike → applyDreadfulStrikeEffect) and the NpcDriver
+    // spends it (autoDreadfulStrike). The latest hit is the one on offer.
+    if (r.hit && is_weapon_atk && atk_stats.hasClass(CharacterClass::Ranger) &&
+        atk_stats.ranger_subclass == GloomStalkerPath && atk_stats.classLevel(CharacterClass::Ranger) >= 3 &&
+        !updated_atk_cond.dreadful_strike_used) {
+        const Resource* da = atk_stats.getResource("Dread Ambusher");
+        if (da && da->current > 0) {
+            updated_atk_cond.dreadful_strike_available = true;
+            updated_atk_cond.dreadful_strike_target    = action.target_idx;
+            updated_atk_cond.dreadful_strike_weapon    = action.weapon_idx;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
     }
 
     // ── Fey Wanderer (Ranger subclass) — Dreadful Strikes rider — AUTOMATIC ─
     // L3: the first weapon hit each turn deals +1d4 Psychic (→1d6 at L11). No resource;
     // once/turn via fey_dreadful_strikes_used. Distinct from the Gloom Stalker rider above
-    // (which is the armed Dread Ambusher one-shot); a creature only ever has one of the two.
+    // (which is offered, and spends a Dread Ambusher use); a creature only ever has one of the two.
     if (r.hit && is_weapon_atk && atk_stats.fey_dreadful_strikes &&
         !updated_atk_cond.fey_dreadful_strikes_used) {
         const int type = static_cast<int>(MagicDamage_t::Psychic);

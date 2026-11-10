@@ -123,6 +123,40 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              "Horde Breaker (Hunter L3): indices the armed extra attack may strike — within 5 ft of the\n"
              "original target, not attacked this turn, not an ally, in reach + LoS of the armed weapon.\n"
              "Empty unless horde_breaker_available and not horde_breaker_used.")
+        .def("apply_dreadful_strike_effect", &CombatEngine::applyDreadfulStrikeEffect,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("result"),
+             "Gloom Stalker Dreadful Strike: spend a Dread Ambusher use and add 2d6 Psychic (2d8 at L11)\n"
+             "to the offered hit (dreadful_strike_available / dreadful_strike_target), into result. At L11\n"
+             "leaves stalkers_flurry_pending. Returns True iff the damage was dealt.")
+        .def("choose_stalkers_flurry", &CombatEngine::chooseStalkersFlurry,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("option"),
+             "Stalker's Flurry (Gloom Stalker L11), after Dreadful Strike: 0 = neither, 1 = Sudden Strike\n"
+             "(arms sudden_strike_available), 2 = Mass Fear. Returns True iff a pending choice resolved.")
+        .def("apply_mass_fear", &CombatEngine::applyMassFear,
+             py::arg("battle_map"), py::arg("ranger_idx"), py::arg("target_idx"),
+             "Mass Fear: the target and each other creature within 10 ft of it save (WIS vs the Ranger's\n"
+             "spell DC) or are Frightened until the start of the Ranger's next turn. Returns the count.")
+        .def("sudden_strike_targets", &CombatEngine::suddenStrikeTargets,
+             py::arg("battle_map"), py::arg("attacker_idx"),
+             "Sudden Strike: indices the armed free attack may strike — a different creature within 5 ft\n"
+             "of the Dreadful Strike target, not an ally, in reach/range + LoS of the same weapon.")
+        .def("umbral_sight_hides", &CombatEngine::umbralSightHides,
+             py::arg("battle_map"), py::arg("viewer_idx"), py::arg("ranger_idx"),
+             "Umbral Sight: True iff the Gloom Stalker is entirely in Darkness and viewer sees there only\n"
+             "by Darkvision, so the Ranger is Invisible to it.")
+        .def("can_shadowy_dodge", &CombatEngine::canShadowyDodge,
+             py::arg("battle_map"), py::arg("defender_idx"), py::arg("attacker_idx"),
+             "Shadowy Dodge (Gloom Stalker L15): may the defender react to this attack roll?")
+        .def("is_shadowy_dodge_destination", &CombatEngine::isShadowyDodgeDestination,
+             py::arg("battle_map"), py::arg("idx"), py::arg("dest"),
+             "Shadowy Dodge: an unoccupied cell within 30 ft the Ranger can see (not its own).")
+        .def("shadowy_dodge_destination", &CombatEngine::shadowyDodgeDestination,
+             py::arg("battle_map"), py::arg("idx"),
+             "Shadowy Dodge's automated pick: the nearest legal cell out of every enemy's reach or sight;\n"
+             "Cell(-1, -1) when none, or when the Ranger already stands in one.")
+        .def("shadowy_dodge_teleport", &CombatEngine::shadowyDodgeTeleport,
+             py::arg("battle_map"), py::arg("idx"), py::arg("dest"),
+             "Shadowy Dodge: validate and teleport. Returns True iff the Ranger moved.")
         .def("can_deflect_attacks", &CombatEngine::canDeflectAttacks,
              py::arg("battle_map"), py::arg("defender_idx"),
              "True iff defender_idx (Monk L3+, reaction free, not incapacitated, alive) may use Deflect\n"

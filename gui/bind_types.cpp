@@ -643,6 +643,8 @@ void bindTypes(py::module_& m) {
              "Gloom Stalker Dreadful Strike rider dice (2d6 → 2d8 at L11)")
         .def_readwrite("dreadful_strike_die_size", &Agent::Stats::dreadful_strike_die_size,
              "Gloom Stalker Dreadful Strike die size (6=d6, 8 at L11 Stalker's Flurry)")
+        .def_readwrite("umbral_sight_dv", &Agent::Stats::umbral_sight_dv,
+             "Gloom Stalker Umbral Sight: its Darkvision (60, or +60) is already folded into darkvision_range")
         .def_readwrite("fey_dreadful_strikes", &Agent::Stats::fey_dreadful_strikes,
              "Fey Wanderer L3 Dreadful Strikes: weapon hit adds Psychic once/turn")
         .def_readwrite("fey_dreadful_strikes_die_size", &Agent::Stats::fey_dreadful_strikes_die_size,
@@ -863,8 +865,12 @@ void bindTypes(py::module_& m) {
         .def_readwrite("bestial_fury_used", &Agent::Conditions::bestial_fury_used)
         .def_readwrite("fey_dreadful_strikes_used", &Agent::Conditions::fey_dreadful_strikes_used)
         .def_readwrite("multiattack_def_hit_by", &Agent::Conditions::multiattack_def_hit_by)
-        .def_readwrite("dreadful_strike_armed", &Agent::Conditions::dreadful_strike_armed)
-        .def_readwrite("dread_ambusher_used", &Agent::Conditions::dread_ambusher_used)
+        .def_readwrite("dreadful_strike_available", &Agent::Conditions::dreadful_strike_available)
+        .def_readwrite("dreadful_strike_used", &Agent::Conditions::dreadful_strike_used)
+        .def_readwrite("dreadful_strike_target", &Agent::Conditions::dreadful_strike_target)
+        .def_readwrite("dreadful_strike_weapon", &Agent::Conditions::dreadful_strike_weapon)
+        .def_readwrite("stalkers_flurry_pending", &Agent::Conditions::stalkers_flurry_pending)
+        .def_readwrite("ambushers_leap", &Agent::Conditions::ambushers_leap)
         .def_readwrite("sudden_strike_available", &Agent::Conditions::sudden_strike_available)
         .def_readwrite("vitality_used_this_turn", &Agent::Conditions::vitality_used_this_turn)
         .def_readwrite("branches_speed_zeroed", &Agent::Conditions::branches_speed_zeroed)
@@ -2123,7 +2129,9 @@ void bindTypes(py::module_& m) {
         .value("OnD20Seen",         ReactionWindow::OnD20Seen)
         .value("OnSaveFail",        ReactionWindow::OnSaveFail)
         .value("OnTurnStartNearby", ReactionWindow::OnTurnStartNearby)
-        .value("OnAllyAttacked",    ReactionWindow::OnAllyAttacked);
+        .value("OnAllyAttacked",    ReactionWindow::OnAllyAttacked)
+        .value("OnAttackDeclared",  ReactionWindow::OnAttackDeclared)
+        .value("AfterAttack",       ReactionWindow::AfterAttack);
 
     py::enum_<ReactionOption::Kind>(m, "ReactionOptionKind")
         .value("Skip",    ReactionOption::Skip)
@@ -2149,7 +2157,9 @@ void bindTypes(py::module_& m) {
     py::class_<ReactionResponse>(m, "ReactionResponse")
         .def(py::init<>())
         .def_readwrite("option",     &ReactionResponse::option)
-        .def_readwrite("target_idx", &ReactionResponse::target_idx);
+        .def_readwrite("target_idx", &ReactionResponse::target_idx)
+        .def_readwrite("cell_col",   &ReactionResponse::cell_col)
+        .def_readwrite("cell_row",   &ReactionResponse::cell_row);
 
     py::enum_<FlowStatus>(m, "FlowStatus")
         .value("Completed",        FlowStatus::Completed)

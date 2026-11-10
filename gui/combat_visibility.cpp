@@ -465,6 +465,33 @@ bool CombatEngine::canPerceiveTarget(const BattleMap& bm, int viewer_idx, int ta
     return vis_.canPerceiveTarget(bm, viewer_idx, target_idx);
 }
 
+bool CombatEngine::umbralSightHides(const BattleMap& bm, int viewer_idx, int ranger_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (viewer_idx < 0 || viewer_idx >= n || ranger_idx < 0 || ranger_idx >= n || viewer_idx == ranger_idx)
+        return false;
+    const PlacedAgent& rg = agents[static_cast<std::size_t>(ranger_idx)];
+    const Agent::Stats& rs = rg.agent->getStats();
+    if (!rs.hasClass(CharacterClass::Ranger) || rs.ranger_subclass != GloomStalkerPath ||
+        rs.classLevel(CharacterClass::Ranger) < 3) return false;
+    if (vis_.areAllies(bm, viewer_idx, ranger_idx)) return false;
+    // "While entirely in Darkness": every cell of the Ranger, as this viewer perceives it. Magical
+    // darkness is darknessConceals' business — Darkvision doesn't see through it in the first place.
+    const int rsz = rg.agent->getSize();
+    for (int r = 0; r < rsz; ++r)
+        for (int c = 0; c < rsz; ++c)
+            if (bm.getLightLevelFor({rg.origin.col + c, rg.origin.row + r}, viewer_idx) != VisibilityLevel::Dark)
+                return false;
+    // "A creature that relies on Darkvision to see you in that Darkness": Darkvision reaches the
+    // Ranger and no other sense that works in the dark does.
+    const PlacedAgent& vw = agents[static_cast<std::size_t>(viewer_idx)];
+    const Agent::Stats& vs = vw.agent->getStats();
+    const int dist_ft = footprintDistance(vw.origin, vw.agent->getSize(), rg.origin, rsz) * 5;
+    if (vs.darkvision_range < dist_ft) return false;
+    return !piercesInvisibility(vs, dist_ft) && vs.devilssight_range < dist_ft;
+}
+
 bool CombatEngine::darknessConceals(const BattleMap& bm, int viewer_idx, Cell viewer_origin, int target_idx) const noexcept
 {
     return vis_.darknessConceals(bm, viewer_idx, viewer_origin, target_idx);

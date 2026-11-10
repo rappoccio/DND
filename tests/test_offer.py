@@ -172,12 +172,12 @@ def test_the_class_table_is_the_dispatch():
                    and n.left.id == key and isinstance(n.comparators[0], ast.Name)
                    and n.comparators[0].id == "action_id" for n in ast.walk(node)):
                 dispatched |= set(getattr(actions, node.iter.func.value.id))
-    assert len(dispatched) == 123, len(dispatched)     # M7.5 added `table`; Grave Domain `path_to_the_grave`; Ranger R1 `horde_breaker`
+    assert len(dispatched) == 123, len(dispatched)     # M7.5 added `table`; Grave Domain `path_to_the_grave`; Ranger R1 `horde_breaker`; R2 `sudden_strike` for `dread_ambusher`
     assert set(net_offer.CLASS) == dispatched, (
         f"missing {sorted(dispatched - set(net_offer.CLASS))}, "
         f"extra {sorted(set(net_offer.CLASS) - dispatched)}")
     counts = collections.Counter(net_offer.CLASS.values())
-    assert counts == {"I": 66, "C→I": 8, "A": 18, "A*": 1, "C→A": 7, "X": 12,
+    assert counts == {"I": 65, "C→I": 8, "A": 19, "A*": 1, "C→A": 7, "X": 12,
                       "C→X": 1, "S": 5, "DM": 5}, counts
     assert sorted(i for i, c in net_offer.CLASS.items() if c == "DM") == sorted(_DM_TOOLS)
     assert all(net_offer.CLASS[i] == "I" for i in actions.METAMAGIC_VALUE_BY_ID)

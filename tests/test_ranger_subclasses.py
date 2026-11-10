@@ -11,6 +11,16 @@ R1 — Hunter (D10):
   · Superior Hunter's Defense: Resistance to the triggering damage type until the end of the
     current turn (cleared as the next turn begins).
   · Hunter's Lore: marking a creature logs its immunities / resistances / vulnerabilities.
+
+R2 — Gloom Stalker (D3–D6 + the spell list):
+  · Gloom Stalker Spells are always prepared at L3/5/9/13/17.
+  · Dreadful Strike is offered on a weapon hit; the NpcDriver spends it, and at L11 takes Sudden
+    Strike when a second target stands within 5 ft, else Mass Fear.
+  · Mass Fear: the target and each other creature within 10 ft (allies too, never the Ranger).
+  · Ambusher's Leap: +10 ft walk on the first turn of combat only.
+  · Umbral Sight: Darkvision 60 / +60 (once); Invisible in Darkness to Darkvision-only viewers.
+  · Shadowy Dodge: a pre-roll reaction (Disadvantage), then a ≤30 ft teleport — parked for the
+    GUI/arena, inline for a decider; the automated cell is out of every enemy's reach or sight.
 """
 
 import sys
@@ -342,6 +352,285 @@ def test_hunters_lore_not_for_other_rangers():
     _mark(engine, bm, ranger, quarry)
     assert not [ln for ln in logger.flush() if "Hunter's Lore" in ln]
     print("✅ test_hunters_lore_not_for_other_rangers")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  R2 — Gloom Stalker
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _make_gloom(engine, bm, idx, level, wis=16):
+    s = engine.get_agent_stats(bm, idx)
+    s.wis = wis
+    s.set_class_level(rpg.CharacterClass.Ranger, level)
+    s.ranger_subclass = rpg.RangerSubclass.GloomStalker
+    s.initialize_class_resources(rpg.CharacterClass.Ranger, level)
+    s.str = 14
+    s.prof_bonus = 2 + (level - 1) // 4
+    s.hp_max = 200
+    s.hp_cur = 200
+    engine.set_agent_stats(bm, idx, s)
+    engine.set_agent_weapons(bm, idx, [_weapon(), rpg.Weapon(), rpg.Weapon()])
+
+
+def _dread_left(engine, bm, idx):
+    return engine.get_agent_stats(bm, idx).get_resource("Dread Ambusher").current
+
+
+def _timid(engine, bm, idx):
+    """A creature that always fails a WIS save against a Gloom Stalker's DC."""
+    s = engine.get_agent_stats(bm, idx)
+    s.wis = 1
+    engine.set_agent_stats(bm, idx, s)
+
+
+def test_gloom_stalker_spells_always_prepared():
+    import json
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+    import main
+    table = main.App._RANGER_SUBCLASS_SPELLS["GloomStalker"]
+    assert table == {3: ["Disguise Self"], 5: ["Rope Trick"], 9: ["Fear"],
+                     13: ["Greater Invisibility"], 17: ["Seeming"]}, table
+    gui = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui")
+    with open(os.path.join(gui, "spells.json")) as f:
+        data = json.load(f)
+    names = {sp.get("name") for sp in (data if isinstance(data, list) else data.get("spells", []))}
+    missing = [n for lst in table.values() for n in lst if n not in names]
+    assert not missing, f"Gloom Stalker spells missing from spells.json: {missing}"
+    print("✅ test_gloom_stalker_spells_always_prepared")
+
+
+def test_npc_driver_spends_dreadful_strike():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = _place(engine, bm, "Stalker", 5, 5, faction=1)
+    t = _place(engine, bm, "Goblin", 5, 6, faction=2)
+    _make_gloom(engine, bm, a, 3)
+    _hp(engine, bm, t, hp=300)
+    engine.begin_turn(bm, a)
+    assert engine.run_npc_turn(bm, a) == rpg.FlowStatus.Completed
+    c = engine.get_agent_conditions(bm, a)
+    assert c.dreadful_strike_used and not c.dreadful_strike_available, "the hit's Dreadful Strike is spent"
+    assert _dread_left(engine, bm, a) == 2, "one use spent"
+    assert engine.get_agent_stats(bm, t).hp_cur < 300
+    print("✅ test_npc_driver_spends_dreadful_strike")
+
+
+def test_npc_driver_takes_sudden_strike():
+    """An automated L11 Gloom Stalker with a second enemy next to its target takes Sudden Strike."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a  = _place(engine, bm, "Stalker", 5, 5, faction=1)
+    t1 = _place(engine, bm, "Goblin A", 5, 6, faction=2)
+    t2 = _place(engine, bm, "Goblin B", 6, 6, faction=2)
+    _make_gloom(engine, bm, a, 11)
+    for i in (t1, t2):
+        _hp(engine, bm, i, hp=300)
+    engine.begin_turn(bm, a)
+    assert engine.run_npc_turn(bm, a) == rpg.FlowStatus.Completed
+    c = engine.get_agent_conditions(bm, a)
+    assert sorted(c.attacked_this_turn) == sorted([t1, t2]), list(c.attacked_this_turn)
+    assert not c.sudden_strike_available and not c.stalkers_flurry_pending
+    assert not engine.get_agent_conditions(bm, t1).frightened, "Sudden Strike was chosen, not Mass Fear"
+    print("✅ test_npc_driver_takes_sudden_strike")
+
+
+def test_npc_driver_falls_back_to_mass_fear():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = _place(engine, bm, "Stalker", 5, 5, faction=1)
+    t = _place(engine, bm, "Goblin", 5, 6, faction=2)
+    _make_gloom(engine, bm, a, 11, wis=20)
+    _hp(engine, bm, t, hp=300)
+    _timid(engine, bm, t)
+    engine.begin_turn(bm, a)
+    engine.run_npc_turn(bm, a)
+    assert engine.get_agent_conditions(bm, t).frightened, "no second target → Mass Fear"
+    print("✅ test_npc_driver_falls_back_to_mass_fear")
+
+
+def test_mass_fear_radius_and_allies():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a    = _place(engine, bm, "Stalker", 5, 5, faction=1)
+    t    = _place(engine, bm, "Goblin", 5, 6, faction=2)
+    ally = _place(engine, bm, "Friend", 7, 6, faction=1)    # 10 ft from the target
+    far  = _place(engine, bm, "Far Goblin", 9, 6, faction=2)  # 20 ft away
+    _make_gloom(engine, bm, a, 11, wis=20)
+    for i in (t, ally, far):
+        _hp(engine, bm, i)
+        _timid(engine, bm, i)
+    n = engine.apply_mass_fear(bm, a, t)
+    assert n == 2, n
+    assert engine.get_agent_conditions(bm, t).frightened
+    assert engine.get_agent_conditions(bm, ally).frightened, "each creature within 10 ft — allies too"
+    assert not engine.get_agent_conditions(bm, far).frightened
+    assert not engine.get_agent_conditions(bm, a).frightened, "never the Ranger itself"
+    engine.tick_agent_conditions_for_caster(bm, a)            # the Ranger's next turn begins
+    assert not engine.get_agent_conditions(bm, t).frightened, "lasts until the start of the Ranger's next turn"
+    print("✅ test_mass_fear_radius_and_allies")
+
+
+def test_ambushers_leap_first_turn_only():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = _place(engine, bm, "Stalker", 5, 5)
+    _make_gloom(engine, bm, a, 3)
+    base = engine.get_agent_stats(bm, a).speed_walk
+    engine.begin_turn(bm, a)
+    assert engine.get_agent_conditions(bm, a).ambushers_leap
+    assert engine.get_walk_remaining(a) == base + 10, engine.get_walk_remaining(a)
+    engine.begin_turn(bm, a)
+    assert not engine.get_agent_conditions(bm, a).ambushers_leap
+    assert engine.get_walk_remaining(a) == base
+    print("✅ test_ambushers_leap_first_turn_only")
+
+
+def test_umbral_sight_darkvision_once():
+    s = rpg.Stats()
+    s.set_class_level(rpg.CharacterClass.Ranger, 3)
+    s.ranger_subclass = rpg.RangerSubclass.GloomStalker
+    s.darkvision_range = 0
+    s.initialize_class_resources(rpg.CharacterClass.Ranger, 3)
+    assert s.darkvision_range == 60 and s.umbral_sight_dv
+    s2 = rpg.Stats()
+    s2.set_class_level(rpg.CharacterClass.Ranger, 3)
+    s2.ranger_subclass = rpg.RangerSubclass.GloomStalker
+    s2.darkvision_range = 60
+    s2.initialize_class_resources(rpg.CharacterClass.Ranger, 3)
+    assert s2.darkvision_range == 120, "+60 when it already has Darkvision"
+    s2.initialize_class_resources(rpg.CharacterClass.Ranger, 3)
+    assert s2.darkvision_range == 120, "a re-init (save/load) doesn't stack it"
+    print("✅ test_umbral_sight_darkvision_once")
+
+
+def _umbral_scene():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    r = _place(engine, bm, "Stalker", 5, 5, faction=1)
+    o = _place(engine, bm, "Orc", 5, 6, faction=2)
+    _make_gloom(engine, bm, r, 3)
+    _hp(engine, bm, o)
+    engine.set_agent_weapons(bm, o, [_weapon(), rpg.Weapon(), rpg.Weapon()])
+    so = engine.get_agent_stats(bm, o)
+    so.darkvision_range = 60; so.blindsight_range = 0; so.truesight_range = 0; so.devilssight_range = 0
+    engine.set_agent_stats(bm, o, so)
+    return bm, engine, r, o
+
+
+def test_umbral_sight_hides_in_darkness():
+    bm, engine, r, o = _umbral_scene()
+    assert not engine.umbral_sight_hides(bm, o, r), "bright light: plain view"
+    bm.set_light_level(rpg.Cell(5, 5), rpg.VisibilityLevel.Dark)
+    assert engine.umbral_sight_hides(bm, o, r), "Darkness + a Darkvision-only viewer"
+    ra = engine.execute_action(bm, rpg.Attack(o, r, 0))
+    assert ra.disadvantage, "attacks against the unseen Ranger have Disadvantage"
+    rr = engine.execute_action(bm, rpg.Attack(r, o, 0))
+    assert rr.advantage, "the unseen Ranger's attacks have Advantage"
+    so = engine.get_agent_stats(bm, o); so.blindsight_range = 10; engine.set_agent_stats(bm, o, so)
+    assert not engine.umbral_sight_hides(bm, o, r), "Blindsight doesn't rely on Darkvision"
+    so.blindsight_range = 0; so.darkvision_range = 0; engine.set_agent_stats(bm, o, so)
+    assert not engine.umbral_sight_hides(bm, o, r), "no Darkvision: it doesn't rely on Darkvision"
+    print("✅ test_umbral_sight_hides_in_darkness")
+
+
+def _dodge_scene(level=15):
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    r = _place(engine, bm, "Stalker", 5, 5, faction=1)
+    o = _place(engine, bm, "Orc", 5, 6, faction=2)
+    _make_gloom(engine, bm, r, level)
+    _hp(engine, bm, o)
+    engine.set_agent_weapons(bm, o, [_weapon(), rpg.Weapon(), rpg.Weapon()])
+    return bm, engine, r, o
+
+
+def _option(ctx, feature):
+    return next(i for i, op in enumerate(ctx.options) if op.feature == feature)
+
+
+def _skip(ctx):
+    return next(i for i, op in enumerate(ctx.options) if op.kind == rpg.ReactionOptionKind.Skip)
+
+
+def test_shadowy_dodge_parked_windows():
+    bm, engine, r, o = _dodge_scene()
+    status = engine.begin_attack(bm, rpg.Attack(o, r, 0))
+    pd = engine.pending_decision()
+    assert status == rpg.FlowStatus.AwaitingDecision and pd.ctx.window == rpg.ReactionWindow.OnAttackDeclared
+    assert pd.ctx.reactor_idx == r and pd.ctx.source_idx == o
+    resp = rpg.ReactionResponse(); resp.option = _option(pd.ctx, "ShadowyDodge")
+    status = engine.submit_decision(bm, resp)
+    assert engine.last_attack_result().disadvantage, "Shadowy Dodge imposes Disadvantage on the roll"
+    assert engine.get_agent_conditions(bm, r).reaction_used
+    pd = engine.pending_decision()
+    assert status == rpg.FlowStatus.AwaitingDecision and pd.ctx.window == rpg.ReactionWindow.AfterAttack
+    expect = engine.shadowy_dodge_destination(bm, r)
+    assert expect.col >= 0
+    resp = rpg.ReactionResponse(); resp.option = _option(pd.ctx, "ShadowyDodgeTeleport")
+    assert engine.submit_decision(bm, resp) == rpg.FlowStatus.Completed
+    at = bm.placed_agents[r].origin
+    assert (at.col, at.row) == (expect.col, expect.row), "teleported to the safe cell"
+    assert max(abs(at.col - 5), abs(at.row - 6)) > 1, "out of the orc's reach"
+    print("✅ test_shadowy_dodge_parked_windows")
+
+
+def test_shadowy_dodge_picked_cell_and_skip():
+    bm, engine, r, o = _dodge_scene()
+    engine.begin_attack(bm, rpg.Attack(o, r, 0))
+    resp = rpg.ReactionResponse(); resp.option = _option(engine.pending_decision().ctx, "ShadowyDodge")
+    engine.submit_decision(bm, resp)
+    ctx = engine.pending_decision().ctx
+    assert not engine.is_shadowy_dodge_destination(bm, r, rpg.Cell(5, 6)), "occupied"
+    assert not engine.is_shadowy_dodge_destination(bm, r, rpg.Cell(5, 12)), "beyond 30 ft"
+    resp = rpg.ReactionResponse(); resp.option = _option(ctx, "ShadowyDodgeTeleportPick")
+    resp.cell_col, resp.cell_row = 8, 5
+    engine.submit_decision(bm, resp)
+    at = bm.placed_agents[r].origin
+    assert (at.col, at.row) == (8, 5), (at.col, at.row)
+
+    bm, engine, r, o = _dodge_scene()
+    engine.begin_attack(bm, rpg.Attack(o, r, 0))
+    resp = rpg.ReactionResponse(); resp.option = _skip(engine.pending_decision().ctx)
+    status = engine.submit_decision(bm, resp)
+    assert status == rpg.FlowStatus.Completed, "skipped: no teleport window"
+    assert not engine.last_attack_result().disadvantage
+    assert not engine.get_agent_conditions(bm, r).reaction_used
+    print("✅ test_shadowy_dodge_picked_cell_and_skip")
+
+
+class _TakeAll(rpg.CombatDecider):
+    def __init__(self):
+        super().__init__()
+        self.windows = []
+    def choose_reaction(self, ctx):
+        self.windows.append(ctx.window)
+        resp = rpg.ReactionResponse(); resp.option = -1
+        for i, o in enumerate(ctx.options):
+            if o.kind == rpg.ReactionOptionKind.Feature:
+                resp.option = i
+                break
+        return resp
+
+
+def test_shadowy_dodge_inline_with_a_decider():
+    bm, engine, r, o = _dodge_scene()
+    dec = _TakeAll(); engine.set_decider(dec)
+    expect = engine.shadowy_dodge_destination(bm, r)
+    res = engine.execute_action(bm, rpg.Attack(o, r, 0))
+    engine.set_decider(None)
+    assert rpg.ReactionWindow.OnAttackDeclared in dec.windows and rpg.ReactionWindow.AfterAttack in dec.windows
+    assert res.disadvantage
+    at = bm.placed_agents[r].origin
+    assert (at.col, at.row) == (expect.col, expect.row)
+    print("✅ test_shadowy_dodge_inline_with_a_decider")
+
+
+def test_shadowy_dodge_gates():
+    bm, engine, r, o = _dodge_scene(level=14)
+    assert not engine.can_shadowy_dodge(bm, r, o), "Shadowy Dodge is L15"
+    assert engine.begin_attack(bm, rpg.Attack(o, r, 0)) == rpg.FlowStatus.Completed
+    bm, engine, r, o = _dodge_scene()
+    c = engine.get_agent_conditions(bm, r); c.reaction_used = True; engine.set_agent_conditions(bm, r, c)
+    assert not engine.can_shadowy_dodge(bm, r, o), "needs the Reaction"
+    bm, engine, r, o = _dodge_scene()
+    bm.set_agent_position(r, rpg.Cell(5, 3))                 # 10 ft from the orc: out of its reach
+    d = engine.shadowy_dodge_destination(bm, r)
+    assert (d.col, d.row) == (-1, -1), "already safe → stay put"
+    print("✅ test_shadowy_dodge_gates")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

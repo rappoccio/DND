@@ -151,6 +151,163 @@ void CombatEngine::applyDivineStrikeEffect(BattleMap& bm, int attacker_idx, int 
     }
 }
 
+// ── Gloom Stalker: Dreadful Strike + Stalker's Flurry ────────────────────────────────────────────
+// The hit only OFFERS the rider (dreadful_strike_available, set in applyAttackResult). A human takes
+// it from the rider prompt; an automated Ranger through autoDreadfulStrike, from runWeaponTurn.
+bool CombatEngine::applyDreadfulStrikeEffect(BattleMap& bm, int attacker_idx, AttackResult& result)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (attacker_idx < 0 || attacker_idx >= n) return false;
+    Agent::Conditions atk_cond = bm.getAgentConditions(attacker_idx);
+    if (!atk_cond.dreadful_strike_available || atk_cond.dreadful_strike_used) return false;
+    const int target_idx = atk_cond.dreadful_strike_target;
+    if (target_idx < 0 || target_idx >= n) return false;
+    if (!spendResource(bm, attacker_idx, "Dread Ambusher", 1)) return false;
+
+    const Agent::Stats atk_stats = bm.getAgentStats(attacker_idx);
+    Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
+    int raw = 0;
+    for (int i = 0; i < atk_stats.dreadful_strike_dice; ++i) raw += roll(atk_stats.dreadful_strike_die_size);
+    const float mult = tgt_stats.magic_damage_multipliers[MagicDamage_t::Psychic];
+    const int ds = static_cast<int>(static_cast<float>(raw) * mult);
+
+    result.damage_breakdown.push_back({"dreadful strike", ds});
+    result.total_damage += ds;
+    result.magic_damage_types.push_back(MagicDamage_t::Psychic);
+    const int overflow = std::max(0, ds - tgt_stats.temp_hp);
+    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - ds);
+    tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+    result.hp_after    = tgt_stats.hp_cur;
+    result.target_down = (tgt_stats.hp_cur <= 0);
+    bm.setAgentStats(target_idx, tgt_stats);
+
+    atk_cond = bm.getAgentConditions(attacker_idx);   // spendResource may have written the agent
+    atk_cond.dreadful_strike_used      = true;
+    atk_cond.dreadful_strike_available = false;
+    // Stalker's Flurry (L11): "when you use Dreadful Strike, you can cause one of the following".
+    atk_cond.stalkers_flurry_pending   = atk_stats.classLevel(CharacterClass::Ranger) >= 11;
+    bm.setAgentConditions(attacker_idx, atk_cond);
+
+    log_("{} uses Dreadful Strike: +{} Psychic ({}d{})", agentName(bm, attacker_idx), ds,
+         atk_stats.dreadful_strike_dice, atk_stats.dreadful_strike_die_size);
+    if (ds > 0) {
+        checkConcentrationOnDamage(bm, target_idx, ds);
+        processDamageTaken(bm, target_idx, ds);
+    }
+    return true;
+}
+
+bool CombatEngine::chooseStalkersFlurry(BattleMap& bm, int attacker_idx, int option)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (attacker_idx < 0 || attacker_idx >= n) return false;
+    Agent::Conditions c = bm.getAgentConditions(attacker_idx);
+    if (!c.stalkers_flurry_pending) return false;
+    c.stalkers_flurry_pending = false;
+    c.sudden_strike_available = (option == 1);
+    bm.setAgentConditions(attacker_idx, c);
+    if (option == 1)
+        log_("{}: Stalker's Flurry — Sudden Strike (a free attack vs a creature within 5 ft of {})",
+             agentName(bm, attacker_idx), agentName(bm, c.dreadful_strike_target));
+    else if (option == 2)
+        (void)applyMassFear(bm, attacker_idx, c.dreadful_strike_target);
+    return true;
+}
+
+int CombatEngine::applyMassFear(BattleMap& bm, int ranger_idx, int target_idx)
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (ranger_idx < 0 || ranger_idx >= n || target_idx < 0 || target_idx >= n) return 0;
+    const int dc = rules::spellSaveDc(bm.getAgentStats(ranger_idx));
+    const PlacedAgent& tg = agents[static_cast<std::size_t>(target_idx)];
+    log_("{}: Stalker's Flurry — Mass Fear around {} (WIS save DC {})", agentName(bm, ranger_idx),
+         agentName(bm, target_idx), dc);
+    int frightened = 0;
+    for (int j = 0; j < n; ++j) {
+        if (j == ranger_idx) continue;
+        const PlacedAgent& pt = agents[static_cast<std::size_t>(j)];
+        if (pt.removed_from_play || bm.isAgentOnDeck(j)) continue;
+        if (pt.agent->getConditions().dead || pt.agent->getStats().hp_cur <= 0) continue;
+        if (j != target_idx &&
+            footprintDistance(tg.origin, tg.agent->getSize(), pt.origin, pt.agent->getSize()) > 2) continue;
+        const int save = roll(20, saveModFor(bm, j, SaveWis));
+        if (save >= dc) {
+            log_("{} resists Mass Fear (WIS save {} vs DC {})", agentName(bm, j), save, dc);
+            continue;
+        }
+        if (hasAuraOfCourage(bm, j)) {
+            log_("{} can't be Frightened (Aura of Courage) — Mass Fear has no effect", agentName(bm, j));
+            continue;
+        }
+        ActiveAgentCondition cond;
+        cond.agent_idx       = j;
+        cond.caster_idx      = ranger_idx;   // the fear source; ticked off as the Ranger's next turn begins
+        cond.condition_name  = "Frightened";
+        cond.turns_remaining = 1;
+        (void)addAgentCondition(bm, cond);
+        ++frightened;
+        log_("{} is Frightened (Mass Fear — WIS save {} vs DC {})", agentName(bm, j), save, dc);
+    }
+    return frightened;
+}
+
+std::vector<int> CombatEngine::suddenStrikeTargets(const BattleMap& bm, int attacker_idx) const
+{
+    std::vector<int> out;
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (attacker_idx < 0 || attacker_idx >= n) return out;
+    const Agent::Conditions c = bm.getAgentConditions(attacker_idx);
+    if (!c.sudden_strike_available) return out;
+    const int origin = c.dreadful_strike_target;
+    const auto weapons = bm.getAgentWeapons(attacker_idx);
+    if (origin < 0 || origin >= n || c.dreadful_strike_weapon < 0 ||
+        c.dreadful_strike_weapon >= static_cast<int>(weapons.size())) return out;
+    const Weapon& w = weapons[static_cast<std::size_t>(c.dreadful_strike_weapon)];
+    if (w.name.empty()) return out;
+    const PlacedAgent& me = agents[static_cast<std::size_t>(attacker_idx)];
+    const PlacedAgent& og = agents[static_cast<std::size_t>(origin)];
+    for (int j = 0; j < n; ++j) {
+        if (j == attacker_idx || j == origin) continue;
+        const PlacedAgent& pt = agents[static_cast<std::size_t>(j)];
+        if (pt.removed_from_play || bm.isAgentOnDeck(j)) continue;
+        if (pt.agent->getConditions().dead || pt.agent->getStats().hp_cur <= 0) continue;
+        if (rules::alliedFactions(bm, attacker_idx, j)) continue;
+        if (footprintDistance(og.origin, og.agent->getSize(), pt.origin, pt.agent->getSize()) > 1) continue;
+        if (!canAttack(w, bm, me.origin, me.agent->getSize(), pt.origin, pt.agent->getSize(), false)) continue;
+        out.push_back(j);
+    }
+    return out;
+}
+
+void CombatEngine::autoDreadfulStrike(BattleMap& bm, int attacker_idx)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (attacker_idx < 0 || attacker_idx >= n) return;
+    const Agent::Conditions c = bm.getAgentConditions(attacker_idx);
+    if (!c.dreadful_strike_available) return;
+    const int t = c.dreadful_strike_target;
+    if (t < 0 || t >= n || bm.getAgentStats(t).hp_cur <= 0) {
+        // The hit already dropped it: keep the use for a later hit this turn.
+        Agent::Conditions keep = c;
+        keep.dreadful_strike_available = false;
+        bm.setAgentConditions(attacker_idx, keep);
+        return;
+    }
+    AttackResult scratch;
+    if (!applyDreadfulStrikeEffect(bm, attacker_idx, scratch)) return;
+    if (!bm.getAgentConditions(attacker_idx).stalkers_flurry_pending) return;
+    // D4: Sudden Strike if a valid second target stands within 5 ft of the first, otherwise Mass Fear.
+    Agent::Conditions probe = bm.getAgentConditions(attacker_idx);
+    probe.sudden_strike_available = true;
+    bm.setAgentConditions(attacker_idx, probe);
+    const bool has_second = !suddenStrikeTargets(bm, attacker_idx).empty();
+    probe.sudden_strike_available = false;
+    bm.setAgentConditions(attacker_idx, probe);
+    (void)chooseStalkersFlurry(bm, attacker_idx, has_second ? 1 : 2);
+}
+
 int CombatEngine::applyDivineSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                          int slot_level, AttackResult& result) noexcept
 {

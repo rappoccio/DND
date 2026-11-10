@@ -865,7 +865,17 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
         // OnHit Shield (single reactor, no cursor). Advance the d20 cursor on each OnD20Seen resume so
         // a Skip moves to the next reactor; the Shield branch re-enters advanceAttack with the gate
         // already consumed.
-        if (ctx.window == ReactionWindow::OnD20Seen) {
+        if (ctx.window == ReactionWindow::OnAttackDeclared) {
+            // Shadowy Dodge, before the roll: advanceAttack rolls next, with the Disadvantage if taken.
+            if (resp.option >= 0 && resp.option < static_cast<int>(ctx.options.size()) &&
+                ctx.options[static_cast<std::size_t>(resp.option)].feature == "ShadowyDodge")
+                takeShadowyDodge(bm, in_flight_attack_);
+        } else if (ctx.window == ReactionWindow::AfterAttack) {
+            // Shadowy Dodge's teleport: the safest cell, or the one the response names.
+            if (resp.option >= 0 && resp.option < static_cast<int>(ctx.options.size()) &&
+                ctx.options[static_cast<std::size_t>(resp.option)].kind == ReactionOption::Feature)
+                shadowyDodgeFollowUp(bm, ctx.reactor_idx, resp.cell_col, resp.cell_row);
+        } else if (ctx.window == ReactionWindow::OnD20Seen) {
             applyD20SeenReaction(bm, ctx, resp);
             ++in_flight_attack_.d20_cursor;
         } else if (in_flight_attack_.sentinel_parked) {

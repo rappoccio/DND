@@ -597,7 +597,9 @@ enum class ReactionWindow {
     OnD20Seen,          // a d20 Test is visible pre-commit (future)
     OnSaveFail,         // a saving throw just failed (future, Countercharm)
     OnTurnStartNearby,  // a creature started its turn within range (future)
-    OnAllyAttacked      // an adjacent enemy attacked someone other than the reactor (Sentinel Guardian)
+    OnAllyAttacked,     // an adjacent enemy attacked someone other than the reactor (Sentinel Guardian)
+    OnAttackDeclared,   // an attack roll is about to be made against the reactor, before the d20 (Shadowy Dodge)
+    AfterAttack         // the attack has fully resolved; a follow-up the reactor earned (Shadowy Dodge teleport)
 };
 
 // One legal thing the reactor may do, ENUMERATED BY THE ENGINE so it is guaranteed
@@ -632,6 +634,8 @@ struct ReactionCtx {
 struct ReactionResponse {
     int option{-1};        // index into ctx.options; -1 (or the Skip option) = no reaction
     int target_idx{-1};    // sub-target when needed (OA: leave -1 → defaults to source_idx)
+    int cell_col{-1};      // destination cell when needed (Shadowy Dodge teleport: -1 = the engine's own pick)
+    int cell_row{-1};
 };
 
 struct CombatDecider {
@@ -754,6 +758,12 @@ struct InFlightAttack {
     bool peerless_fired{false};     // Boon of Combat Prowess (Peerless Aim) promoted this NPC's miss → hit;
                                     // peerless_aim_used committed as a late attacker-conditions write (as above)
     bool onhit_offered{false};      // the OnHit defender window (Shield / Uncanny Dodge) has been opened once
+    // ── Shadowy Dodge (Gloom Stalker L15): a defender reaction BEFORE the roll, then a teleport after ──
+    bool preroll_offered{false};    // the OnAttackDeclared window has been opened (or found empty) once
+    bool rolled{false};             // the d20 has been rolled into r (a pre-roll park comes back here first)
+    bool shadowy_dodge{false};      // the target took Shadowy Dodge: Disadvantage on this roll, teleport after
+    bool applied{false};            // applyAttackResult has run (a post-attack park must not re-apply it)
+    bool after_offered{false};      // the AfterAttack (Shadowy Dodge teleport) window has been opened once
     // ── OnD20Seen window (nearby creatures may LOWER this attack roll → possible miss) ──
     std::vector<int> d20_reactors;        // eligible OnD20Seen reactors (Bend Luck / Cutting Words / Silvery Barbs)
     std::size_t      d20_cursor{0};       // next reactor to offer
@@ -862,6 +872,9 @@ struct NpcTurnState {
     // Horde Breaker (Hunter L3): the free extra attack after the attack loop. Set TRUE before its
     // beginAttack so a park→resume (a Shield / OnD20 window on that swing) never swings twice.
     bool horde_breaker_launched{false};
+    // Stalker's Flurry Sudden Strike (Gloom Stalker L11): the free extra attack, launched at most once a
+    // turn and flagged before its beginAttack for the same park→resume reason.
+    bool sudden_strike_launched{false};
     // Difficulty resolver park-safety: the strategy resolveStrategy chose when THIS turn launched, stamped
     // by runNpcTurn whenever the turn parks. The dynamic Level-4 resolution is state-dependent (it probes
     // the live planners), so a park→resume must reuse the strategy that launched the turn — re-resolving
