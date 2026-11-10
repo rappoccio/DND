@@ -42,7 +42,8 @@ import os
 
 import rpg_battle_map as rpg
 
-from helpers import door_touch_cells, edge_key, item_spells_summary
+from helpers import (door_touch_cells, edge_key, item_spells_summary, is_scroll, scroll_line,
+                     can_read_scroll)
 
 from net import events as net_events, mapimg
 from net.roster import (Action, PC_FACTION, PROTOCOL_VERSION, Principal,
@@ -307,10 +308,16 @@ def _item_spells(app, idx: int) -> list[dict]:
     rows = (list(app.combat.get_agent_items(app.bm, idx))
             + list(app.combat.get_agent_weapons(app.bm, idx))
             + list(app.combat.get_agent_armor(app.bm, idx)))
-    return [{"item":    r.name,
-             "attuned": bool(r.item_spells.attuned) if r.item_spells.requires_attunement else None,
-             "spells":  item_spells_summary(r.item_spells) if r.item_spells.active() else []}
-            for r in rows if r.name and not r.item_spells.empty()]
+    stats = app.combat.get_agent_stats(app.bm, idx)
+
+    def _row(r):
+        if is_scroll(r):   # SPELL_SCROLLS SS3: one line, and whether its holder can read it (S5)
+            return {"item": r.name, "attuned": None, "spells": [scroll_line(r.item_spells)],
+                    "readable": all(can_read_scroll(stats, n) for n in r.item_spells.spell_names())}
+        return {"item":    r.name,
+                "attuned": bool(r.item_spells.attuned) if r.item_spells.requires_attunement else None,
+                "spells":  item_spells_summary(r.item_spells) if r.item_spells.active() else []}
+    return [_row(r) for r in rows if r.name and not r.item_spells.empty()]
 
 
 def _band(stats, cond) -> str:

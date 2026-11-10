@@ -1459,7 +1459,8 @@ def can_read_scroll(stats, spell: str) -> bool:
 def make_spell_scroll(template: dict, spell_record: dict, dc: int | None = None,
                       attack: int | None = None) -> dict:
     """A made scroll's record (S1): the catalog ``template`` holding one use of ``spell_record``
-    at ``dc`` / ``attack``, defaulting from the DMG table by spell level (S2)."""
+    at ``dc`` / ``attack``, defaulting from the DMG table by spell level (S2); a ``dc`` alone
+    gets attack ``dc − 8``."""
     name = spell_record["name"]
     level = max(0, min(9, int(spell_record.get("level", 0) or 0)))
     d_dc, d_atk = SCROLL_DC_TABLE[level]
@@ -1473,7 +1474,8 @@ def make_spell_scroll(template: dict, spell_record: dict, dc: int | None = None,
         "quantity": 1,
         "item_spell_groups": {"1": [name]},
         "spell_dc": int(dc) if dc else d_dc,
-        "spell_attack": int(attack) if attack else d_atk,
+        # A DC with no attack pairs as the table does: attack = DC − 8 (A3).
+        "spell_attack": int(attack) if attack else (int(dc) - 8 if dc else d_atk),
     })
     return rec
 
@@ -1530,9 +1532,24 @@ def item_spell_status(s, spell: str, charge_cost: int = 0) -> str:
     return f"{s.uses_remaining.get(spell, 0)}/{n}"
 
 
+def is_scroll(row) -> bool:
+    """A made spell scroll: an rpg.Item of type Scroll that holds a spell (SPELL_SCROLLS_PLAN.md)."""
+    return getattr(row, "type", None) == rpg.ItemType.Scroll and not row.item_spells.empty()
+
+
+def scroll_line(s) -> str:
+    """A scroll's one summary line (SS3): 'DC 15 · +7'. The spell is already in its name."""
+    return f"DC {s.spell_dc} · +{s.spell_attack}"
+
+
 def item_spell_label(combat, bm, idx: int, sp) -> str:
-    """The spell-menu row for an item-granted spell: 'Fear (Mace of Terror) 2/2'."""
+    """The spell-menu row for an item-granted spell: 'Fear (Mace of Terror) 2/2', or for a
+    spell scroll 'Fear (scroll, DC 15)'."""
     s = item_spells_for(combat, bm, idx, sp)
+    if s is not None and sp.item_source == rpg.SpellItemSource.FromItem:
+        row = combat.get_agent_items(bm, idx)[sp.item_slot]
+        if is_scroll(row):
+            return f"{sp.name} (scroll, DC {s.spell_dc})"
     tail = f" {item_spell_status(s, sp.name, sp.item_charge_cost)}" if s is not None else ""
     return f"{sp.name} ({sp.item_name}){tail}"
 
@@ -1553,8 +1570,12 @@ def item_spells_summary(s) -> list[str]:
 
 
 def item_dict_summary(d: dict) -> list[str]:
-    """item_spells_summary for an item/weapon/armor record (catalog or dialog row)."""
-    return item_spells_summary(_item_spells_from_dict(d))
+    """item_spells_summary for an item/weapon/armor record (catalog or dialog row); a spell
+    scroll's is its one 'DC 15 · +7' line (SS3)."""
+    s = _item_spells_from_dict(d)
+    if d.get("type") == "Scroll" and not s.empty():
+        return [scroll_line(s)]
+    return item_spells_summary(s)
 
 
 def attuned_count(combat, bm, idx: int, kinds=("items", "weapons", "armor")) -> int:

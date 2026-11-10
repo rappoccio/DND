@@ -53,6 +53,7 @@ from helpers import (
     _spell_to_dict, _dict_to_spell,
     _item_to_dict, _dict_to_item,
     is_item_spell, sync_item_spells, item_spell_label, item_spells_summary,
+    is_scroll, scroll_line, can_read_scroll,
     attuned_count, attunement_warning,
     _condition_to_dict, _dict_to_condition,
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
@@ -10443,12 +10444,12 @@ class App:
             self._sync_item_spells(i)
 
     def _carried_item_spells(self, agent_idx: int) -> list:
-        """(name, ItemSpells) for every carried item, weapon and worn armor piece (D9) that
+        """(row, ItemSpells) for every carried item, weapon and worn armor piece (D9) that
         has spells, attuned or not."""
         rows = (list(self.combat.get_agent_items(self.bm, agent_idx))
                 + list(self.combat.get_agent_weapons(self.bm, agent_idx))
                 + list(self.combat.get_agent_armor(self.bm, agent_idx)))
-        return [(r.name, r.item_spells) for r in rows if r.name and not r.item_spells.empty()]
+        return [(r, r.item_spells) for r in rows if r.name and not r.item_spells.empty()]
 
     def _draw_item_spells_panel(self, agent_idx: int, lx: int, y: int, txt) -> int:
         """The side panel's 'Item spells' block (E4): one header per item, then its spell
@@ -10459,7 +10460,16 @@ class App:
         y += 4
         txt("Item spells:", lx, y, (120, 180, 200), self.font_sm)
         y += 14
-        for name, s in carried:
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
+        for row, s in carried:
+            name = row.name
+            if is_scroll(row):
+                # A spell scroll is one line (SS3); one its holder can't read says so (S5).
+                readable = all(can_read_scroll(stats, n) for n in s.spell_names())
+                txt(f"  {name} · {scroll_line(s)}" + ("" if readable else " (can't read)"),
+                    lx, y, (170, 200, 220) if readable else (130, 130, 150), self.font_sm)
+                y += 14
+                continue
             if not s.active():
                 txt(f"  {name} (not attuned)", lx, y, (130, 130, 150), self.font_sm)
                 y += 14
@@ -13279,6 +13289,11 @@ class App:
         # not a free cast) checks for a surge (natural 20, or forced if Tides of Chaos is expended).
         if not ctx.get("free_cast") and ctx.get("slot_level", 0) >= 1:
             features.maybe_wild_magic_surge(self, caster_idx)
+        # A spell scroll just cast is spent: drop it now, not at the next turn start, so it also
+        # goes out of combat (SPELL_SCROLLS SS3; kept while its spell is live, A1).
+        if cast_spell.item_source == rpg.SpellItemSource.FromItem:   # idempotent for any other item
+            self._sync_item_spells(caster_idx)
+            self._flush_combat_log()
 
 
     def _resolve_wild_magic_surge(self, caster_idx: int, effect: int, tides_expended: bool):

@@ -24,7 +24,8 @@ import os
 
 import rpg_battle_map as rpg
 
-from helpers import _dict_to_armor, _dict_to_item, _dict_to_weapon, attuned_count, is_item_spell
+from helpers import (_dict_to_armor, _dict_to_item, _dict_to_weapon, attuned_count, is_item_spell,
+                     is_scroll)
 from net.roster import DM_PRINCIPAL_ID, Role
 
 
@@ -189,6 +190,19 @@ def show_agent_menu(app, hit, pos):
                   ("Set Teams…",   app._open_team_picker),
                   (_on_deck_label, _toggle_on_deck)]
     _hs = app.combat.get_agent_stats(app.bm, hit)
+    # Spell scrolls (SPELL_SCROLLS S5): the DM's "reads any scroll" tick, offered once the creature
+    # carries a scroll (or already has the tick).
+    if _hs.reads_any_scroll or any(is_scroll(it) for it in app.combat.get_agent_items(app.bm, hit)):
+        def _toggle_reads_scrolls(h=hit):
+            s = app.combat.get_agent_stats(app.bm, h)
+            s.reads_any_scroll = not s.reads_any_scroll
+            app.combat.set_agent_stats(app.bm, h, s)
+            app._sync_item_spells(h)
+            app._combat_log_add(f"{app._agent_name(h)} "
+                                f"{'can now read any' if s.reads_any_scroll else 'reads only own-class'}"
+                                f" spell scrolls.")
+        _menu_opts.append((("✓ " if _hs.reads_any_scroll else "") + "Reads any scroll",
+                           _toggle_reads_scrolls))
     # Spell slots: DM sets each level's remaining count (0..max) by hand.
     if any(_hs.spell_slots_max):
         def _spell_slots_menu(h=hit, pos=pos):
