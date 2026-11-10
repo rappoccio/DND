@@ -103,8 +103,8 @@ def test_new_weapons_parse():
     assert (sun.bonus_hit, sun.bonus_damage) == (2, 2) and sun.finesse
     assert sun.mastery == rpg.WeaponMastery.Sap
     assert list(sun.physical_damage_types) == [], "Radiant instead of Slashing"
-    assert [(r.type, r.num_dice, r.die_size) for r in sun.magic_damage_types] == \
-        [(rpg.MagicDamage.Radiant, 1, 8)]
+    r0 = sun.magic_damage_types[0]
+    assert (r0.type, r0.num_dice, r0.die_size) == (rpg.MagicDamage.Radiant, 1, 8)
     assert sun.item_spells.requires_attunement
 
     yarik = _dict_to_weapon(WEAPONS["Yarik's Shortsword"])

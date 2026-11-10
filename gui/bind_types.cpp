@@ -1712,6 +1712,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("type", &MagicDamageRoll::type)
         .def_readwrite("num_dice", &MagicDamageRoll::num_dice)
         .def_readwrite("die_size", &MagicDamageRoll::die_size)
+        .def_readwrite("vs_creature_mask", &MagicDamageRoll::vs_creature_mask,
+             "CreatureTypeBit mask: a weapon entry rolled only vs those types; 0 = everyone.")
         .def_readwrite("bonus", &MagicDamageRoll::bonus,
              "Fixed damage bonus added after rolling dice (e.g., 1d4+1 has bonus=1)");
 
@@ -1721,6 +1723,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("type", &PhysicalDamageRoll::type)
         .def_readwrite("num_dice", &PhysicalDamageRoll::num_dice)
         .def_readwrite("die_size", &PhysicalDamageRoll::die_size)
+        .def_readwrite("vs_creature_mask", &PhysicalDamageRoll::vs_creature_mask,
+             "CreatureTypeBit mask: a weapon entry rolled only vs those types; 0 = everyone.")
         .def_readwrite("bonus", &PhysicalDamageRoll::bonus,
              "Fixed damage bonus added after rolling dice");
 

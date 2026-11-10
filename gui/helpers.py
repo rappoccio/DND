@@ -345,6 +345,28 @@ _DEFAULT_WEAPON: dict = {
 }
 
 
+def _creature_mask(names) -> int:
+    """["Fiend", "Undead"] → the CreatureTypeBit mask (RAVENLOFT M2); unknown names are dropped."""
+    mask = 0
+    for n in names or []:
+        bit = getattr(rpg.CreatureType, str(n), None)
+        if bit is not None:
+            mask |= int(bit)
+    return mask
+
+
+def _creature_names(mask: int) -> list:
+    return [name for name, bit in rpg.CreatureType.__members__.items() if mask & int(bit)]
+
+
+def _damage_roll_to_dict(r) -> dict:
+    """A weapon damage entry; vs_creature_types only when the entry is limited to some types."""
+    d = {"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
+    if r.vs_creature_mask:
+        d["vs_creature_types"] = _creature_names(r.vs_creature_mask)
+    return d
+
+
 def _weapon_to_dict(w) -> dict:
     """Convert an rpg.Weapon object to a plain dict for dialog editing."""
     return {
@@ -389,10 +411,8 @@ def _weapon_to_dict(w) -> dict:
         "uses_remaining":   w.uses_remaining,
         "recharge_min":     w.recharge_min,
         "expended":         w.expended,
-        "physical_damage_types": [{"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
-                                   for r in w.physical_damage_types],
-        "magic_damage_types":    [{"type": r.type.name, "num_dice": r.num_dice, "die_size": r.die_size}
-                                   for r in w.magic_damage_types],
+        "physical_damage_types": [_damage_roll_to_dict(r) for r in w.physical_damage_types],
+        "magic_damage_types":    [_damage_roll_to_dict(r) for r in w.magic_damage_types],
         # On-hit riders (Grappled/escape_dc, reduceHPMax, save-based conditions, etc.).
         # MUST be serialized or they vanish on encounter save/reload (and weapon-dialog round-trips).
         "conditions": [{"condition_name":     c.condition_name,
@@ -480,6 +500,7 @@ def _dict_to_weapon(d: dict):
         r.num_dice = int(entry.get("num_dice", 1))
         r.die_size = int(entry.get("die_size", 6))
         r.bonus    = 0
+        r.vs_creature_mask = _creature_mask(entry.get("vs_creature_types"))
         physical_rolls.append(r)
     w.physical_damage_types = physical_rolls
 
@@ -491,6 +512,7 @@ def _dict_to_weapon(d: dict):
         r.num_dice = int(entry.get("num_dice", 1))
         r.die_size = int(entry.get("die_size", 6))
         r.bonus    = 0
+        r.vs_creature_mask = _creature_mask(entry.get("vs_creature_types"))
         magic_rolls.append(r)
     w.magic_damage_types = magic_rolls
 

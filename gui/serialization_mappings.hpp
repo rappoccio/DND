@@ -39,8 +39,10 @@ namespace rpg {
 // ── Leaves: geometry, dice, conditions ───────────────────────────────────────
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(Cell, col, row, z)
 
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(MagicDamageRoll, type, num_dice, die_size, bonus)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(PhysicalDamageRoll, type, num_dice, die_size, bonus)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(MagicDamageRoll, type, num_dice, die_size, bonus,
+                                               vs_creature_mask)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(PhysicalDamageRoll, type, num_dice, die_size, bonus,
+                                               vs_creature_mask)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(HealingRoll, num_dice, die_size, bonus)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(

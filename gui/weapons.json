@@ -1079,7 +1079,17 @@
     "die_size": 6
    }
   ],
-  "magic_damage_types": [],
+  "magic_damage_types": [
+   {
+    "type": "Radiant",
+    "num_dice": 2,
+    "die_size": 6,
+    "vs_creature_types": [
+     "Fiend",
+     "Undead"
+    ]
+   }
+  ],
   "sprite_path": "",
   "heavy": false,
   "light": false,
@@ -3146,6 +3156,14 @@
     "type": "Radiant",
     "num_dice": 1,
     "die_size": 8
+   },
+   {
+    "type": "Radiant",
+    "num_dice": 1,
+    "die_size": 8,
+    "vs_creature_types": [
+     "Undead"
+    ]
    }
   ],
   "sprite_path": "",

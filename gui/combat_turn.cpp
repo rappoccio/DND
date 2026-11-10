@@ -3868,11 +3868,13 @@ NpcAttackAnalysis CombatEngine::npcAnalyzeAttack(const BattleMap& bm, int attack
     auto damagePmf = [&](bool crit) -> DamagePmf {
         DamagePmf total{1.0};
         for (const auto& dr : w.physicalDamageRolls) {
+            if (!damageAppliesTo(dr.vs_creature_mask, ts.creatureTypeMask())) continue;   // M2
             const DamagePmf dice = pmfDice(crit ? dr.num_dice * 2 : dr.num_dice, dr.die_size);
             total = pmfConvolve(total,
                 pmfScale(dice, effectivePhysicalDamageMult(as, ts, dr.type)));
         }
         for (const auto& dr : w.magicDamageRolls) {
+            if (!damageAppliesTo(dr.vs_creature_mask, ts.creatureTypeMask())) continue;   // M2
             const DamagePmf dice = pmfDice(crit ? dr.num_dice * 2 : dr.num_dice, dr.die_size);
             total = pmfConvolve(total, pmfScale(dice, effectiveMagicDamageMult(as, ts, dr.type, false)));
         }

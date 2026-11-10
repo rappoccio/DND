@@ -356,8 +356,12 @@ void CombatEngine::rollDamage(const Weapon& w,
     const bool gwf = w.type == WeaponType::Melee && w.two_handed
                      && attacker.hasFeat("Great Weapon Fighting");
 
-    // Roll physical damage types and apply target's multipliers
+    // Roll physical damage types and apply target's multipliers. An entry limited to some
+    // creature types (RAVENLOFT M2: the Thighbone's +2d6 Radiant vs Fiends and Undead) is
+    // skipped against anyone else.
+    const uint32_t target_types = target.creatureTypeMask();
     for (const auto& dmg_roll : w.physicalDamageRolls) {
+        if (!damageAppliesTo(dmg_roll.vs_creature_mask, target_types)) continue;
         const int num_dice = result.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice;
         int type_damage = 0;
         std::vector<int> type_dice;
@@ -396,6 +400,7 @@ void CombatEngine::rollDamage(const Weapon& w,
 
     // Roll magic damage types and apply target's multipliers
     for (const auto& dmg_roll : w.magicDamageRolls) {
+        if (!damageAppliesTo(dmg_roll.vs_creature_mask, target_types)) continue;
         const int num_dice = result.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice;
         int type_damage = 0;
         std::vector<int> type_dice;
