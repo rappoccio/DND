@@ -903,6 +903,8 @@ function drawBoard() {
   drawDoors(cell);
   drawLadders(cell);
   drawStaircases(cell);
+  drawChests(cell);
+  drawFloorItems(cell);
   drawReachable(cell);
   drawAoe(cell);
   for (const agent of displayed()) {
@@ -1221,6 +1223,101 @@ function drawDoor(door, x, y, w, h) {
     ctx.arc(cx, cy, bw / 2, Math.PI, 0);
     ctx.stroke();
   }
+}
+
+// ── Chests and floor items: `draw_chest_glyph` and `_draw_items`, copied ──────
+const CHEST_WOOD = "rgb(130, 85, 40)";
+const CHEST_DARK = "rgb(75, 48, 22)";
+const CHEST_BRASS = "rgb(215, 180, 70)";
+
+function drawChests(cell) {
+  const chests = (view.terrain && view.terrain.chests) || [];
+  for (const ch of chests) {
+    const x = ch.cell[0] * cell, y = ch.cell[1] * cell;
+    const pad = Math.max(2, Math.floor(cell / 6));
+    const bx = x + pad, by = y + pad + Math.floor(cell / 8);
+    const bw = cell - 2 * pad, bh = cell - 2 * pad - Math.floor(cell / 8);
+    ctx.lineWidth = 2;
+    if (ch.broken) {
+      ctx.strokeStyle = DOOR_BROKEN_FRAME;
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.beginPath();
+      ctx.moveTo(bx, by); ctx.lineTo(bx + bw / 2, by + bh / 3); ctx.lineTo(bx + bw, by);
+      ctx.stroke();
+    } else if (ch.open) {
+      ctx.fillStyle = CHEST_WOOD;
+      ctx.fillRect(bx, by, bw, bh);
+      const inset = Math.max(1, Math.floor(cell / 16));
+      ctx.fillStyle = "rgb(35, 25, 15)";
+      ctx.fillRect(bx + inset, by + inset, bw - 2 * inset, bh - 2 * inset);
+      ctx.fillStyle = CHEST_WOOD;
+      ctx.fillRect(bx, by - bh / 2, bw, bh / 2);
+      ctx.strokeStyle = CHEST_DARK;
+      ctx.strokeRect(bx, by - bh / 2, bw, bh / 2);
+      ctx.strokeRect(bx, by, bw, bh);
+    } else {
+      ctx.fillStyle = CHEST_WOOD;
+      ctx.fillRect(bx, by, bw, bh);
+      const band = Math.max(3, Math.floor(bh / 3));
+      ctx.fillStyle = CHEST_DARK;
+      ctx.fillRect(bx, by, bw, band);
+      ctx.strokeStyle = CHEST_DARK;
+      ctx.strokeRect(bx, by, bw, bh);
+      const clasp = Math.max(2, Math.floor(cell / 12));
+      ctx.fillStyle = CHEST_BRASS;
+      ctx.fillRect(bx + bw / 2 - clasp, by + band - clasp, clasp * 2, clasp * 2);
+    }
+    if (ch.locked) {
+      const lw = Math.max(5, Math.floor(cell / 5)), lh = Math.max(4, Math.floor(cell / 6));
+      const cx = bx + bw - lw, cy = by + bh - lh - 1;
+      ctx.fillStyle = DOOR_LOCK;
+      ctx.fillRect(cx - lw / 2, cy, lw, lh);
+      ctx.strokeStyle = "rgb(30, 30, 30)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx - lw / 2, cy, lw, lh);
+      ctx.strokeStyle = DOOR_LOCK;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, lw / 2, Math.PI, 0);
+      ctx.stroke();
+    }
+    if (ch.trap === "found") {
+      const r = Math.max(4, Math.floor(cell / 7));
+      const cx = x + cell - pad, cy = y + pad + 1;
+      ctx.fillStyle = "rgb(200, 40, 40)";
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgb(255, 255, 255)";
+      ctx.fillRect(cx - 1, cy - r / 2, 2, r * 0.75);
+    }
+  }
+}
+
+/* A floor item: an amber square with its initial, as the DM console draws one without
+   a sprite. Several on a cell cascade by 3 px. */
+function drawFloorItems(cell) {
+  const items = (view.terrain && view.terrain.items) || [];
+  const stack = new Map();
+  const size = Math.max(8, Math.floor(cell * 0.45));
+  ctx.save();
+  ctx.font = `${Math.max(8, Math.floor(size * 0.7))}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const it of items) {
+    const key = `${it.cell[0]},${it.cell[1]}`;
+    const n = stack.get(key) || 0;
+    stack.set(key, n + 1);
+    const x = it.cell[0] * cell + 2 + n * 3, y = it.cell[1] * cell + 2 + n * 3;
+    ctx.fillStyle = "rgb(200, 170, 40)";
+    ctx.fillRect(x, y, size, size);
+    ctx.strokeStyle = "rgb(255, 215, 0)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, size, size);
+    ctx.fillStyle = "rgb(255, 255, 255)";
+    ctx.fillText((it.name || "?")[0].toUpperCase(), x + size / 2, y + size / 2 + 1);
+  }
+  ctx.restore();
 }
 
 const LADDER_BACK = "rgba(90, 60, 30, 0.35)";

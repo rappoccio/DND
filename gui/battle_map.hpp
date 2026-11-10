@@ -94,6 +94,46 @@ struct Door {
     }
 };
 
+// ── Chest (plans/ITEMS_AND_CHESTS_PLAN.md) ─────────────────────────────────
+// A lockable container on one cell. It blocks the cell like furniture (isBlocked; fliers
+// pass over it) but not line of sight. Locks work as a door's do: lock_dc for Pick Lock,
+// break_dc for Break Open (+10 under an active Arcane Lock), Knock suppresses an Arcane
+// Lock and springs a mundane one (but doesn't lift the lid). A broken chest is permanently open.
+struct ChestTrap {
+    bool armed{false};          // a trap is set (false = no trap, or it has fired/been disarmed)
+    int  detect_dc{15};         // best of Wisdom (Perception) / Intelligence (Investigation)
+    int  disarm_dc{15};         // Dexterity (Sleight of Hand)
+    SaveAbility_t save_ability{SaveDex};
+    int  save_dc{13};
+    int  num_dice{2};
+    int  die_size{10};
+    int  bonus{0};
+    // Damage type: physical B/P/S when `physical`, else a MagicDamage_t (Poison, Fire, …).
+    bool physical{false};
+    int  damage_type{static_cast<int>(Poison)};
+    bool half_on_save{true};
+    bool poisons{false};        // a failed save also leaves the creature Poisoned
+    // Play state: found by a search (players see it from then on), disarmed, fired.
+    bool found{false};
+    bool disarmed{false};
+    bool fired{false};
+};
+
+struct Chest {
+    int  id{-1};
+    Cell cell;
+    std::string name{};
+    bool open{false};
+    bool locked{false};
+    int  lock_dc{15};
+    int  break_dc{15};
+    bool broken{false};
+    bool arcane_lock{false};
+    int  arcane_suppressed_turns{0};
+    ChestTrap trap{};
+    std::vector<MapItem> contents{};
+};
+
 // ── Movement types ─────────────────────────────────────────────────────────
 enum class MovementType {
     Walk,    // Ground movement: BFS through passable cells, respects walls
@@ -889,6 +929,35 @@ public:
     [[nodiscard]] std::vector<MapItem> getItemsAtCell(Cell cell) const noexcept;
     [[nodiscard]] std::vector<MapItem> getAllItems()             const noexcept;
     void clearItems() noexcept;
+    // Place a fully built item (any kind); its id is assigned here and returned.
+    int placeMapItem(MapItem item);
+
+    // ── Chests (plans/ITEMS_AND_CHESTS_PLAN.md) ────────────────────────────
+    [[nodiscard]] const std::vector<Chest>& chests() const noexcept { return chests_; }
+    // Index into chests_ for the chest on this cell, or -1.
+    [[nodiscard]] int chestAt(Cell c) const noexcept;
+    // Index into chests_ for this id, or -1.
+    [[nodiscard]] int chestIndex(int id) const noexcept;
+    // Add a chest. A chest already on its cell is replaced. When chest.id < 0 a fresh id
+    // is assigned; a given id (a save reload) is kept and the id counter moves past it.
+    int addChest(Chest chest);
+    void removeChest(int id) noexcept;
+    void clearChests() noexcept;
+    // Replace the chest with this id wholesale (the DM's chest dialog); false if none.
+    bool setChest(const Chest& chest) noexcept;
+    // Open fails (false) on a locked or arcane-locked chest; close fails on a broken one.
+    bool openChest(int id) noexcept;
+    bool closeChest(int id) noexcept;
+    void unlockChest(int id) noexcept;
+    // Smash it open: unlocked, broken, permanently open. False if there is no such chest.
+    bool breakChest(int id) noexcept;
+    // Knock: an Arcane Lock is suppressed for arcane_suppress_turns and a mundane lock is
+    // removed. The chest stays shut (opening it is what sets off a trap). False if none.
+    bool knockChest(int id, int arcane_suppress_turns = 100) noexcept;
+    // Take the content with this MapItem id out of the chest; nullopt if absent.
+    std::optional<MapItem> takeFromChest(int chest_id, int item_id) noexcept;
+    void addToChest(int chest_id, MapItem item);
+    void setChestTrap(int chest_id, const ChestTrap& trap) noexcept;
 
     // ── Board snapshot (MULTIPLAYER_PLAN.md M6.2) ─────────────────────────
     // The mid-fight state of the board that no scene file carries: the terrain, light and
@@ -1027,6 +1096,9 @@ private:
     // Map items (weapons sitting on the ground)
     std::vector<MapItem> mapItems_;
     int nextItemId_{0};  // monotonically increasing item id generator
+
+    std::vector<Chest> chests_;
+    int nextChestId_{1};  // chest ids start at 1 ("Chest 1"), never reused
 };
 
 } // namespace rpg

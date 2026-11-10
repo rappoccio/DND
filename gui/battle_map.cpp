@@ -438,6 +438,9 @@ bool BattleMap::isBlocked(Cell origin, int size, MovementType mt) const noexcept
             }();
 
             if (!isPassable) return true;
+
+            // A chest blocks its cell like furniture; a flier passes over it.
+            if (mt != MovementType::Fly && !chests_.empty() && chestAt(c) >= 0) return true;
         }
     }
     // A creature can't stand across an edge wall (burrowers go through walls anyway).
@@ -2922,7 +2925,19 @@ void BattleMap::clearSpellEffects() noexcept {
 
 int BattleMap::placeItem(Cell cell, Weapon weapon, std::string sprite_path) {
     int id = nextItemId_++;
-    mapItems_.push_back(MapItem{id, cell, std::move(weapon), std::move(sprite_path)});
+    MapItem m;
+    m.id = id;
+    m.cell = cell;
+    m.weapon = std::move(weapon);
+    m.sprite_path = std::move(sprite_path);
+    mapItems_.push_back(std::move(m));
+    return id;
+}
+
+int BattleMap::placeMapItem(MapItem item) {
+    const int id = nextItemId_++;
+    item.id = id;
+    mapItems_.push_back(std::move(item));
     return id;
 }
 
@@ -2941,6 +2956,9 @@ bool BattleMap::pickUpItem(int item_id, int agent_idx, int slot_idx) noexcept {
     auto item_it = std::find_if(mapItems_.begin(), mapItems_.end(),
                                 [item_id](const MapItem& m){ return m.id == item_id; });
     if (item_it == mapItems_.end()) return false;
+    // Armor and items.json entries go to the armor slots / inventory, which the GUI chooses
+    // (plans/ITEMS_AND_CHESTS_PLAN.md P2); only a weapon is taken into a weapon slot here.
+    if (item_it->kind != MapItem::WeaponItem) return false;
 
     // Get agent's current weapons
     auto weapons = getAgentWeapons(agent_idx);
@@ -3007,6 +3025,129 @@ std::vector<MapItem> BattleMap::getAllItems() const noexcept {
 void BattleMap::clearItems() noexcept {
     mapItems_.clear();
     nextItemId_ = 0;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Chests (plans/ITEMS_AND_CHESTS_PLAN.md)
+// ─────────────────────────────────────────────────────────────────────────────
+
+int BattleMap::chestAt(Cell c) const noexcept {
+    for (std::size_t i = 0; i < chests_.size(); ++i)
+        if (chests_[i].cell.col == c.col && chests_[i].cell.row == c.row)
+            return static_cast<int>(i);
+    return -1;
+}
+
+int BattleMap::chestIndex(int id) const noexcept {
+    for (std::size_t i = 0; i < chests_.size(); ++i)
+        if (chests_[i].id == id) return static_cast<int>(i);
+    return -1;
+}
+
+int BattleMap::addChest(Chest chest) {
+    if (int existing = chestAt(chest.cell); existing >= 0)
+        chests_.erase(chests_.begin() + existing);
+    if (chest.id < 0 || chestIndex(chest.id) >= 0) chest.id = nextChestId_;
+    nextChestId_ = std::max(nextChestId_, chest.id + 1);
+    if (chest.name.empty()) chest.name = "Chest " + std::to_string(chest.id);
+    for (auto& m : chest.contents) {
+        m.id = nextItemId_++;
+        m.cell = chest.cell;
+    }
+    const int id = chest.id;
+    chests_.push_back(std::move(chest));
+    return id;
+}
+
+void BattleMap::removeChest(int id) noexcept {
+    if (int i = chestIndex(id); i >= 0) chests_.erase(chests_.begin() + i);
+}
+
+void BattleMap::clearChests() noexcept {
+    chests_.clear();
+    nextChestId_ = 1;
+}
+
+bool BattleMap::setChest(const Chest& chest) noexcept {
+    const int i = chestIndex(chest.id);
+    if (i < 0) return false;
+    Chest& c = chests_[static_cast<std::size_t>(i)];
+    c = chest;
+    for (auto& m : c.contents) {
+        if (m.id < 0) m.id = nextItemId_++;
+        m.cell = c.cell;
+    }
+    return true;
+}
+
+bool BattleMap::openChest(int id) noexcept {
+    const int i = chestIndex(id);
+    if (i < 0) return false;
+    Chest& c = chests_[static_cast<std::size_t>(i)];
+    if (c.locked) return false;
+    if (c.arcane_lock && c.arcane_suppressed_turns <= 0) return false;
+    c.open = true;
+    return true;
+}
+
+bool BattleMap::closeChest(int id) noexcept {
+    const int i = chestIndex(id);
+    if (i < 0) return false;
+    Chest& c = chests_[static_cast<std::size_t>(i)];
+    if (c.broken) return false;
+    c.open = false;
+    return true;
+}
+
+void BattleMap::unlockChest(int id) noexcept {
+    if (int i = chestIndex(id); i >= 0) chests_[static_cast<std::size_t>(i)].locked = false;
+}
+
+bool BattleMap::breakChest(int id) noexcept {
+    const int i = chestIndex(id);
+    if (i < 0) return false;
+    Chest& c = chests_[static_cast<std::size_t>(i)];
+    c.locked = false;
+    c.broken = true;
+    c.open   = true;
+    return true;
+}
+
+bool BattleMap::knockChest(int id, int arcane_suppress_turns) noexcept {
+    const int i = chestIndex(id);
+    if (i < 0) return false;
+    Chest& c = chests_[static_cast<std::size_t>(i)];
+    if (c.arcane_lock) c.arcane_suppressed_turns = arcane_suppress_turns;
+    c.locked = false;
+    return true;
+}
+
+std::optional<MapItem> BattleMap::takeFromChest(int chest_id, int item_id) noexcept {
+    const int i = chestIndex(chest_id);
+    if (i < 0) return std::nullopt;
+    auto& contents = chests_[static_cast<std::size_t>(i)].contents;
+    for (auto it = contents.begin(); it != contents.end(); ++it) {
+        if (it->id == item_id) {
+            MapItem m = std::move(*it);
+            contents.erase(it);
+            return m;
+        }
+    }
+    return std::nullopt;
+}
+
+void BattleMap::addToChest(int chest_id, MapItem item) {
+    const int i = chestIndex(chest_id);
+    if (i < 0) return;
+    Chest& c = chests_[static_cast<std::size_t>(i)];
+    item.id = nextItemId_++;
+    item.cell = c.cell;
+    c.contents.push_back(std::move(item));
+}
+
+void BattleMap::setChestTrap(int chest_id, const ChestTrap& trap) noexcept {
+    if (int i = chestIndex(chest_id); i >= 0) chests_[static_cast<std::size_t>(i)].trap = trap;
 }
 
 } // namespace rpg

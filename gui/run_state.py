@@ -12,6 +12,11 @@ of data; the new layout stores each where it belongs:
   * **state** (the map's section of ``run.json``, D6): what happened in play. Fog, and
     each door's open / locked / broken now.
 
+Placed items and chests (plans/ITEMS_AND_CHESTS_PLAN.md) follow the doors: their design
+(``items``, ``chests``) is map data, and what play did to them travels in the terrain
+document as ``items_state`` / ``chests_state`` and in the run's state as ``items`` /
+``chests`` (shapes in ``placed_items.py``). No state key ⇒ as designed.
+
 ``split_terrain`` takes a terrain document in the old ``_terrain.json`` shape apart, and
 ``merge_terrain`` puts one back together, so the app's terrain load/save keeps working on
 the same dict while the files change underneath it.
@@ -43,7 +48,9 @@ RUN_VERSION = 1
 
 # Terrain keys that describe the drawing, copied to map.json as they are.
 MAP_KEYS = ("regions", "walls_enabled", "manual_grid", "detection", "edge_overrides",
-            "edge_review", "edges_carried_from", "rooms")
+            "edge_review", "edges_carried_from", "rooms", "items", "chests")
+# Placed items / chests: the terrain document's play-state key ⇄ the run state's key.
+PLACED_STATE = (("items_state", "items"), ("chests_state", "chests"))
 # Door fields: the designed door (map.json) and what play changes (run.json).
 DOOR_DESIGN = ("open", "locked", "lock_dc", "arcane_lock", "break_dc")
 DOOR_STATE = ("open", "locked", "broken")
@@ -104,6 +111,9 @@ def split_terrain(terrain: dict, design: dict | None = None) -> tuple[dict, dict
     state = {"doors": door_state}
     if t.get("explored") is not None:
         state["explored"] = copy.deepcopy(t["explored"])
+    for tkey, skey in PLACED_STATE:
+        if t.get(tkey) is not None:
+            state[skey] = copy.deepcopy(t[tkey])
     return map_doc, extras, state
 
 
@@ -133,6 +143,9 @@ def merge_terrain(map_doc: dict | None, extras: dict | None = None,
         t["staging_cells"] = copy.deepcopy(x["staging_cells"])
     if s.get("explored") is not None:
         t["explored"] = copy.deepcopy(s["explored"])
+    for tkey, skey in PLACED_STATE:
+        if s.get(skey) is not None:
+            t[tkey] = copy.deepcopy(s[skey])
     return t
 
 

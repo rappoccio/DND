@@ -124,6 +124,46 @@ void bindTypes(py::module_& m) {
                  + (d.locked ? " locked" : "")
                  + (d.arcane_lock ? " arcane" : "") + ">"; });
 
+    // ── Chest / ChestTrap (plans/ITEMS_AND_CHESTS_PLAN.md) ──────────────────
+    py::class_<ChestTrap>(m, "ChestTrap")
+        .def(py::init<>())
+        .def_readwrite("armed",        &ChestTrap::armed)
+        .def_readwrite("detect_dc",    &ChestTrap::detect_dc)
+        .def_readwrite("disarm_dc",    &ChestTrap::disarm_dc)
+        .def_readwrite("save_ability", &ChestTrap::save_ability)
+        .def_readwrite("save_dc",      &ChestTrap::save_dc)
+        .def_readwrite("num_dice",     &ChestTrap::num_dice)
+        .def_readwrite("die_size",     &ChestTrap::die_size)
+        .def_readwrite("bonus",        &ChestTrap::bonus)
+        .def_readwrite("physical",     &ChestTrap::physical,
+             "True: damage_type is a PhysicalDamage; false: a MagicDamage.")
+        .def_readwrite("damage_type",  &ChestTrap::damage_type)
+        .def_readwrite("half_on_save", &ChestTrap::half_on_save)
+        .def_readwrite("poisons",      &ChestTrap::poisons)
+        .def_readwrite("found",        &ChestTrap::found)
+        .def_readwrite("disarmed",     &ChestTrap::disarmed)
+        .def_readwrite("fired",        &ChestTrap::fired);
+
+    py::class_<Chest>(m, "Chest")
+        .def(py::init<>())
+        .def_readwrite("id",          &Chest::id)
+        .def_readwrite("cell",        &Chest::cell)
+        .def_readwrite("name",        &Chest::name)
+        .def_readwrite("open",        &Chest::open)
+        .def_readwrite("locked",      &Chest::locked)
+        .def_readwrite("lock_dc",     &Chest::lock_dc)
+        .def_readwrite("break_dc",    &Chest::break_dc)
+        .def_readwrite("broken",      &Chest::broken)
+        .def_readwrite("arcane_lock", &Chest::arcane_lock)
+        .def_readwrite("arcane_suppressed_turns", &Chest::arcane_suppressed_turns)
+        .def_readwrite("trap",        &Chest::trap)
+        .def_readwrite("contents",    &Chest::contents,
+             "MapItems inside (a copy on read; assign a whole list to change it).")
+        .def("__repr__", [](const Chest& c){
+            return "<Chest #" + std::to_string(c.id) + " (" + std::to_string(c.cell.col) + ","
+                 + std::to_string(c.cell.row) + ") " + (c.open ? "open" : "closed")
+                 + (c.locked ? " locked" : "") + " x" + std::to_string(c.contents.size()) + ">"; });
+
     // ── AgentConfig ─────────────────────────────────────────────────────────
     py::class_<AgentConfig>(m, "AgentConfig")
         .def(py::init<>())
@@ -1098,15 +1138,30 @@ void bindTypes(py::module_& m) {
                  + " " + dmg_str + ">"; });
 
     // ── MapItem ───────────────────────────────────────────────────────────
+    py::enum_<MapItem::Kind_t>(m, "MapItemKind")
+        .value("Weapon",     MapItem::WeaponItem)
+        .value("Armor",      MapItem::ArmorItem)
+        .value("Consumable", MapItem::ConsumableItem);   // no export_values: "Armor" is a class
+
     py::class_<MapItem>(m, "MapItem")
         .def(py::init<>())
         .def_readwrite("id",          &MapItem::id)
         .def_readwrite("cell",        &MapItem::cell)
         .def_readwrite("weapon",      &MapItem::weapon)
         .def_readwrite("sprite_path", &MapItem::sprite_path)
+        .def_readwrite("kind",        &MapItem::kind,
+             "Weapon (weapon slot), Armor (armor slot) or Consumable (items.json: inventory).")
+        .def_readwrite("armor",       &MapItem::armor)
+        .def_readwrite("item",        &MapItem::item)
+        .def_readwrite("pid",         &MapItem::pid,
+             "Design id of a DM-placed item; -1 for one dropped in play.")
+        .def_readwrite("label",       &MapItem::label,
+             "DM's display name ('' = the catalog name).")
+        .def_property_readonly("name", &MapItem::displayName,
+             "The label, else the weapon / armor / item name.")
         .def("__repr__", [](const MapItem& mi){
             return "<MapItem id=" + std::to_string(mi.id)
-                 + " '" + mi.weapon.name + "'"
+                 + " '" + mi.displayName() + "'"
                  + " at (" + std::to_string(mi.cell.col)
                  + "," + std::to_string(mi.cell.row) + ")>"; });
 
@@ -1537,6 +1592,7 @@ void bindTypes(py::module_& m) {
     py::enum_<Item::ItemType_t>(m, "ItemType")
         .value("Heal",   Item::Heal)
         .value("Thrown", Item::Thrown)
+        .value("Key",    Item::Key)
         .export_values();
 
     py::enum_<Item::ItemAction_t>(m, "ItemAction")
@@ -1569,6 +1625,8 @@ void bindTypes(py::module_& m) {
              "Net: largest size (footprint in cells) it can catch; bigger creatures auto-succeed. 0 = no limit.")
         .def_readwrite("escape_dc",   &Item::escape_dc,
              "Net: DC of the STR (Athletics) check to break free.")
+        .def_readwrite("opens",       &Item::opens,
+             "Key items: what it unlocks, as 'chest:<id>' / 'door:<door key>'.")
         .def_readwrite("quantity",    &Item::quantity)
         .def_readwrite("consumable",  &Item::consumable)
         .def_readwrite("sprite_path", &Item::sprite_path)
@@ -2073,6 +2131,24 @@ void bindTypes(py::module_& m) {
                                                    : std::string("failed"))
                  + " total=" + std::to_string(r.total)
                  + " dc=" + std::to_string(r.dc) + ">"; });
+
+    // ── Chest results (plans/ITEMS_AND_CHESTS_PLAN.md) ─────────────────────────
+    py::class_<ChestTrapResult>(m, "ChestTrapResult")
+        .def_readonly("fired",       &ChestTrapResult::fired)
+        .def_readonly("save_roll",   &ChestTrapResult::save_roll)
+        .def_readonly("save_dc",     &ChestTrapResult::save_dc)
+        .def_readonly("saved",       &ChestTrapResult::saved)
+        .def_readonly("damage",      &ChestTrapResult::damage)
+        .def_readonly("poisoned",    &ChestTrapResult::poisoned)
+        .def_readonly("log_message", &ChestTrapResult::log_message);
+    py::class_<ChestCheckResult>(m, "ChestCheckResult")
+        .def_readonly("valid",       &ChestCheckResult::valid)
+        .def_readonly("success",     &ChestCheckResult::success)
+        .def_readonly("roll",        &ChestCheckResult::roll)
+        .def_readonly("total",       &ChestCheckResult::total)
+        .def_readonly("dc",          &ChestCheckResult::dc)
+        .def_readonly("trap",        &ChestCheckResult::trap)
+        .def_readonly("log_message", &ChestCheckResult::log_message);
 
     // ── BreakDoorResult (Strength/Athletics vs a door's break DC) ──────────────
     py::class_<BreakDoorResult>(m, "BreakDoorResult")

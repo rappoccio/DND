@@ -439,6 +439,8 @@ test_scripts = [
     "test_death_burst.py",
     "test_deny_reactions.py",
     "test_doors.py",
+    "test_chests.py",
+    "test_placed_items.py",
     "test_green_slaad.py",
     "test_npc_multiattack.py",
     "test_permanently_armed.py",

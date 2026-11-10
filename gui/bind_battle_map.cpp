@@ -542,6 +542,40 @@ void bindBattleMap(py::module_& m) {
              "Return list of all MapItem on the map.")
         .def("clear_items", &BattleMap::clearItems,
              "Remove all items from the map.")
+        .def("place_map_item", &BattleMap::placeMapItem, py::arg("item"),
+             "Place a built MapItem of any kind; returns its new id.")
+
+        // Chests (plans/ITEMS_AND_CHESTS_PLAN.md)
+        .def_property_readonly("chests", [](const BattleMap& bm) {
+            return std::vector<Chest>(bm.chests().begin(), bm.chests().end());
+        }, "List of all chests (copies).")
+        .def("chest_at", &BattleMap::chestAt, py::arg("cell"),
+             "Index into chests for the chest on this cell, or -1.")
+        .def("chest_index", &BattleMap::chestIndex, py::arg("id"),
+             "Index into chests for this chest id, or -1.")
+        .def("add_chest", &BattleMap::addChest, py::arg("chest"),
+             "Add a chest (replacing one on its cell); keeps chest.id when >= 0 and free.\n"
+             "Returns its id. Contents get fresh item ids.")
+        .def("remove_chest", &BattleMap::removeChest, py::arg("id"))
+        .def("clear_chests", &BattleMap::clearChests)
+        .def("set_chest", &BattleMap::setChest, py::arg("chest"),
+             "Replace the chest with chest.id wholesale; false if there is none.")
+        .def("open_chest", &BattleMap::openChest, py::arg("id"),
+             "Open a chest; false if it is locked or arcane-locked.")
+        .def("close_chest", &BattleMap::closeChest, py::arg("id"),
+             "Close a chest; false if it is broken.")
+        .def("unlock_chest", &BattleMap::unlockChest, py::arg("id"))
+        .def("break_chest", &BattleMap::breakChest, py::arg("id"),
+             "Smash a chest open: unlocked, broken, permanently open.")
+        .def("knock_chest", &BattleMap::knockChest,
+             py::arg("id"), py::arg("arcane_suppress_turns") = 100,
+             "Knock: suppress an Arcane Lock, remove a mundane lock, open the chest.")
+        .def("take_from_chest", &BattleMap::takeFromChest,
+             py::arg("chest_id"), py::arg("item_id"),
+             "Remove and return the content with this item id (None if absent).")
+        .def("add_to_chest", &BattleMap::addToChest, py::arg("chest_id"), py::arg("item"),
+             "Put a MapItem into the chest (it gets a fresh item id).")
+        .def("set_chest_trap", &BattleMap::setChestTrap, py::arg("chest_id"), py::arg("trap"))
 
         // Expose params so Python can tune detection
         .def_readwrite("params", &BattleMap::params);

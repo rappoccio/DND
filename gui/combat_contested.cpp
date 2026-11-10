@@ -250,6 +250,239 @@ BreakDoorResult CombatEngine::attemptBreakDoor(BattleMap& bm, int agent_idx, int
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Objects — chests (plans/ITEMS_AND_CHESTS_PLAN.md)
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+bool chestTrapLive(const ChestTrap& t) noexcept { return t.armed && !t.disarmed && !t.fired; }
+}
+
+ChestTrapResult CombatEngine::triggerChestTrap(BattleMap& bm, int agent_idx, int chest_id)
+{
+    ChestTrapResult res;
+    const auto& agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return res;
+    const int ci = bm.chestIndex(chest_id);
+    if (ci < 0) return res;
+    ChestTrap trap = bm.chests()[static_cast<std::size_t>(ci)].trap;
+    if (!chestTrapLive(trap)) return res;
+
+    trap.fired = true;
+    trap.found = true;   // everyone knows about it now
+    bm.setChestTrap(chest_id, trap);
+    res.fired   = true;
+    res.save_dc = trap.save_dc;
+
+    const std::string name = agentName(bm, agent_idx);
+    const Agent::Conditions tc = bm.getAgentConditions(agent_idx);
+    const bool auto_fail = (tc.paralyzed || tc.stunned || tc.unconscious) &&
+                           (trap.save_ability == SaveStr || trap.save_ability == SaveDex);
+    const Agent& tgt = *agents[static_cast<std::size_t>(agent_idx)].agent;
+    bool adv = tgt.hasAdvantage();
+    bool dis = tgt.hasDisadvantage();
+    if (trap.save_ability == SaveDex && tc.restrained) dis = true;
+    int d20;
+    if (auto_fail)       d20 = 1;
+    else if (adv && dis) d20 = roll(20);
+    else if (adv)        d20 = rollAdvantage(20);
+    else if (dis)        d20 = rollDisadvantage(20);
+    else                 d20 = roll(20);
+    const int mod = saveModFor(bm, agent_idx, trap.save_ability);
+    res.save_roll = d20 + mod;
+    res.saved     = !auto_fail && res.save_roll >= res.save_dc;
+
+    int raw = trap.bonus;
+    for (int i = 0; i < trap.num_dice; ++i) raw += roll(std::max(1, trap.die_size));
+    raw = std::max(0, raw);
+    if (res.saved) raw = trap.half_on_save ? raw / 2 : 0;
+
+    const Agent::Stats none{};
+    const Agent::Stats tstats = bm.getAgentStats(agent_idx);
+    float mult = 1.0f;
+    unsigned mask = 0u;
+    if (trap.physical) {
+        const int t = std::clamp(trap.damage_type, 0, static_cast<int>(NumPhysicalDamage_t) - 1);
+        mult = effectivePhysicalDamageMult(none, tstats, static_cast<PhysicalDamage_t>(t), &bm, agent_idx);
+    } else {
+        const int t = std::clamp(trap.damage_type, 0, static_cast<int>(NumMagicDamage_t) - 1);
+        mult = effectiveMagicDamageMult(none, tstats, static_cast<MagicDamage_t>(t), false, &bm, agent_idx);
+        mask = 1u << static_cast<unsigned>(t);
+    }
+    res.damage = static_cast<int>(static_cast<float>(raw) * mult);
+
+    res.log_message = "A trap goes off on \"" + name + "\"! Save " + std::to_string(res.save_roll)
+                    + " vs DC " + std::to_string(res.save_dc)
+                    + (auto_fail ? " (AUTO-FAIL)" : (res.saved ? " (saved)" : " (failed)"))
+                    + ", " + std::to_string(res.damage) + " damage.";
+    if (res.damage > 0) {
+        damageAgent(bm, agent_idx, res.damage);
+        processDamageTaken(bm, agent_idx, res.damage, mask);
+        checkConcentrationOnDamage(bm, agent_idx, res.damage, -1);
+    }
+    if (bm.getAgentStats(agent_idx).hp_cur <= 0) {
+        const Agent::Conditions dc = bm.getAgentConditions(agent_idx);
+        if (!dc.unconscious && !dc.dead) applyUnconscious(bm, agent_idx);
+    } else if (!res.saved && trap.poisons) {
+        Agent::Conditions nc = bm.getAgentConditions(agent_idx);
+        nc.poisoned = true;
+        bm.setAgentConditions(agent_idx, nc);
+        res.poisoned = true;
+        res.log_message += " \"" + name + "\" is Poisoned.";
+    }
+    log_("{}", res.log_message);
+    return res;
+}
+
+namespace {
+// Shared front matter of the chest checks: the agent and chest exist. Fills the
+// failure message and returns nullptr when they don't.
+const Chest* findChestFor(const BattleMap& bm, int agent_idx, int chest_id, ChestCheckResult& r)
+{
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(bm.placedAgents().size())) {
+        r.log_message = "Invalid agent index.";
+        return nullptr;
+    }
+    const int ci = bm.chestIndex(chest_id);
+    if (ci < 0) {
+        r.log_message = "No such chest.";
+        return nullptr;
+    }
+    return &bm.chests()[static_cast<std::size_t>(ci)];
+}
+
+std::string checkText(const char* skill, const ChestCheckResult& r)
+{
+    return std::string("(") + skill + " " + std::to_string(r.total) + " vs DC "
+         + std::to_string(r.dc) + ")";
+}
+}  // namespace
+
+ChestCheckResult CombatEngine::attemptPickChestLock(BattleMap& bm, int agent_idx, int chest_id)
+{
+    ChestCheckResult r;
+    const Chest* c = findChestFor(bm, agent_idx, chest_id, r);
+    if (c == nullptr) return r;
+    const std::string name = agentName(bm, agent_idx);
+    r.dc = c->lock_dc;
+    if (!c->locked) {
+        r.valid = true;
+        r.log_message = "\"" + name + "\" — that chest isn't locked.";
+        return r;
+    }
+    if (c->arcane_lock && c->arcane_suppressed_turns <= 0) {
+        r.valid = true;
+        r.log_message = "\"" + name + "\" cannot pick an Arcane Lock.";
+        return r;
+    }
+    const Agent::Stats st = getAgentStats(bm, agent_idx);
+    r.valid   = true;
+    r.roll    = roll(20);
+    r.total   = r.roll + st.sleightOfHand();
+    r.success = r.total >= r.dc;
+    if (r.success) {
+        bm.unlockChest(chest_id);
+        r.log_message = "\"" + name + "\" picks the chest's lock " + checkText("Sleight of Hand", r) + ".";
+    } else {
+        r.log_message = "\"" + name + "\" fails to pick the chest's lock " + checkText("Sleight of Hand", r) + ".";
+    }
+    log_("{}", r.log_message);
+    if (!r.success && r.total <= r.dc - 5) r.trap = triggerChestTrap(bm, agent_idx, chest_id);
+    return r;
+}
+
+ChestCheckResult CombatEngine::attemptBreakChest(BattleMap& bm, int agent_idx, int chest_id)
+{
+    ChestCheckResult r;
+    const Chest* c = findChestFor(bm, agent_idx, chest_id, r);
+    if (c == nullptr) return r;
+    const std::string name = agentName(bm, agent_idx);
+    if (c->broken || c->open) {
+        r.valid = true;
+        r.log_message = "\"" + name + "\" — that chest is already open.";
+        return r;
+    }
+    r.dc = c->break_dc + ((c->arcane_lock && c->arcane_suppressed_turns <= 0) ? 10 : 0);
+    const Agent::Stats st = getAgentStats(bm, agent_idx);
+    r.valid   = true;
+    r.roll    = roll(20);
+    r.total   = r.roll + st.athletics();
+    r.success = r.total >= r.dc;
+    if (r.success) {
+        bm.breakChest(chest_id);
+        r.log_message = "\"" + name + "\" smashes the chest open " + checkText("Athletics", r) + ".";
+    } else {
+        r.log_message = "\"" + name + "\" fails to force the chest " + checkText("Athletics", r) + ".";
+    }
+    log_("{}", r.log_message);
+    if (r.success) r.trap = triggerChestTrap(bm, agent_idx, chest_id);
+    return r;
+}
+
+ChestCheckResult CombatEngine::attemptFindChestTrap(BattleMap& bm, int agent_idx, int chest_id)
+{
+    ChestCheckResult r;
+    const Chest* c = findChestFor(bm, agent_idx, chest_id, r);
+    if (c == nullptr) return r;
+    const std::string name = agentName(bm, agent_idx);
+    const ChestTrap trap = c->trap;
+    const Agent::Stats st = getAgentStats(bm, agent_idx);
+    const int perception    = st.passivePerception() - 10;
+    int investigation = (st.intel - 10) / 2;   // no Investigation proficiency is modelled
+    if (st.intel < 10 && (st.intel - 10) % 2 != 0) --investigation;
+    r.valid = true;
+    r.roll  = roll(20);
+    r.total = r.roll + std::max(perception, investigation);
+    r.dc    = trap.detect_dc;
+    if (chestTrapLive(trap) && !trap.found && r.total >= r.dc) {
+        ChestTrap t = trap;
+        t.found = true;
+        bm.setChestTrap(chest_id, t);
+        r.success = true;
+        r.log_message = "\"" + name + "\" finds a trap on the chest (search "
+                      + std::to_string(r.total) + ").";
+    } else if (chestTrapLive(trap) && trap.found) {
+        r.success = true;
+        r.log_message = "\"" + name + "\" — the trap on this chest is already found.";
+    } else {
+        r.log_message = "\"" + name + "\" searches the chest and finds no trap (search "
+                      + std::to_string(r.total) + ").";
+    }
+    log_("{}", r.log_message);
+    return r;
+}
+
+ChestCheckResult CombatEngine::attemptDisarmChestTrap(BattleMap& bm, int agent_idx, int chest_id)
+{
+    ChestCheckResult r;
+    const Chest* c = findChestFor(bm, agent_idx, chest_id, r);
+    if (c == nullptr) return r;
+    const std::string name = agentName(bm, agent_idx);
+    const ChestTrap trap = c->trap;
+    if (!chestTrapLive(trap) || !trap.found) {
+        r.valid = true;
+        r.log_message = "\"" + name + "\" — there is no known trap on that chest to disarm.";
+        return r;
+    }
+    const Agent::Stats st = getAgentStats(bm, agent_idx);
+    r.valid   = true;
+    r.roll    = roll(20);
+    r.total   = r.roll + st.sleightOfHand();
+    r.dc      = trap.disarm_dc;
+    r.success = r.total >= r.dc;
+    if (r.success) {
+        ChestTrap t = trap;
+        t.disarmed = true;
+        bm.setChestTrap(chest_id, t);
+        r.log_message = "\"" + name + "\" disarms the chest's trap " + checkText("Sleight of Hand", r) + ".";
+    } else {
+        r.log_message = "\"" + name + "\" fails to disarm the trap " + checkText("Sleight of Hand", r) + ".";
+    }
+    log_("{}", r.log_message);
+    if (!r.success && r.total <= r.dc - 5) r.trap = triggerChestTrap(bm, agent_idx, chest_id);
+    return r;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Grapple
 // ─────────────────────────────────────────────────────────────────────────────
 

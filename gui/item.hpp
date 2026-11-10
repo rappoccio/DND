@@ -2,6 +2,10 @@
 #include "weapon.hpp"
 #include "cell.hpp"
 #include "damage.hpp"
+#include "armor.hpp"
+
+#include <string>
+#include <vector>
 
 namespace rpg {
 
@@ -17,7 +21,9 @@ namespace rpg {
 struct Item {
     // What using the item does. Heal = a potion; Thrown = a flask/vial/Net hurled at a
     // creature, which resolves as a saving throw (see the Thrown block below).
-    enum ItemType_t   { Heal = 0, Thrown, NumItemType_t };
+    // Key = a key (plans/ITEMS_AND_CHESTS_PLAN.md P1): never used from the Use Item menu;
+    // carrying it unlocks every chest / door named in `opens`.
+    enum ItemType_t   { Heal = 0, Thrown, Key, NumItemType_t };
     // Action economy cost of using it. NoAction = free (e.g. an always-on trinket).
     // AttackReplacement is the thrown-item cost: "when you take the Attack action, you can
     // replace one of your attacks with throwing this" — so a Fighter with Extra Attack can
@@ -63,16 +69,43 @@ struct Item {
     // make a DC 10 Strength (Athletics) check." 0 ⇒ the condition is not escapable this way.
     int escape_dc{0};
 
+    // Key items: what this key unlocks, as "chest:<id>" or "door:<door key>" (the door's
+    // geometry key, run_state.door_key). Empty on every other item.
+    std::vector<std::string> opens{};
+
     int  quantity{1};        // how many are carried; each use decrements it
     bool consumable{true};   // false ⇒ reusable: quantity never drops
     std::string sprite_path{};
 };
 
+// An item lying on the map (or inside a chest). Dropped and thrown weapons are Weapon
+// items; the DM's Items menu also places armor and items.json entries (consumables and
+// keys). Only `weapon` is meaningful for a Weapon item, only `armor` for Armor, only
+// `item` for Consumable.
 struct MapItem {
+    enum Kind_t { WeaponItem = 0, ArmorItem, ConsumableItem, NumKind_t };
+
     int         id          = -1;
     Cell        cell;
     Weapon      weapon;
     std::string sprite_path = "";
+    Kind_t      kind        = WeaponItem;
+    Armor       armor{};
+    Item        item{};
+    // Design id of a DM-placed item (map.json "items" / a chest's "contents"); -1 for
+    // anything dropped in play. Reset puts design items back by this id.
+    int         pid         = -1;
+    // Optional display name chosen by the DM ("Crypt key"); empty = the catalog name.
+    std::string label       = "";
+
+    [[nodiscard]] std::string displayName() const {
+        if (!label.empty()) return label;
+        switch (kind) {
+            case ArmorItem:      return armor.name;
+            case ConsumableItem: return item.name;
+            default:         return weapon.name;
+        }
+    }
 };
 
 }  // namespace rpg

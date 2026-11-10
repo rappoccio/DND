@@ -20,6 +20,7 @@ import autosave
 import playback
 import run_control
 import saves
+import items_play
 from helpers import door_touch_cells
 from net.roster import DM_PRINCIPAL_ID
 from scene_store import CampaignStore
@@ -491,6 +492,9 @@ def door_options(app, actor, door) -> list:
                             lambda: app._combat_log_add(
                                 "The door is held by an Arcane Lock; only Knock or Dispel Magic opens it.")))
         elif door.locked:
+            if actor >= 0 and items_play.key_for(app, actor, items_play.door_ref(door)) is not None:
+                options.append(("Unlock with key",
+                                lambda a=actor, d=door_id: items_play.unlock_door_with_key(app, a, d)))
             options.append((f"Pick Lock (DC {door.lock_dc})",
                             lambda a=actor, d=door_id: app._door_pick_lock(a, d)))
         else:
@@ -597,8 +601,8 @@ def show_item_pickup_menu(app, cell, items, agent_idx, pos):
     menu_items = []
     for item in items:
         def _pickup(i=item, a=agent_idx):
-            app._pickup_item(i, a)
-        menu_items.append((f"Pick up {item.weapon.name}", _pickup))
+            items_play.pick_up_floor_item(app, i, a, anchor=pos)
+        menu_items.append((f"Pick up {item.name}", _pickup))
     if menu_items:
         app._ask_actor(agent_idx, "action",
                         f"{app._agent_name(agent_idx)}: pick up an item", menu_items,
@@ -611,7 +615,11 @@ def show_item_context_menu(app, cell, items, pos):
     (Relocation is done by left-click dragging the item — see the drag handlers.)"""
     menu_items = []
     for item in items:
-        nm = item.weapon.name or "item"
+        nm = item.name or "item"
         menu_items.append((f"Delete {nm}", lambda i=item: app._delete_item(i)))
+        if item.pid >= 0 and item.kind == rpg.MapItemKind.Consumable \
+                and item.item.type == rpg.ItemType.Key:
+            menu_items.append((f"{nm} opens…",
+                               lambda p=item.pid: items_play.show_key_opens_menu(app, p, pos)))
     if menu_items:
-        app._ask_dm("action", "Dropped items on this cell", menu_items, anchor=pos)
+        app._ask_dm("action", "Items on this cell", menu_items, anchor=pos)

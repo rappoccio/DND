@@ -414,6 +414,22 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "break_dc (+10 while an Arcane Lock is active). On success the door is smashed off its\n"
              "frame (permanently open; no lock survives). Works on a locked/arcane-locked door.\n"
              "door_id is the Door.id. Returns a BreakDoorResult.")
+        .def("attempt_pick_chest_lock", &CombatEngine::attemptPickChestLock,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("chest_id"),
+             "Sleight of Hand vs the chest's lock_dc; a failure by 5+ sets off a live trap.")
+        .def("attempt_break_chest", &CombatEngine::attemptBreakChest,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("chest_id"),
+             "Athletics vs break_dc (+10 under an active Arcane Lock); success opens it for good\n"
+             "and sets off a live trap.")
+        .def("attempt_find_chest_trap", &CombatEngine::attemptFindChestTrap,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("chest_id"),
+             "Best of Perception / Investigation vs detect_dc; success marks the trap found.")
+        .def("attempt_disarm_chest_trap", &CombatEngine::attemptDisarmChestTrap,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("chest_id"),
+             "Sleight of Hand vs disarm_dc on a found trap; a failure by 5+ sets it off.")
+        .def("trigger_chest_trap", &CombatEngine::triggerChestTrap,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("chest_id"),
+             "Set off the chest's live trap on agent_idx (no-op if none is live).")
         .def("execute_grapple",
              &CombatEngine::executeGrapple,
              py::arg("battle_map"), py::arg("action"),

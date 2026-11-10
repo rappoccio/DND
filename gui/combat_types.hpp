@@ -440,6 +440,30 @@ struct PickLockResult {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Chests (plans/ITEMS_AND_CHESTS_PLAN.md) — a trap going off, and the checks made
+//  against a chest (Pick Lock, Break Open, Search for traps, Disarm).
+// ─────────────────────────────────────────────────────────────────────────────
+struct ChestTrapResult {
+    bool fired     = false;   // the trap went off on this call
+    int  save_roll = 0;       // d20 + save modifier
+    int  save_dc   = 0;
+    bool saved     = false;
+    int  damage    = 0;       // after resistance / immunity
+    bool poisoned  = false;   // the failed save left the creature Poisoned
+    std::string log_message;
+};
+
+struct ChestCheckResult {
+    bool valid   = false;     // false if the agent/chest was invalid or there was nothing to do
+    bool success = false;
+    int  roll    = 0;         // the raw d20 (0 = no roll was made)
+    int  total   = 0;
+    int  dc      = 0;
+    ChestTrapResult trap{};   // set when the attempt set the trap off
+    std::string log_message;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Break-door attempt — Strength (Athletics) check vs a door's break DC
 // ─────────────────────────────────────────────────────────────────────────────
 struct BreakDoorResult {

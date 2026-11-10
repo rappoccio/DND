@@ -1938,6 +1938,24 @@ public:
     // Unlike picking, this works on a locked or arcane-locked door. door_id is the Door::id.
     [[nodiscard]] BreakDoorResult attemptBreakDoor(BattleMap& bm, int agent_idx, int door_id);
 
+    // ── Chests (plans/ITEMS_AND_CHESTS_PLAN.md) ─────────────────────────────
+    // Pick a chest's lock: Sleight of Hand vs lock_dc, as attemptPickLock. An Arcane Lock
+    // can't be picked. A failure by 5 or more sets off an armed trap on the picker.
+    [[nodiscard]] ChestCheckResult attemptPickChestLock(BattleMap& bm, int agent_idx, int chest_id);
+    // Break a chest open: Athletics vs break_dc (+10 under an active Arcane Lock), as
+    // attemptBreakDoor. Success leaves it broken and open, which sets off an armed trap.
+    [[nodiscard]] ChestCheckResult attemptBreakChest(BattleMap& bm, int agent_idx, int chest_id);
+    // Search a chest for traps: the better of Wisdom (Perception) and Intelligence
+    // (Investigation) vs detect_dc. Success marks the trap found. A chest with no live trap
+    // still costs the roll and reports nothing found.
+    [[nodiscard]] ChestCheckResult attemptFindChestTrap(BattleMap& bm, int agent_idx, int chest_id);
+    // Disarm a found trap: Sleight of Hand vs disarm_dc. A failure by 5 or more sets it off.
+    [[nodiscard]] ChestCheckResult attemptDisarmChestTrap(BattleMap& bm, int agent_idx, int chest_id);
+    // Set off the chest's trap on agent_idx if it is live (armed, not disarmed, not yet
+    // fired); otherwise does nothing (fired == false). Called by the GUI when a creature
+    // opens the chest, and by the attempts above.
+    ChestTrapResult triggerChestTrap(BattleMap& bm, int agent_idx, int chest_id);
+
     // Telekinetic (general feat) — Telekinetic Shove: a Bonus Action that shoves one creature within
     // 30 ft. The target makes a STR save (DC = 8 + caster PB + best of INT/WIS/CHA mod); on a failure
     // it is pushed 5 ft away from the caster (reuses forceMoveAgent, the Thunderwave knockback path).

@@ -697,6 +697,20 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     log_("{} casts {} — the lock springs and the door swings open",
                          agentName(bm, action.caster_idx), sp.name);
             }
+        } else if (const int ci = bm.chestAt(at); ci >= 0) {
+            // A chest (plans/ITEMS_AND_CHESTS_PLAN.md): Knock unlocks it (an Arcane Lock is
+            // suppressed) but doesn't open it — opening it is what sets off a trap, and that
+            // is for whoever lifts the lid.
+            const Chest& c = bm.chests()[static_cast<std::size_t>(ci)];
+            const bool was_arcane = c.arcane_lock;
+            const int chest_id = c.id;
+            Chest k = c;
+            if (k.arcane_lock) k.arcane_suppressed_turns = 100;
+            k.locked = false;
+            bm.setChest(k);
+            log_("{} casts {} — {} on {}", agentName(bm, action.caster_idx), sp.name,
+                 was_arcane ? "the Arcane Lock is suppressed" : "the lock springs open",
+                 bm.chests()[static_cast<std::size_t>(bm.chestIndex(chest_id))].name);
         } else {
             log_("{} casts {} — but there is no door there",
                  agentName(bm, action.caster_idx), sp.name);

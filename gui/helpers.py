@@ -1154,6 +1154,9 @@ def _dict_to_item(d: dict):
     it.max_target_size      = int(d.get("max_target_size", 0))
     it.escape_dc            = int(d.get("escape_dc", 0))
 
+    # Keys (plans/ITEMS_AND_CHESTS_PLAN.md P1): what this key unlocks.
+    it.opens = [str(o) for o in d.get("opens", []) or []]
+
     it.quantity = int(d.get("quantity", 1))
     it.consumable = bool(d.get("consumable", True))
     it.sprite_path = d.get("sprite_path", "") or ""
@@ -1184,6 +1187,7 @@ def _item_to_dict(it) -> dict:
         "only_vs_fiend_undead": it.only_vs_fiend_undead,
         "max_target_size":      it.max_target_size,
         "escape_dc":            it.escape_dc,
+        "opens":                list(it.opens),
         "quantity": it.quantity,
         "consumable": it.consumable,
         "sprite_path": it.sprite_path,

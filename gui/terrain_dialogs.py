@@ -1868,3 +1868,55 @@ class TerrainEditorDialog:
 # ─────────────────────────────────────────────────────────────────────────────
 #  Main application
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def draw_chest_glyph(screen, x, y, size, chest, trap_mark=None):
+    """Draw a chest in the cell at (x, y) (plans/ITEMS_AND_CHESTS_PLAN.md I5).
+
+    `chest` is an rpg.Chest. Shut: a wooden box with a darker lid band and a brass
+    clasp; open: the lid thrown back over a dark interior; broken: a red-brown outline
+    with a split lid. A locked chest shows the door's gold padlock, an Arcane Lock the
+    purple one. `trap_mark` is None (draw none), "hidden" (the DM's reminder of a live
+    trap nobody has found: an amber ring) or "found" (a red "!", which players see too).
+    """
+    pad = max(2, size // 6)
+    box = pygame.Rect(x + pad, y + pad + size // 8, size - 2 * pad, size - 2 * pad - size // 8)
+    wood, dark, brass = (130, 85, 40), (75, 48, 22), (215, 180, 70)
+    if getattr(chest, "broken", False):
+        pygame.draw.rect(screen, (150, 70, 45), box, 2)
+        pygame.draw.line(screen, (150, 70, 45), (box.x, box.y), (box.centerx, box.y + box.h // 3), 2)
+        pygame.draw.line(screen, (150, 70, 45), (box.right, box.y), (box.centerx, box.y + box.h // 3), 2)
+    elif chest.open:
+        pygame.draw.rect(screen, wood, box)
+        inner = box.inflate(-max(2, size // 8), -max(2, size // 8))
+        pygame.draw.rect(screen, (35, 25, 15), inner)
+        lid = pygame.Rect(box.x, box.y - box.h // 2, box.w, box.h // 2)
+        pygame.draw.rect(screen, wood, lid)
+        pygame.draw.rect(screen, dark, lid, 1)
+        pygame.draw.rect(screen, dark, box, 2)
+    else:
+        pygame.draw.rect(screen, wood, box)
+        band = pygame.Rect(box.x, box.y, box.w, max(3, box.h // 3))
+        pygame.draw.rect(screen, dark, band)
+        pygame.draw.rect(screen, dark, box, 2)
+        clasp = max(2, size // 12)
+        pygame.draw.rect(screen, brass, pygame.Rect(box.centerx - clasp, band.bottom - clasp,
+                                                    clasp * 2, clasp * 2))
+    if chest.locked or (chest.arcane_lock and chest.arcane_suppressed_turns <= 0):
+        col = (180, 80, 220) if chest.arcane_lock and chest.arcane_suppressed_turns <= 0 \
+            else (230, 200, 60)
+        bw, bh = max(5, size // 5), max(4, size // 6)
+        cx, cy = box.right - bw, box.bottom - bh - 1
+        body = pygame.Rect(cx - bw // 2, cy, bw, bh)
+        pygame.draw.rect(screen, col, body)
+        pygame.draw.rect(screen, (30, 30, 30), body, 1)
+        r = bw // 2
+        pygame.draw.arc(screen, col, pygame.Rect(cx - r, cy - r, r * 2, r * 2), 0.0, math.pi, 2)
+    if trap_mark == "hidden":
+        pygame.draw.circle(screen, (240, 160, 40), (x + size - pad, y + pad), max(3, size // 9), 2)
+    elif trap_mark == "found":
+        rad = max(4, size // 7)
+        c = (x + size - pad, y + pad + 1)
+        pygame.draw.circle(screen, (200, 40, 40), c, rad)
+        pygame.draw.line(screen, (255, 255, 255), (c[0], c[1] - rad // 2), (c[0], c[1] + rad // 4), 2)
+        pygame.draw.circle(screen, (255, 255, 255), (c[0], c[1] + rad // 2 + 1), 1)

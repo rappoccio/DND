@@ -62,6 +62,7 @@ from menus import board, dm, features, panel, reactions, riders
 from weapon_dialog import WeaponDialog
 from spell_dialog import SpellDialog
 from terrain_dialogs import (TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph,
+                             draw_chest_glyph,
                              draw_ladder_glyph, draw_stair_glyph, door_link_key,
                              edge_door_rect)
 from lighting_dialogs import LightingEditorDialog
@@ -81,6 +82,8 @@ import run_control
 import sim_trace
 import playback
 import saves
+import placed_items
+import items_play
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
 from net.roster import (SessionRoster, Role, DM_PRINCIPAL_ID, tokens_from_battle_map)
@@ -798,6 +801,8 @@ class App:
         self.drag_item        = None   # the MapItem snapshot (weapon + sprite) being dragged
         self.drag_item_origin = None   # Cell: where the item started (for click vs. drag detection)
         self.drag_item_cell   = None   # Cell: current cursor cell while dragging
+        # Items… click-to-place: ("weapon"|"armor"|"item", record) or ("chest", None)
+        self._item_placing = None
 
         # ── Copy/paste clipboard (pre-combat encounter building) ───────────
         self._agent_clipboard = None   # snapshot dict of a copied agent (Ctrl+C / Ctrl+V)
@@ -1567,6 +1572,9 @@ class App:
         light_y = ter_y + B + self._BTN_GAP
         self.btn_lighting = Button(pygame.Rect(px, light_y, W, B), "Lighting…",
                                    (120, 100, 80), (160, 130, 110), font=self.font_md)
+        # Items… (plans/ITEMS_AND_CHESTS_PLAN.md I4) shares the Lighting row.
+        self.btn_items = Button(pygame.Rect(px, light_y, W, B), "Items…",
+                                (105, 95, 60), (145, 130, 85), font=self.font_md)
         # DM-mode: carve a fresh terrain floor plan AND fill its rooms with a
         # progressive-difficulty encounter in one shot ("Terrain: Keep (mobs only)" in the
         # dialog populates the existing terrain instead — the old two-step via
@@ -1657,7 +1665,8 @@ class App:
         self.btn_reset_dungeon.rect.update(px, rd_y + off, SW, B)
         self.btn_load_save.rect.update(px + SW + 4, rd_y + off, SW, B)
         self.btn_terrain.rect.update(px, ter_y + off, W, B)
-        self.btn_lighting.rect.update(px, light_y + off, W, B)
+        self.btn_lighting.rect.update(px, light_y + off, SW, B)
+        self.btn_items.rect.update(px + SW + 4, light_y + off, SW, B)
         self.btn_generate_dungeon.rect.update(px, gen_y + off, W, B)
         self.btn_dungeon.rect.update(px, dung_y + off, W, B)
         self.btn_toggle_walls.rect.update(px, toggle_walls_y + off, W, B)
@@ -3047,7 +3056,9 @@ class App:
         button. The panel's Clear All now wipes the whole scene via _clear_all."""
         self.bm.clear_agents()
         self.bm.clear_terrain_effects()
+        restore_design = placed_items.keep_design_items(self.bm)
         self.bm.clear_items()
+        restore_design()            # DM-placed items belong to the map, not the agents
         self.pending_configs.clear()
         self.pending_mob_stats.clear()
         # Index-keyed per-agent metadata would bleed onto whatever agents land at
@@ -5949,6 +5960,9 @@ class App:
                 # Knock targets a doorway cell (no creature). Route through the
                 # cell path so the engine reads aoe_col/aoe_row for the door.
                 self._resolve_spell_cast_aoe(self._knock_cell(self._door_index_at(cell, anchor), cell))
+            elif self._pending_spell_opens_doors() and self.bm.chest_at(cell) >= 0:
+                # Knock on a chest: the engine finds it at aoe_col/aoe_row (no door there).
+                self._resolve_spell_cast_aoe(cell)
             elif self._pending_spell_dispels_magic():
                 # Dispel Magic: open a picker for the ongoing spells at the clicked
                 # creature and/or cell (buff vs debuff, or one of several AoEs) — the
@@ -6797,9 +6811,12 @@ class App:
 
 
     def _delete_item(self, item):
-        """Remove a dropped weapon from the map entirely."""
-        self.bm.remove_item(item.id)
-        self._combat_log_add(f"Removed {item.weapon.name or 'item'} from the map.")
+        """Remove an item from the map entirely (a DM-placed one from the design too)."""
+        if item.pid >= 0:
+            items_play.remove_design_item(self, item.pid)
+        else:
+            self.bm.remove_item(item.id)
+        self._combat_log_add(f"Removed {item.name or 'item'} from the map.")
 
     # ── Doors ─────────────────────────────────────────────────────────────────
     def _cell_adjacent_to_agent(self, agent, cell) -> bool:
@@ -7245,12 +7262,23 @@ class App:
         item = self.drag_item
         if item is None or cell is None:
             return
-        wdict = self.weapon_name_to_dict.get(item.weapon.name, {})
-        sprite_path = item.sprite_path or wdict.get("sprite_path", "")
+        name = item.name or "item"
+        if self.bm.chest_at(cell) >= 0:
+            # Onto a chest: a DM-placed item becomes one of its contents.
+            cid = self.bm.chests[self.bm.chest_at(cell)].id
+            if item.pid >= 0 and items_play.floor_item_into_chest(self, item.pid, cid):
+                self._combat_log_add(f"Put {name} in Chest {cid}.")
+            else:
+                self._flash_status("Only a placed item goes into a chest; Edit the chest to add one.")
+            return
+        if item.kind == rpg.MapItemKind.Weapon and not item.sprite_path:
+            item.sprite_path = self.weapon_name_to_dict.get(item.weapon.name, {}).get("sprite_path", "")
         self.bm.remove_item(item.id)
-        self.bm.place_item(cell, item.weapon, sprite_path)
-        self._combat_log_add(
-            f"Moved {item.weapon.name or 'item'} to ({cell.col}, {cell.row}).")
+        item.cell = cell
+        self.bm.place_map_item(item)
+        if item.pid >= 0:
+            items_play.move_design_item(self, item.pid, cell)
+        self._combat_log_add(f"Moved {name} to ({cell.col}, {cell.row}).")
 
     def _clear_item_drag(self):
         self.drag_item_id     = -1
@@ -13663,6 +13691,17 @@ class App:
         # Serialize map items
         items_data = []
         for item in self.bm.get_all_items():
+            if item.pid >= 0:
+                continue            # a DM-placed design item: saved with the terrain
+            if item.kind != rpg.MapItemKind.Weapon:
+                # Armor taken off for a swap, and the like (plans/ITEMS_AND_CHESTS_PLAN.md).
+                rec = {"col": item.cell.col, "row": item.cell.row, "label": item.label}
+                if item.kind == rpg.MapItemKind.Armor:
+                    rec.update(kind="armor", armor=_armor_to_dict(item.armor))
+                else:
+                    rec.update(kind="item", item=_item_to_dict(item.item))
+                items_data.append(rec)
+                continue
             items_data.append({
                 "col":         item.cell.col,
                 "row":         item.cell.row,
@@ -15734,9 +15773,20 @@ class App:
                 continue                                 # target no longer on the map
             self.combat.add_agent_condition(self.bm, cond)
 
-        # Restore map items
+        # Restore map items (dropped weapons). DM-placed design items come with the
+        # terrain, so they survive the wipe.
+        restore_design = placed_items.keep_design_items(self.bm)
         self.bm.clear_items()
+        restore_design()
         for idata in data.get("map_items", []):
+            if idata.get("kind") in ("armor", "item"):
+                body = idata.get(idata["kind"]) or {}
+                mi = placed_items.to_map_item(
+                    {"pid": -1, "kind": idata["kind"], "record": body,
+                     "label": idata.get("label", "")},
+                    (int(idata["col"]), int(idata["row"])))
+                self.bm.place_map_item(mi)
+                continue
             wname = idata.get("weapon_name", "")
             weapon_dict = self.weapon_name_to_dict.get(wname, {})
             if isinstance(idata.get("weapon"), dict):
@@ -15798,6 +15848,11 @@ class App:
         # Cross-map door links are also Python-side; rebuilt from door records below.
         self._door_links = {}
         explored_data = None  # fog-of-war mask from JSON; None = key absent (start fogged)
+        # Placed items and chests (plans/ITEMS_AND_CHESTS_PLAN.md): the design lists, and
+        # what play did to them (None = as designed). Applied after the doors below.
+        self._design_items = []
+        self._design_chests = []
+        items_state = chests_state = None
 
         # The scene's own terrain comes through the store; an explicit other path (Terrain
         # → Import) is read as a file.
@@ -15856,6 +15911,12 @@ class App:
                 doors_data = data.get("doors", [])
                 self._ladders = self._normalize_ladders(data.get("ladders", []))
                 explored_data = data.get("explored")  # None if absent → stays fully fogged
+                self._design_items = [r for r in data.get("items", []) or []
+                                      if isinstance(r, dict)]
+                self._design_chests = [c for c in data.get("chests", []) or []
+                                       if isinstance(c, dict)]
+                items_state = data.get("items_state")
+                chests_state = data.get("chests_state")
             except Exception:
                 self._terrain_regions = []
 
@@ -15900,6 +15961,9 @@ class App:
                     self._door_links[door_link_key(cells)] = [int(lt[0]), int(lt[1]), int(lt[2])]
             except Exception:
                 continue
+
+        placed_items.place_chests(self.bm, self._design_chests, chests_state)
+        placed_items.place_floor_items(self.bm, self._design_items, items_state)
 
         # Honour the walls preference: ON re-detects from a clean slate; OFF drops every
         # auto-detected obstacle so a map the detector mis-read isn't blocked. (On first
@@ -15965,6 +16029,14 @@ class App:
                  link_target=self._door_link_at(d))
             for d in self.bm.doors
         ]
+        # Placed items and chests: the design (map data) and what play did to them. Only
+        # a map that has some writes the keys, so an untouched map.json stays untouched.
+        if self._design_items:
+            data["items"] = self._design_items
+            data["items_state"] = placed_items.floor_state(self.bm)
+        if self._design_chests:
+            data["chests"] = self._design_chests
+            data["chests_state"] = placed_items.chests_state(self.bm)
         # Ladders (vertical portals) — Python-only cell objects; target is GLOBAL (X,Y,Z).
         data["ladders"] = [
             {"cells": [[int(c[0]), int(c[1])] for c in lad["cells"]],
@@ -18027,6 +18099,20 @@ class App:
                             h=(max(rows) - min_row + 1) * cpx,
                             linked=self._door_link_at(door) is not None)
 
+    def _draw_chests(self, cpx: int):
+        """Chests (plans/ITEMS_AND_CHESTS_PLAN.md I5), under the doors' fog rule. The DM
+        console marks a live trap nobody has found with an amber ring, and a found one
+        with the red "!" players see."""
+        fog = self._fog_active()
+        for ch in self.bm.chests:
+            if fog and not self._any_explored([(ch.cell.col, ch.cell.row)]):
+                continue
+            t = ch.trap
+            live = t.armed and not t.disarmed and not t.fired
+            mark = ("found" if t.found else "hidden") if live else None
+            sx, sy = self._cell_to_screen(ch.cell.col, ch.cell.row)
+            draw_chest_glyph(self.screen, sx, sy, cpx, ch, mark)
+
     def _any_explored(self, cells) -> bool:
         """True when the party has explored at least one of ``cells`` ((col, row) pairs)."""
         is_explored, Cell = self.bm.is_explored, rpg.Cell
@@ -18282,7 +18368,7 @@ class App:
                     r = pygame.Rect(ix, iy, icon_px, icon_px)
                     pygame.draw.rect(self.screen, ITEM_COL, r, border_radius=2)
                     pygame.draw.rect(self.screen, ITEM_BORDER, r, 1, border_radius=2)
-                    initial = item.weapon.name[0].upper() if item.weapon.name else "?"
+                    initial = item.name[0].upper() if item.name else "?"
                     lbl = self.font_sm.render(initial, True, (255, 255, 255))
                     self.screen.blit(lbl, (ix + (icon_px - lbl.get_width()) // 2,
                                            iy + (icon_px - lbl.get_height()) // 2))
@@ -18444,6 +18530,7 @@ class App:
 
         # ── Doors (slab + lock glyphs; beneath all agents) ─────────────────
         self._draw_doors(cpx)
+        self._draw_chests(cpx)
 
         # Ladders, staircases and room keys come from the DM's scene (terrain, manifest),
         # not the board, so Playback (whose board is a trace's) leaves them out.
@@ -20272,6 +20359,7 @@ class App:
         # ── Terrain… / Lighting… grouped menus ─────────────────────────────
         self.btn_terrain.draw(self.screen)
         self.btn_lighting.draw(self.screen)
+        self.btn_items.draw(self.screen)
 
         # ── Generate Dungeon (DM-mode) ─────────────────────────────────────
         self.btn_generate_dungeon.draw(self.screen)
@@ -20886,6 +20974,21 @@ class App:
             on_map = not self._panel_rect().collidepoint(
                 *getattr(event, 'pos', (-1, -1)))
 
+            # Items… placement (plans/ITEMS_AND_CHESTS_PLAN.md I4): while armed, a left
+            # click on the map places one; a right click or Esc stops.
+            if self._item_placing is not None and not self.context_menu.visible:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    items_play.disarm_placement(self)
+                    self._flash_status("Stopped placing.")
+                    continue
+                if event.type == pygame.MOUSEBUTTONDOWN and on_map and event.button in (1, 3):
+                    if event.button == 3:
+                        items_play.disarm_placement(self)
+                        self._flash_status("Stopped placing.")
+                    else:
+                        items_play.place_at(self, self._screen_to_cell(*event.pos))
+                    continue
+
             # Right-click a door during combat → door menu, even from the acting creature's
             # own square. An edge door borders the cell the creature stands in, so a left
             # click on its line would land on the token and start a drag; the right button
@@ -20897,6 +21000,15 @@ class App:
                 cell = self._screen_to_cell(*event.pos)
                 if cell is not None and self._door_index_at(cell, event.pos) >= 0:
                     dm.show_door_menu(self, cell, event.pos)
+                elif cell is not None and self.bm.chest_at(cell) >= 0:
+                    items_play.show_chest_menu(self, cell, event.pos)
+
+            # Right-click a chest out of combat → the DM's chest editor.
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and on_map \
+                    and not self.combat_active and not self.context_menu.visible:
+                cell = self._screen_to_cell(*event.pos)
+                if cell is not None and self.bm.chest_at(cell) >= 0:
+                    items_play.show_chest_dm_menu(self, cell, event.pos)
 
             # Right-click on a placed agent → context menu (disabled during combat). A corpse
             # is skipped by _agent_at, so a downed mob's body gets its own Remove menu.
@@ -20987,6 +21099,8 @@ class App:
                                 # No pending action and a click on a door (an edge door's
                                 # slab wins over the creature beside it): door interaction.
                                 dm.show_door_menu(self, cell, event.pos)
+                            elif hit < 0 and self.bm.chest_at(cell) >= 0:
+                                items_play.show_chest_menu(self, cell, event.pos)
                             elif hit < 0 and self._ladder_at(cell) >= 0:
                                 dm.show_ladder_menu(self, cell, event.pos)
                             elif hit < 0 and self._staircases_at(cell):
@@ -21021,6 +21135,8 @@ class App:
                         if self._edge_door_at_pos(event.pos) >= 0 or (
                                 hit < 0 and self._door_index_at(cell, event.pos) >= 0):
                             dm.show_door_menu(self, cell, event.pos)
+                        elif hit < 0 and self.bm.chest_at(cell) >= 0:
+                            items_play.show_chest_menu(self, cell, event.pos)
                         elif hit < 0 and self._ladder_at(cell) >= 0:
                             dm.show_ladder_menu(self, cell, event.pos)
                         elif hit < 0 and self._staircases_at(cell):
@@ -21235,6 +21351,11 @@ class App:
                 # Lighting… — edit / load / show-hide overlay
                 if _hit(self.btn_lighting):
                     dm.show_lighting_menu(self)
+
+                # Items… — place catalog items, keys and chests; edit chests
+                if _hit(self.btn_items):
+                    items_play.show_items_menu(self, anchor=(self.btn_items.rect.x,
+                                                             self.btn_items.rect.y))
 
                 # Generate Dungeon — fill the map's rooms with a progressive encounter
                 if _hit(self.btn_generate_dungeon):

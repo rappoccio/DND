@@ -589,6 +589,31 @@ def _terrain(app, is_dm: bool, hide_map: bool, explored) -> dict:
             rec["target_page"] = other.page if other is not None else None
         staircases.append(rec)
     out["staircases"] = staircases
+
+    # Chests and floor items (plans/ITEMS_AND_CHESTS_PLAN.md I6), under the doors' fog
+    # rule. Lock DCs and a trap nobody has found are DM information; what is inside is
+    # seen once the lid is up.
+    chests = []
+    for ch in app.bm.chests:
+        if not _visible(explored, hide_map, ch.cell.col, ch.cell.row):
+            continue
+        t = ch.trap
+        live = bool(t.armed and not t.disarmed and not t.fired)
+        rec = {"id": int(ch.id), "name": ch.name, "cell": [ch.cell.col, ch.cell.row],
+               "open": bool(ch.open), "locked": bool(ch.locked), "broken": bool(ch.broken),
+               "trap": "found" if (live and t.found) else None}
+        if ch.open:
+            rec["contents"] = [m.name for m in ch.contents]
+        if is_dm:
+            rec.update(lock_dc=ch.lock_dc, break_dc=ch.break_dc,
+                       arcane_lock=bool(ch.arcane_lock),
+                       trap="found" if (live and t.found) else ("hidden" if live else None),
+                       contents=[m.name for m in ch.contents])
+        chests.append(rec)
+    out["chests"] = chests
+    out["items"] = [{"cell": [m.cell.col, m.cell.row], "name": m.name}
+                    for m in app.bm.get_all_items()
+                    if _visible(explored, hide_map, m.cell.col, m.cell.row)]
     return out
 
 
