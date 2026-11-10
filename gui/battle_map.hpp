@@ -352,6 +352,7 @@ enum class NpcAutomationStrategy {
     PreferControl = 6,      // Crowd-control enemies with control spells (Hold Person, Hypnotic Pattern, …)
     PreferHeal = 7,         // Heal the most-wounded ally (downed allies first)
     PreferSupport = 8,      // Buff nearby allies (e.g. Bless) that don't already carry the buff
+    Policy = 9,             // A learned policy picks a macro-action (NPC_LEARNING_PLAN.md Step 5, CombatEngine::setNpcPolicy)
 };
 
 struct PlacedAgent {

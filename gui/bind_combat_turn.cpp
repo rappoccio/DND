@@ -141,9 +141,14 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "a non-shield ranged weapon), else Melee.")
         // ── NPC archetypes + Level 5/6 fallback chain (NPC_LEARNING_PLAN.md Step 4) ──
         .def("npc_decide",
-             &CombatEngine::npcDecide,
+             [](const CombatEngine& eng, const BattleMap& bm, int agent_idx) {
+                 NpcDecision d = eng.npcDecide(bm, agent_idx);
+                 if (const std::exception_ptr err = eng.takeNpcPolicyError()) std::rethrow_exception(err);
+                 return d;
+             },
              py::arg("battle_map"), py::arg("agent_idx"),
-             "resolve_strategy plus how it decided: an NpcDecision (archetype, fallback rung, strategy).")
+             "resolve_strategy plus how it decided: an NpcDecision (archetype, fallback rung, strategy, and a\n"
+             "Policy decision's macro-action). An exception raised by the installed policy propagates.")
         .def("last_npc_decision",
              &CombatEngine::lastNpcDecision,
              py::return_value_policy::copy,
@@ -171,7 +176,51 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "Step 4 stand-in model: a ranked list of NpcAutomationStrategy for one archetype (what a tree\n"
              "leaf will hold). An empty list clears it. With no model at all, Levels 5/6 run Level 4.")
         .def("clear_npc_archetype_models", &CombatEngine::clearNpcArchetypeModels)
-        .def("npc_models_loaded", &CombatEngine::npcModelsLoaded)
+        .def("npc_models_loaded", &CombatEngine::npcModelsLoaded,
+             "True when Levels 5/6 have anything to run: an archetype model or an installed policy.")
+        // ── Macro-actions, policy seam, entity observation (NPC_LEARNING_PLAN.md Step 5) ──
+        .def("available_macro_actions",
+             &CombatEngine::availableMacroActions,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Every NpcMacroAction candidate for the agent now, each flagged legal or not, ordered by kind,\n"
+             "then spell index, then target index. Casts are legal regardless of range (the executor closes).")
+        .def("macro_action_mask",
+             &CombatEngine::macroActionMask,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Per NpcMacroKind (NPC_MACRO_KIND_COUNT entries): whether any candidate of that kind is legal.")
+        .def("execute_macro_action",
+             &CombatEngine::executeMacroAction,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("action"),
+             "Run one macro-action as the agent's turn through the Level 4 executors. Same park/resume\n"
+             "contract as run_npc_turn (call again with the same action after submit_decision). Skips\n"
+             "run_npc_turn's liveness / Command (Flee) / Forcecage gates and its event-recording switch.")
+        .def("npc_heuristic_macro_action",
+             &CombatEngine::npcHeuristicMacroAction,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "What Level 4 would do this turn as the matching available_macro_actions candidate (the\n"
+             "behaviour-cloning label). No match → the synthesized action with legal False.")
+        .def("describe_macro_action",
+             &CombatEngine::describeMacroAction,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("action"),
+             "\"Control: Hold Person → Goblin\" — the macro-action as text.")
+        .def("get_entity_observation",
+             &CombatEngine::getEntityObservation,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "NpcEntityObservation: one token per in-play creature (self first, then by index) + a map token.")
+        .def_static("entity_observation_fields", &CombatEngine::entityObservationFields,
+                    py::return_value_policy::copy)
+        .def_static("map_observation_fields", &CombatEngine::mapObservationFields,
+                    py::return_value_policy::copy)
+        .def("set_npc_policy",
+             [](CombatEngine& eng, CallbackNpcPolicy::Fn fn) {
+                 eng.setNpcPolicy(std::make_shared<CallbackNpcPolicy>(std::move(fn)));
+             },
+             py::arg("rank"),
+             "Install a policy: rank(agent_idx, archetype, actions) -> indices into actions, best first. The\n"
+             "engine runs the first legal one (rung 1 = top, rung 2 = later); none legal → the Step 4 chain\n"
+             "from rung 3. Consulted at Levels 5/6 and by the Policy strategy at Level 0. Must be deterministic.")
+        .def("clear_npc_policy", &CombatEngine::clearNpcPolicy)
+        .def("npc_policy_loaded", &CombatEngine::npcPolicyLoaded)
         .def("npc_control_priority",
              &CombatEngine::npcControlPriority,
              "PreferControl (Step 8) config: the DM-authored control-spell priority order the planner walks,\n"

@@ -114,11 +114,14 @@ RUNG_TEXT = {"TreeTop": "rung 1 tree", "TreeRanked": "rung 2 tree", "Archetype":
 
 
 def decision_text(decision: dict | None) -> str:
-    """`` · Blaster: PreferAOE (rung 3 archetype)`` for a turn's decision; "" for none."""
+    """`` · Blaster: PreferAOE (rung 3 archetype)`` for a turn's decision; "" for none. A
+    policy's macro-action replaces the strategy: `` · Controller: Control: Hold Person → Goblin
+    (rung 1 tree)``."""
     if not decision:
         return ""
     rung = RUNG_TEXT.get(decision.get("rung", ""))
-    return (f" · {decision.get('archetype', '?')}: {decision.get('strategy', '?')}"
+    what = (decision.get("macro") or {}).get("text") or decision.get("strategy", "?")
+    return (f" · {decision.get('archetype', '?')}: {what}"
             f"{f' ({rung})' if rung else ''}")
 
 

@@ -57,7 +57,9 @@ import xp                             # noqa: E402
 PC_FACTION, NPC_FACTION = 2, 1        # the GUI's convention (encounter_generator, saves)
 SIDES = {PC_FACTION: "pc", NPC_FACTION: "npc"}
 
-NPC_POLICIES = {"level1": 1, "level2": 2, "level3": 3, "level4": 4}
+NPC_POLICIES = {"level1": 1, "level2": 2, "level3": 3, "level4": 4,
+                # Python-driven macro-action policies (Step 5), run at Level 5 through set_npc_policy.
+                "l4-macro": 5, "random-macro": 5}
 PC_MODES = ("Heuristic", "SelfPlay")
 PC_HEURISTIC_LEVEL = 4
 ROUND_CAP = 20                        # a fight still going after this many rounds is a draw
@@ -409,6 +411,8 @@ class Arena:
             raise ValueError(f"unknown pc_mode {pc_mode!r} ({PC_MODES})")
         t0 = time.perf_counter()
         bm, eng = self.load_board(scenario.map, scenario.terrain, seed)
+        if npc_policy in MACRO_POLICIES:
+            eng.set_npc_policy(MACRO_POLICIES[npc_policy](eng, bm, seed))
         agents = copy.deepcopy(scenario.agents)
         npc_level = NPC_POLICIES[npc_policy]
         for a in agents:
@@ -441,6 +445,40 @@ class Arena:
             trace.close(outcome)
             outcome["trace"] = trace_path
         return outcome
+
+
+# ── Python-driven NPC policies (NPC_LEARNING_PLAN.md Step 5) ─────────────────
+# Each factory takes (engine, battle map, seed) and returns the rank callable set_npc_policy
+# installs: rank(agent_idx, archetype, actions) -> candidate indices, best first.
+
+def same_macro(a, b) -> bool:
+    """Two NpcMacroActions name the same choice (``legal`` aside)."""
+    return (a.kind == b.kind and a.target_agent == b.target_agent and a.spell_idx == b.spell_idx
+            and a.target_cell.col == b.target_cell.col and a.target_cell.row == b.target_cell.row)
+
+
+def l4_macro_policy(eng, bm, seed: int):
+    """Level 4's own choice (``npc_heuristic_macro_action``) run through the macro-action path.
+    Its win rate should track ``level4``'s: a check of the macro executors, and the shape of
+    Step 6's behaviour-cloning labels."""
+    def rank(idx, archetype, actions):
+        want = eng.npc_heuristic_macro_action(bm, idx)
+        return [i for i, a in enumerate(actions) if same_macro(a, want)][:1]
+    return rank
+
+
+def random_macro_policy(eng, bm, seed: int):
+    """A uniformly random legal macro-action, seeded by the episode."""
+    rng = random.Random(seed)
+
+    def rank(idx, archetype, actions):
+        legal = [i for i, a in enumerate(actions) if a.legal]
+        rng.shuffle(legal)
+        return legal
+    return rank
+
+
+MACRO_POLICIES = {"l4-macro": l4_macro_policy, "random-macro": random_macro_policy}
 
 
 def _unique_names(agents: list) -> None:

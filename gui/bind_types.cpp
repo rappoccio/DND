@@ -1213,13 +1213,60 @@ void bindTypes(py::module_& m) {
         .value("Level4",     NpcFallbackRung::Level4)
         .value("Simple",     NpcFallbackRung::Simple);
 
+    // ── Macro-actions + entity observation (NPC_LEARNING_PLAN.md Step 5) ──
+    // Values are not exported to module scope: Heal / Attack / Hide would collide with other enums.
+    py::enum_<NpcMacroKind>(m, "NpcMacroKind")
+        .value("Attack",    NpcMacroKind::Attack)
+        .value("Kite",      NpcMacroKind::Kite)
+        .value("AoE",       NpcMacroKind::AoE)
+        .value("Control",   NpcMacroKind::Control)
+        .value("Heal",      NpcMacroKind::Heal)
+        .value("Support",   NpcMacroKind::Support)
+        .value("Hide",      NpcMacroKind::Hide)
+        .value("Dash",      NpcMacroKind::Dash)
+        .value("Disengage", NpcMacroKind::Disengage)
+        .value("Dodge",     NpcMacroKind::Dodge)
+        .value("Flee",      NpcMacroKind::Flee);
+    m.attr("NPC_MACRO_KIND_COUNT") = kNpcMacroKindCount;
+
+    py::class_<NpcMacroAction>(m, "NpcMacroAction",
+        "One macro-action candidate: what to do (kind) and to whom (target_agent / target_cell / spell_idx).\n"
+        "Unused fields are -1. legal: it has work to do for the agent now.")
+        .def(py::init<>())
+        .def(py::init([](NpcMacroKind kind, int target_agent, Cell target_cell, int spell_idx) {
+                 return NpcMacroAction{kind, target_agent, target_cell, spell_idx, true};
+             }),
+             py::arg("kind"), py::arg("target_agent") = -1, py::arg("target_cell") = Cell{-1, -1},
+             py::arg("spell_idx") = -1)
+        .def_readwrite("kind",         &NpcMacroAction::kind)
+        .def_readwrite("target_agent", &NpcMacroAction::target_agent, "the creature acted on; -1 = none")
+        .def_readwrite("target_cell",  &NpcMacroAction::target_cell,  "AoE / area-control aim cell (the target's cell)")
+        .def_readwrite("spell_idx",    &NpcMacroAction::spell_idx,    "index into the actor's spells; -1 = no spell")
+        .def_readwrite("legal",        &NpcMacroAction::legal)
+        .def("__repr__", [](const NpcMacroAction& a) {
+            return std::format("NpcMacroAction(kind={}, target_agent={}, target_cell=({}, {}), spell_idx={}, legal={})",
+                               static_cast<int>(a.kind), a.target_agent, a.target_cell.col, a.target_cell.row,
+                               a.spell_idx, a.legal);
+        });
+
+    py::class_<NpcEntityObservation>(m, "NpcEntityObservation",
+        "Entity observation: creature_tokens[i] (fields: CombatEngine.entity_observation_fields()) describes\n"
+        "agent agent_indices[i], self first; map_token (fields: map_observation_fields()).")
+        .def_readonly("actor_idx",       &NpcEntityObservation::actor_idx)
+        .def_readonly("agent_indices",   &NpcEntityObservation::agent_indices)
+        .def_readonly("creature_tokens", &NpcEntityObservation::creature_tokens)
+        .def_readonly("map_token",       &NpcEntityObservation::map_token);
+
     py::class_<NpcDecision>(m, "NpcDecision",
         "How one automated turn's strategy was resolved (NPC_LEARNING_PLAN.md Step 4).")
         .def_readonly("agent_idx", &NpcDecision::agent_idx, "the deciding agent; -1 = no decision this turn")
         .def_readonly("level",     &NpcDecision::level,     "the agent's difficulty level as set (before any clamp)")
         .def_readonly("archetype", &NpcDecision::archetype, "NpcArchetype the agent classified as")
         .def_readonly("rung",      &NpcDecision::rung,      "NpcFallbackRung that decided (Heuristic = Levels 0-4 or no model)")
-        .def_readonly("strategy",  &NpcDecision::strategy,  "the NpcAutomationStrategy decided");
+        .def_readonly("strategy",  &NpcDecision::strategy,  "the NpcAutomationStrategy decided")
+        .def_readonly("has_macro", &NpcDecision::has_macro, "strategy is Policy and macro holds its choice (Step 5)")
+        .def_readonly("macro",     &NpcDecision::macro,     "the NpcMacroAction a Policy decision chose")
+        .def_readonly("macro_text", &NpcDecision::macro_text, "the chosen macro-action as text (trace / Playback HUD)");
 
     py::enum_<NpcAutomationStrategy>(m, "NpcAutomationStrategy")
         .value("Simple",             NpcAutomationStrategy::Simple)
@@ -1231,6 +1278,7 @@ void bindTypes(py::module_& m) {
         .value("PreferControl",      NpcAutomationStrategy::PreferControl)
         .value("PreferHeal",         NpcAutomationStrategy::PreferHeal)
         .value("PreferSupport",      NpcAutomationStrategy::PreferSupport)
+        .value("Policy",             NpcAutomationStrategy::Policy)
         .export_values();
 
     py::enum_<NpcConcealRoute>(m, "NpcConcealRoute")

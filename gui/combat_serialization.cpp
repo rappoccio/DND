@@ -153,11 +153,14 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     InFlightTurn, active, interactive, agent_idx, result, reactors, cursor, window_built)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
+    NpcMacroAction, kind, target_agent, target_cell, spell_idx, legal)
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     NpcTurnState,
     active, agent_idx, target_idx, weapon_idx, attacks_remaining, phase,
     cast_launched, cast_moving, pending_segments,
     conceal_route, conceal_spell_idx, conceal_move_launched, conceal_act_launched,
-    flee_move_launched, resolved_strategy)
+    flee_move_launched, resolved_strategy, has_macro, macro)
 
 // ── Persistent spell effects ─────────────────────────────────────────────────
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(

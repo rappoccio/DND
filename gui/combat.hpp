@@ -41,8 +41,10 @@
 
 #include <array>
 #include <cstdint>
+#include <exception>
 #include <format>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <random>
 #include <set>
@@ -68,6 +70,37 @@ enum class NpcAutomationStrategy;  // defined in battle_map.hpp (NPC automation 
 // Result/action/state structs (HideResult, AttackResult, Attack, SpellAction, InFlight*,
 // NpcTurnState, canTakeReaction(), …) moved to combat_types.hpp — R2 of
 // COMBAT_REFACTOR_PLAN.md.
+
+class CombatEngine;
+
+// A pluggable NPC policy (NPC_LEARNING_PLAN.md Step 5): given an agent's macro-action candidates, rank
+// them. The engine executes the first LEGAL candidate in the ranking (rung 1 = the top entry, rung 2 = a
+// later one); a ranking with no legal entry falls through to the Step 4 chain from rung 3. Step 8's trees
+// implement this in C++; Python drives it through CallbackNpcPolicy. Must be deterministic for a given
+// state (D8) — the engine calls it once per fresh turn, never on a resume.
+class NpcPolicy {
+public:
+    virtual ~NpcPolicy() = default;
+    // Indices into `actions`, best first. Out-of-range indices are skipped.
+    [[nodiscard]] virtual std::vector<int> rank(const CombatEngine& engine, const BattleMap& bm, int agent_idx,
+                                                NpcArchetype archetype,
+                                                const std::vector<NpcMacroAction>& actions) = 0;
+};
+
+// An NpcPolicy backed by a callable: fn(agent_idx, archetype, actions) → ranked indices. The Python
+// binding's set_npc_policy wraps a Python callable in one (the callable closes over its engine and map).
+class CallbackNpcPolicy final : public NpcPolicy {
+public:
+    using Fn = std::function<std::vector<int>(int, NpcArchetype, const std::vector<NpcMacroAction>&)>;
+    explicit CallbackNpcPolicy(Fn fn) : fn_(std::move(fn)) {}
+    [[nodiscard]] std::vector<int> rank(const CombatEngine&, const BattleMap&, int agent_idx,
+                                        NpcArchetype archetype,
+                                        const std::vector<NpcMacroAction>& actions) override {
+        return fn_ ? fn_(agent_idx, archetype, actions) : std::vector<int>{};
+    }
+private:
+    Fn fn_;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CombatEngine
@@ -536,7 +569,46 @@ public:
     // run Level 4; with some, an archetype without one starts the chain at rung 3. Not in a snapshot.
     void setNpcArchetypeModel(NpcArchetype a, std::vector<NpcAutomationStrategy> ranked);
     void clearNpcArchetypeModels() noexcept;
+    // True when Levels 5/6 have anything to run: an archetype model or an installed policy.
     [[nodiscard]] bool npcModelsLoaded() const noexcept;
+
+    // ── Macro-actions + entity observation (NPC_LEARNING_PLAN.md Step 5) ──────────────────────
+    // Every macro-action candidate for agent_idx now, each flagged legal or not, in a fixed order: by kind
+    // (NpcMacroKind order), then spell index, then target index. Per kind:
+    //   Attack / Kite / Dash   one per enemy in play; legal when attackable (alive, visible, not an ally).
+    //   AoE                    castable area blast × enemy aim cell; legal when the area nets ≥ 1 enemy.
+    //   Control                castable control_priority spell × enemy (area: aim cell, nets ≥ 1).
+    //   Heal                   castable HP heal × self/ally not dead and below max HP.
+    //   Support                castable buff × self/ally standing and without that buff.
+    //   Hide / Disengage / Dodge / Flee   one each, self.
+    // Casts are legal regardless of range: the executor closes the distance first, as Level 4 does.
+    [[nodiscard]] std::vector<NpcMacroAction> availableMacroActions(const BattleMap& bm, int agent_idx) const;
+    // Per NpcMacroKind (kNpcMacroKindCount entries): whether any candidate of that kind is legal.
+    [[nodiscard]] std::vector<bool> macroActionMask(const BattleMap& bm, int agent_idx) const;
+    // Run one macro-action as agent_idx's turn through the existing executors (park/resume contract
+    // unchanged: on AwaitingDecision resolve the window and call again with the same action). run_npc_turn
+    // calls this for a Policy turn; calling it directly skips run_npc_turn's liveness / Command (Flee) /
+    // Forcecage gates and the visual-event recording switch.
+    FlowStatus executeMacroAction(BattleMap& bm, int agent_idx, const NpcMacroAction& action);
+    // What Level 4 would do this turn, expressed as the matching candidate from availableMacroActions — the
+    // behaviour-cloning label (Step 6). No candidate matches (rare) → the synthesized action, legal = false.
+    [[nodiscard]] NpcMacroAction npcHeuristicMacroAction(const BattleMap& bm, int agent_idx) const;
+    // "Control: Hold Person → Goblin" — for the trace and the Playback HUD.
+    [[nodiscard]] std::string describeMacroAction(const BattleMap& bm, int agent_idx,
+                                                  const NpcMacroAction& action) const;
+    // The entity observation (D4): one token per creature agent_idx can perceive, self first, plus a
+    // map-summary token. getBattleObservation is unchanged.
+    [[nodiscard]] NpcEntityObservation getEntityObservation(const BattleMap& bm, int agent_idx) const;
+    [[nodiscard]] static const std::vector<std::string>& entityObservationFields();
+    [[nodiscard]] static const std::vector<std::string>& mapObservationFields();
+    // The installed policy: consulted at Levels 5/6 (rungs 1-2) and by the Level 0 Policy strategy. Not in
+    // a snapshot. With a policy installed, Levels 5/6 no longer clamp to Level 4.
+    void setNpcPolicy(std::shared_ptr<NpcPolicy> policy) noexcept { npc_policy_ = std::move(policy); }
+    void clearNpcPolicy() noexcept { npc_policy_.reset(); }
+    [[nodiscard]] bool npcPolicyLoaded() const noexcept { return npc_policy_ != nullptr; }
+    // An exception the policy threw while npcDecide consulted it (npcDecide is noexcept, so it is held here
+    // and the chain carries on from rung 3). runNpcTurn rethrows it; npc_decide's binding does too.
+    [[nodiscard]] std::exception_ptr takeNpcPolicyError() const noexcept { return std::exchange(npc_policy_error_, nullptr); }
 
     // Classify the combat role (Melee/Ranged/Caster) the difficulty resolver maps to a strategy. Caster =
     // knows any combat-relevant spell (npcClassificationIgnore filters flavor/utility spells); else Ranged
@@ -2317,6 +2389,21 @@ private:
     // the latest fresh-turn decision. Neither is gameplay state, so neither is in a snapshot.
     std::array<std::vector<NpcAutomationStrategy>, kNpcArchetypeCount> npc_models_{};
     NpcDecision last_npc_decision_{};
+    // Step 5: the installed policy (not in a snapshot), and the macro-action executeMacroAction is running —
+    // set for the duration of the call so runAoeTurn / runCasterTurn plan the forced spell + target.
+    std::shared_ptr<NpcPolicy>    npc_policy_{};
+    std::optional<NpcMacroAction> npc_forced_macro_{};
+    // An exception the policy threw inside the noexcept npcDecide, rethrown by runNpcTurn / the binding.
+    mutable std::exception_ptr    npc_policy_error_{};
+    // Ask the policy: fill d.strategy = Policy, d.macro and the rung when it ranks a legal candidate.
+    bool npcPolicyPick(const BattleMap& bm, int agent_idx, NpcDecision& d) const;
+    // The forced macro-action's cast as a plan from the current cell (spell_idx -1 when it can't be cast
+    // from here; approach_target set when the spell is still castable and the target is worth closing on).
+    [[nodiscard]] NpcAoePlan  npcForcedAoePlan(const BattleMap& bm, int agent_idx, const NpcMacroAction& a) const;
+    [[nodiscard]] NpcCastPlan npcForcedCastPlan(const BattleMap& bm, int agent_idx, const NpcMacroAction& a) const;
+    // Move-only macro turns: Dash toward a target, Disengage / Flee away from the enemies, Dodge in place.
+    // Resumable via npc_turn_.flee_move_launched (a parked move ends the turn on resume).
+    FlowStatus runMoveMacroTurn(BattleMap& bm, int agent_idx, const NpcMacroAction& a);
     // The Level 1-4 resolver (difficulty `eff`), split out so the Level 5/6 chain can call it as rung 4.
     [[nodiscard]] NpcAutomationStrategy resolveHeuristicStrategy(const BattleMap& bm, int agent_idx,
                                                                  int eff) const noexcept;

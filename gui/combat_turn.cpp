@@ -1403,11 +1403,15 @@ NpcDecision CombatEngine::npcDecide(const BattleMap& bm, int agent_idx) const no
     // OVERRIDE"). Level 0 = manual: the per-agent strategy field rules. Levels 1+ IGNORE the field and
     // resolve a strategy from npcClassifyRole + the level, leaving the executors untouched.
     NpcDecision d;
+    npc_policy_error_ = nullptr;   // only this decision's policy error is reported
     d.agent_idx = agent_idx;
     d.level     = bm.getAgentNpcAutomationDifficulty(agent_idx);
     d.archetype = npcClassifyArchetype(bm, agent_idx);
     if (d.level <= 0) {
         d.strategy = bm.getAgentNpcAutomationStrategy(agent_idx);
+        // The manual Policy strategy asks the installed policy; with none (or no legal pick) it fights Simple.
+        if (d.strategy == NpcAutomationStrategy::Policy && !npcPolicyPick(bm, agent_idx, d))
+            d.strategy = NpcAutomationStrategy::Simple;
         return d;
     }
     if (d.level <= 4) {
@@ -1429,13 +1433,18 @@ NpcDecision CombatEngine::npcDecide(const BattleMap& bm, int agent_idx) const no
 
     // The fallback chain (NPC_LEARNING_PLAN.md Step 4). Every rung applies the same actionability test.
     const auto ok = [&](NpcAutomationStrategy s) { return npcStrategyActionable(bm, agent_idx, s); };
-    // Rungs 1-2: the archetype's model, top choice first, then down its ranking.
-    const auto& ranked = npc_models_[static_cast<std::size_t>(d.archetype)];
-    for (std::size_t i = 0; i < ranked.size(); ++i) {
-        if (!ok(ranked[i])) continue;
-        d.rung     = i == 0 ? NpcFallbackRung::TreeTop : NpcFallbackRung::TreeRanked;
-        d.strategy = ranked[i];
-        return d;
+    // Rungs 1-2: an installed policy ranks the macro-actions (Step 5); it replaces the stand-in models.
+    if (npc_policy_) {
+        if (npcPolicyPick(bm, agent_idx, d)) return d;
+    } else {
+        // Rungs 1-2 (Step 4 stand-in): the archetype's model, top choice first, then down its ranking.
+        const auto& ranked = npc_models_[static_cast<std::size_t>(d.archetype)];
+        for (std::size_t i = 0; i < ranked.size(); ++i) {
+            if (!ok(ranked[i])) continue;
+            d.rung     = i == 0 ? NpcFallbackRung::TreeTop : NpcFallbackRung::TreeRanked;
+            d.strategy = ranked[i];
+            return d;
+        }
     }
     // Rung 3: the archetype's own strategies, then its secondary archetypes'.
     for (NpcArchetype a : npcArchetypeChain(d.archetype))
@@ -1629,21 +1638,37 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     // A parked turn REUSES the strategy that launched it: the dynamic Level-4 resolution probes live game
     // state, so re-resolving after that state changed mid-park (the heal landed, an enemy dropped) could
     // route the resume into the wrong executor. Fresh turns resolve normally.
+    // A Policy turn carries its macro-action the same way (Step 5).
     NpcAutomationStrategy strategy;
-    if (npc_turn_.active && npc_turn_.agent_idx == agent_idx && npc_turn_.resolved_strategy >= 0)
+    bool           hasMacro = false;
+    NpcMacroAction macro{};
+    if (npc_turn_.active && npc_turn_.agent_idx == agent_idx && npc_turn_.resolved_strategy >= 0) {
         strategy = static_cast<NpcAutomationStrategy>(npc_turn_.resolved_strategy);
-    else {
+        hasMacro = npc_turn_.has_macro;
+        macro    = npc_turn_.macro;
+    } else {
         last_npc_decision_ = npcDecide(bm, agent_idx);   // the trace / Playback HUD read it back
+        if (const std::exception_ptr err = takeNpcPolicyError()) {   // the policy threw: surface it
+            ctx_.npc_recording_ = false;
+            std::rethrow_exception(err);
+        }
         strategy = last_npc_decision_.strategy;
+        hasMacro = last_npc_decision_.has_macro;
+        macro    = last_npc_decision_.macro;
     }
 
-    const FlowStatus fs = dispatchNpcTurn(bm, agent_idx, strategy);
+    const FlowStatus fs = (strategy == NpcAutomationStrategy::Policy && hasMacro)
+                        ? executeMacroAction(bm, agent_idx, macro)
+                        : dispatchNpcTurn(bm, agent_idx, strategy);
 
     // Stamp the resolution onto a PARKED turn (stamped after dispatch because the executors reset
     // npc_turn_ when a fresh turn starts, which would wipe a pre-stamp). A completed turn cleared
     // npc_turn_, so nothing is stamped and the next turn re-resolves.
-    if (npc_turn_.active && npc_turn_.agent_idx == agent_idx)
+    if (npc_turn_.active && npc_turn_.agent_idx == agent_idx) {
         npc_turn_.resolved_strategy = static_cast<int>(strategy);
+        npc_turn_.has_macro         = hasMacro;
+        npc_turn_.macro             = macro;
+    }
     if (fs == FlowStatus::Completed) ctx_.npc_recording_ = false;   // turn over → stop the visual event stream
     return fs;
 }
@@ -2077,7 +2102,11 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
     auto curOrigin = [&]() -> Cell {
         return bm.placedAgents()[static_cast<std::size_t>(agent_idx)].origin;
     };
+    // A macro-action's forced target is the pick while it is attackable; once it drops, the policy's
+    // priority re-acquires as usual.
     const auto selectTarget = [&]() {
+        if (policy.forced_target >= 0 && npcAttackable(bm, agent_idx, policy.forced_target))
+            return policy.forced_target;
         return npcSelectTarget(bm, agent_idx, policy.prefer_caster, policy.priority);
     };
     // Nearest attackable enemy for which weapon `w` has a reachable striking cell within `budget`
@@ -2214,8 +2243,10 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
                 // by other creatures or walled off. Before spending any Dash, RETARGET to the nearest OTHER
                 // enemy we can reach a striking cell for this turn (a vampire ringed by commoners should just
                 // bite whoever it can reach rather than starve over the one that looked at it funny).
+                // A forced target (macro-action) is never swapped: close on it with a Dash instead.
                 Cell altDest{};
-                const int altTgt = nearestReachableTarget(st.weapon_idx, /*budget=*/-1);
+                const int altTgt = policy.forced_target >= 0
+                                 ? -1 : nearestReachableTarget(st.weapon_idx, /*budget=*/-1);
                 if (altTgt >= 0 && findPositionCell(altTgt, st.weapon_idx, altDest)) {
                     log_("NPC {} can't reach {} — retargeting to reachable {}",
                          agentName(bm, agent_idx), agentName(bm, st.target_idx), agentName(bm, altTgt));
@@ -2241,8 +2272,13 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
 
                     // 1) BONUS-ACTION Dash — only if the doubled budget makes SOME target reachable, so the
                     //    Action stays free to swing this same turn.
-                    const int bonusReachTgt =
-                        bonusDashAvail ? nearestReachableTarget(st.weapon_idx, dashedBudget) : -1;
+                    const auto bonusReach = [&]() -> int {
+                        if (policy.forced_target < 0) return nearestReachableTarget(st.weapon_idx, dashedBudget);
+                        Cell probe{};
+                        return findPositionCell(st.target_idx, st.weapon_idx, probe, dashedBudget)
+                             ? st.target_idx : -1;
+                    };
+                    const int bonusReachTgt = bonusDashAvail ? bonusReach() : -1;
                     if (bonusReachTgt >= 0) {
                         bm.applyDash(agent_idx);
                         (void)spendBonusAction(bm, agent_idx);
@@ -2782,8 +2818,18 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
         }
     }
 
+    // A macro-action (Step 5) forces the spell and the aim; otherwise the planner picks both.
+    const std::optional<NpcMacroAction> forced = npc_forced_macro_;
+    const auto planNow = [&] {
+        return forced ? npcForcedAoePlan(bm, agent_idx, *forced) : npcPlanAoeCast(bm, agent_idx);
+    };
+    const auto forcedCastable = [&] {
+        const auto c = availableCastableSpells(bm, agent_idx);
+        return std::find(c.begin(), c.end(), forced->spell_idx) != c.end();
+    };
+
     // Plan from the CURRENT position (fresh turn, or the cell we ended the approach move on).
-    NpcAoePlan plan = npcPlanAoeCast(bm, agent_idx);
+    NpcAoePlan plan = planNow();
 
     if (!resuming_after_move && plan.spell_idx < 0) {
         // Nothing catchable from here. Two very different situations:
@@ -2792,7 +2838,7 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
         //   · The agent HAS an AoE spell but no enemy is in range/LoS right now → PreferAOE must ALWAYS
         //     prioritise the AoE (never melee while holding one): move toward the enemies to bring them
         //     into range, then cast this turn if the approach closed enough distance.
-        if (!npcHasCastableAoeSpell(bm, agent_idx))
+        if (forced ? !forcedCastable() : !npcHasCastableAoeSpell(bm, agent_idx))
             return runWeaponTurn(bm, agent_idx, NpcStrategyPolicy{});   // st still inactive → fresh weapon turn
 
         // Seed the agent's OWN movement budget (mirrors runWeaponTurn) so the approach can spend it.
@@ -2806,14 +2852,15 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
             s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
 
         Cell dest{};
-        const int approach = npcSelectTarget(bm, agent_idx);   // nearest attackable enemy (default priority)
+        // The nearest attackable enemy (default priority), or the macro-action's aim creature.
+        const int approach = forced ? forced->target_agent : npcSelectTarget(bm, agent_idx);
         if (npcFindApproachCell(bm, agent_idx, approach, dest) && dest != curOrigin()) {
             log_("NPC {} moves to bring enemies into AoE range", agentName(bm, agent_idx));
             if (beginMove(bm, agent_idx, dest, npcMovementType(bm, agent_idx)) == FlowStatus::AwaitingDecision)
                 return FlowStatus::AwaitingDecision;     // parked on an OA; resume re-plans + casts
         }
         st.cast_moving = false;
-        plan = npcPlanAoeCast(bm, agent_idx);            // re-plan from the new position
+        plan = planNow();                                // re-plan from the new position
     }
 
     if (plan.spell_idx < 0) {
@@ -3326,8 +3373,14 @@ FlowStatus CombatEngine::runCasterTurn(BattleMap& bm, int agent_idx, CasterInten
         }
     }
 
+    // A macro-action (Step 5) forces the spell and the target; otherwise the intent's planner picks both.
+    const std::optional<NpcMacroAction> forced = npc_forced_macro_;
+    const auto planNow = [&] {
+        return forced ? npcForcedCastPlan(bm, agent_idx, *forced) : npcPlanCasterCast(bm, agent_idx, intent);
+    };
+
     // Plan from the CURRENT position (fresh turn, or the cell we ended the approach move on).
-    NpcCastPlan plan = npcPlanCasterCast(bm, agent_idx, intent);
+    NpcCastPlan plan = planNow();
 
     if (!resuming_after_move && plan.spell_idx < 0) {
         // Nothing castable from here. Two very different situations (mirrors runAoeTurn):
@@ -3355,7 +3408,7 @@ FlowStatus CombatEngine::runCasterTurn(BattleMap& bm, int agent_idx, CasterInten
                 return FlowStatus::AwaitingDecision;     // parked on an OA; resume re-plans + casts
         }
         st.cast_moving = false;
-        plan = npcPlanCasterCast(bm, agent_idx, intent); // re-plan from the new position
+        plan = planNow();                                // re-plan from the new position
     }
 
     if (plan.spell_idx < 0) {
@@ -3819,6 +3872,7 @@ bool CombatEngine::npcStrategyActionable(const BattleMap& bm, int agent_idx,
         case NpcAutomationStrategy::PreferControl:      return castOk(npcPlanControlCast(bm, agent_idx));
         case NpcAutomationStrategy::PreferHeal:         return castOk(npcPlanHealCast(bm, agent_idx));
         case NpcAutomationStrategy::PreferSupport:      return castOk(npcPlanSupportCast(bm, agent_idx));
+        case NpcAutomationStrategy::Policy:             return false;   // a policy is not a stand-in model entry
     }
     return false;
 }
@@ -3861,9 +3915,693 @@ void CombatEngine::clearNpcArchetypeModels() noexcept
 
 bool CombatEngine::npcModelsLoaded() const noexcept
 {
+    if (npc_policy_) return true;
     for (const auto& m : npc_models_)
         if (!m.empty()) return true;
     return false;
+}
+
+// ── Macro-actions, the policy seam and the entity observation (NPC_LEARNING_PLAN.md Step 5) ─────────
+
+namespace {
+
+const char* npcMacroKindName(NpcMacroKind k) noexcept
+{
+    switch (k) {
+        case NpcMacroKind::Attack:    return "Attack";
+        case NpcMacroKind::Kite:      return "Kite";
+        case NpcMacroKind::AoE:       return "AoE";
+        case NpcMacroKind::Control:   return "Control";
+        case NpcMacroKind::Heal:      return "Heal";
+        case NpcMacroKind::Support:   return "Support";
+        case NpcMacroKind::Hide:      return "Hide";
+        case NpcMacroKind::Dash:      return "Dash";
+        case NpcMacroKind::Disengage: return "Disengage";
+        case NpcMacroKind::Dodge:     return "Dodge";
+        case NpcMacroKind::Flee:      return "Flee";
+    }
+    return "?";
+}
+
+// An ally already carries this buff spell if it holds any of the spell's named conditions — the test
+// npcPlanSupportCast applies.
+bool npcHasBuff(const std::vector<ActiveAgentCondition>& active, int ally, const Spell& sp) noexcept
+{
+    for (const AttackCondition& ac : sp.conditions)
+        for (const ActiveAgentCondition& aac : active)
+            if (aac.agent_idx == ally && aac.condition_name == ac.condition_name) return true;
+    return false;
+}
+
+bool npcIsAreaSpell(const Spell& sp) noexcept
+{
+    return sp.geometry != Spell::Single && sp.geometry != Spell::Multiple;
+}
+
+bool npcIsPlacedArea(const Spell& sp) noexcept
+{
+    return sp.geometry == Spell::Sphere || sp.geometry == Spell::Square || sp.geometry == Spell::Rectangle;
+}
+
+int chebyshevCells(Cell a, Cell b) noexcept
+{
+    return std::max(std::abs(a.col - b.col), std::abs(a.row - b.row));
+}
+
+} // namespace
+
+std::vector<NpcMacroAction> CombatEngine::availableMacroActions(const BattleMap& bm, int agent_idx) const
+{
+    std::vector<NpcMacroAction> out;
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return out;
+    using K = NpcMacroKind;
+    const auto at = [&](int j) -> const PlacedAgent& { return agents[static_cast<std::size_t>(j)]; };
+
+    // An agent that can't act has no legal macro-action; one that can't move has no legal Dash/Disengage/Flee.
+    const auto self = bm.getAgentConditions(agent_idx);
+    const bool canAct = !(self.incapacitated || self.paralyzed || self.stunned || self.petrified ||
+                          self.unconscious || self.dead);
+    const Agent::Stats selfStats = bm.getAgentStats(agent_idx);
+    const bool canMove = canAct && canAgentMove(bm, agent_idx) &&
+                         (selfStats.speed_walk > 0 || selfStats.speed_fly > 0 || selfStats.speed_swim > 0);
+    const auto add = [&](K k, int tgt, Cell cell, int spell, bool legal) {
+        out.push_back(NpcMacroAction{k, tgt, cell, spell, legal && canAct});
+    };
+
+    // Enemies and allies (self included) still in play and not dead, by index.
+    std::vector<int> enemies, allies;
+    std::vector<char> attackable(static_cast<std::size_t>(n), 0);
+    bool anyAttackable = false;
+    for (int j = 0; j < n; ++j) {
+        if (at(j).removed_from_play || at(j).on_deck) continue;
+        if (getAgentConditions(bm, j).dead) continue;
+        if (j == agent_idx || areAllies(bm, agent_idx, j)) { allies.push_back(j); continue; }
+        enemies.push_back(j);
+        if (npcAttackable(bm, agent_idx, j)) { attackable[static_cast<std::size_t>(j)] = 1; anyAttackable = true; }
+    }
+    const auto canHit = [&](int j) { return attackable[static_cast<std::size_t>(j)] != 0; };
+    const Cell none{-1, -1};
+
+    for (K k : {K::Attack, K::Kite})
+        for (int j : enemies) add(k, j, at(j).origin, -1, canHit(j));
+
+    const std::vector<int> castable = availableCastableSpells(bm, agent_idx);
+    const bool concentrating = npcHoldsConcentration(bm, agent_idx);
+    const auto& spells = at(agent_idx).spells;
+    const auto spellAt = [&](int si) -> const Spell& { return spells[static_cast<std::size_t>(si)]; };
+
+    for (int si : castable) {
+        const Spell& sp = spellAt(si);
+        if (!isAoeBlastSpell(sp)) continue;
+        for (int j : enemies)
+            add(K::AoE, j, at(j).origin, si, canHit(j) && npcAreaNetEnemies(bm, sp, agent_idx, at(j).origin) > 0);
+    }
+    const std::vector<std::string>& control = npcControlPriority();
+    for (int si : castable) {
+        const Spell& sp = spellAt(si);
+        if (std::find(control.begin(), control.end(), sp.name) == control.end()) continue;
+        const bool blocked = concentrating && sp.requires_concentration;   // never drop a live effect
+        for (int j : enemies)
+            add(K::Control, j, at(j).origin, si,
+                !blocked && canHit(j) &&
+                (!npcIsAreaSpell(sp) || npcAreaNetEnemies(bm, sp, agent_idx, at(j).origin) > 0));
+    }
+    for (int si : castable) {
+        if (!isHpHealSpell(spellAt(si))) continue;
+        for (int a : allies) {
+            const Agent::Stats s = bm.getAgentStats(a);
+            add(K::Heal, a, at(a).origin, si, s.hp_max > 0 && s.hp_cur < s.hp_max);
+        }
+    }
+    for (int si : castable) {
+        const Spell& sp = spellAt(si);
+        if (!isSupportBuffSpell(sp)) continue;
+        const bool blocked = concentrating && sp.requires_concentration;
+        for (int a : allies) {
+            const auto c = bm.getAgentConditions(a);
+            const bool standing = !c.unconscious && bm.getAgentStats(a).hp_cur > 0;
+            add(K::Support, a, at(a).origin, si,
+                !blocked && standing && !npcHasBuff(activeAgentConditions(), a, sp));
+        }
+    }
+
+    add(K::Hide, -1, none, -1, npcHasStealthTools(bm, agent_idx));
+    for (int j : enemies) add(K::Dash, j, at(j).origin, -1, canHit(j) && canMove);
+    add(K::Disengage, -1, none, -1, canMove && anyAttackable);
+    add(K::Dodge,     -1, none, -1, true);
+    add(K::Flee,      -1, none, -1, canMove && anyAttackable);
+    return out;
+}
+
+std::vector<bool> CombatEngine::macroActionMask(const BattleMap& bm, int agent_idx) const
+{
+    std::vector<bool> mask(static_cast<std::size_t>(kNpcMacroKindCount), false);
+    for (const NpcMacroAction& a : availableMacroActions(bm, agent_idx))
+        if (a.legal) mask[static_cast<std::size_t>(a.kind)] = true;
+    return mask;
+}
+
+bool CombatEngine::npcPolicyPick(const BattleMap& bm, int agent_idx, NpcDecision& d) const
+{
+    if (!npc_policy_) return false;
+    const std::vector<NpcMacroAction> actions = availableMacroActions(bm, agent_idx);
+    std::vector<int> ranking;
+    try {
+        ranking = npc_policy_->rank(*this, bm, agent_idx, d.archetype, actions);
+    } catch (...) {
+        npc_policy_error_ = std::current_exception();   // rethrown by runNpcTurn; the chain carries on
+        return false;
+    }
+    for (std::size_t i = 0; i < ranking.size(); ++i) {
+        const int k = ranking[i];
+        if (k < 0 || k >= static_cast<int>(actions.size())) continue;
+        const NpcMacroAction& a = actions[static_cast<std::size_t>(k)];
+        if (!a.legal) continue;
+        d.rung       = i == 0 ? NpcFallbackRung::TreeTop : NpcFallbackRung::TreeRanked;
+        d.strategy   = NpcAutomationStrategy::Policy;
+        d.has_macro  = true;
+        d.macro      = a;
+        d.macro_text = describeMacroAction(bm, agent_idx, a);
+        return true;
+    }
+    return false;
+}
+
+FlowStatus CombatEngine::executeMacroAction(BattleMap& bm, int agent_idx, const NpcMacroAction& action)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (agent_idx < 0 || agent_idx >= n) return FlowStatus::Completed;
+
+    // The AoE / caster executors plan the forced spell + target while this is set (and on their resume).
+    npc_forced_macro_ = action;
+    struct Reset {
+        std::optional<NpcMacroAction>& m;
+        ~Reset() { m.reset(); }
+    } reset{npc_forced_macro_};
+
+    using K = NpcMacroKind;
+    NpcStrategyPolicy policy;
+    switch (action.kind) {
+        case K::Attack:
+            policy.forced_target = action.target_agent;
+            return runWeaponTurn(bm, agent_idx, policy);
+        case K::Kite:   // the PreferRange turn, target forced
+            policy.prefer_ranged = true;
+            policy.kite          = true;
+            policy.priority      = NpcTargetPriority::LowestHp;
+            policy.forced_target = action.target_agent;
+            return runWeaponTurn(bm, agent_idx, policy);
+        case K::Hide:   // the PreferHide turn, its own targeting
+            policy.prefer_ranged = true;
+            policy.priority      = NpcTargetPriority::LowestHp;
+            policy.conceal       = true;
+            return runWeaponTurn(bm, agent_idx, policy);
+        case K::AoE:     return runAoeTurn(bm, agent_idx);
+        case K::Control: return runCasterTurn(bm, agent_idx, CasterIntent::Control);
+        case K::Heal:    return runCasterTurn(bm, agent_idx, CasterIntent::Heal);
+        case K::Support: return runCasterTurn(bm, agent_idx, CasterIntent::Support);
+        case K::Dash:
+        case K::Disengage:
+        case K::Dodge:
+        case K::Flee:    return runMoveMacroTurn(bm, agent_idx, action);
+    }
+    return FlowStatus::Completed;
+}
+
+NpcAoePlan CombatEngine::npcForcedAoePlan(const BattleMap& bm, int agent_idx, const NpcMacroAction& a) const
+{
+    NpcAoePlan plan;
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n || a.spell_idx < 0) return plan;
+    const auto castable = availableCastableSpells(bm, agent_idx);
+    if (std::find(castable.begin(), castable.end(), a.spell_idx) == castable.end()) return plan;
+
+    const PlacedAgent& me = agents[static_cast<std::size_t>(agent_idx)];
+    const Spell& sp = me.spells[static_cast<std::size_t>(a.spell_idx)];
+    // Aim at the creature the candidate aimed at, where it stands now; the stored cell if it has none.
+    const Cell aim = (a.target_agent >= 0 && a.target_agent < n)
+                   ? agents[static_cast<std::size_t>(a.target_agent)].origin : a.target_cell;
+    // The planner's own gates: a placed area is range-gated to its aim; every area needs LoS to it.
+    if (npcIsPlacedArea(sp) && chebyshevCells(aim, me.origin) * 5 > effectiveSpellRange(bm, agent_idx, sp))
+        return plan;
+    if (!bm.hasLineOfSight(me.origin, me.agent ? me.agent->getSize() : 1, aim, 1)) return plan;
+    const int net = npcAreaNetEnemies(bm, sp, agent_idx, aim);
+    if (net <= 0) return plan;
+    plan.spell_idx   = a.spell_idx;
+    plan.aim         = aim;
+    plan.net_enemies = net;
+    return plan;
+}
+
+NpcCastPlan CombatEngine::npcForcedCastPlan(const BattleMap& bm, int agent_idx, const NpcMacroAction& a) const
+{
+    NpcCastPlan plan;
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n || a.spell_idx < 0 || a.target_agent < 0 || a.target_agent >= n)
+        return plan;
+    // The spell went (a slot spent mid-park, a Counterspell): empty plan → the weapon fallback.
+    const auto castable = availableCastableSpells(bm, agent_idx);
+    if (std::find(castable.begin(), castable.end(), a.spell_idx) == castable.end()) return plan;
+
+    using K = NpcMacroKind;
+    const PlacedAgent& me = agents[static_cast<std::size_t>(agent_idx)];
+    const Spell& sp  = me.spells[static_cast<std::size_t>(a.spell_idx)];
+    const int    ms  = me.agent ? me.agent->getSize() : 1;
+    const int    t   = a.target_agent;
+    const auto   at  = [&](int j) -> const PlacedAgent& { return agents[static_cast<std::size_t>(j)]; };
+
+    // Still a target this kind of cast wants: the candidate list's legality test, re-run now.
+    const auto wanted = [&](int j) -> bool {
+        if (at(j).removed_from_play || at(j).on_deck) return false;
+        const bool friendly = j == agent_idx || areAllies(bm, agent_idx, j);
+        switch (a.kind) {
+            case K::Control: return npcAttackable(bm, agent_idx, j);
+            case K::Heal: {
+                if (!friendly || getAgentConditions(bm, j).dead) return false;
+                const Agent::Stats s = bm.getAgentStats(j);
+                return s.hp_max > 0 && s.hp_cur < s.hp_max;
+            }
+            case K::Support: {
+                if (!friendly) return false;
+                const auto c = bm.getAgentConditions(j);
+                if (c.dead || c.unconscious || bm.getAgentStats(j).hp_cur <= 0) return false;
+                return !npcHasBuff(activeAgentConditions(), j, sp);
+            }
+            default: return false;
+        }
+    };
+    if (!wanted(t)) return plan;
+
+    const int rangeFt = effectiveSpellRange(bm, agent_idx, sp);
+    const auto inRange = [&](int j) {
+        const int js = at(j).agent ? at(j).agent->getSize() : 1;
+        return chebyshevCells(at(j).origin, me.origin) * 5 <= rangeFt &&
+               bm.hasLineOfSight(me.origin, ms, at(j).origin, js);
+    };
+
+    if (npcIsAreaSpell(sp)) {   // area control: aimed at the target's cell, as npcPlanControlCast aims
+        const Cell aim = at(t).origin;
+        const bool reach = (!npcIsPlacedArea(sp) || chebyshevCells(aim, me.origin) * 5 <= rangeFt) &&
+                           bm.hasLineOfSight(me.origin, ms, aim, 1);
+        const int  net = reach ? npcAreaNetEnemies(bm, sp, agent_idx, aim) : 0;
+        if (net > 0) {
+            plan.spell_idx = a.spell_idx;
+            plan.aim       = aim;
+            plan.score     = net;
+            return plan;
+        }
+        plan.approach_target = t;
+        return plan;
+    }
+    if (!inRange(t)) {          // castable, but out of range or sight: close on the target first
+        plan.approach_target = t;
+        return plan;
+    }
+    plan.spell_idx      = a.spell_idx;
+    plan.aim            = at(t).origin;
+    plan.target_indices = {t};
+    plan.score          = 1;
+    // A Multiple heal or buff fills its other targets with wanted allies in range: heals downed first, then
+    // by missing HP (npcPlanHealCast's order); buffs by index.
+    if (sp.geometry == Spell::Multiple && (a.kind == K::Heal || a.kind == K::Support)) {
+        std::vector<int> extra;
+        for (int j = 0; j < n; ++j)
+            if (j != t && wanted(j) && inRange(j)) extra.push_back(j);
+        if (a.kind == K::Heal)
+            std::stable_sort(extra.begin(), extra.end(), [&](int x, int y) {
+                const Agent::Stats sx = bm.getAgentStats(x), sy = bm.getAgentStats(y);
+                const bool dx = sx.hp_cur <= 0, dy = sy.hp_cur <= 0;
+                if (dx != dy) return dx;
+                return sx.hp_max - std::max(0, sx.hp_cur) > sy.hp_max - std::max(0, sy.hp_cur);
+            });
+        const std::size_t cap = static_cast<std::size_t>(std::max(1, sp.num_targets));
+        for (int j : extra) {
+            if (plan.target_indices.size() >= cap) break;
+            plan.target_indices.push_back(j);
+        }
+        plan.score = static_cast<double>(plan.target_indices.size());
+    }
+    return plan;
+}
+
+FlowStatus CombatEngine::runMoveMacroTurn(BattleMap& bm, int agent_idx, const NpcMacroAction& a)
+{
+    NpcTurnState& st = npc_turn_;
+    // Resume after a parked OA on the way: the move already resolved, and these turns end with it.
+    if (st.active && st.agent_idx == agent_idx && st.flee_move_launched) {
+        st = NpcTurnState{};
+        return FlowStatus::Completed;
+    }
+    // Fresh turn: seed the agent's own movement budget, as runWeaponTurn / runFleeTurn do.
+    st = NpcTurnState{};
+    st.active    = true;
+    st.agent_idx = agent_idx;
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    Agent& me = *agents[static_cast<std::size_t>(agent_idx)].agent;
+    {
+        const Agent::Stats s = bm.getAgentStats(agent_idx);
+        me.initMovement(s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+    }
+    const std::string name = agentName(bm, agent_idx);
+    using K = NpcMacroKind;
+
+    if (a.kind == K::Dodge) {
+        me.dodge();
+        log_("NPC {} takes the Dodge action", name);
+        recordNpcAnnounce(agent_idx, -1, std::format("{} dodges!", name));
+        st = NpcTurnState{};
+        return FlowStatus::Completed;
+    }
+
+    const MovementType mt = npcMovementType(bm, agent_idx);
+    if (a.kind == K::Dash || a.kind == K::Flee) bm.applyDash(agent_idx);   // the action doubles the budget
+    if (a.kind == K::Disengage) me.disengage();                            // no opportunity attacks this turn
+
+    const Cell origin = agents[static_cast<std::size_t>(agent_idx)].origin;
+    Cell dest = origin;
+    if (a.kind == K::Dash) {
+        if (a.target_agent >= 0 && a.target_agent < n) {
+            (void)npcFindApproachCell(bm, agent_idx, a.target_agent, dest);
+            log_("NPC {} dashes toward {}", name, agentName(bm, a.target_agent));
+            recordNpcAnnounce(agent_idx, a.target_agent,
+                std::format("{} dashes toward {}!", name, agentName(bm, a.target_agent)));
+        }
+    } else {
+        // Disengage / Flee: the reachable cell farthest from the nearest attackable enemy, ties → fewest
+        // steps (staying put wins a tie, so the agent only moves for a real gain).
+        const int ms = me.getSize();
+        const auto safety = [&](Cell c) {
+            int mn = std::numeric_limits<int>::max();
+            for (int j = 0; j < n; ++j) {
+                if (!npcAttackable(bm, agent_idx, j)) continue;
+                const PlacedAgent& e = agents[static_cast<std::size_t>(j)];
+                mn = std::min(mn, footprintDistance(c, ms, e.origin, e.agent->getSize()));
+            }
+            return mn;
+        };
+        const int budget = mt == MovementType::Fly  ? me.getFlyRemaining()
+                         : mt == MovementType::Swim ? me.getSwimRemaining()
+                                                    : me.getWalkRemaining();
+        int bestSafety = safety(origin), bestSteps = 0;
+        for (const Cell& c : bm.reachableCells(origin, ms, budget, mt, agent_idx)) {
+            const int sf = safety(c), steps = chebyshevCells(c, origin);
+            if (sf > bestSafety || (sf == bestSafety && steps < bestSteps)) {
+                bestSafety = sf; bestSteps = steps; dest = c;
+            }
+        }
+        const bool flee = a.kind == K::Flee;
+        log_("NPC {} {}", name, flee ? "dashes away from its enemies" : "disengages");
+        recordNpcAnnounce(agent_idx, -1, std::format("{} {}!", name, flee ? "flees" : "disengages"));
+    }
+
+    if (dest != origin) {
+        st.flee_move_launched = true;   // set BEFORE beginMove so a park→resume ends the turn (no re-move)
+        if (beginMove(bm, agent_idx, dest, mt) == FlowStatus::AwaitingDecision)
+            return FlowStatus::AwaitingDecision;
+    }
+    st = NpcTurnState{};
+    return FlowStatus::Completed;
+}
+
+NpcMacroAction CombatEngine::npcHeuristicMacroAction(const BattleMap& bm, int agent_idx) const
+{
+    using K = NpcMacroKind;
+    using S = NpcAutomationStrategy;
+    NpcMacroAction want;   // what Level 4 does, in macro terms; legal stays false until a candidate matches
+    const int nearest = npcSelectTarget(bm, agent_idx);
+    want.target_agent = nearest;
+
+    // Mirror dispatchNpcTurn: the Level 4 strategy, with Bucket D's recharge AoE taking over the plain ones.
+    S s = resolveHeuristicStrategy(bm, agent_idx, 4);
+    if (s != S::PreferAOE && s != S::PreferHide && s != S::PreferControl && s != S::PreferHeal &&
+        s != S::PreferSupport && npcHasAvailableRechargeAoe(bm, agent_idx))
+        s = S::PreferAOE;
+
+    // A caster turn: the planned cast, or the approach toward its target, or the weapon fallback.
+    const auto cast = [&](K k, const NpcCastPlan& p) {
+        if (p.spell_idx >= 0) {
+            want.kind         = k;
+            want.spell_idx    = p.spell_idx;
+            want.target_cell  = p.aim;
+            want.target_agent = p.target_indices.empty() ? -1 : p.target_indices.front();
+        } else if (p.approach_target >= 0) {
+            want.kind         = k;
+            want.target_agent = p.approach_target;
+        }
+    };
+    switch (s) {
+        case S::PreferTargetCaster:
+            want.target_agent = npcSelectTarget(bm, agent_idx, true);
+            break;
+        case S::PreferRange:
+            want.kind         = K::Kite;
+            want.target_agent = npcSelectTarget(bm, agent_idx, false, NpcTargetPriority::LowestHp);
+            break;
+        case S::PreferHide:
+            want.kind         = K::Hide;
+            want.target_agent = -1;
+            break;
+        case S::PreferAOE: {
+            const NpcAoePlan p = npcPlanAoeCast(bm, agent_idx);
+            if (p.spell_idx >= 0) {
+                want.kind         = K::AoE;
+                want.spell_idx    = p.spell_idx;
+                want.target_cell  = p.aim;
+                want.target_agent = -1;
+            } else if (npcHasCastableAoeSpell(bm, agent_idx)) {
+                want.kind = K::AoE;   // approach the nearest enemy, then blast
+            }
+            break;
+        }
+        case S::PreferControl: cast(K::Control, npcPlanControlCast(bm, agent_idx)); break;
+        case S::PreferHeal:    cast(K::Heal,    npcPlanHealCast(bm, agent_idx));    break;
+        case S::PreferSupport: cast(K::Support, npcPlanSupportCast(bm, agent_idx)); break;
+        default: break;        // Simple: Attack the nearest
+    }
+
+    // The best-matching candidate of that kind: spell (4) + target or aim cell (2) + legal (1).
+    const std::vector<NpcMacroAction> cands = availableMacroActions(bm, agent_idx);
+    int best = -1, bestScore = -1;
+    for (int i = 0; i < static_cast<int>(cands.size()); ++i) {
+        const NpcMacroAction& c = cands[static_cast<std::size_t>(i)];
+        if (c.kind != want.kind) continue;
+        int score = c.legal ? 1 : 0;
+        if (want.spell_idx >= 0 && c.spell_idx == want.spell_idx) score += 4;
+        if ((want.target_agent >= 0 && c.target_agent == want.target_agent) ||
+            (want.target_agent < 0 && want.target_cell.col >= 0 && c.target_cell == want.target_cell))
+            score += 2;
+        if (score > bestScore) { bestScore = score; best = i; }
+    }
+    if (best >= 0) return cands[static_cast<std::size_t>(best)];
+    return want;
+}
+
+std::string CombatEngine::describeMacroAction(const BattleMap& bm, int agent_idx, const NpcMacroAction& a) const
+{
+    std::string out = npcMacroKindName(a.kind);
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx >= 0 && agent_idx < n && a.spell_idx >= 0) {
+        const auto& spells = agents[static_cast<std::size_t>(agent_idx)].spells;
+        if (static_cast<std::size_t>(a.spell_idx) < spells.size())
+            out += ": " + spells[static_cast<std::size_t>(a.spell_idx)].name;
+    }
+    if (a.target_agent >= 0 && a.target_agent < n) out += " → " + agentName(bm, a.target_agent);
+    return out;
+}
+
+// The entity-token fields, in order. Distances are in cells (5 ft), divided by the scale noted.
+const std::vector<std::string>& CombatEngine::entityObservationFields()
+{
+    static const std::vector<std::string> f = {
+        "is_self", "is_ally", "is_enemy", "perceived",
+        "arch_melee", "arch_ranged", "arch_blaster", "arch_controller", "arch_healer_support",
+        "hp_frac", "temp_hp_frac", "hp_max",                      // hp_max / 100
+        "ac", "speed_walk", "speed_fly", "size",                  // AC / 30, speeds ft / 60, size / 4
+        "melee_reach", "ranged_range", "spell_range", "attacks",  // reach ft / 30, ranges ft / 120, / 6
+        "prone", "blinded", "charmed", "frightened", "grappled", "restrained", "incapacitated",
+        "paralyzed", "stunned", "poisoned", "unconscious", "invisible", "hidden", "dodging", "down",
+        "concentrating",
+        "castable_cantrips", "castable_t1", "castable_t2", "castable_t3", "castable_t4",   // / 5
+        "slots_t1", "slots_t2", "slots_t3", "slots_t4",           // slots left, levels 1-2/3-4/5-6/7-9, / 6
+        "reaction_available", "recharge_ready", "is_caster",
+        "dx", "dy", "distance",                                    // relative to the actor, cells / 20
+        "los", "exposure", "threatens_actor", "actor_threatens"};
+    return f;
+}
+
+const std::vector<std::string>& CombatEngine::mapObservationFields()
+{
+    static const std::vector<std::string> f = {
+        "wall_frac_r2", "wall_frac_r5",   // blocked or off-map cells within 2 / 5 cells of the actor
+        "narrow_frac_r3",                 // open cells within 3 with at most 2 open orthogonal neighbours
+        "reach_frac",                     // cells the actor can reach on a full move / the move's square
+        "enemies_within_6", "allies_within_6", "enemies_total", "allies_total"};   // counts / 8
+    return f;
+}
+
+NpcEntityObservation CombatEngine::getEntityObservation(const BattleMap& bm, int agent_idx) const
+{
+    NpcEntityObservation obs;
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return obs;
+    obs.actor_idx = agent_idx;
+    const auto at   = [&](int j) -> const PlacedAgent& { return agents[static_cast<std::size_t>(j)]; };
+    const auto size = [&](int j) { return at(j).agent ? at(j).agent->getSize() : 1; };
+    const auto los  = [&](int a, int b) {
+        return bm.hasLineOfSight(at(a).origin, size(a), at(b).origin, size(b));
+    };
+    const auto inPlay = [&](int j) {
+        return !at(j).removed_from_play && !at(j).on_deck && !getAgentConditions(bm, j).dead;
+    };
+    const auto friendly = [&](int a, int b) { return a == b || areAllies(bm, a, b); };
+
+    // Per-creature reach summary, shared by the token and the threat tests.
+    struct Reach { int melee_ft = 0; int ranged_ft = 0; int spell_ft = 0; };
+    std::vector<Reach> reach(static_cast<std::size_t>(n));
+    std::vector<std::vector<int>> castable(static_cast<std::size_t>(n));
+    for (int j = 0; j < n; ++j) {
+        if (!inPlay(j)) continue;
+        Reach& r = reach[static_cast<std::size_t>(j)];
+        for (const Weapon& w : bm.getAgentWeapons(j)) {
+            if (w.is_shield || w.name.empty()) continue;
+            if (w.type == WeaponType::Melee) r.melee_ft  = std::max(r.melee_ft, w.reach_ft);
+            else                             r.ranged_ft = std::max(r.ranged_ft, w.normal_range_ft);
+        }
+        castable[static_cast<std::size_t>(j)] = availableCastableSpells(bm, j);
+        for (int si : castable[static_cast<std::size_t>(j)])
+            r.spell_ft = std::max(r.spell_ft,
+                                  effectiveSpellRange(bm, j, at(j).spells[static_cast<std::size_t>(si)]));
+    }
+    // Can `a` bring an attack to bear on `b` on its next turn: melee reach plus a full move, or a ranged
+    // weapon / castable spell whose range covers the distance with line of sight.
+    const auto threatens = [&](int a, int b) -> bool {
+        const auto c = bm.getAgentConditions(a);
+        if (c.incapacitated || c.paralyzed || c.stunned || c.unconscious || bm.getAgentStats(a).hp_cur <= 0)
+            return false;
+        const Reach& r = reach[static_cast<std::size_t>(a)];
+        const Agent::Stats s = bm.getAgentStats(a);
+        const int d = footprintDistance(at(a).origin, size(a), at(b).origin, size(b));
+        if (r.melee_ft > 0 && d <= std::max(1, r.melee_ft / 5) + std::max(s.speed_walk, s.speed_fly) / 5)
+            return true;
+        const int rangedCells = std::max(r.ranged_ft, r.spell_ft) / 5;
+        return rangedCells > 0 && d <= rangedCells && los(a, b);
+    };
+
+    const Cell myOrigin = at(agent_idx).origin;
+    const auto token = [&](int j) {
+        std::vector<float> t;
+        t.reserve(entityObservationFields().size());
+        const auto f  = [&](double v) { t.push_back(static_cast<float>(v)); };
+        const auto fb = [&](bool v) { t.push_back(v ? 1.0f : 0.0f); };
+        const Agent::Stats s = bm.getAgentStats(j);
+        const auto c = bm.getAgentConditions(j);
+        const bool ally = friendly(agent_idx, j);
+        const bool perceived = ally || (!c.hidden && !c.invisible &&
+                                        !darknessConceals(bm, agent_idx, myOrigin, j));
+        fb(j == agent_idx); fb(ally); fb(!ally); fb(perceived);
+        const NpcArchetype arch = npcClassifyArchetype(bm, j);
+        for (int k = 0; k < kNpcArchetypeCount; ++k) fb(static_cast<int>(arch) == k);
+        const double hpMax = std::max(1, s.hp_max);
+        f(std::clamp(s.hp_cur / hpMax, 0.0, 1.0)); f(s.temp_hp / hpMax); f(s.hp_max / 100.0);
+        f(calculateAC(bm, j) / 30.0); f(s.speed_walk / 60.0); f(s.speed_fly / 60.0); f(size(j) / 4.0);
+        const Reach& r = reach[static_cast<std::size_t>(j)];
+        int attacks = 0;
+        for (const auto& seg : s.multiattack) attacks += std::max(0, seg.second);
+        f(r.melee_ft / 30.0); f(r.ranged_ft / 120.0); f(r.spell_ft / 120.0);
+        f(std::max(attacks, std::max(1, s.num_attacks)) / 6.0);
+        fb(c.prone); fb(c.blinded); fb(c.charmed); fb(c.frightened); fb(c.grappled); fb(c.restrained);
+        fb(c.incapacitated); fb(c.paralyzed); fb(c.stunned); fb(c.poisoned); fb(c.unconscious);
+        fb(c.invisible); fb(c.hidden); fb(c.dodging); fb(s.hp_cur <= 0);
+        fb(c.concentrating);
+        std::array<int, 5> byTier{};   // cantrips, then levels 1-2 / 3-4 / 5-6 / 7-9
+        for (int si : castable[static_cast<std::size_t>(j)]) {
+            const int lvl = at(j).spells[static_cast<std::size_t>(si)].level;
+            byTier[static_cast<std::size_t>(lvl <= 0 ? 0 : std::min(4, (lvl + 1) / 2))] += 1;
+        }
+        for (int k = 0; k < 5; ++k) f(byTier[static_cast<std::size_t>(k)] / 5.0);
+        std::array<int, 4> slots{};
+        for (int lvl = 1; lvl <= 9; ++lvl)
+            slots[static_cast<std::size_t>(std::min(3, (lvl - 1) / 2))] +=
+                s.spell_slots_remaining[static_cast<std::size_t>(lvl - 1)];
+        for (int k = 0; k < 4; ++k) f(slots[static_cast<std::size_t>(k)] / 6.0);
+        fb(!c.reaction_used && !c.reactions_denied);
+        fb(npcHasAvailableRechargeAoe(bm, j));
+        fb(npcIsCaster(bm, j));
+        const Cell o = at(j).origin;
+        f((o.col - myOrigin.col) / 20.0); f((o.row - myOrigin.row) / 20.0);
+        f(footprintDistance(myOrigin, size(agent_idx), o, size(j)) / 20.0);
+        fb(j == agent_idx || los(agent_idx, j));
+        // Exposure: the share of j's standing enemies that can see it (1 = in the open, 0 = in full cover).
+        int foes = 0, seeing = 0;
+        for (int k = 0; k < n; ++k) {
+            if (k == j || !inPlay(k) || friendly(j, k)) continue;
+            const auto kc = bm.getAgentConditions(k);
+            if (kc.incapacitated || kc.unconscious || bm.getAgentStats(k).hp_cur <= 0) continue;
+            ++foes;
+            if (los(k, j)) ++seeing;
+        }
+        f(foes > 0 ? static_cast<double>(seeing) / foes : 0.0);
+        fb(j != agent_idx && !ally && threatens(j, agent_idx));
+        fb(j != agent_idx && !ally && threatens(agent_idx, j));
+        return t;
+    };
+
+    obs.agent_indices.push_back(agent_idx);
+    for (int j = 0; j < n; ++j)
+        if (j != agent_idx && inPlay(j)) obs.agent_indices.push_back(j);
+    for (int j : obs.agent_indices) obs.creature_tokens.push_back(token(j));
+
+    // The map token: local wall density, corridors and room to move around the actor.
+    const int  ms   = size(agent_idx);
+    const auto open = [&](int col, int row) {
+        if (col < 0 || row < 0 || col >= bm.gridCols() || row >= bm.gridRows()) return false;
+        return !bm.isBlocked(Cell{col, row}, 1, MovementType::Walk);
+    };
+    const auto wallFrac = [&](int r) {
+        int total = 0, walls = 0;
+        for (int dr = -r; dr <= r; ++dr)
+            for (int dc = -r; dc <= r; ++dc) {
+                ++total;
+                if (!open(myOrigin.col + dc, myOrigin.row + dr)) ++walls;
+            }
+        return static_cast<double>(walls) / total;
+    };
+    int openCells = 0, narrow = 0;
+    for (int dr = -3; dr <= 3; ++dr)
+        for (int dc = -3; dc <= 3; ++dc) {
+            const int col = myOrigin.col + dc, row = myOrigin.row + dr;
+            if (!open(col, row)) continue;
+            ++openCells;
+            const int nb = open(col + 1, row) + open(col - 1, row) + open(col, row + 1) + open(col, row - 1);
+            if (nb <= 2) ++narrow;
+        }
+    const Agent::Stats me = bm.getAgentStats(agent_idx);
+    const MovementType mt = npcMovementType(bm, agent_idx);
+    const int speed = mt == MovementType::Fly ? me.speed_fly : mt == MovementType::Swim ? me.speed_swim
+                                                                                       : me.speed_walk;
+    const double square = std::pow(2.0 * (speed / 5) + 1.0, 2.0);
+    const double reachable = speed > 0
+        ? static_cast<double>(bm.reachableCells(myOrigin, ms, speed, mt, agent_idx).size()) : 1.0;
+    int enemiesNear = 0, alliesNear = 0, enemies = 0, allies = 0;
+    for (int j = 0; j < n; ++j) {
+        if (j == agent_idx || !inPlay(j) || bm.getAgentStats(j).hp_cur <= 0) continue;
+        const bool near = footprintDistance(myOrigin, ms, at(j).origin, size(j)) <= 6;
+        if (friendly(agent_idx, j)) { ++allies;  alliesNear  += near; }
+        else                        { ++enemies; enemiesNear += near; }
+    }
+    obs.map_token = {static_cast<float>(wallFrac(2)), static_cast<float>(wallFrac(5)),
+                     static_cast<float>(openCells > 0 ? static_cast<double>(narrow) / openCells : 0.0),
+                     static_cast<float>(std::min(1.0, reachable / square)),
+                     static_cast<float>(enemiesNear / 8.0), static_cast<float>(alliesNear / 8.0),
+                     static_cast<float>(enemies / 8.0), static_cast<float>(allies / 8.0)};
+    return obs;
 }
 
 } // namespace rpg

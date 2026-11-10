@@ -13,8 +13,9 @@ Step 0 Dockerfile edit made; it awaits the user's image rebuild + verification.
 Step 1 (trace recorder) committed 4fcba0b; Step 2 (Playback) committed a386c7a (227/0),
 live-checked by the user 2026-11-09; Step 3 (arena) committed 2026-11-09 (228/0), with the
 party makeup in arena traces and on the Playback HUD. Open: the draw rate and the
-generated-party source (Step 3b). Step 4 (archetypes + fallback chain) implemented
-2026-11-09 (229/0), uncommitted.
+generated-party source (Step 3b). Step 4 (archetypes + fallback chain) committed cdac471
+(229/0). Step 5 (macro-actions, policy seam, entity observation) implemented 2026-11-09
+(230/0), uncommitted, awaiting the user's check of the choices flagged in its as-built notes.
 
 ---
 
@@ -305,6 +306,57 @@ the 2024 encounter-difficulty table.
   trees implement it in Step 8, and Python can drive it from the arena.
 - Every macro-action choice goes into the trace and the Playback HUD.
 - Determinism golden unchanged.
+- **Implemented 2026-11-09 (230/0, uncommitted).** As built, in `combat_turn.cpp` (+ types in
+  `combat_types.hpp`, the interface in `combat.hpp`, bindings) and `tests/test_npc_macro_actions.py`:
+  - **Kinds.** `NpcMacroKind` has 11 values: Attack, Kite, AoE, Control, Heal, Support, Hide, Dash,
+    Disengage, Dodge, Flee. `NpcMacroAction` is `{kind, target_agent, target_cell, spell_idx, legal}`.
+  - **Candidates.** `available_macro_actions` lists every candidate in a fixed order (kind, then
+    spell, then target), each flagged `legal`; `macro_action_mask` gives one bool per kind. Attack,
+    Kite and Dash get one candidate per enemy in play. AoE and Control get one per castable spell ×
+    enemy (an area must net at least one enemy). Heal and Support get one per castable spell ×
+    self/ally. Hide, Disengage, Dodge and Flee get one each. An actor that can't act has nothing legal.
+  - **Execution.** `execute_macro_action` routes into the existing executors. Attack is the Simple
+    turn and Kite the PreferRange turn, each with the target forced (`NpcStrategyPolicy::forced_target`).
+    Hide is the PreferHide turn with its own targeting. AoE, Control, Heal and Support run
+    `runAoeTurn` / `runCasterTurn` on a forced plan (`npcForcedAoePlan` / `npcForcedCastPlan`). Dash,
+    Disengage, Dodge and Flee run a small new move-only executor. Park/resume is unchanged: a
+    parked Policy turn stamps its macro on `NpcTurnState` (`has_macro`, `macro`, serialized), and
+    the resume runs that macro again without asking the policy.
+  - **Policy seam.** A C++ `NpcPolicy::rank(engine, bm, agent, archetype, actions) → indices` (Step 8's
+    trees implement it). `set_npc_policy(callable)` wraps a Python callable. The new
+    `NpcAutomationStrategy::Policy` (9) is used at Levels 5/6 once a policy is installed: the first
+    legal index is rung 1 if it is the top one, rung 2 otherwise. Nothing legal → the Step 4 chain
+    from rung 3. A policy replaces the Step 4 stand-in models. At Level 0 the Policy strategy field
+    asks the policy too, and with none it fights Simple. An exception raised by the policy reaches
+    the caller of `run_npc_turn` / `npc_decide`. `Policy` is not in the GUI's strategy menu.
+  - **Recorded.** `NpcDecision` gains `has_macro`, `macro` and `macro_text`. The trace's `decision` gains
+    `macro: {kind, target, cell, spell, text}`. The Playback HUD shows
+    `· Melee: Attack → Goblin (rung 1 tree)`.
+  - **Labels for Step 6.** `npc_heuristic_macro_action` gives Level 4's choice as the best-matching
+    candidate.
+  - **Observation.** `get_entity_observation` returns `agent_indices`, `creature_tokens` (55 floats each;
+    names from `entity_observation_fields()`) and an 8-float `map_token` (`map_observation_fields()`).
+  - **Arena.** `--npc-policy l4-macro` installs a Python policy that picks Level 4's own label, and
+    `random-macro` installs a seeded random legal pick. Both run at Level 5.
+  - **Parity check** (300 episodes each, same scenarios + seeds): `level4` NPCs win 26.0%, `l4-macro`
+    25.7%, and 252/300 paired fights end the same. `random-macro` wins 7.3%. The macro path
+    reproduces Level 4, and the choice of macro-action matters.
+  - **For the user to check:**
+    1. *A forced target is never swapped.* An Attack/Kite on an enemy it can't reach this turn Dashes
+       toward it. Level 4 instead retargets to whoever it can reach. This is most of the 48 paired
+       divergences above.
+    2. *Casts are legal out of range.* The executor closes the distance first, as Level 4 does. Heal
+       is legal on any ally below max HP; Level 4's 50% threshold is its own judgment, not a rule.
+    3. *Tokens cover every creature in play, with a `perceived` flag.* The plan said "one token per
+       visible creature". Dropping hidden/invisible enemies would leave Attack candidates with no
+       token to point at, so they are flagged instead. The dead are left out.
+    4. *"Cover" is `exposure`.* The engine has no half/¾-cover model, so a token carries the share of
+       its creature's standing enemies that have line of sight to it.
+    5. *One map token*, not several: wall density at radius 2 and 5, a corridor measure, the share of a
+       full move's square that is reachable, and nearby/total enemy and ally counts.
+    6. *Hide is one candidate* with PreferHide's own targeting, not one per enemy.
+  - **Not built:** the Playback HUD shows a macro only for Policy turns; it shows no Level 4 label
+    on heuristic turns. Step 6's dataset writer calls `npc_heuristic_macro_action` itself.
 
 ### Step 6 — Imitation baseline (behavior cloning of Level 4)
 - `gui/ml/` (new): the dataset writer, an entity transformer (about 4 layers, d=128,

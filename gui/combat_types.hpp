@@ -794,6 +794,33 @@ struct InFlightTurn {
     bool             window_built{false};  // reactor list computed once
 };
 
+// Macro-action kinds (NPC_LEARNING_PLAN.md D3 / Step 5): the Level 4 behaviours as discrete choices a
+// policy picks between. The policy picks WHAT (kind + target); the existing executors do HOW.
+//   Attack    — close on target_agent and swing (the Simple weapon turn, target forced).
+//   Kite      — best ranged weapon at target_agent, keeping distance (the PreferRange turn, target forced).
+//   AoE       — cast area blast spell_idx aimed at target_cell (target_agent's cell); approach first if needed.
+//   Control   — cast control spell_idx at target_agent (single) or aimed at its cell (area).
+//   Heal      — cast HP-heal spell_idx on ally target_agent (a Multiple heal fills up with other wounded allies).
+//   Support   — cast buff spell_idx on ally target_agent (a Multiple buff fills up with other unbuffed allies).
+//   Hide      — the PreferHide ambusher turn (its own targeting).
+//   Dash      — Dash as the action and close on target_agent; no attack.
+//   Disengage — Disengage as the action and move as far from the enemies as a normal move allows.
+//   Dodge     — Dodge as the action and hold position.
+//   Flee      — Dash as the action and run as far from the enemies as possible (opportunity attacks apply).
+enum class NpcMacroKind { Attack = 0, Kite, AoE, Control, Heal, Support, Hide, Dash, Disengage, Dodge, Flee };
+inline constexpr int kNpcMacroKindCount = 11;
+
+// One candidate macro-action. Fields a kind doesn't use stay -1. `legal`: the action has work to do for
+// this agent right now (a policy's choice is only executed when legal; the list keeps illegal candidates
+// so a fixed ranking can skip past them, which is fallback rung 2).
+struct NpcMacroAction {
+    NpcMacroKind kind{NpcMacroKind::Attack};
+    int  target_agent{-1};
+    Cell target_cell{-1, -1};
+    int  spell_idx{-1};
+    bool legal{false};
+};
+
 // Resumable state for one in-flight NPC-automation turn (NPC_AUTOMATION_PLAN.md Step 3). runNpcTurn
 // can park mid-turn whenever an action it attempts (a move that provokes an OA, an attack that opens a
 // defender/OnD20 window) suspends for a human reaction. The GUI driver resolves the window via
@@ -838,6 +865,10 @@ struct NpcTurnState {
     // after the game state changed mid-park could route the resume into the wrong executor and re-cast.
     // -1 = not stamped (fresh turn → resolve normally). Holds a NpcAutomationStrategy as int.
     int resolved_strategy{-1};
+    // The macro-action a Policy turn launched (NPC_LEARNING_PLAN.md Step 5), stamped with resolved_strategy
+    // so a park→resume re-enters the same macro. has_macro false = not a Policy turn.
+    bool           has_macro{false};
+    NpcMacroAction macro{};
 };
 
 // One entry in the NPC-turn visual event stream. While runNpcTurn drives an automated turn the
@@ -897,13 +928,26 @@ enum class NpcFallbackRung { Heuristic = 0, TreeTop, TreeRanked, Archetype, Leve
 
 // The record of one strategy resolution: who, at which difficulty level, classified as what, which rung
 // decided, and the strategy it decided. runNpcTurn keeps the latest (CombatEngine::lastNpcDecision) so the
-// trace and the Playback HUD can show it.
+// trace and the Playback HUD can show it. A Policy decision also carries the macro-action it chose.
 struct NpcDecision {
     int                   agent_idx{-1};
     int                   level{0};      // the agent's difficulty level as set (before any clamp)
     NpcArchetype          archetype{NpcArchetype::Melee};
     NpcFallbackRung       rung{NpcFallbackRung::Heuristic};
     NpcAutomationStrategy strategy{};    // value-initialised = Simple (0)
+    bool                  has_macro{false};   // strategy == Policy: `macro` is the chosen macro-action
+    NpcMacroAction        macro{};
+    std::string           macro_text;         // "Control: Hold Person → Goblin" (trace / Playback HUD)
+};
+
+// One entity observation (NPC_LEARNING_PLAN.md D4 / Step 5): a fixed-width float token per creature the
+// actor can perceive (self first, then by agent index) plus one map-summary token. Field names and order:
+// CombatEngine::entityObservationFields() / mapObservationFields().
+struct NpcEntityObservation {
+    int actor_idx{-1};
+    std::vector<int>                agent_indices;     // creature_tokens[i] describes agent agent_indices[i]
+    std::vector<std::vector<float>> creature_tokens;
+    std::vector<float>              map_token;
 };
 
 // The behavioural knobs that distinguish one NPC strategy from another, fed to the single shared
@@ -915,6 +959,9 @@ struct NpcStrategyPolicy {
     bool kite               = false;   // position to MAXIMISE distance from enemies among in-range cells (Step 5)
     bool conceal            = false;   // after attacking, run the Conceal tail phase: hide/go-invisible each turn (Step 7)
     NpcTargetPriority priority = NpcTargetPriority::Nearest;
+    // A macro-action's chosen target (NPC_LEARNING_PLAN.md Step 5): the first pick is this agent, and an
+    // unreachable target is closed on (Dash) rather than swapped for a reachable one. -1 = the policy above.
+    int  forced_target      = -1;
 };
 
 // The chosen AoE cast for a PreferAOE turn (NPC_AUTOMATION_PLAN.md Step 6): which spell to cast and the

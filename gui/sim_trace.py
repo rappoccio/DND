@@ -7,7 +7,8 @@ the turn (``App._npc_anim_snapshot``'s data), the turn's visual events, its comb
 lines, and ``spawned``: the agent records of anything placed since the last record (summons,
 reinforcements), which continue the header's raw index basis. An automated turn also carries
 ``decision``: the archetype, the fallback rung and the strategy the engine resolved
-(``CombatEngine.last_npc_decision``, Step 4). A **footer** with the outcome closes the file;
+(``CombatEngine.last_npc_decision``, Step 4), plus ``macro`` when a policy chose a
+macro-action (Step 5). A **footer** with the outcome closes the file;
 a trace without one was cut short.
 
 Playback (Step 2) replays the recorded events over the recorded snapshots. It never
@@ -62,8 +63,14 @@ def decision_to_dict(d) -> dict | None:
     when the turn made no decision (``agent_idx`` -1: a corpse, Command Flee, Forcecage)."""
     if d is None or d.agent_idx < 0:
         return None
-    return {"level": int(d.level), "archetype": d.archetype.name, "rung": d.rung.name,
-            "strategy": d.strategy.name}
+    out = {"level": int(d.level), "archetype": d.archetype.name, "rung": d.rung.name,
+           "strategy": d.strategy.name}
+    if getattr(d, "has_macro", False):   # a Policy turn's macro-action (Step 5)
+        m = d.macro
+        out["macro"] = {"kind": m.kind.name, "target": int(m.target_agent),
+                        "cell": [int(m.target_cell.col), int(m.target_cell.row)],
+                        "spell": int(m.spell_idx), "text": str(d.macro_text)}
+    return out
 
 
 def event_to_dict(ev) -> dict:
