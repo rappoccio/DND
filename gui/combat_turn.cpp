@@ -243,6 +243,23 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (dirty) bm.setAgentConditions(i, c);
     }
 
+    // Beast Master: a Primal Companion vanishes when its Ranger dies (any death path — the death-save
+    // ones never reach onCreatureDied, so sweep at every turn start too).
+    vanishOrphanedCompanions(bm);
+    // The companion's turn follows the Ranger's. What the Ranger did with it sets this turn's
+    // loadout: Exceptional Training (L7) gives the Bonus Action Dash/Disengage/Hide only on a
+    // commanded turn, and Bestial Fury (L11) the second strike only when commanded.
+    if (const int owner = companionRanger(bm, agent_idx); owner >= 0) {
+        const bool commanded = bm.getAgentConditions(owner).companion_commanded;
+        const int  rl = bm.getAgentStats(owner).classLevel(CharacterClass::Ranger);
+        Agent::Stats cs = bm.getAgentStats(agent_idx);
+        cs.has_cunning_action = commanded && rl >= 7;
+        cs.num_attacks        = (commanded && rl >= 11) ? 2 : 1;
+        bm.setAgentStats(agent_idx, cs);
+        if (companionRestricted(bm, agent_idx))
+            log_("{} was not commanded — its only action this turn is Dodge", agent_name);
+    }
+
     const auto& agent = agents[static_cast<std::size_t>(agent_idx)];
     auto stats = agent.agent->getStats();
 
@@ -1556,6 +1573,61 @@ int CombatEngine::npcCommandFleeSource(int agent_idx) const noexcept
     return -1;
 }
 
+FlowStatus CombatEngine::runCompanionDodgeTurn(BattleMap& bm, int agent_idx)
+{
+    NpcTurnState& st = npc_turn_;
+    if (st.active && st.agent_idx == agent_idx && st.companion_dodge_done) {   // resume after an OA
+        st = NpcTurnState{};
+        return FlowStatus::Completed;
+    }
+    st = NpcTurnState{};
+    st.active    = true;
+    st.agent_idx = agent_idx;
+    st.companion_dodge_done = true;   // BEFORE the move: a park→resume just ends the turn
+    const Agent::Stats s = bm.getAgentStats(agent_idx);
+    bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
+        s.speed_walk, s.speed_fly, s.speed_swim, s.speed_burrow);
+
+    Agent::Conditions c = bm.getAgentConditions(agent_idx);
+    c.dodging = true;
+    bm.setAgentConditions(agent_idx, c);
+    log_("{} takes the Dodge action (not commanded)", agentName(bm, agent_idx));
+    recordNpcAnnounce(agent_idx, -1, std::format("{} dodges!", agentName(bm, agent_idx)));
+
+    // Close to striking distance of the nearest enemy (its natural weapon, slot 0), fewest steps; if no
+    // striking cell is reachable, the reachable cell nearest it.
+    const int t = npcSelectTarget(bm, agent_idx, false, NpcTargetPriority::Nearest);
+    if (t >= 0) {
+        const auto& pa = bm.placedAgents();
+        const MovementType mt = npcMovementType(bm, agent_idx);
+        const Agent* a  = pa[static_cast<std::size_t>(agent_idx)].agent.get();
+        const int budget = mt == MovementType::Fly  ? a->getFlyRemaining()
+                         : mt == MovementType::Swim ? a->getSwimRemaining() : a->getWalkRemaining();
+        const Cell me = pa[static_cast<std::size_t>(agent_idx)].origin;
+        const int  ms = a->getSize();
+        const Cell tg = pa[static_cast<std::size_t>(t)].origin;
+        const int  ts = pa[static_cast<std::size_t>(t)].agent->getSize();
+        const Weapon w = bm.getAgentWeapons(agent_idx).front();
+        Cell dest = me;
+        int  bestDist = footprintDistance(me, ms, tg, ts), bestSteps = 0;
+        bool striking = canAttack(w, bm, me, ms, tg, ts, false);
+        if (!striking) {
+            for (const Cell& cc : bm.reachableCells(me, ms, budget, mt, agent_idx)) {
+                const int  d     = footprintDistance(cc, ms, tg, ts);
+                const int  steps = std::max(std::abs(cc.col - me.col), std::abs(cc.row - me.row));
+                const bool hit   = d >= 1 && canAttack(w, bm, cc, ms, tg, ts, false);
+                if ((hit && !striking) || (hit == striking && (d < bestDist || (d == bestDist && steps < bestSteps)))) {
+                    striking = hit; bestDist = d; bestSteps = steps; dest = cc;
+                }
+            }
+        }
+        if (dest != me && beginMove(bm, agent_idx, dest, mt) == FlowStatus::AwaitingDecision)
+            return FlowStatus::AwaitingDecision;
+    }
+    st = NpcTurnState{};
+    return FlowStatus::Completed;
+}
+
 FlowStatus CombatEngine::runFleeTurn(BattleMap& bm, int agent_idx, int fear_idx)
 {
     const int n = static_cast<int>(bm.placedAgents().size());
@@ -1681,6 +1753,13 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
         }
     }
 
+    // Beast Master (D9): an uncommanded Primal Companion's only action is Dodge. It still moves.
+    if (companionRestricted(bm, agent_idx)) {
+        const FlowStatus fs = runCompanionDodgeTurn(bm, agent_idx);
+        if (fs == FlowStatus::Completed) ctx_.npc_recording_ = false;
+        return fs;
+    }
+
     // Load-or-resolve the strategy (NEVER the raw field — resolveStrategy is the single difficulty seam).
     // A parked turn REUSES the strategy that launched it: the dynamic Level-4 resolution probes live game
     // state, so re-resolving after that state changed mid-park (the heal landed, an enemy dropped) could
@@ -1716,6 +1795,10 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
         npc_turn_.has_macro         = hasMacro;
         npc_turn_.macro             = macro;
     }
+    // Beast Master (D9): a Bonus Action the turn left unspent commands the Primal Companion (Hunter's
+    // Mark, the only real competitor, was cast by the turn itself if it wanted it).
+    if (fs == FlowStatus::Completed && canCommandCompanion(bm, agent_idx))
+        (void)commandCompanion(bm, agent_idx);
     if (fs == FlowStatus::Completed) ctx_.npc_recording_ = false;   // turn over → stop the visual event stream
     return fs;
 }
@@ -2403,9 +2486,46 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         return beginAttack(bm, a) == FlowStatus::AwaitingDecision;
     };
 
+    // Beast Master (D9): resolve the Beast's Strikes the traded attack owes — right away, inside the Attack
+    // action. Each strike is spent before its roll, so a park→resume picks up where it stopped. Prefers the
+    // Ranger's own target, else the weakest enemy the companion can reach. Returns true iff a strike parked.
+    const auto beastStrikes = [&]() -> bool {
+        while (bm.getAgentConditions(agent_idx).beast_strikes_left > 0) {
+            const std::vector<int> bs = beastsStrikeTargets(bm, agent_idx);
+            if (bs.empty()) {
+                Agent::Conditions c = bm.getAgentConditions(agent_idx);
+                c.beast_strikes_left = 0;
+                bm.setAgentConditions(agent_idx, c);
+                break;
+            }
+            int pick = bs.front();
+            for (int j : bs)
+                if (bm.getAgentStats(j).hp_cur < bm.getAgentStats(pick).hp_cur) pick = j;
+            if (std::find(bs.begin(), bs.end(), st.target_idx) != bs.end()) pick = st.target_idx;
+            if (beastsStrike(bm, agent_idx, pick) == FlowStatus::AwaitingDecision) return true;
+        }
+        return false;
+    };
+    // Trade the Ranger's last attack only when it has nothing better: no Extra Attack yet, or a ranged
+    // Ranger whose companion is already in melee. Decided once a turn.
+    const auto tradeLastAttack = [&]() -> bool {
+        if (st.beast_strike_traded || st.attacks_remaining != 1 || !st.pending_segments.empty()) return false;
+        if (beastsStrikeTargets(bm, agent_idx).empty()) return false;
+        const auto ws = bm.getAgentWeapons(agent_idx);
+        const bool ranged = st.weapon_idx >= 0 && st.weapon_idx < static_cast<int>(ws.size()) &&
+                            ws[static_cast<std::size_t>(st.weapon_idx)].type == WeaponType::Ranged;
+        if (bm.getAgentStats(agent_idx).num_attacks > 1 && !ranged) return false;
+        st.beast_strike_traded = true;
+        if (!armBeastsStrike(bm, agent_idx)) return false;
+        --st.attacks_remaining;
+        return true;
+    };
+
     if (st.phase == NpcTurnState::Attacking) {
         while (true) {
             if (gloomAfterHit()) return FlowStatus::AwaitingDecision;
+            if (beastStrikes()) return FlowStatus::AwaitingDecision;
+            if (tradeLastAttack()) continue;
             if (st.attacks_remaining <= 0) {
                 if (st.pending_segments.empty()) break;   // recipe exhausted (or legacy single-weapon done)
                 // Advance to the next recipe segment; skip invalid slots / empty weapons (empty-slot ruling).
@@ -2473,6 +2593,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         }
 
         if (gloomAfterHit()) return FlowStatus::AwaitingDecision;
+        if (beastStrikes()) return FlowStatus::AwaitingDecision;
         // Horde Breaker (Hunter L3, D10): the attack loop armed it, hit or miss — always take it when a
         // valid target exists. Weakest valid creature first (finish it); ties keep index order.
         if (!st.horde_breaker_launched) {

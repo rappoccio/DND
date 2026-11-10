@@ -875,6 +875,10 @@ struct NpcTurnState {
     // Stalker's Flurry Sudden Strike (Gloom Stalker L11): the free extra attack, launched at most once a
     // turn and flagged before its beginAttack for the same park→resume reason.
     bool sudden_strike_launched{false};
+    // Beast Master: the Ranger's last attack was traded for Beast's Strike (decided once a turn), and an
+    // uncommanded companion's Dodge turn already ran (a park on its move must not re-Dodge or re-move).
+    bool beast_strike_traded{false};
+    bool companion_dodge_done{false};
     // Difficulty resolver park-safety: the strategy resolveStrategy chose when THIS turn launched, stamped
     // by runNpcTurn whenever the turn parks. The dynamic Level-4 resolution is state-dependent (it probes
     // the live planners), so a park→resume must reuse the strategy that launched the turn — re-resolving

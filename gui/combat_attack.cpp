@@ -3243,6 +3243,23 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     }
 
 
+    // Beast Master L7 Exceptional Training: the Primal Companion's strikes may deal Force instead of
+    // their normal type (D9: Force unless the target takes less from Force than from the natural type).
+    if (const int owner = companionRanger(bm, action.attacker_idx);
+        owner >= 0 && bm.getAgentStats(owner).classLevel(CharacterClass::Ranger) >= 7 &&
+        !w.physicalDamageRolls.empty()) {
+        std::vector<PhysicalDamageRoll> keep;
+        for (const PhysicalDamageRoll& pr : w.physicalDamageRolls) {
+            const float natural = effectivePhysicalDamageMult(atk_stats, tgt_stats, pr.type, &bm, action.target_idx);
+            const float force   = effectiveMagicDamageMult(atk_stats, tgt_stats, Force, false, &bm, action.target_idx);
+            if (force >= natural)
+                w.magicDamageRolls.push_back(MagicDamageRoll{Force, pr.num_dice, pr.die_size, pr.bonus});
+            else
+                keep.push_back(pr);
+        }
+        w.physicalDamageRolls = std::move(keep);
+    }
+
     // Phase A done — carry the pre-roll state across the (possible) defender reaction window. The
     // caller rolls the attack (resolveAttack) and may open the Shield window before applyAttackResult.
     s.w = w; s.adv = adv; s.dis = dis;

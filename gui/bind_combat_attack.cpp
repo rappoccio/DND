@@ -140,6 +140,36 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("attacker_idx"),
              "Sudden Strike: indices the armed free attack may strike — a different creature within 5 ft\n"
              "of the Dreadful Strike target, not an ally, in reach/range + LoS of the same weapon.")
+        .def("primal_companion_of", &CombatEngine::primalCompanionOf,
+             py::arg("battle_map"), py::arg("ranger_idx"),
+             "Beast Master: the Ranger's live Primal Companion index, or -1.")
+        .def("companion_ranger", &CombatEngine::companionRanger,
+             py::arg("battle_map"), py::arg("comp_idx"),
+             "Beast Master: the Ranger that owns this Primal Companion, or -1 if it is not one.")
+        .def("companion_restricted", &CombatEngine::companionRestricted,
+             py::arg("battle_map"), py::arg("comp_idx"),
+             "True when this Primal Companion's only action this turn is Dodge (its Ranger is able\n"
+             "and did not command it).")
+        .def("can_command_companion", &CombatEngine::canCommandCompanion,
+             py::arg("battle_map"), py::arg("ranger_idx"),
+             "May the Beast Master spend its Bonus Action commanding its companion right now?")
+        .def("command_companion", &CombatEngine::commandCompanion,
+             py::arg("battle_map"), py::arg("ranger_idx"),
+             "Command the Primal Companion (spends the Bonus Action). Returns True iff it was spent.")
+        .def("arm_beasts_strike", &CombatEngine::armBeastsStrike,
+             py::arg("battle_map"), py::arg("ranger_idx"),
+             "Beast's Strike in place of one attack (the caller pays the attack): sets\n"
+             "beast_strikes_left (2 with Bestial Fury). Returns True iff armed.")
+        .def("beasts_strike_targets", &CombatEngine::beastsStrikeTargets,
+             py::arg("battle_map"), py::arg("ranger_idx"),
+             "Enemies the Ranger's companion can strike where it stands (reach + LoS).")
+        .def("beasts_strike", &CombatEngine::beastsStrike,
+             py::arg("battle_map"), py::arg("ranger_idx"), py::arg("target_idx"),
+             "One Beast's Strike by the companion against target_idx (spends one of beast_strikes_left).\n"
+             "Returns the attack's FlowStatus; Completed (nothing happens) when refused.")
+        .def("vanish_orphaned_companions", &CombatEngine::vanishOrphanedCompanions,
+             py::arg("battle_map"),
+             "Tombstone every Primal Companion whose Ranger has died or left play.")
         .def("beguiling_twist_advantage",
              [](const CombatEngine& e, const BattleMap& bm, int saver, const std::string& cond) {
                  return e.beguilingTwistAdvantage(bm, saver, cond);

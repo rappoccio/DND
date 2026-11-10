@@ -864,6 +864,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("shd_resist_physical_mask", &Agent::Conditions::shd_resist_physical_mask)
         .def_readwrite("superior_prey_used", &Agent::Conditions::superior_prey_used)
         .def_readwrite("bestial_fury_used", &Agent::Conditions::bestial_fury_used)
+        .def_readwrite("companion_commanded", &Agent::Conditions::companion_commanded)
+        .def_readwrite("beast_strikes_left", &Agent::Conditions::beast_strikes_left)
         .def_readwrite("fey_dreadful_strikes_used", &Agent::Conditions::fey_dreadful_strikes_used)
         .def_readwrite("multiattack_def_hit_by", &Agent::Conditions::multiattack_def_hit_by)
         .def_readwrite("dreadful_strike_available", &Agent::Conditions::dreadful_strike_available)

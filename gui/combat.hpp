@@ -1717,6 +1717,30 @@ public:
     // The automated Ranger's half (D3/D4): spend a pending Dreadful Strike on a target still standing,
     // then pick Sudden Strike when it has a target, else Mass Fear. A no-op when nothing is pending.
     void autoDreadfulStrike(BattleMap& bm, int attacker_idx);
+
+    // ── Beast Master (Ranger subclass) — Primal Companion action economy (D9) ───────────────
+    // primalCompanionOf: the Ranger's live (in play, not dead) Primal Companion, or -1.
+    // companionRanger: the Beast Master Ranger L3+ that owns companion `comp_idx`, or -1.
+    [[nodiscard]] int primalCompanionOf(const BattleMap& bm, int ranger_idx) const;
+    [[nodiscard]] int companionRanger(const BattleMap& bm, int comp_idx) const;
+    // True when `comp_idx` is a Primal Companion whose action this turn is limited to Dodge: its
+    // Ranger is alive, not Incapacitated, and did not command it (companion_commanded) on its turn.
+    [[nodiscard]] bool companionRestricted(const BattleMap& bm, int comp_idx) const;
+    // Command (Bonus Action): the companion may take any action on its next turn (and, from L7,
+    // Dash/Disengage/Hide with its Bonus Action; from L11, Beast's Strike twice). Spends the
+    // Ranger's Bonus Action. Returns true iff it was spent.
+    [[nodiscard]] bool canCommandCompanion(const BattleMap& bm, int ranger_idx) const;
+    bool commandCompanion(BattleMap& bm, int ranger_idx);
+    // Beast's Strike in place of one of the Ranger's attacks. The CALLER pays the attack (the GUI's
+    // attacks_remaining, the NpcDriver's st.attacks_remaining); armBeastsStrike then sets
+    // beast_strikes_left (2 with Bestial Fury at L11, else 1). beastsStrikeTargets lists the enemies
+    // the companion can strike where it stands. beastsStrike spends one strike (before the roll, so a
+    // parked attack never repeats it) and launches the companion's attack. Completed when refused.
+    bool armBeastsStrike(BattleMap& bm, int ranger_idx);
+    [[nodiscard]] std::vector<int> beastsStrikeTargets(const BattleMap& bm, int ranger_idx) const;
+    FlowStatus beastsStrike(BattleMap& bm, int ranger_idx, int target_idx);
+    // Tombstone every Primal Companion whose Ranger has died (death, not 0 HP) or left play.
+    void vanishOrphanedCompanions(BattleMap& bm);
     // Umbral Sight (L3): `viewer` sees the Gloom Stalker `ranger_idx` only by Darkvision — every cell of
     // the Ranger in (non-magical) Darkness, the viewer an enemy with Darkvision reaching it and no
     // Truesight / Blindsight / Devil's Sight that would — so the Ranger is Invisible to it.
@@ -2512,6 +2536,10 @@ private:
     // farther, it holds. Movement runs through the parkable beginMove (an OA on the way out surfaces
     // normally); resumable via npc_turn_.flee_move_launched. Returns -1 fear source ⇒ caller falls through.
     FlowStatus runFleeTurn(BattleMap& bm, int agent_idx, int fear_idx);
+    // Beast Master: an uncommanded Primal Companion's turn (companionRestricted) — it takes the Dodge
+    // action, then moves into reach of the nearest enemy so a Beast's Strike next turn can land.
+    // Resumable via npc_turn_.companion_dodge_done (a park on the move just ends the turn).
+    FlowStatus runCompanionDodgeTurn(BattleMap& bm, int agent_idx);
     // Index of the creature a Command (Flee) condition on agent_idx points its victim away from (the
     // condition's caster), or -1 if agent_idx is not currently under Command (Flee).
     [[nodiscard]] int  npcCommandFleeSource(int agent_idx) const noexcept;

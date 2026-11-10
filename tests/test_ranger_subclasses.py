@@ -33,6 +33,18 @@ R3 — Fey Wanderer (D7, D8 + Summon Fey on the list):
   · Beguiling Twist: Advantage on saves vs Charmed/Frightened at spell and non-spell sites; a
     successful save is a Reaction trigger — automated Rangers react at once (Frightened), human
     ones are queued for the GUI.
+
+R4 — Beast Master (D9 + the death-vanish fix):
+  · An uncommanded companion's only action is Dodge (it still moves); a Bonus-Action Command, or
+    an Incapacitated Ranger, frees it.
+  · Exceptional Training's Bonus Action Dash/Disengage/Hide (L7) and Bestial Fury's second strike
+    (L11) only on a commanded turn; the L7 damage type is Force unless Force does less.
+  · Beast's Strike in place of one attack: once, twice from L11, spent before each roll.
+  · The NpcDriver trades a lone attack (or a ranged Ranger's last) for Beast's Strike and spends
+    a leftover Bonus Action on Command.
+  · The companion vanishes when its Ranger dies — not at 0 HP.
+  · Share Spells (L15) in the engine: a Self spell also lands on the companion within 30 ft, one
+    slot, one Concentration.
 """
 
 import sys
@@ -899,6 +911,224 @@ def test_beguiling_twist_from_a_non_spell_save():
     assert engine.get_agent_conditions(bm, f).reaction_used, "the success triggered Beguiling Twist"
     assert engine.get_agent_conditions(bm, g).frightened, "aimed at the enemy Ranger"
     print("✅ test_beguiling_twist_from_a_non_spell_save")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  R4 — Beast Master
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _companion_block(form="Land"):
+    import json
+    gui = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui")
+    with open(os.path.join(gui, "primal_companions.json")) as f:
+        return next(b for b in json.load(f) if b.get("form") == form)
+
+
+def _beast_scene(level=3, ranger_weapon=None, num_attacks=1, enemy_ac=1):
+    """A Beast Master (faction 1) at (5,5), an enemy at (5,6), and the Land companion spawned at
+    (6,6) — adjacent to the enemy. Spawned last: placing an agent re-applies every config."""
+    from helpers import compute_companion_loadout, _dict_to_weapon
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    r = _place(engine, bm, "Beastmaster", 5, 5)
+    e = _place(engine, bm, "Orc", 5, 6)
+    _sides(bm, f1=(r,), f2=(e,))
+    s = engine.get_agent_stats(bm, r)
+    s.set_class_level(rpg.CharacterClass.Ranger, level)
+    s.ranger_subclass = rpg.RangerSubclass.BeastMaster
+    s.wis = 16
+    s.str = 14
+    s.prof_bonus = 2 + (level - 1) // 4
+    s.hp_max = s.hp_cur = 200
+    s.num_attacks = num_attacks
+    engine.set_agent_stats(bm, r, s)
+    engine.set_agent_weapons(bm, r, [ranger_weapon or _weapon(), rpg.Weapon(), rpg.Weapon()])
+    _hp(engine, bm, e, hp=400, ac=enemy_ac)
+    engine.set_agent_weapons(bm, e, [_weapon(bonus_hit=-50), rpg.Weapon(), rpg.Weapon()])
+    stats_d, weapon_d = compute_companion_loadout(_companion_block(), s.prof_bonus, level, 3)
+    cfg = rpg.AgentConfig()
+    cfg.name = "Beast of the Land"
+    cfg.size = 1
+    cfg.start_col, cfg.start_row = 6, 6
+    c = bm.spawn_agent(cfg)
+    cs = rpg.Stats()
+    for k, v in stats_d.items():
+        setattr(cs, k, v)
+    engine.set_agent_stats(bm, c, cs)
+    engine.set_agent_weapons(bm, c, [_dict_to_weapon(weapon_d), rpg.Weapon(), rpg.Weapon()])
+    bm.set_agent_summoner_idx(c, r)
+    bm.set_agent_summon_spell(c, "Primal Companion")
+    bm.set_agent_faction(c, 1)
+    return bm, engine, r, c, e
+
+
+def _hit_on(engine, bm, idx):
+    return engine.get_agent_stats(bm, idx).hp_cur < engine.get_agent_stats(bm, idx).hp_max
+
+
+def test_companion_dodges_unless_commanded():
+    bm, engine, r, c, e = _beast_scene()
+    assert engine.primal_companion_of(bm, r) == c and engine.companion_ranger(bm, c) == r
+    engine.begin_turn(bm, r)
+    engine.begin_turn(bm, c)
+    assert engine.companion_restricted(bm, c), "not commanded: Dodge only"
+    assert engine.run_npc_turn(bm, c) == rpg.FlowStatus.Completed
+    assert engine.get_agent_conditions(bm, c).dodging, "it took the Dodge action"
+    assert not _hit_on(engine, bm, e), "and did not attack"
+
+    engine.begin_turn(bm, r)
+    assert engine.can_command_companion(bm, r)
+    assert engine.command_companion(bm, r)
+    assert not engine.has_bonus_action(bm, r), "Command costs the Bonus Action"
+    assert not engine.can_command_companion(bm, r), "once"
+    engine.begin_turn(bm, c)
+    assert not engine.companion_restricted(bm, c)
+    engine.run_npc_turn(bm, c)
+    assert e in list(engine.get_agent_conditions(bm, c).attacked_this_turn), "commanded, it attacks"
+    engine.begin_turn(bm, r)
+    assert not engine.get_agent_conditions(bm, r).companion_commanded, "the command lasts one turn"
+    print("✅ test_companion_dodges_unless_commanded")
+
+
+def test_incapacitated_ranger_frees_the_companion():
+    bm, engine, r, c, e = _beast_scene()
+    engine.begin_turn(bm, r)
+    rc = engine.get_agent_conditions(bm, r); rc.incapacitated = True
+    engine.set_agent_conditions(bm, r, rc)
+    engine.begin_turn(bm, c)
+    assert not engine.companion_restricted(bm, c), "an Incapacitated Ranger: any action"
+    assert not engine.can_command_companion(bm, r)
+    print("✅ test_incapacitated_ranger_frees_the_companion")
+
+
+def test_commanded_turn_loadout():
+    for level, cunning, attacks in ((3, False, 1), (7, True, 1), (11, True, 2)):
+        bm, engine, r, c, e = _beast_scene(level)
+        engine.begin_turn(bm, r)
+        engine.begin_turn(bm, c)
+        cs = engine.get_agent_stats(bm, c)
+        assert not cs.has_cunning_action and cs.num_attacks == 1, (level, "uncommanded")
+        engine.begin_turn(bm, r)
+        assert engine.command_companion(bm, r)
+        engine.begin_turn(bm, c)
+        cs = engine.get_agent_stats(bm, c)
+        assert (cs.has_cunning_action, cs.num_attacks) == (cunning, attacks), \
+            (level, cs.has_cunning_action, cs.num_attacks)
+    print("✅ test_commanded_turn_loadout")
+
+
+def test_beasts_strike_once_or_twice():
+    for level, strikes in ((5, 1), (11, 2)):
+        bm, engine, r, c, e = _beast_scene(level)
+        engine.begin_turn(bm, r)
+        assert list(engine.beasts_strike_targets(bm, r)) == [e]
+        assert engine.beasts_strike(bm, r, e) == rpg.FlowStatus.Completed
+        assert not _hit_on(engine, bm, e), "refused until an attack is given up"
+        assert engine.arm_beasts_strike(bm, r)
+        assert engine.get_agent_conditions(bm, r).beast_strikes_left == strikes
+        for _ in range(strikes):
+            engine.beasts_strike(bm, r, e)
+        assert engine.get_agent_conditions(bm, r).beast_strikes_left == 0
+        assert _hit_on(engine, bm, e), "the companion struck (AC 1)"
+        hp = engine.get_agent_stats(bm, e).hp_cur
+        engine.beasts_strike(bm, r, e)
+        assert engine.get_agent_stats(bm, e).hp_cur == hp, "no strike left"
+    print("✅ test_beasts_strike_once_or_twice")
+
+
+def test_exceptional_training_force_or_natural():
+    FORCE = 3
+    bm, engine, r, c, e = _beast_scene(7)
+    res = engine.execute_action(bm, rpg.Attack(c, e, 0))
+    assert res.hit and list(res.magic_damage_types) and not list(res.physical_damage_types), \
+        "L7: Force by default"
+    s = engine.get_agent_stats(bm, e)
+    m = list(s.magic_damage_multipliers); m[FORCE] = 0.0; s.magic_damage_multipliers = m
+    engine.set_agent_stats(bm, e, s)
+    res = engine.execute_action(bm, rpg.Attack(c, e, 0))
+    assert list(res.physical_damage_types) and not list(res.magic_damage_types), \
+        "Force-immune: the natural type"
+    bm, engine, r, c, e = _beast_scene(6)
+    res = engine.execute_action(bm, rpg.Attack(c, e, 0))
+    assert list(res.physical_damage_types) and not list(res.magic_damage_types), "below L7: natural"
+    print("✅ test_exceptional_training_force_or_natural")
+
+
+def test_companion_vanishes_when_the_ranger_dies():
+    bm, engine, r, c, e = _beast_scene()
+    rc = engine.get_agent_conditions(bm, r); rc.unconscious = rc.incapacitated = True
+    engine.set_agent_conditions(bm, r, rc)
+    engine.begin_turn(bm, e)
+    assert not bm.is_agent_removed_from_play(c), "0 HP is not death"
+    rc.dead = True
+    engine.set_agent_conditions(bm, r, rc)
+    engine.begin_turn(bm, e)
+    assert bm.is_agent_removed_from_play(c), "the companion vanishes with its Ranger"
+    assert engine.primal_companion_of(bm, r) == -1
+    print("✅ test_companion_vanishes_when_the_ranger_dies")
+
+
+def _self_buff():
+    sp = rpg.Spell()
+    sp.name = "Self Ward"
+    sp.type = rpg.SpellType.Help
+    sp.geometry = rpg.SpellGeometry.Single
+    sp.attack_type = rpg.SpellAttack.Automatic
+    sp.range = 0
+    sp.level = 1
+    sp.duration = 10
+    sp.requires_concentration = True
+    cond = rpg.AttackCondition()
+    cond.condition_name = "Aided"
+    cond.requires_save = False
+    cond.condition_duration = 0
+    sp.conditions = [cond]
+    return sp
+
+
+def _has_cond(engine, idx, name):
+    return any(a.agent_idx == idx and a.condition_name == name for a in engine.active_agent_conditions)
+
+
+def test_share_spells_in_the_engine():
+    for level, far, shared in ((15, False, True), (14, False, False), (15, True, False)):
+        bm, engine, r, c, e = _beast_scene(level)
+        if far:
+            assert engine.teleport_agent(bm, r, 0, 0) and engine.teleport_agent(bm, c, 10, 10)  # 50 ft
+        engine.set_agent_spells(bm, r, [_self_buff()])
+        s = engine.get_agent_stats(bm, r)
+        s.spell_slots_remaining = [2, 0, 0, 0, 0, 0, 0, 0, 0]
+        engine.set_agent_stats(bm, r, s)
+        a = rpg.SpellAction()
+        a.caster_idx, a.spell_idx, a.slot_level, a.target_indices = r, 0, 1, [r]
+        assert engine.execute_spell(bm, a).valid
+        assert _has_cond(engine, r, "Aided")
+        assert _has_cond(engine, c, "Aided") == shared, (level, far)
+        assert engine.get_agent_stats(bm, r).spell_slots_remaining[0] == 1, "one slot"
+        if shared:
+            engine.drop_concentration(bm, r)
+            assert not _has_cond(engine, c, "Aided"), "one Concentration for both"
+    print("✅ test_share_spells_in_the_engine")
+
+
+def test_npc_ranger_trades_its_lone_attack_and_commands():
+    bm, engine, r, c, e = _beast_scene(3)
+    engine.begin_turn(bm, r)
+    assert engine.run_npc_turn(bm, r) == rpg.FlowStatus.Completed
+    assert list(engine.get_agent_conditions(bm, r).attacked_this_turn) == [], \
+        "the Ranger's only attack went to Beast's Strike"
+    assert e in list(engine.get_agent_conditions(bm, c).attacked_this_turn), "the companion struck"
+    assert engine.get_agent_conditions(bm, r).companion_commanded, "and the Bonus Action commanded it"
+    print("✅ test_npc_ranger_trades_its_lone_attack_and_commands")
+
+
+def test_npc_ranger_with_extra_attack_keeps_its_attacks():
+    bm, engine, r, c, e = _beast_scene(5, num_attacks=2)
+    engine.begin_turn(bm, r)
+    engine.run_npc_turn(bm, r)
+    assert e in list(engine.get_agent_conditions(bm, r).attacked_this_turn), "a melee Ranger swings"
+    assert e not in list(engine.get_agent_conditions(bm, c).attacked_this_turn), "no trade"
+    assert engine.get_agent_conditions(bm, r).companion_commanded
+    print("✅ test_npc_ranger_with_extra_attack_keeps_its_attacks")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

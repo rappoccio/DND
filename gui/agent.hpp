@@ -1065,6 +1065,8 @@ namespace rpg {
       int  shd_resist_physical_mask{0};     // ... and bit t = Resistance to PhysicalDamage_t t (both cleared as the next turn begins)
       bool superior_prey_used{false};       // Hunter L11 Superior Hunter's Prey: HM-damage splash already applied this turn (once/turn)
       bool bestial_fury_used{false};        // Beast Master L11 Bestial Fury: companion's HM-marked Force splash already applied this turn (once/turn)
+      bool companion_commanded{false};      // Beast Master: this Ranger spent a Bonus Action commanding its Primal Companion this turn (its next turn may take any action); cleared as the Ranger's next turn begins
+      int  beast_strikes_left{0};           // Beast Master: Beast's Strikes still owed by the attack the Ranger gave up this turn (1, or 2 with Bestial Fury)
       bool fey_dreadful_strikes_used{false}; // Fey Wanderer L3 Dreadful Strikes Psychic rider already applied this turn (once/turn)
       std::vector<int> multiattack_def_hit_by{}; // Hunter L7 Multiattack Defense: indices of creatures that hit me this turn (their other attacks vs me get Disadvantage)
       bool dreadful_strike_available{false}; // Gloom Stalker: this weapon hit may take Dreadful Strike (GUI prompt / NpcDriver)
@@ -1243,6 +1245,8 @@ namespace rpg {
       conditions_.attacked_this_turn.clear();
       conditions_.superior_prey_used           = false;
       conditions_.bestial_fury_used            = false;
+      conditions_.companion_commanded          = false;
+      conditions_.beast_strikes_left           = 0;
       conditions_.fey_dreadful_strikes_used    = false;
       conditions_.multiattack_def_hit_by.clear();
       conditions_.dreadful_strike_available    = false;

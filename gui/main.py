@@ -141,7 +141,7 @@ _BON_RUN_ESCAPE    = ("grapple_esc", "telekinetic_feat")
 # their `economy`: none of them costs the Bonus Action, which is why spending it must
 # not take them (`actions._BONUS_ECONOMY`).
 _BON_RUN_UNBANDED  = ("grapple_drop", "use_item", "extinguish", "escape_net",
-                      "haste_action", "horde_breaker", "sudden_strike")
+                      "haste_action", "horde_breaker", "sudden_strike", "beasts_strike")
 
 # The Archfey trio, named on its own only because the rider selector's label is the one
 # thing in §7 the draw pass WRITES back to the app. See the draw site.
@@ -192,7 +192,7 @@ _BON_RUN_BAND      = (
     # Elemental Monk
     "elemental_attunement", "elemental_burst",
     # the tail: detonate, and the two summons
-    "quivering_palm", "companion", "familiar",
+    "quivering_palm", "companion", "command_companion", "familiar",
 )
 _BON_RUN_METAMAGIC = tuple(METAMAGIC_ID_BY_VALUE[int(_v)]
                            for _v, _n, _sp, _note in METAMAGIC_OPTIONS)
@@ -918,6 +918,8 @@ class App:
         self.pending_attack_resource  = None  # resource name to spend on a valid attack (e.g. "War Priest")
         self.pending_horde_breaker_targets = []  # Horde Breaker: the only creatures the armed attack may strike
         self.pending_sudden_strike_targets = []  # Sudden Strike (Gloom Stalker L11): likewise
+        self.pending_beasts_strike_targets = []  # Beast's Strike (Beast Master): the companion's legal targets
+        self._beasts_strike_paid_now = False     # ...and whether arming it just paid an attack (cancel refunds it)
         # Cleave weapon mastery: awaiting a 2nd-target click. {"attacker","first","weapon"} or None.
         # Resolved out-of-band (no attacks_remaining / bonus-action accounting): Cleave is part of
         # the Attack action, not a bonus action.
@@ -2022,6 +2024,12 @@ class App:
                                           (120, 40, 40), (165, 60, 60), self.font_md)
         self.btn_cbt_companion = Button(pygame.Rect(px, dummy_y, W, B),
                                           "🐾 Primal Companion",
+                                          (90, 140, 90), (120, 175, 120), self.font_md)
+        self.btn_cbt_command_companion = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "🐾 Command Companion",
+                                          (90, 140, 90), (120, 175, 120), self.font_md)
+        self.btn_cbt_beasts_strike = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "🐾 Beast's Strike",
                                           (90, 140, 90), (120, 175, 120), self.font_md)
         self.btn_cbt_familiar = Button(pygame.Rect(px, dummy_y, W, B),
                                           "😈 Pact Familiar",
@@ -6143,6 +6151,8 @@ class App:
         self._di_wish_free               = False  # F-M5e-12: an unused Greater DI Wish
         self.pending_horde_breaker_targets = []   # rides along with pending_attack_slot
         self.pending_sudden_strike_targets = []   # rides along with pending_attack_slot
+        self.pending_beasts_strike_targets = []   # rides along with pending_attack_slot
+        self._beasts_strike_paid_now     = False
         self.pending_shadowy_dodge_cell  = False
 
     # The arms `_target_pick_armed` reads, with the idle value each rests at. Every field
@@ -6185,7 +6195,7 @@ class App:
         "pending_summon_spirit", "pending_summon_free_cast", "summon_hover_cell",
         "pending_summon_no_conc", "pending_summon_fey_reinforcements",
         "_aoe_aim", "_di_wish_free", "pending_horde_breaker_targets",
-        "pending_sudden_strike_targets",
+        "pending_sudden_strike_targets", "pending_beasts_strike_targets", "_beasts_strike_paid_now",
     )
 
     def _target_pick_armed(self) -> bool:
@@ -7811,6 +7821,22 @@ class App:
         slot    = self.pending_attack_slot
         if atk_idx < 0 or not slot:
             return
+        if self.pending_beasts_strike_targets:
+            if target_idx not in self.pending_beasts_strike_targets:
+                self._combat_log_add("Beast's Strike: pick a creature the companion can reach.")
+                self._flush_combat_log()
+                return
+            self.pending_beasts_strike_targets = []
+            self._beasts_strike_paid_now = False
+            self.pending_attack_slot = ""
+            self._reaction_finish = lambda i=atk_idx: self._finish_beasts_strike(i)
+            status = self.combat.beasts_strike(self.bm, atk_idx, target_idx)
+            self._flush_combat_log()
+            if status == rpg.FlowStatus.AwaitingDecision:
+                self._show_pending_reaction_menu()
+            else:
+                self._finish_beasts_strike(atk_idx)
+            return
         if self.pending_horde_breaker_targets:
             if target_idx not in self.pending_horde_breaker_targets:
                 self._combat_log_add("Horde Breaker: pick a creature within 5 ft of the first target "
@@ -8427,6 +8453,37 @@ class App:
         self.pending_sudden_strike_targets = targets
         self._start_extra_attack(weapon_idx=c.dreadful_strike_weapon, offhand=False, slot="action",
                                  label="Sudden Strike (a creature within 5 ft of the first target)")
+        self._update_attack_overlay()
+
+    def _start_beasts_strike(self, atk_idx: int):
+        """Beast's Strike (Beast Master, D9): give up one attack of the Attack action and the Primal
+        Companion strikes at once — twice from L11 (Bestial Fury). The first click pays the attack
+        (`_consume_attack_replacement`) and arms the strikes in the engine (beast_strikes_left); each
+        strike is then a target click, refused unless the engine lists it (`beasts_strike_targets`)."""
+        targets = list(self.combat.beasts_strike_targets(self.bm, atk_idx))
+        if not targets:
+            return
+        self._beasts_strike_paid_now = False
+        if self.combat.get_agent_conditions(self.bm, atk_idx).beast_strikes_left <= 0:
+            if not self._can_replace_attack(atk_idx) or not self.combat.arm_beasts_strike(self.bm, atk_idx):
+                return
+            self._consume_attack_replacement(atk_idx)
+            self._beasts_strike_paid_now = True
+            self._flush_combat_log()
+        self.pending_beasts_strike_targets = targets
+        self.pending_attack_slot = "action"
+        self._combat_log_add("Beast's Strike — click a creature the companion can reach.")
+        self._update_attack_overlay()
+
+    def _finish_beasts_strike(self, atk_idx: int):
+        """After a Beast's Strike resolves (inline or after a defender's reaction): refresh, and arm
+        the second strike Bestial Fury owes, if it has a target."""
+        self._flush_combat_log()
+        self._sync_spell_effect_cache()
+        self.sprites.clear()
+        if (self.combat.get_agent_conditions(self.bm, atk_idx).beast_strikes_left > 0
+                and self.combat.beasts_strike_targets(self.bm, atk_idx)):
+            self._start_beasts_strike(atk_idx)
         self._update_attack_overlay()
 
     def _start_gwm_hew(self, atk_idx: int):
@@ -13061,13 +13118,9 @@ class App:
         # spell resolves (Shield vs Magic Missile). begin_cast resolves inline when no reaction is
         # offered (Completed) or parks at the reaction checkpoint (AwaitingDecision); _finish_cast does
         # the post-resolution logging in both cases.
-        # Beast Master L15 Share Spells: remember whether this was a Self-range buff cast on the
-        # Ranger itself (Single geometry, range 0, target == caster) so _finish_cast can duplicate
-        # it onto the Primal Companion within 30 ft after the cast resolves.
-        self_target = (sp.geometry == rpg.SpellGeometry.Single and sp.range == 0 and
-                       target_idx == caster_idx)
+        # (Beast Master L15 Share Spells is the engine's: executeSpell adds the companion as a target.)
         self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=self.pending_spell_idx,
-                               aoe=False, self_target=self_target,
+                               aoe=False,
                                slot_level=self.pending_spell_slot_level,
                                free_cast=action.free_cast)
         self._reaction_finish = self._finish_cast
@@ -13123,10 +13176,6 @@ class App:
             self._combat_log_add(f"{cast_name}: {result.spell_name} — no targets in area")
         else:
             self._log_spell_results(result, cast_name, caster_idx, ctx["spell_idx"])
-        # Beast Master L15 Share Spells: a Self-range buff the Ranger cast on itself also affects
-        # its Primal Companion within 30 ft.
-        if ctx.get("self_target"):
-            self._share_spell_with_companion(caster_idx, ctx["spell_idx"], ctx.get("slot_level", 0))
         # Clear spell effect cache entries for any removed effects (e.g., from concentration loss)
         self._sync_spell_effect_cache()
         self._consume_cast_slot(ctx["slot"], caster_idx, cast_spell)
@@ -13206,41 +13255,6 @@ class App:
             self._combat_log_add("Cannot restore Beguiling Magic (no Bardic Inspiration use, or already full).")
             self._flush_combat_log()
         self._update_attack_overlay()
-
-    def _companion_in_range(self, ranger_idx: int, comp_idx: int, ft: int) -> bool:
-        """Chebyshev footprint distance check (5 ft / cell), mirroring _vitality_in_range."""
-        if ranger_idx == comp_idx:
-            return False
-        d = self._footprint_dist_ft(ranger_idx, comp_idx)
-        return 0 <= d <= ft
-
-    def _share_spell_with_companion(self, caster_idx: int, spell_idx: int, slot_level: int):
-        """Beast Master L15 Share Spells: re-apply a Self-range buff to the Ranger's live Primal
-        Companion within 30 ft via execute_spell (no extra slot consumed; the duplicated effect ties
-        to the same concentration, so it drops with the original). Only true Self buffs qualify
-        (Single geometry, range 0) — self-origin AoEs (Burning Hands etc.) are Cone/Cube and excluded."""
-        stats = self.combat.get_agent_stats(self.bm, caster_idx)
-        if (stats.character_class != rpg.CharacterClass.Ranger or
-                stats.ranger_subclass != rpg.RangerSubclass.BeastMaster or
-                stats.char_level < 15):
-            return
-        comp = self._find_companion_idx(caster_idx)
-        if comp < 0 or not self._companion_in_range(caster_idx, comp, 30):
-            return
-        spells = self.combat.get_agent_spells(self.bm, caster_idx)
-        if not (0 <= spell_idx < len(spells)):
-            return
-        sp = spells[spell_idx]
-        if sp.geometry != rpg.SpellGeometry.Single or sp.range != 0:
-            return
-        action = rpg.SpellAction()
-        action.caster_idx     = caster_idx
-        action.spell_idx      = spell_idx
-        action.slot_level     = slot_level
-        action.target_indices = [comp]
-        self.combat.execute_spell(self.bm, action)
-        self._combat_log_add(
-            f"Share Spells: {sp.name} also affects {self.bm.placed_agents[comp].name}.")
 
     def _pending_spell(self):
         """The Spell object currently being aimed, or None."""
@@ -19555,6 +19569,10 @@ class App:
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
                     self._start_sudden_strike(idx)
+            if action_id == "beasts_strike":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._start_beasts_strike(idx)
             if action_id == "blink_steps":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents) and self._blink_steps_ready(idx):
@@ -19849,6 +19867,11 @@ class App:
                     self._combat_log_add("Wild Magic Teleport: click a destination cell.")
             if action_id == "companion":
                 features.show_companion_menu(self, anchor)
+            if action_id == "command_companion":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.combat.command_companion(self.bm, idx)
+                    self._flush_combat_log()
             if action_id == "familiar":
                 features.show_familiar_menu(self, anchor)
             if action_id == "charge_arcane_ward":

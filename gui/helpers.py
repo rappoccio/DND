@@ -89,11 +89,15 @@ def compute_companion_loadout(block: dict, pb: int, level: int, wis_mod: int):
     Scaling (2024 Beast Master):
       · HP  = hp_base + hp_per_level × Ranger level
       · AC  = 13 + PB
-      · num_attacks = 2 at Ranger L11+ (Bestial Fury), else 1
       · natural-weapon to-hit = Ranger's spell-attack modifier (PB + WIS mod)
       · natural-weapon damage bonus = PB
     The to-hit/damage targets are RAW-fixed regardless of the beast's own ability mod,
     so weapon bonus_hit/bonus_damage cancel the mod the engine will re-add.
+
+    What depends on being commanded is NOT baked in here: the engine sets it each turn
+    (CombatEngine::beginTurn) — Exceptional Training's Bonus Action Dash/Disengage/Hide (L7)
+    and Bestial Fury's second strike (L11) only on a commanded turn — and picks the L7
+    Force-or-natural damage type per attack (determineAdvantage).
     """
     form = block.get("form", "Land")
     finesse = (form == "Sky")   # Sky has STR 6 and strikes with DEX; Land/Sea use STR.
@@ -118,10 +122,8 @@ def compute_companion_loadout(block: dict, pb: int, level: int, wis_mod: int):
         "prof_bonus": pb,
         "darkvision_range": block.get("darkvision", 60),
         "is_npc": True,
-        "num_attacks": 2 if level >= 11 else 1,
-        # Exceptional Training (Ranger L7+): the companion may Dash/Disengage/Hide as a Bonus
-        # Action — reuse the Cunning Action machinery (surfaces those bonus-action buttons).
-        "has_cunning_action": level >= 7,
+        "num_attacks": 1,
+        "has_cunning_action": False,
     }
     atk = block.get("attack", {})
     roll = {
@@ -140,13 +142,6 @@ def compute_companion_loadout(block: dict, pb: int, level: int, wis_mod: int):
         "physical_damage_types": [roll],
         "magic_damage_types":    [],
     }
-    # Exceptional Training (Ranger L7+): the companion's attacks may deal Force damage instead of
-    # their normal type. Force is a *magic* damage type, so the roll moves to magic_damage_types
-    # (the default at L7+ so it bypasses physical resistances — the only reason to keep the normal
-    # type is a Force-immune foe, which is rare; see known_limitations).
-    if level >= 7:
-        weapon["physical_damage_types"] = []
-        weapon["magic_damage_types"]    = [dict(roll, type="Force")]
     return stats, weapon
 
 

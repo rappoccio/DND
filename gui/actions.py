@@ -101,6 +101,7 @@ _BONUS_ECONOMY = {
     "haste_action":          ECONOMY_ACTION,   # Haste's extra Action IS the option
     "horde_breaker":         ECONOMY_FREE,     # Hunter: the feature grants the extra attack
     "sudden_strike":         ECONOMY_FREE,     # Gloom Stalker L11: Stalker's Flurry grants it
+    "beasts_strike":         ECONOMY_ATTACK,   # Beast Master: replaces one attack of the Attack action
 
     # ── inside the band, and Action-costing with it ──
     "turn_undead":           ECONOMY_ACTION,
@@ -382,6 +383,11 @@ class ActionMenu:
                                economy=ECONOMY_ATTACK)]
             return []
 
+        # Beast Master (R4, D9): an uncommanded Primal Companion's only action is Dodge. It
+        # still moves, and its Reaction is its own.
+        if app.combat.companion_restricted(app.bm, agent_idx):
+            return [Action("dodge", "Dodge", GROUP_ACTION, economy=ECONOMY_ACTION)]
+
         if cond.frightened:
             return [Action("dash", "Dash", GROUP_ACTION,        # arm 3 — Dash or nothing
                            economy=ECONOMY_ACTION)]
@@ -615,6 +621,17 @@ class ActionMenu:
         # placement and hold-back as Horde Breaker.
         if app.attacks_remaining == 0 and app.combat.sudden_strike_targets(app.bm, agent_idx):
             out.append(Action("sudden_strike", "Sudden Strike (Extra Attack)", GROUP_BONUS))
+        # Beast's Strike (Beast Master, D9): give up one attack of the Attack action and the
+        # Primal Companion strikes at once (twice from L11). Paid out of the attacks, so outside
+        # the band. Once paid, the strikes still owed keep the row up until they are spent.
+        if (stats.character_class == rpg.CharacterClass.Ranger
+                and stats.ranger_subclass == rpg.RangerSubclass.BeastMaster
+                and app.combat.beasts_strike_targets(app.bm, agent_idx)):
+            if cond.beast_strikes_left > 0:
+                out.append(Action("beasts_strike",
+                                  f"🐾 Beast's Strike ({cond.beast_strikes_left} left)", GROUP_BONUS))
+            elif app._can_replace_attack(agent_idx):
+                out.append(Action("beasts_strike", "🐾 Beast's Strike (for an attack)", GROUP_BONUS))
 
         # ── F11, closed: Open Hand L11 Fleet Step ──
         # The one option in §7 whose gate is the OPPOSITE of the band's. Step of the
@@ -1092,6 +1109,9 @@ class ActionMenu:
                               "🐾 Dismiss Companion"
                               if app._find_companion_idx(agent_idx) >= 0
                               else "🐾 Primal Companion", GROUP_BONUS))
+            # Command (Bonus Action, D9): without it the companion's only action is Dodge.
+            if app.combat.can_command_companion(app.bm, agent_idx):
+                out.append(Action("command_companion", "🐾 Command Companion", GROUP_BONUS))
         if cls == CC.Warlock and stats.has_invocation(18):
             out.append(Action("familiar",
                               "😈 Dismiss Familiar"

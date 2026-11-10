@@ -119,6 +119,15 @@ def cancel_attack(app) -> None:
     app.pending_attack_slot = ""
     app.pending_horde_breaker_targets = []
     app.pending_sudden_strike_targets = []
+    ranger = app._current_agent_idx()
+    if (app.pending_beasts_strike_targets and app._beasts_strike_paid_now
+            and app._attack_arm_snapshot is not None and ranger >= 0):
+        # The attack this arm paid comes back with the snapshot below, so the strikes it bought go.
+        cond = app.combat.get_agent_conditions(app.bm, ranger)
+        cond.beast_strikes_left = 0
+        app.combat.set_agent_conditions(app.bm, ranger, cond)
+    app.pending_beasts_strike_targets = []
+    app._beasts_strike_paid_now = False
     snap = app._attack_arm_snapshot
     app._attack_arm_snapshot = None
     if snap is not None:

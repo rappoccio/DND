@@ -58,7 +58,7 @@ DOOR_PREFIX = "door_"
 WIRED = frozenset({
     # M5d.1 — weapon attacks and the picks that follow them
     "atk_action", "atk_bonus", "unarmed", "nick", "flurry_of_blows", "martial_arts",
-    "gwm_hew", "horde_breaker", "sudden_strike", "war_priest", "shove_push", "shove_prone", "telekinetic_feat", "bm_maneuver",
+    "gwm_hew", "horde_breaker", "sudden_strike", "beasts_strike", "war_priest", "shove_push", "shove_prone", "telekinetic_feat", "bm_maneuver",
     # M5d.2 — single-creature picks
     "escape_net", "hand_of_healing", "clairvoyant_combatant", "vow_of_enmity",
     "path_to_the_grave",
@@ -144,6 +144,7 @@ CLASS: dict[str, str] = {
     "gwm_hew": A,
     "horde_breaker": A,
     "sudden_strike": A,
+    "beasts_strike": A,
     "blink_steps": X,
     "martial_arts": A,
     "flurry_of_blows": C_A,
@@ -192,6 +193,7 @@ CLASS: dict[str, str] = {
     "wild_magic_bonus_cast": S,
     "wild_magic_teleport": X,
     "companion": C_I,
+    "command_companion": I,
     "familiar": C_I,
     "charge_arcane_ward": C_I,
     "wild_shape": C_I,

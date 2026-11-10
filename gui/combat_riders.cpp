@@ -441,6 +441,147 @@ void CombatEngine::autoDreadfulStrike(BattleMap& bm, int attacker_idx)
     (void)chooseStalkersFlurry(bm, attacker_idx, has_second ? 1 : 2);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Beast Master — Primal Companion action economy (RANGER_SUBCLASSES_PLAN.md D9)
+// ─────────────────────────────────────────────────────────────────────────────
+
+int CombatEngine::companionRanger(const BattleMap& bm, int comp_idx) const
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (comp_idx < 0 || comp_idx >= n) return -1;
+    if (bm.getAgentSummonSpell(comp_idx) != "Primal Companion") return -1;
+    const int owner = bm.getAgentSummonerIdx(comp_idx);
+    if (owner < 0 || owner >= n) return -1;
+    const Agent::Stats os = bm.getAgentStats(owner);
+    if (!os.hasClass(CharacterClass::Ranger) || os.ranger_subclass != BeastMasterPath ||
+        os.classLevel(CharacterClass::Ranger) < 3) return -1;
+    return owner;
+}
+
+int CombatEngine::primalCompanionOf(const BattleMap& bm, int ranger_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        const PlacedAgent& pt = agents[static_cast<std::size_t>(i)];
+        if (pt.removed_from_play || pt.summoner_idx != ranger_idx) continue;
+        if (pt.summon_spell != "Primal Companion") continue;
+        if (pt.agent->getConditions().dead) continue;
+        if (companionRanger(bm, i) == ranger_idx) return i;
+    }
+    return -1;
+}
+
+bool CombatEngine::companionRestricted(const BattleMap& bm, int comp_idx) const
+{
+    const int owner = companionRanger(bm, comp_idx);
+    if (owner < 0) return false;
+    const Agent::Conditions oc = bm.getAgentConditions(owner);
+    // "If you are Incapacitated, the beast can take any action of its choice."
+    if (oc.dead || oc.incapacitated || oc.unconscious) return false;
+    return !oc.companion_commanded;
+}
+
+bool CombatEngine::canCommandCompanion(const BattleMap& bm, int ranger_idx) const
+{
+    if (primalCompanionOf(bm, ranger_idx) < 0) return false;
+    const Agent::Conditions c = bm.getAgentConditions(ranger_idx);
+    if (c.companion_commanded || c.incapacitated || c.unconscious || c.dead) return false;
+    return hasBonusAction(bm, ranger_idx);
+}
+
+bool CombatEngine::commandCompanion(BattleMap& bm, int ranger_idx)
+{
+    if (!canCommandCompanion(bm, ranger_idx)) return false;
+    if (!spendBonusAction(bm, ranger_idx)) return false;
+    Agent::Conditions c = bm.getAgentConditions(ranger_idx);
+    c.companion_commanded = true;
+    bm.setAgentConditions(ranger_idx, c);
+    log_("{} commands {} (Bonus Action) — it may take any action on its turn",
+         agentName(bm, ranger_idx), agentName(bm, primalCompanionOf(bm, ranger_idx)));
+    return true;
+}
+
+bool CombatEngine::armBeastsStrike(BattleMap& bm, int ranger_idx)
+{
+    const int comp = primalCompanionOf(bm, ranger_idx);
+    if (comp < 0) return false;
+    const Agent::Conditions cc = bm.getAgentConditions(comp);
+    if (cc.incapacitated || cc.unconscious) return false;
+    Agent::Conditions c = bm.getAgentConditions(ranger_idx);
+    // Bestial Fury (L11): "When you command your beast to take the Beast's Strike action, the beast
+    // can use it twice."
+    c.beast_strikes_left = bm.getAgentStats(ranger_idx).classLevel(CharacterClass::Ranger) >= 11 ? 2 : 1;
+    bm.setAgentConditions(ranger_idx, c);
+    log_("{} gives up an attack: {} takes the Beast's Strike action{}", agentName(bm, ranger_idx),
+         agentName(bm, comp), c.beast_strikes_left > 1 ? " (twice — Bestial Fury)" : "");
+    return true;
+}
+
+std::vector<int> CombatEngine::beastsStrikeTargets(const BattleMap& bm, int ranger_idx) const
+{
+    std::vector<int> out;
+    const int comp = primalCompanionOf(bm, ranger_idx);
+    if (comp < 0) return out;
+    const auto& agents = bm.placedAgents();
+    const PlacedAgent& me = agents[static_cast<std::size_t>(comp)];
+    const Agent::Conditions mc = me.agent->getConditions();
+    if (mc.incapacitated || mc.unconscious) return out;
+    const auto weapons = bm.getAgentWeapons(comp);
+    if (weapons.empty() || weapons.front().name.empty()) return out;
+    const Weapon& w = weapons.front();
+    for (int j = 0; j < static_cast<int>(agents.size()); ++j) {
+        if (j == comp || j == ranger_idx) continue;
+        const PlacedAgent& pt = agents[static_cast<std::size_t>(j)];
+        if (pt.removed_from_play || bm.isAgentOnDeck(j)) continue;
+        if (pt.agent->getConditions().dead || pt.agent->getStats().hp_cur <= 0) continue;
+        if (rules::alliedFactions(bm, comp, j)) continue;
+        if (!canAttack(w, bm, me.origin, me.agent->getSize(), pt.origin, pt.agent->getSize(), false)) continue;
+        out.push_back(j);
+    }
+    return out;
+}
+
+FlowStatus CombatEngine::beastsStrike(BattleMap& bm, int ranger_idx, int target_idx)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (ranger_idx < 0 || ranger_idx >= n) return FlowStatus::Completed;
+    Agent::Conditions c = bm.getAgentConditions(ranger_idx);
+    if (c.beast_strikes_left <= 0) return FlowStatus::Completed;
+    const std::vector<int> legal = beastsStrikeTargets(bm, ranger_idx);
+    if (std::find(legal.begin(), legal.end(), target_idx) == legal.end()) return FlowStatus::Completed;
+    const int comp = primalCompanionOf(bm, ranger_idx);
+    --c.beast_strikes_left;   // BEFORE the swing: a parked attack must not repeat it
+    bm.setAgentConditions(ranger_idx, c);
+    Attack a;
+    a.attacker_idx = comp;
+    a.target_idx   = target_idx;
+    a.weapon_idx   = 0;
+    a.attack_slot  = "action";
+    log_("{}: Beast's Strike against {}", agentName(bm, comp), agentName(bm, target_idx));
+    renderAttack(comp, target_idx);
+    recordNpcAnnounce(comp, target_idx,
+        std::format("{} attacks {} with {} (Beast's Strike)!", agentName(bm, comp),
+                    agentName(bm, target_idx), bm.getAgentWeapons(comp).front().name));
+    return beginAttack(bm, a);
+}
+
+void CombatEngine::vanishOrphanedCompanions(BattleMap& bm)
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    for (int i = 0; i < n; ++i) {
+        const PlacedAgent& pt = agents[static_cast<std::size_t>(i)];
+        if (pt.removed_from_play || pt.summon_spell != "Primal Companion") continue;
+        const int owner = pt.summoner_idx;
+        const bool gone = owner < 0 || owner >= n ||
+                          agents[static_cast<std::size_t>(owner)].removed_from_play ||
+                          agents[static_cast<std::size_t>(owner)].agent->getConditions().dead;
+        if (!gone) continue;
+        bm.setAgentRemovedFromPlay(i, true);
+        log_("{} vanishes — its Ranger has died", agentName(bm, i));
+    }
+}
+
 int CombatEngine::applyDivineSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
                                          int slot_level, AttackResult& result) noexcept
 {

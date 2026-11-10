@@ -44,6 +44,7 @@ btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,628,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -54,6 +55,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -183,6 +185,7 @@ text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_atk_action | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -193,6 +196,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash | - | - | no
@@ -330,6 +334,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -340,6 +345,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -469,6 +475,7 @@ btn  | -           | btn_cbt_atk_action | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -479,6 +486,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash | - | - | no
@@ -619,6 +627,7 @@ text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_atk_action | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -629,6 +638,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -768,6 +778,7 @@ btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,628,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -778,6 +789,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -913,6 +925,7 @@ btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,662,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -923,6 +936,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -1056,6 +1070,7 @@ btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,628,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -1066,6 +1081,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -1196,6 +1212,7 @@ text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -1206,6 +1223,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -1348,6 +1366,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -1358,6 +1377,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -1496,6 +1516,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -1506,6 +1527,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -1640,6 +1662,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -1650,6 +1673,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -1789,6 +1813,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -1799,6 +1824,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -1933,6 +1959,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -1943,6 +1970,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -2078,6 +2106,7 @@ btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,628,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -2088,6 +2117,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -2227,6 +2257,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -2237,6 +2268,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -2366,6 +2398,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -2376,6 +2409,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -2509,6 +2543,7 @@ text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_atk_action | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -2519,6 +2554,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash | - | - | no
@@ -2663,6 +2699,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -2673,6 +2710,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -2820,6 +2858,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -2830,6 +2869,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -2963,6 +3003,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -2972,6 +3013,7 @@ btn  | -           | btn_cbt_boon_of_fate | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -3109,6 +3151,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -3119,6 +3162,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -3256,6 +3300,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -3266,6 +3311,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -3405,6 +3451,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -3415,6 +3462,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -3550,6 +3598,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -3560,6 +3609,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -3691,6 +3741,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -3701,6 +3752,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -3835,6 +3887,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -3845,6 +3898,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -3981,6 +4035,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -3990,6 +4045,7 @@ btn  | -           | btn_cbt_boon_of_fate | - | - | no
 btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -4127,6 +4183,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -4137,6 +4194,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -4274,6 +4332,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -4284,6 +4343,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -4425,6 +4485,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -4435,6 +4496,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -4581,6 +4643,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -4591,6 +4654,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
 btn  | -           | btn_cbt_disengage_bonus | - | - | no
@@ -4730,6 +4794,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
 btn  | -           | btn_cbt_blink_steps | - | - | no
@@ -4739,6 +4804,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -4881,6 +4947,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
 btn  | -           | btn_cbt_blink_steps | - | - | no
@@ -4890,6 +4957,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -5033,6 +5101,7 @@ text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -5042,6 +5111,7 @@ btn  | -           | btn_cbt_boon_of_fate | - | - | no
 btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -5188,6 +5258,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -5198,6 +5269,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -5331,6 +5403,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -5341,6 +5414,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_divine_intervention | - | - | no
@@ -5473,6 +5547,7 @@ text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -5482,6 +5557,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -5617,6 +5693,7 @@ text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -5627,6 +5704,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -5763,6 +5841,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -5773,6 +5852,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -5915,6 +5995,7 @@ text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -5925,6 +6006,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -6067,6 +6149,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -6077,6 +6160,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -6220,6 +6304,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -6230,6 +6315,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -6365,6 +6451,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -6375,6 +6462,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -6513,6 +6601,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -6523,6 +6612,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -6657,6 +6747,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -6667,6 +6758,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -6809,6 +6901,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -6819,6 +6912,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
 btn  | -           | btn_cbt_disengage_bonus | - | - | no
@@ -6955,6 +7049,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -6963,6 +7058,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -7101,6 +7197,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -7111,6 +7208,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -7245,6 +7343,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -7255,6 +7354,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -7395,6 +7495,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -7405,6 +7506,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -7540,6 +7642,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -7550,6 +7653,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -7696,6 +7800,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
 btn  | -           | btn_cbt_blink_steps | - | - | no
@@ -7705,6 +7810,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -7848,6 +7954,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -7858,6 +7965,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -7994,6 +8102,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -8004,6 +8113,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_divine_intervention | - | - | no
@@ -8140,6 +8250,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -8149,6 +8260,7 @@ btn  | -           | btn_cbt_boon_of_fate | - | - | no
 btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -8284,6 +8396,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -8294,6 +8407,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -8429,6 +8543,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -8439,6 +8554,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -8573,6 +8689,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -8583,6 +8700,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -8718,6 +8836,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -8728,6 +8847,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -8861,6 +8981,7 @@ btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,662,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -8871,6 +8992,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -9006,6 +9128,7 @@ btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,696,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_blink_steps | - | - | no
@@ -9015,6 +9138,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -9149,6 +9273,7 @@ btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,662,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -9159,6 +9284,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -9294,6 +9420,7 @@ text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -9304,6 +9431,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -9438,6 +9566,7 @@ btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,662,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -9448,6 +9577,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -9578,6 +9708,7 @@ text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -9588,6 +9719,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -9738,6 +9870,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -9748,6 +9881,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -9887,6 +10021,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -9897,6 +10032,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -10036,6 +10172,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -10046,6 +10183,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -10177,6 +10315,7 @@ btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -10187,6 +10326,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no
@@ -10302,6 +10442,7 @@ btn  | -           | btn_cbt_atk_action | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -10312,6 +10453,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash | - | - | no
@@ -10462,6 +10604,7 @@ btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,684,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
+btn  | -           | btn_cbt_beasts_strike | - | - | no
 btn  | -           | btn_cbt_beguiling_restore | - | - | no
 btn  | -           | btn_cbt_bend_luck | - | - | no
 btn  | -           | btn_cbt_bite_grappled | - | - | no
@@ -10472,6 +10615,7 @@ btn  | -           | btn_cbt_charge_arcane_ward | - | - | no
 btn  | -           | btn_cbt_clairvoyant_combatant | - | - | no
 btn  | -           | btn_cbt_cloak_of_shadows | - | - | no
 btn  | -           | btn_cbt_clockwork_cavalcade | - | - | no
+btn  | -           | btn_cbt_command_companion | - | - | no
 btn  | -           | btn_cbt_companion | - | - | no
 btn  | -           | btn_cbt_corona | - | - | no
 btn  | -           | btn_cbt_dash_bonus | - | - | no

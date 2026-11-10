@@ -161,7 +161,8 @@ namespace {
     X(colossus_slayer_used) X(horde_breaker_available) X(horde_breaker_used) \
     X(horde_breaker_origin) X(horde_breaker_weapon) X(attacked_this_turn) \
     X(shd_resist_magic_mask) X(shd_resist_physical_mask) \
-    X(superior_prey_used) X(bestial_fury_used) X(fey_dreadful_strikes_used) \
+    X(superior_prey_used) X(bestial_fury_used) X(companion_commanded) X(beast_strikes_left) \
+    X(fey_dreadful_strikes_used) \
     X(multiattack_def_hit_by) X(dreadful_strike_available) X(dreadful_strike_used) \
     X(dreadful_strike_target) X(dreadful_strike_weapon) X(stalkers_flurry_pending) \
     X(ambushers_leap) X(sudden_strike_available) X(berserker_frenzy_used) X(vitality_used_this_turn) \

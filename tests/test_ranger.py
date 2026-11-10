@@ -829,26 +829,21 @@ def test_sky_companion_attacks_with_dex():
 
 
 def test_bestial_fury_second_attack_at_l11():
+    # R4 (D9): Bestial Fury's second strike is not baked into the loadout — the engine grants it
+    # only on a commanded turn / a Beast's Strike (test_ranger_subclasses.py covers that).
     blocks = _companion_blocks()
-    below, _ = compute_companion_loadout(blocks["Land"], pb=3, level=10, wis_mod=2)
-    at,    _ = compute_companion_loadout(blocks["Land"], pb=4, level=11, wis_mod=3)
-    assert below["num_attacks"] == 1, below["num_attacks"]
-    assert at["num_attacks"] == 2, at["num_attacks"]       # Bestial Fury
+    at, _ = compute_companion_loadout(blocks["Land"], pb=4, level=11, wis_mod=3)
+    assert at["num_attacks"] == 1, at["num_attacks"]
     print("✅ test_bestial_fury_second_attack_at_l11")
 
 
 def test_exceptional_training_l7():
-    # L7 Exceptional Training: the companion gains Cunning Action (bonus-action Dash/Disengage/Hide)
-    # and its natural weapon switches from its normal physical type to Force (a magic damage type).
+    # R4 (D9): the loadout keeps the natural damage type and no Cunning Action at any level. The
+    # engine picks Force-or-natural per attack and gives Dash/Disengage/Hide only on a commanded turn.
     blocks = _companion_blocks()
-    below, w_below = compute_companion_loadout(blocks["Land"], pb=3, level=6, wis_mod=2)
-    at,    w_at    = compute_companion_loadout(blocks["Land"], pb=3, level=7, wis_mod=2)
-    assert not below["has_cunning_action"], "no Cunning Action before L7"
-    assert at["has_cunning_action"], "Exceptional Training grants Cunning Action at L7"
-    assert w_below["physical_damage_types"] and not w_below["magic_damage_types"], "physical below L7"
-    assert not w_at["physical_damage_types"], "no physical roll at L7+"
-    assert w_at["magic_damage_types"] and w_at["magic_damage_types"][0]["type"] == "Force", \
-        f"L7+ attack deals Force, got {w_at['magic_damage_types']}"
+    at, w_at = compute_companion_loadout(blocks["Land"], pb=3, level=7, wis_mod=2)
+    assert not at["has_cunning_action"], "Cunning Action is per commanded turn, not baked in"
+    assert w_at["physical_damage_types"] and not w_at["magic_damage_types"], "natural type kept"
     print("✅ test_exceptional_training_l7")
 
 

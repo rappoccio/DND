@@ -997,6 +997,25 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             targets.resize(static_cast<std::size_t>(allowed));
     }
 
+    // Beast Master L15 Share Spells: "When you cast a spell targeting yourself, you can also affect your
+    // Primal Companion beast with the spell if the beast is within 30 feet of you." Only true Self buffs
+    // (Single geometry, range 0, cast on the caster) — added as a second target of the same cast, so it
+    // costs no extra slot and shares the one Concentration.
+    if (sp.geometry == Spell::Single && sp.range == 0 &&
+        targets.size() == 1 && targets.front() == action.caster_idx &&
+        caster_stats.hasClass(CharacterClass::Ranger) && caster_stats.ranger_subclass == BeastMasterPath &&
+        caster_stats.classLevel(CharacterClass::Ranger) >= 15) {
+        const int comp = primalCompanionOf(bm, action.caster_idx);
+        if (comp >= 0) {
+            const PlacedAgent& cp = agents[static_cast<std::size_t>(comp)];
+            if (footprintDistance(caster_pa.origin, caster_pa.agent->getSize(),
+                                  cp.origin, cp.agent->getSize()) * 5 <= 30) {
+                targets.push_back(comp);
+                log_("Share Spells: {} also affects {}", sp.name, agentName(bm, comp));
+            }
+        }
+    }
+
     // Faction rule 3 — beneficial (Heal) area/multi-target spells only affect the caster's
     // allies (same faction, incl. the caster). Enemies are never healed/buffed by a
     // "creatures of your choosing" heal. Single-target heals are left alone: the caster

@@ -3071,6 +3071,7 @@ void CombatEngine::onCreatureDied(BattleMap& bm, int dead_idx)
     const auto& agents = bm.placedAgents();
     const int n = static_cast<int>(agents.size());
     if (dead_idx < 0 || dead_idx >= n) return;
+    vanishOrphanedCompanions(bm);   // Beast Master: the Primal Companion goes with its Ranger
     const PlacedAgent& dp = agents[static_cast<std::size_t>(dead_idx)];
     for (int c = 0; c < n; ++c) {
         if (c == dead_idx || !canKeeperOfSouls(bm, c)) continue;

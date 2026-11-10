@@ -1467,6 +1467,55 @@ def test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click():
     print("✅ test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click passed")
 
 
+def test_beast_master_command_and_beasts_strike():
+    """Beast Master (RANGER_SUBCLASSES_PLAN.md R4, D9): Command is a band row that spends the
+    Bonus Action; Beast's Strike is an attack-economy row that pays one attack and arms the
+    companion's strikes (two at L11), each a checked click; the uncommanded companion's Action
+    band is Dodge alone."""
+    from net.roster import DM_PRINCIPAL_ID
+    app = _app()
+    aria = _reclass(app, "Aria", rpg.CharacterClass.Ranger, 11,
+                    ranger_subclass=rpg.RangerSubclass.BeastMaster)
+    skarn, brannor = _idx(app, "Skarn"), _idx(app, "Brannor")
+    app._summon_companion(aria, "Land")
+    comp = app.combat.primal_companion_of(app.bm, aria)
+    assert comp >= 0
+    sk = app.bm.placed_agents[skarn].origin
+    assert any(app.combat.teleport_agent(app.bm, comp, sk.col + dc, sk.row + dr)
+               for dc, dr in ((1, 0), (0, 1), (0, -1), (1, 1), (1, -1))), "no cell next to Skarn"
+    assert list(app.combat.beasts_strike_targets(app.bm, aria)) == [skarn]
+
+    assert "command_companion" in _bonus(app, aria)
+    assert _by_id(app, aria)["beasts_strike"].economy == "attack"
+    assert ActionMenu._action(app, comp) and \
+        [a.id for a in ActionMenu._action(app, comp)] == ["dodge"], "uncommanded: Dodge only"
+
+    _draw(app)
+    assert app.perform("beasts_strike", DM_PRINCIPAL_ID) is True
+    c = app.combat.get_agent_conditions(app.bm, aria)
+    assert c.beast_strikes_left == 2, "Bestial Fury: twice"
+    assert app.action_used, "the Attack action is under way"
+    assert app.pending_attack_slot == "action" and app.pending_beasts_strike_targets == [skarn]
+    app._resolve_combat_attack(brannor)                       # not one the companion can reach
+    assert app.combat.get_agent_conditions(app.bm, aria).beast_strikes_left == 2
+    app._resolve_combat_attack(skarn)
+    assert app.combat.get_agent_conditions(app.bm, aria).beast_strikes_left == 1
+    if app.combat.get_agent_stats(app.bm, skarn).hp_cur > 0:
+        assert app.pending_beasts_strike_targets == [skarn], "the second strike re-arms"
+        app._resolve_combat_attack(skarn)
+        assert app.combat.get_agent_conditions(app.bm, aria).beast_strikes_left == 0
+    app.pending_attack_slot = ""
+    app.pending_beasts_strike_targets = []
+
+    _draw(app)
+    assert app.perform("command_companion", DM_PRINCIPAL_ID) is True
+    assert app.bonus_used and app.combat.get_agent_conditions(app.bm, aria).companion_commanded
+    assert "command_companion" not in _bonus(app, aria)
+    assert "dodge" in [a.id for a in ActionMenu._action(app, comp)] and \
+        len(ActionMenu._action(app, comp)) > 1, "commanded: the full band"
+    print("✅ test_beast_master_command_and_beasts_strike passed")
+
+
 def test_sudden_strike_is_offered_from_the_engine_list_and_checks_the_click():
     """Stalker's Flurry's Sudden Strike, once chosen, is a free row fed by the engine's
     `sudden_strike_targets`; arming it limits the next attack click to those creatures and the
@@ -1957,6 +2006,7 @@ if __name__ == "__main__":
         test_bite_grappled_asks_the_engine_for_the_pairing()
         test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click()
         test_sudden_strike_is_offered_from_the_engine_list_and_checks_the_click()
+        test_beast_master_command_and_beasts_strike()
         test_shadowy_dodge_cell_pick_submits_the_parked_window()
         test_the_fey_wanderer_rows()
         test_fey_reinforcements_casts_a_one_minute_summon_without_a_slot()
