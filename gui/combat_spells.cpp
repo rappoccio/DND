@@ -283,7 +283,7 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
     } else {
         d20_val = roll(20);
     }
-    int mod     = rules::spellAttackMod(caster_stats);
+    int mod     = rules::spellAttackModFor(caster_pa, sp);   // an item's spell_attack (ENSPELLED D1)
     // Bless — a blessed caster adds 1d4 to spell attack rolls (folded into the mod so the
     // Seeking-reroll total below carries it too).
     if (caster_stats.blessed) {
@@ -354,7 +354,7 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
 
     ss.target_idx = tgt_idx;
     ss.ability    = sp.save_ability;
-    ss.dc         = rules::spellSaveDc(caster_stats);
+    ss.dc         = rules::spellSaveDcFor(caster_pa, sp);   // an item's spell_dc (ENSPELLED D1)
 
     bool target_adv = target_pa.agent->hasAdvantage();
     bool target_dis = target_pa.agent->hasDisadvantage();
@@ -549,9 +549,11 @@ static const char* metamagicName(MetamagicOption opt) noexcept
     }
 }
 
-SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
+SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_in)
 {
     SpellResult result;
+    // Local copy: an item cast is pinned to its spell's base level below (ENSPELLED D6).
+    SpellAction action = action_in;
     auto agents = bm.placedAgents();
 
     if (action.caster_idx < 0 || action.caster_idx >= static_cast<int>(agents.size()))
@@ -574,6 +576,19 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
     // damage type, Quickened changes the casting time). The agent's stored spell
     // is untouched, and persistent effects copy this (already-modified) sp below.
     Spell sp = spells[static_cast<std::size_t>(action.spell_idx)];
+
+    // Enspelled items (ENSPELLED_ITEMS_PLAN.md E2): the item pays, so it must be carried, active and
+    // holding the use or charges. Refused before any effect or cost, like the gates below. The item
+    // casts at the spell's base level (D6) and never spends a slot, whatever slot the caller named.
+    if (sp.item_source != Spell::NoItem) {
+        if (!rules::itemSpellCastable(caster_pa, sp)) {
+            log_("{} can't cast {} from {} — no uses left, not attuned, or not carried",
+                 agentName(bm, action.caster_idx), sp.name, sp.item_name);
+            return result;
+        }
+        action.slot_level = sp.level;
+        action.free_cast  = false;
+    }
 
     // Spell Thief (Arcane Trickster L17): a caster whose spell was stolen can't cast that spell
     // until its next long rest (the lock clears in applyLongRest). Refuse before any effect/slot.
@@ -2276,7 +2291,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                              spell_cond.condition_name, agentName(bm, tgt_idx), tr.saved, target_failed_save, condition_applies);
                     } else {
                         // For other spell types, roll a new save for this condition
-                        int save_dc = rules::spellSaveDc(caster_stats);
+                        int save_dc = rules::spellSaveDcFor(caster_pa, sp);
 
                         // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs Charmed/Frightened.
                         const bool fey_twist =
@@ -2354,7 +2369,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                     // Condition duration: if condition_duration is 0, use spell duration
                     cond.turns_remaining = (spell_cond.condition_duration > 0) ? spell_cond.condition_duration : sp.duration;
                     // Save DC: use caster's spellcasting ability if SaveSpellcasterMod, else use specified ability
-                    if (spell_cond.save_dc_ability == SaveSpellcasterMod) {
+                    // An item's authored spell_dc wins over both (ENSPELLED D1).
+                    const ItemSpells* cond_item = rules::itemSpellsFor(caster_pa, sp);
+                    if (cond_item && cond_item->spell_dc > 0) {
+                        cond.save_dc = cond_item->spell_dc;
+                    } else if (spell_cond.save_dc_ability == SaveSpellcasterMod) {
                         cond.save_dc = rules::spellSaveDc(caster_stats);
                     } else {
                         cond.save_dc = rules::spellSaveDcFromAbility(caster_stats, spell_cond.save_dc_ability);
@@ -2985,12 +3004,27 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
         Spell& spell_mut = pa.spells[static_cast<std::size_t>(action.spell_idx)];
         Agent::Stats& stats = pa.agent->getStats();
 
-        // Mark leveled spell cast (once per turn, even if upcasted)
-        if (sp.level > 0) {
+        const bool from_item = spell_mut.item_source != Spell::NoItem;
+
+        // Mark leveled spell cast (once per turn, even if upcasted). An item cast expends no slot,
+        // so the one-slot-per-turn rule doesn't see it (ENSPELLED D2).
+        if (sp.level > 0 && !from_item) {
             stats.markLeveledSpellCast(sp.level);
         }
 
-        if (!spell_mut.resource_name.empty()) {
+        if (from_item) {
+            // Enspelled item: spend the item's use or charges (E2). The state lives on the item, so
+            // it travels with it (D0).
+            if (ItemSpells* is = rules::itemSpellsFor(pa, spell_mut)) {
+                is->spend(spell_mut.name, spell_mut.item_charge_cost);
+                if (spell_mut.item_charge_cost > 0)
+                    log_("{} spends {} charge(s) of {} ({}/{} left)", agentName(bm, action.caster_idx),
+                         spell_mut.item_charge_cost, spell_mut.item_name, is->charges, is->charges_max);
+                else
+                    log_("{} casts {} from {}", agentName(bm, action.caster_idx), spell_mut.name,
+                         spell_mut.item_name);
+            }
+        } else if (!spell_mut.resource_name.empty()) {
             // Class feature: spend its named resource (e.g. Channel Divinity) instead of a slot.
             int cost = std::max(1, spell_mut.resource_cost);
             Resource* res = stats.getResource(spell_mut.resource_name);
@@ -3090,6 +3124,14 @@ std::vector<int> CombatEngine::availableCastableSpells(
         // cantrip AoEs and let the NPC automation blast them every turn. Gate them out by name.
         if (!stats.death_burst_spell.empty() && spell.name == stats.death_burst_spell)
             continue;
+
+        // Enspelled item: castable iff the item can pay (E2). Ahead of every other branch, and
+        // exempt from the one-leveled-spell-per-turn rule (D2).
+        if (spell.item_source != Spell::NoItem) {
+            if (rules::itemSpellCastable(pa, spell))
+                result.push_back(static_cast<int>(i));
+            continue;
+        }
 
         // Class feature: castable iff its named resource has enough charges.
         if (!spell.resource_name.empty()) {
@@ -3266,8 +3308,13 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
         if (!auto_fail) save_d20 = target_stats.applyTranceFloor(save_d20);
 
         int dc = 0;
-        if (effect.caster_idx >= 0 && static_cast<std::size_t>(effect.caster_idx) < agents.size())
-            dc = rules::spellSaveDcFromAbility(bm.getAgentStats(effect.caster_idx), sp.save_ability);
+        if (effect.caster_idx >= 0 && static_cast<std::size_t>(effect.caster_idx) < agents.size()) {
+            const PlacedAgent& epa = agents[static_cast<std::size_t>(effect.caster_idx)];
+            const ItemSpells*  eis = rules::itemSpellsFor(epa, sp);   // an item's spell_dc (ENSPELLED D1)
+            dc = (eis && eis->spell_dc > 0)
+                     ? eis->spell_dc
+                     : rules::spellSaveDcFromAbility(epa.agent->getStats(), sp.save_ability);
+        }
         saved = !auto_fail && (save_d20 + saveModFor(bm, target_idx, sp.save_ability) >= dc);
         if (saved && charm_fear) charmFearSaveSucceeded(bm, target_idx);   // Beguiling Twist's trigger
     }

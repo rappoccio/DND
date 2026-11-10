@@ -108,6 +108,16 @@ namespace rpg {
       std::string resource_name{};
       int resource_cost{1};
 
+      // Enspelled items (ENSPELLED_ITEMS_PLAN.md E2): a spell granted by a carried item. Its cost
+      // is that item's ItemSpells state, taken ahead of resource_name / NPC uses / slots, so PCs
+      // and NPCs pay the same way. No slot, no one-leveled-spell-per-turn mark (D2), cast at the
+      // spell's base level (D6). Python sets the tag when it grants the spell (E3).
+      enum ItemSource_t { NoItem=0, FromItem, FromWeapon, FromArmor, NumItemSource_t };
+      ItemSource_t item_source{NoItem};
+      int          item_slot{-1};       // index into items / weapons, or the armor slot (D9)
+      std::string  item_name{};         // the item's name, checked against that slot at cast time
+      int          item_charge_cost{0}; // > 0 ⇒ a charge_spells entry costing this; 0 ⇒ N/day group
+
       // Door interaction (Knock): opens/unlocks a door at the target cell. Detected
       // by this flag, not by spell name. Suppresses Arcane Lock for a few turns.
       bool opens_doors{false};

@@ -1299,6 +1299,16 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
         // Save stats back (includes resource restoration)
         bm.setAgentStats(agent_idx, stats);
 
+        // Enspelled items (ENSPELLED_ITEMS_PLAN.md E2): every carried item, weapon and worn armor
+        // piece refills its N/day groups and its charge pool. Attunement doesn't matter: the item
+        // regains its uses whoever holds it. Items on the floor or in a chest don't (known limit).
+        {
+            PlacedAgent& rpa = bm.placedAgentMut(agent_idx);
+            for (auto& it : rpa.items)   if (!it.item_spells.empty()) it.item_spells.refill();
+            for (auto& w  : rpa.weapons) if (!w.item_spells.empty())  w.item_spells.refill();
+            for (auto& a  : rpa.armor)   if (!a.item_spells.empty())  a.item_spells.refill();
+        }
+
         // Regenerate Portent Dice for Diviners
         if (stats.hasClass(Wizard) && stats.wizard_subclass == DivinierPath) {
             regeneratePortentDice(bm, agent_idx);

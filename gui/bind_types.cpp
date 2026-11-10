@@ -1108,6 +1108,10 @@ void bindTypes(py::module_& m) {
              "True if it grants its spells now: has spells and is attuned or needs no attunement.")
         .def("spell_names", &ItemSpells::spellNames)
         .def("uses_per_day", &ItemSpells::usesPerDay)
+        .def("can_cast",    &ItemSpells::canCast, py::arg("spell"), py::arg("charge_cost") = 0,
+             "Can the item pay for one cast now? charge_cost > 0 = that pool entry; 0 = the N/day group.")
+        .def("spend",       &ItemSpells::spend, py::arg("spell"), py::arg("charge_cost") = 0,
+             "Spend one cast: charge_cost charges, or one N/day use. At will is free.")
         .def("refill",      &ItemSpells::refill,
              "Fill every N/day spell and the charge pool to max.");
 
@@ -1383,6 +1387,13 @@ void bindTypes(py::module_& m) {
         .value("AttackRoll", Spell::AttackRoll)
         .value("Save",       Spell::Save)
         .value("Automatic",  Spell::Automatic)
+        .export_values();
+
+    py::enum_<Spell::ItemSource_t>(m, "SpellItemSource")
+        .value("NoItem",     Spell::NoItem)
+        .value("FromItem",   Spell::FromItem)
+        .value("FromWeapon", Spell::FromWeapon)
+        .value("FromArmor",  Spell::FromArmor)
         .export_values();
 
     py::enum_<Spell::SpellSchool_t>(m, "SpellSchool")
@@ -1841,6 +1852,15 @@ void bindTypes(py::module_& m) {
              "(e.g. 'Channel Divinity') instead of a spell slot. Used by classfeatures.json.")
         .def_readwrite("resource_cost", &Spell::resource_cost,
              "Amount of resource_name spent per cast (default 1).")
+        .def_readwrite("item_source", &Spell::item_source,
+             "Enspelled items: where the granting item is carried (SpellItemSource). NoItem =\n"
+             "an ordinary spell. A tagged spell is paid for by the item, never a slot.")
+        .def_readwrite("item_slot", &Spell::item_slot,
+             "Index into items / weapons, or the armor slot, of the granting item.")
+        .def_readwrite("item_name", &Spell::item_name,
+             "Name of the granting item; checked against item_slot at cast time.")
+        .def_readwrite("item_charge_cost", &Spell::item_charge_cost,
+             "> 0: a charge_spells entry costing this many pool charges. 0: an N/day group spell.")
         .def_readwrite("instant_kill_threshold", &Spell::instant_kill_threshold,
              "Power Word Kill: a creature whose current HP <= this dies outright (no damage\n"
              "roll, no death saves). Above the threshold the spell deals its normal damage.\n"

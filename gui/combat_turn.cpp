@@ -1450,7 +1450,9 @@ static int npcCastSlotLevel(const BattleMap& bm, int agent_idx, int spell_idx) n
     if (spell_idx < 0 || static_cast<std::size_t>(spell_idx) >= spells.size()) return 0;
     const Spell& sp = spells[static_cast<std::size_t>(spell_idx)];
     const Agent::Stats st = bm.getAgentStats(agent_idx);
-    if (st.is_npc || sp.level <= 0 || !sp.resource_name.empty()) return 0;
+    // An enspelled item pays for its own spell at base level (ENSPELLED D6), so it takes no slot.
+    if (st.is_npc || sp.level <= 0 || !sp.resource_name.empty() || sp.item_source != Spell::NoItem)
+        return 0;
     for (int lvl = sp.level; lvl <= 9; ++lvl)
         if (st.spell_slots_remaining[static_cast<std::size_t>(lvl - 1)] > 0) return lvl;
     return 0;
@@ -3892,7 +3894,6 @@ double CombatEngine::npcSaveChance(const BattleMap& bm, int caster_idx, int targ
     const int n = static_cast<int>(agents.size());
     if (caster_idx < 0 || caster_idx >= n || target_idx < 0 || target_idx >= n) return 0.0;
     const PlacedAgent& tp = agents[static_cast<std::size_t>(target_idx)];
-    const Agent::Stats&      cs = agents[static_cast<std::size_t>(caster_idx)].agent->getStats();
     const Agent::Stats&      ts = tp.agent->getStats();
     const Agent::Conditions& tc = tp.agent->getConditions();
 
@@ -3901,7 +3902,7 @@ double CombatEngine::npcSaveChance(const BattleMap& bm, int caster_idx, int targ
         (sp.save_ability == SaveStr || sp.save_ability == SaveDex))
         return 0.0;
 
-    const int dc = rules::spellSaveDc(cs);
+    const int dc = rules::spellSaveDcFor(agents[static_cast<std::size_t>(caster_idx)], sp);
     // Deterministic pieces of saveModFor (its Bless d4 is folded in by convolution below).
     int score = 0; bool prof = false;
     switch (sp.save_ability) {
@@ -3953,7 +3954,7 @@ double CombatEngine::npcSpellHitChance(const BattleMap& bm, int caster_idx, int 
     if (cc.grappled && cc.grappler_idx != target_idx) dis = true;
     if (sp.range > 0 && isThreatened(bm, caster_idx) && !cs.hasFeat("Spell Sniper")) dis = true;
 
-    const int mod       = rules::spellAttackMod(cs);
+    const int mod       = rules::spellAttackModFor(cp, sp);   // an item's spell_attack (ENSPELLED D1)
     const int target_ac = calculateAC(bm, target_idx);   // rollSpellAttack rolls against calculateAC
 
     auto singleDieHit = [&](int bless) -> double {

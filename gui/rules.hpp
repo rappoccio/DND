@@ -38,6 +38,7 @@
 #include <format>
 #include <random>
 #include <string>
+#include <utility>
 
 namespace rpg::rules {
 
@@ -219,6 +220,55 @@ inline int spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ability) 
     // Sorcerer Innate Sorcery: +1 to spell save DC while active.
     int innate = (s.innate_sorcery_turns > 0) ? 1 : 0;
     return 8 + s.prof_bonus + m + innate;
+}
+
+// ── Enspelled items (ENSPELLED_ITEMS_PLAN.md E2) ────────────────────────────
+// The ItemSpells a tagged spell is cast from: the items row / weapons row / armor slot the tag
+// names, provided the item there still carries that name. nullptr for an ordinary spell, and for
+// a stale tag (the item moved or left), which then can't be cast until E3 rebuilds the list.
+inline const ItemSpells* itemSpellsFor(const PlacedAgent& pa, const Spell& sp) noexcept
+{
+    const auto i = static_cast<std::size_t>(sp.item_slot);
+    if (sp.item_slot < 0) return nullptr;
+    switch (sp.item_source) {
+        case Spell::FromItem:
+            if (i < pa.items.size() && pa.items[i].name == sp.item_name) return &pa.items[i].item_spells;
+            break;
+        case Spell::FromWeapon:
+            if (i < pa.weapons.size() && pa.weapons[i].name == sp.item_name) return &pa.weapons[i].item_spells;
+            break;
+        case Spell::FromArmor:
+            if (i < pa.armor.size() && pa.armor[i].name == sp.item_name) return &pa.armor[i].item_spells;
+            break;
+        default: break;
+    }
+    return nullptr;
+}
+
+inline ItemSpells* itemSpellsFor(PlacedAgent& pa, const Spell& sp) noexcept
+{
+    return const_cast<ItemSpells*>(itemSpellsFor(std::as_const(pa), sp));
+}
+
+// Can the item pay for this cast right now: present, active (attuned if it must be, D5), and
+// holding the use or charges (D3/D4)?
+inline bool itemSpellCastable(const PlacedAgent& pa, const Spell& sp) noexcept
+{
+    const ItemSpells* is = itemSpellsFor(pa, sp);
+    return is && is->active() && is->canCast(sp.name, sp.item_charge_cost);
+}
+
+// D1: the item's authored save DC / spell attack bonus when it has one, else the holder's own.
+inline int spellSaveDcFor(const PlacedAgent& pa, const Spell& sp) noexcept
+{
+    const ItemSpells* is = itemSpellsFor(pa, sp);
+    return (is && is->spell_dc > 0) ? is->spell_dc : spellSaveDc(pa.agent->getStats());
+}
+
+inline int spellAttackModFor(const PlacedAgent& pa, const Spell& sp) noexcept
+{
+    const ItemSpells* is = itemSpellsFor(pa, sp);
+    return (is && is->spell_attack > 0) ? is->spell_attack : spellAttackMod(pa.agent->getStats());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

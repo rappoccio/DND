@@ -1265,3 +1265,10 @@ Planned in `EPIC_BOONS_PLAN.md` (SRD 5.2 p.88, 7 boons). Locked scope decisions:
 - **Item spells are cast at the spell's base level** (D6). Items whose text says "cast at Nth
   level" (e.g. the Icon of Ravenloft's Cure Wounds) are modeled at the catalog level; there is no
   per-item cast level yet.
+- **Reaction spells don't draw on items.** Shield and Counterspell take the reaction paths
+  (`canCastShield` / `canCastCounterspell` / `spendCounterspellCost`), which check and spend
+  slots or NPC N/day uses only. An item that grants either one doesn't let its holder react with
+  it. The item cost path covers `executeSpell` and `availableCastableSpells`.
+- **A long rest refills carried items only.** `applyLongRest` refills the item spells on every
+  agent's items, weapons and worn armor. An enspelled item lying on the floor or in a chest keeps
+  whatever uses it had until someone picks it up and rests.

@@ -881,6 +881,11 @@ def _spell_to_dict(s) -> dict:
         "ward_blocks_living":     getattr(s, "ward_blocks_living", False),
         "creates_wall_terrain":   getattr(s, "creates_wall_terrain", False),
         "ends_conditions":        list(getattr(s, "ends_conditions", [])),
+        # Enspelled items (ENSPELLED_ITEMS_PLAN.md E2): the granting item's tag.
+        "item_source":            int(s.item_source),
+        "item_slot":              s.item_slot,
+        "item_name":              s.item_name,
+        "item_charge_cost":       s.item_charge_cost,
     }
 
 
@@ -959,6 +964,11 @@ def _dict_to_spell(d: dict):
     s.excludes_caster = d.get("excludes_caster", False)
     s.resource_name = d.get("resource_name", "") or ""
     s.resource_cost = int(d.get("resource_cost", 1))
+    # Enspelled items (ENSPELLED_ITEMS_PLAN.md E2): the granting item's tag; NoItem by default.
+    s.item_source      = rpg.SpellItemSource(int(d.get("item_source", 0)))
+    s.item_slot        = int(d.get("item_slot", -1))
+    s.item_name        = d.get("item_name", "") or ""
+    s.item_charge_cost = int(d.get("item_charge_cost", 0))
     s.requires_los = d.get("requires_los", False)
     s.check_los_on_center = d.get("check_los_on_center", True)
     s.opens_doors = d.get("opens_doors", False)

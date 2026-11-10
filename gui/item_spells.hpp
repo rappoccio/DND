@@ -73,6 +73,26 @@ struct ItemSpells {
         return 0;
     }
 
+    // Can this item pay for one cast of `spell` right now (E2)? charge_cost > 0 ⇒ the pool
+    // entry costing that much (D4); 0 ⇒ the spell's N/day group, at will never running out (D3).
+    // Attunement is the caller's half: see active().
+    [[nodiscard]] bool canCast(const std::string& spell, int charge_cost) const {
+        if (charge_cost > 0) return charges_max > 0 && charges >= charge_cost;
+        const int n = usesPerDay(spell);
+        if (n == kAtWill) return true;
+        if (n <= 0) return false;
+        const auto it = uses_remaining.find(spell);
+        return it != uses_remaining.end() && it->second > 0;
+    }
+
+    // Spend one cast of `spell` (E2): charge_cost from the pool, or one N/day use. At will is free.
+    void spend(const std::string& spell, int charge_cost) {
+        if (charge_cost > 0) { charges = std::max(0, charges - charge_cost); return; }
+        if (usesPerDay(spell) == kAtWill) return;
+        auto it = uses_remaining.find(spell);
+        if (it != uses_remaining.end()) it->second = std::max(0, it->second - 1);
+    }
+
     // Fill every N/day spell and the pool to max: a fresh item from the catalog, and the
     // long-rest refill (E2).
     void refill() {
