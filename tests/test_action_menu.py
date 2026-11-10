@@ -1417,6 +1417,56 @@ def test_bite_grappled_asks_the_engine_for_the_pairing():
     print("✅ test_bite_grappled_asks_the_engine_for_the_pairing passed")
 
 
+def test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click():
+    """The row is the engine's `horde_breaker_targets`, offered once the Attack sequence has no
+    swings left; arming it limits the next attack click to those creatures, and the swing spends
+    the feature (RANGER_SUBCLASSES_PLAN.md R1)."""
+    from net.roster import DM_PRINCIPAL_ID
+    app = _app()
+    aria = _goto(app, "Aria")
+    skarn, cyra, brannor = _idx(app, "Skarn"), _idx(app, "Cyra"), _idx(app, "Brannor")
+    home = app.bm.placed_agents[cyra].origin
+    home = (home.col, home.row)
+    fac = app.bm.get_agent_faction(cyra)
+    assert "horde_breaker" not in _bonus(app, aria), "nothing armed"
+
+    # Cyra joins Skarn's side next to him (and within Aria's reach); an attack on Skarn armed it.
+    app.bm.set_agent_faction(cyra, app.bm.get_agent_faction(skarn))
+    assert app.combat.teleport_agent(app.bm, cyra, 4, 4)
+    _set_conditions(app, aria, horde_breaker_available=True, horde_breaker_origin=skarn,
+                    horde_breaker_weapon=0, attacked_this_turn=[skarn])
+    assert list(app.combat.horde_breaker_targets(app.bm, aria)) == [cyra]
+    assert "horde_breaker" in _bonus(app, aria)
+    assert _by_id(app, aria)["horde_breaker"].economy == "free"
+
+    app.attacks_remaining = 1
+    app._attack_sequence_slot = "action"
+    assert "horde_breaker" not in _bonus(app, aria), "the Attack action still has a swing left"
+    app.attacks_remaining = 0
+    app._attack_sequence_slot = ""
+
+    _draw(app)                                       # the panel draws the row; perform needs the offer
+    assert "horde_breaker" in app._action_menu
+    assert app.perform("horde_breaker", DM_PRINCIPAL_ID) is True
+    assert app.pending_attack_slot == "action" and app.pending_horde_breaker_targets == [cyra]
+    app._resolve_combat_attack(brannor)              # not a legal Horde Breaker target
+    assert not app.combat.get_agent_conditions(app.bm, aria).horde_breaker_used
+    assert app.pending_horde_breaker_targets == [cyra], "a refused click keeps the pick armed"
+    app._resolve_combat_attack(cyra)
+    c = app.combat.get_agent_conditions(app.bm, aria)
+    assert c.horde_breaker_used and not c.horde_breaker_available
+    assert app.pending_horde_breaker_targets == []
+
+    app.pending_attack_slot = ""
+    app.attacks_remaining = 0
+    app._attack_sequence_slot = ""
+    _set_conditions(app, aria, horde_breaker_available=False, horde_breaker_used=False,
+                    horde_breaker_origin=-1, horde_breaker_weapon=-1, attacked_this_turn=[])
+    app.combat.teleport_agent(app.bm, cyra, *home)
+    app.bm.set_agent_faction(cyra, fac)
+    print("✅ test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click passed")
+
+
 def test_cunning_action_is_all_three_or_none():
     """One flag offers the whole row; a row with two of three would be a layout bug no
     availability test could see, which is what the smoke suite's row check is for."""
@@ -1708,6 +1758,7 @@ if __name__ == "__main__":
         test_escape_needs_both_a_neighbour_and_a_grapple()
         test_drop_grapple_and_free_from_net_are_outside_the_band()
         test_bite_grappled_asks_the_engine_for_the_pairing()
+        test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click()
         test_cunning_action_is_all_three_or_none()
         test_the_two_telekinetic_options_are_two_widgets()
         test_every_action_carries_an_economy_from_the_vocabulary()

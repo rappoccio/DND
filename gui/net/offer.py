@@ -58,7 +58,7 @@ DOOR_PREFIX = "door_"
 WIRED = frozenset({
     # M5d.1 — weapon attacks and the picks that follow them
     "atk_action", "atk_bonus", "unarmed", "nick", "flurry_of_blows", "martial_arts",
-    "gwm_hew", "war_priest", "shove_push", "shove_prone", "telekinetic_feat", "bm_maneuver",
+    "gwm_hew", "horde_breaker", "war_priest", "shove_push", "shove_prone", "telekinetic_feat", "bm_maneuver",
     # M5d.2 — single-creature picks
     "escape_net", "hand_of_healing", "clairvoyant_combatant", "vow_of_enmity",
     "path_to_the_grave",
@@ -140,6 +140,7 @@ CLASS: dict[str, str] = {
     "war_priest": A,
     "bite_grappled": I,
     "gwm_hew": A,
+    "horde_breaker": A,
     "blink_steps": X,
     "martial_arts": A,
     "flurry_of_blows": C_A,

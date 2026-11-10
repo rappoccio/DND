@@ -859,6 +859,9 @@ struct NpcTurnState {
     // takes no action. Set TRUE the moment the flee move is launched so a park→resume (an OA fired on the
     // way out) simply ends the turn instead of re-fleeing. Mirrors cast_moving / conceal_move_launched.
     bool flee_move_launched{false};
+    // Horde Breaker (Hunter L3): the free extra attack after the attack loop. Set TRUE before its
+    // beginAttack so a park→resume (a Shield / OnD20 window on that swing) never swings twice.
+    bool horde_breaker_launched{false};
     // Difficulty resolver park-safety: the strategy resolveStrategy chose when THIS turn launched, stamped
     // by runNpcTurn whenever the turn parks. The dynamic Level-4 resolution is state-dependent (it probes
     // the live planners), so a park→resume must reuse the strategy that launched the turn — re-resolving

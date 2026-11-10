@@ -159,6 +159,8 @@ namespace {
     X(soul_of_vengeance_available) X(inspiring_smite_used) X(unerring_strike_used) \
     X(peerless_aim_used) X(peerless_aim_available) X(blink_steps_available) \
     X(colossus_slayer_used) X(horde_breaker_available) X(horde_breaker_used) \
+    X(horde_breaker_origin) X(horde_breaker_weapon) X(attacked_this_turn) \
+    X(shd_resist_magic_mask) X(shd_resist_physical_mask) \
     X(superior_prey_used) X(bestial_fury_used) X(fey_dreadful_strikes_used) \
     X(multiattack_def_hit_by) X(dreadful_strike_armed) X(dread_ambusher_used) \
     X(sudden_strike_available) X(berserker_frenzy_used) X(vitality_used_this_turn) \

@@ -358,6 +358,7 @@ test_scripts = [
 
     # Ranger features
     "test_ranger.py",
+    "test_ranger_subclasses.py",   # RANGER_SUBCLASSES_PLAN.md R1–R5
 
     # Vampire support (available_hit_points + reduceHPMax bite rider)
     "test_vampire.py",

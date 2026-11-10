@@ -1649,6 +1649,10 @@ public:
     // the triggering instance (see known_limitations.md).
     [[nodiscard]] bool canSuperiorHunterDefense(const BattleMap& bm, int target_idx) const;
     bool applySuperiorHunterDefense(BattleMap& bm, int reactor_idx, AttackResult& r);
+    // Horde Breaker (Hunter L3): the creatures the armed extra attack may strike — not the original
+    // target, not an ally, alive and in play, within 5 ft of the original target, not yet attacked
+    // this turn, and within reach + line of sight of the armed weapon. Empty when not armed.
+    [[nodiscard]] std::vector<int> hordeBreakerTargets(const BattleMap& bm, int attacker_idx) const;
 
     // Beguiling Defenses (Archfey Warlock L10) — OnHit defender reaction. After a creature the warlock
     // can see hits it, the warlock may reduce the damage by half AND force the attacker to make a WIS

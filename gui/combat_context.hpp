@@ -114,6 +114,9 @@ struct CombatContext {
     // zone ledger (spell_effect_store.hpp, R4e) maps (effect_id, agent_idx) -> the turnCounter_
     // value when last applied (spell-effect bookkeeping, not scratch state).
     int turnCounter_{0};
+    // The creature whose turn beginTurn last opened (-1 = none yet, e.g. a headless test that never
+    // begins a turn). "Once on each of your turns" features (Horde Breaker) key on it.
+    int turn_agent_idx_{-1};
 
     // ── NPC turn playback (GUI animation seam; not serialized) ──────────────
     // Recording is ON only while an automated NPC turn is in flight — set in runNpcTurn, kept on
@@ -149,6 +152,7 @@ struct CombatContext {
             {"agent_portent_round_used", portent_rounds},
             {"resolving_sentinel_guard", resolving_sentinel_guard_},
             {"turn_counter", turnCounter_},
+            {"turn_agent_idx", turn_agent_idx_},
             {"tides_on_initiative", tides_on_initiative_},
         };
     }
@@ -171,6 +175,7 @@ struct CombatContext {
         }
         ctx.resolving_sentinel_guard_ = j.value("resolving_sentinel_guard", false);
         ctx.turnCounter_ = j.value("turn_counter", 0);
+        ctx.turn_agent_idx_ = j.value("turn_agent_idx", -1);
         ctx.tides_on_initiative_ = j.value("tides_on_initiative", std::vector<int>{});
         return ctx;
     }

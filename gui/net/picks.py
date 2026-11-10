@@ -117,6 +117,7 @@ def cancel_attack(app) -> None:
     behind, and a resumed one keeps its count. Hew's flag, cleared when Hew arms, comes back
     with them. A punch that was armed swaps its weapon back."""
     app.pending_attack_slot = ""
+    app.pending_horde_breaker_targets = []
     snap = app._attack_arm_snapshot
     app._attack_arm_snapshot = None
     if snap is not None:

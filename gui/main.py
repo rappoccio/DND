@@ -141,7 +141,7 @@ _BON_RUN_ESCAPE    = ("grapple_esc", "telekinetic_feat")
 # their `economy`: none of them costs the Bonus Action, which is why spending it must
 # not take them (`actions._BONUS_ECONOMY`).
 _BON_RUN_UNBANDED  = ("grapple_drop", "use_item", "extinguish", "escape_net",
-                      "haste_action")
+                      "haste_action", "horde_breaker")
 
 # The Archfey trio, named on its own only because the rider selector's label is the one
 # thing in §7 the draw pass WRITES back to the app. See the draw site.
@@ -916,6 +916,7 @@ class App:
         # Generic extra-attack knobs (War Priest, Great Weapon Master, Nick, …). Reset per attack.
         self.pending_attack_offhand   = None  # None = derive from slot; True/False overrides proficiency
         self.pending_attack_resource  = None  # resource name to spend on a valid attack (e.g. "War Priest")
+        self.pending_horde_breaker_targets = []  # Horde Breaker: the only creatures the armed attack may strike
         # Cleave weapon mastery: awaiting a 2nd-target click. {"attacker","first","weapon"} or None.
         # Resolved out-of-band (no attacks_remaining / bonus-action accounting): Cleave is part of
         # the Attack action, not a bonus action.
@@ -1873,6 +1874,9 @@ class App:
                                           (160, 40, 70), (200, 70, 100), self.font_md)
         self.btn_cbt_gwm_hew = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Hew (Bonus Attack)",
+                                          (190, 100, 70), (225, 135, 100), self.font_md)
+        self.btn_cbt_horde_breaker = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Horde Breaker (Extra Attack)",
                                           (190, 100, 70), (225, 135, 100), self.font_md)
         # Boon of Dimensional Travel — Blink Steps: a ≤30-ft teleport armed right after the Attack/Magic
         # action; clicking enters a destination pick (see _resolve_blink_steps). Deep-violet like teleports.
@@ -6111,6 +6115,7 @@ class App:
         self.summon_hover_cell           = None
         self._aoe_aim                    = None   # M5e E-8: an unconfirmed aim
         self._di_wish_free               = False  # F-M5e-12: an unused Greater DI Wish
+        self.pending_horde_breaker_targets = []   # rides along with pending_attack_slot
 
     # The arms `_target_pick_armed` reads, with the idle value each rests at. Every field
     # `_clear_pending_target_picks` resets is either here or in `_TARGET_PICK_COMPANIONS`;
@@ -6149,7 +6154,7 @@ class App:
         "_duplicity_cd_pending", "pending_mantle_targets",
         "pending_summon_idx", "pending_summon_slot_level", "pending_summon_monster",
         "pending_summon_spirit", "pending_summon_free_cast", "summon_hover_cell",
-        "_aoe_aim", "_di_wish_free",
+        "_aoe_aim", "_di_wish_free", "pending_horde_breaker_targets",
     )
 
     def _target_pick_armed(self) -> bool:
@@ -7723,6 +7728,17 @@ class App:
         slot    = self.pending_attack_slot
         if atk_idx < 0 or not slot:
             return
+        if self.pending_horde_breaker_targets:
+            if target_idx not in self.pending_horde_breaker_targets:
+                self._combat_log_add("Horde Breaker: pick a creature within 5 ft of the first target "
+                                     "that you haven't attacked this turn.")
+                self._flush_combat_log()
+                return
+            self.pending_horde_breaker_targets = []
+            hb = self.combat.get_agent_conditions(self.bm, atk_idx)
+            hb.horde_breaker_used      = True   # before the swing: it must not re-arm itself
+            hb.horde_breaker_available = False
+            self.combat.set_agent_conditions(self.bm, atk_idx, hb)
         action = rpg.Attack(atk_idx, target_idx, self.pending_weapon_idx)
         action.is_offhand = (slot == "bonus") if self.pending_attack_offhand is None else self.pending_attack_offhand
         action.attack_slot = slot  # Pass the slot type to C++ ("action" or "bonus")
@@ -8293,6 +8309,20 @@ class App:
             if w.heavy and (w.type == rpg.WeaponType.Melee or w.thrown):
                 return i
         return -1
+
+    def _start_horde_breaker(self, atk_idx: int):
+        """Horde Breaker (Hunter L3): arm the extra attack an earlier attack this turn earned —
+        the same weapon, against a creature within 5 ft of that attack's target that hasn't been
+        attacked this turn. The engine lists the legal targets; `_resolve_combat_attack` refuses
+        any other click and spends the feature (horde_breaker_used) when the swing is made."""
+        targets = list(self.combat.horde_breaker_targets(self.bm, atk_idx))
+        if not targets:
+            return
+        c = self.combat.get_agent_conditions(self.bm, atk_idx)
+        self.pending_horde_breaker_targets = targets
+        self._start_extra_attack(weapon_idx=c.horde_breaker_weapon, offhand=False, slot="action",
+                                 label="Horde Breaker (a creature within 5 ft of the first target)")
+        self._update_attack_overlay()
 
     def _start_gwm_hew(self, atk_idx: int):
         """Great Weapon Master — Hew: after a Critical Hit or a kill with a Heavy weapon (flagged in
@@ -19146,6 +19176,10 @@ class App:
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
                     self._start_gwm_hew(idx)
+            if action_id == "horde_breaker":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._start_horde_breaker(idx)
             if action_id == "blink_steps":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents) and self._blink_steps_ready(idx):

@@ -187,6 +187,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     // New turn: advance the counter used for persistent-zone "once per turn" dedup.
     ++ctx_.turnCounter_;
+    ctx_.turn_agent_idx_ = agent_idx;
 
     // Self-heal any grapple whose grappler can no longer maintain it (died/downed/incapacitated,
     // possibly on another creature's turn, or via a kill path that missed the down chokepoint, or
@@ -225,6 +226,11 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         // Zealot's next turn", so expire it as that Zealot's turn begins (tagged on each ally).
         if (c.zealous_blessing && c.zealous_blessing_by == agent_idx) {
             c.zealous_blessing = false; c.zealous_blessing_by = -1;                 dirty = true;
+        }
+        // Superior Hunter's Defense: the Resistance lasts "until the end of the current turn", and
+        // the current turn ended when this one began — whoever's turn it was.
+        if (c.shd_resist_magic_mask || c.shd_resist_physical_mask) {
+            c.shd_resist_magic_mask = 0; c.shd_resist_physical_mask = 0;           dirty = true;
         }
         if (dirty) bm.setAgentConditions(i, c);
     }
@@ -2389,6 +2395,37 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
             if (beginAttack(bm, a) == FlowStatus::AwaitingDecision)
                 return FlowStatus::AwaitingDecision;
             // attack resolved inline → next swing
+        }
+
+        // Horde Breaker (Hunter L3, D10): the attack loop armed it, hit or miss — always take it when a
+        // valid target exists. Weakest valid creature first (finish it); ties keep index order.
+        if (!st.horde_breaker_launched) {
+            const std::vector<int> hb = hordeBreakerTargets(bm, agent_idx);
+            if (!hb.empty()) {
+                int pick = hb.front();
+                for (int j : hb)
+                    if (bm.getAgentStats(j).hp_cur < bm.getAgentStats(pick).hp_cur) pick = j;
+                Agent::Conditions c = bm.getAgentConditions(agent_idx);
+                const int w = c.horde_breaker_weapon;
+                c.horde_breaker_used      = true;   // BEFORE the swing: it must not re-arm itself
+                c.horde_breaker_available = false;
+                bm.setAgentConditions(agent_idx, c);
+                st.horde_breaker_launched = true;
+                Attack a;
+                a.attacker_idx = agent_idx;
+                a.target_idx   = pick;
+                a.weapon_idx   = w;
+                a.attack_slot  = "action";
+                log_("{}: Horde Breaker — an extra attack against {}", agentName(bm, agent_idx),
+                     agentName(bm, pick));
+                renderAttack(agent_idx, pick);
+                recordNpcAnnounce(agent_idx, pick,
+                    std::format("{} attacks {} with {} (Horde Breaker)!", agentName(bm, agent_idx),
+                                agentName(bm, pick),
+                                bm.getAgentWeapons(agent_idx)[static_cast<std::size_t>(w)].name));
+                if (beginAttack(bm, a) == FlowStatus::AwaitingDecision)
+                    return FlowStatus::AwaitingDecision;
+            }
         }
     }
 

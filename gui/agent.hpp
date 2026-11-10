@@ -1057,6 +1057,11 @@ namespace rpg {
       bool colossus_slayer_used{false};     // Hunter L3 Colossus Slayer: +1d8 already applied this turn (once/turn)
       bool horde_breaker_available{false};  // Hunter L3 Horde Breaker: a weapon hit can grant an extra attack vs an adjacent creature (GUI prompt)
       bool horde_breaker_used{false};       // Hunter L3 Horde Breaker already used this turn (once/turn)
+      int  horde_breaker_origin{-1};        // Horde Breaker: the original target of the attack that armed it (the extra attack hits a creature within 5 ft of it)
+      int  horde_breaker_weapon{-1};        // Horde Breaker: the weapon slot of that attack ("the same weapon")
+      std::vector<int> attacked_this_turn{}; // creatures this agent has made an attack against this turn (Horde Breaker: "that you haven't attacked this turn")
+      int  shd_resist_magic_mask{0};        // Hunter L15 Superior Hunter's Defense: bit t = Resistance to MagicDamage_t t until the end of the current turn
+      int  shd_resist_physical_mask{0};     // ... and bit t = Resistance to PhysicalDamage_t t (both cleared as the next turn begins)
       bool superior_prey_used{false};       // Hunter L11 Superior Hunter's Prey: HM-damage splash already applied this turn (once/turn)
       bool bestial_fury_used{false};        // Beast Master L11 Bestial Fury: companion's HM-marked Force splash already applied this turn (once/turn)
       bool fey_dreadful_strikes_used{false}; // Fey Wanderer L3 Dreadful Strikes Psychic rider already applied this turn (once/turn)
@@ -1228,6 +1233,9 @@ namespace rpg {
       conditions_.colossus_slayer_used         = false;
       conditions_.horde_breaker_available      = false;
       conditions_.horde_breaker_used           = false;
+      conditions_.horde_breaker_origin         = -1;
+      conditions_.horde_breaker_weapon         = -1;
+      conditions_.attacked_this_turn.clear();
       conditions_.superior_prey_used           = false;
       conditions_.bestial_fury_used            = false;
       conditions_.fey_dreadful_strikes_used    = false;

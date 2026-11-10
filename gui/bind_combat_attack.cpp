@@ -118,6 +118,11 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              "Superior Hunter's Defense (on-hit DEFENDER reaction): halve result.total_damage (round down),\n"
              "spend the reactor's reaction, record the reduction. Re-validates can_superior_hunter_defense.\n"
              "Returns True iff applied. Same OnHit-window plumbing as Uncanny Dodge.")
+        .def("horde_breaker_targets", &CombatEngine::hordeBreakerTargets,
+             py::arg("battle_map"), py::arg("attacker_idx"),
+             "Horde Breaker (Hunter L3): indices the armed extra attack may strike — within 5 ft of the\n"
+             "original target, not attacked this turn, not an ally, in reach + LoS of the armed weapon.\n"
+             "Empty unless horde_breaker_available and not horde_breaker_used.")
         .def("can_deflect_attacks", &CombatEngine::canDeflectAttacks,
              py::arg("battle_map"), py::arg("defender_idx"),
              "True iff defender_idx (Monk L3+, reaction free, not incapacitated, alive) may use Deflect\n"

@@ -99,6 +99,7 @@ _BONUS_ECONOMY = {
     "grapple_drop":          ECONOMY_FREE,
     "bite_grappled":         ECONOMY_ATTACK,   # or a mid-multiattack slot
     "haste_action":          ECONOMY_ACTION,   # Haste's extra Action IS the option
+    "horde_breaker":         ECONOMY_FREE,     # Hunter: the feature grants the extra attack
 
     # ── inside the band, and Action-costing with it ──
     "turn_undead":           ECONOMY_ACTION,
@@ -600,6 +601,13 @@ class ActionMenu:
         # in the panel warns about.
         if stats.haste_action_available:
             out.append(Action("haste_action", "⚡ Haste Action", GROUP_BONUS))
+
+        # Horde Breaker (Hunter L3): an attack this turn armed one extra attack, with the same
+        # weapon, against a creature within 5 ft of its target. Free, so outside the band. Held
+        # back while an Attack sequence still has swings left: those swings are the Action's,
+        # and the extra attack is armed into the same pending-attack state.
+        if app.attacks_remaining == 0 and app.combat.horde_breaker_targets(app.bm, agent_idx):
+            out.append(Action("horde_breaker", "Horde Breaker (Extra Attack)", GROUP_BONUS))
 
         # ── F11, closed: Open Hand L11 Fleet Step ──
         # The one option in §7 whose gate is the OPPOSITE of the band's. Step of the

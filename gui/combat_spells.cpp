@@ -69,6 +69,11 @@ float CombatEngine::effectiveMagicDamageMult(const Agent::Stats& caster, const A
         m > 0.5f && m != 2.0f && shadowyFormActive(*bm, target_idx)) {
         m = 0.5f;
     }
+    // Superior Hunter's Defense (Hunter L15): Resistance to a type that already hit this turn.
+    if (bm && target_idx >= 0 && m > 0.5f && m != 2.0f &&
+        (bm->getAgentConditions(target_idx).shd_resist_magic_mask & (1 << static_cast<int>(type)))) {
+        m = 0.5f;
+    }
     if (m > 0.0f && m < 1.0f) {  // Resistance only — leave Immunity (0.0) and Vulnerability untouched
         if (type == Poison && caster.hasFeat("Poisoner")) return 1.0f;            // Potent Poison (any source)
         if (from_spell && caster.hasElementalAdeptType(type)) return 1.0f;        // Elemental Adept (spells)
@@ -85,6 +90,10 @@ float CombatEngine::effectivePhysicalDamageMult(const Agent::Stats& attacker, co
     // Added first so a Boon of Irresistible Offense attacker (Overcome Defenses) can still lift it below.
     // Vulnerability (2.0) is left intact (the resistance+vulnerability cancel isn't modeled).
     if (bm && target_idx >= 0 && m > 0.5f && m != 2.0f && shadowyFormActive(*bm, target_idx))
+        m = 0.5f;
+    // Superior Hunter's Defense (Hunter L15): Resistance to a type that already hit this turn.
+    if (bm && target_idx >= 0 && m > 0.5f && m != 2.0f &&
+        (bm->getAgentConditions(target_idx).shd_resist_physical_mask & (1 << static_cast<int>(type))))
         m = 0.5f;
     // Boon of Irresistible Offense — Overcome Defenses: B/P/S damage ignores Resistance (0 < m < 1 → 1.0).
     // Immunity (0.0) and Vulnerability (2.0) stand — the boon lifts Resistance only.
@@ -2647,6 +2656,28 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
             cs.hunters_mark_damage_type = MagicDamage_t::Force;            // 3
         }
         bm.setAgentStats(action.caster_idx, cs);
+        // Hunter's Lore (Hunter L3): while a creature is marked, you know its Immunities,
+        // Resistances and Vulnerabilities. Information only — written to the combat log.
+        if (sp.name == "Hunter's Mark" && cs.hasClass(CharacterClass::Ranger) &&
+            cs.ranger_subclass == HunterPath && cs.classLevel(CharacterClass::Ranger) >= 3) {
+            const Agent::Stats ts = bm.getAgentStats(targets[0]);
+            std::string imm, res, vul;
+            auto add = [](std::string& out, const std::string& name) {
+                out += out.empty() ? name : ", " + name;
+            };
+            auto sort_into = [&](const std::string& name, float m) {
+                if (m == 0.0f)      add(imm, name);
+                else if (m < 1.0f)  add(res, name);
+                else if (m > 1.0f)  add(vul, name);
+            };
+            for (const auto& [name, t] : physicalDamageMap)
+                sort_into(name, ts.physical_damage_multipliers[static_cast<std::size_t>(t)]);
+            for (const auto& [name, t] : magicDamageMap)
+                sort_into(name, ts.magic_damage_multipliers[static_cast<std::size_t>(t)]);
+            log_("Hunter's Lore — {}: Immunities: {}; Resistances: {}; Vulnerabilities: {}",
+                 agentName(bm, targets[0]), imm.empty() ? "none" : imm,
+                 res.empty() ? "none" : res, vul.empty() ? "none" : vul);
+        }
     }
 
     // Create persistent spell effect if spell has AoE geometry and duration > 1. A movement-ward

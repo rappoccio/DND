@@ -1024,11 +1024,48 @@ bool CombatEngine::applySuperiorHunterDefense(BattleMap& bm, int reactor_idx, At
     r.total_damage   = before / 2;
     Agent::Conditions cond = bm.getAgentConditions(reactor_idx);
     cond.reaction_used = true;
+    // "...Resistance to that damage and any other damage of the same type until the end of the
+    // current turn": remember the hit's types; effective*DamageMult reads them, beginTurn clears them.
+    for (PhysicalDamage_t t : r.physical_damage_types)
+        cond.shd_resist_physical_mask |= (1 << static_cast<int>(t));
+    for (MagicDamage_t t : r.magic_damage_types)
+        cond.shd_resist_magic_mask |= (1 << static_cast<int>(t));
     bm.setAgentConditions(reactor_idx, cond);
     r.damage_breakdown.push_back({"superior hunter's defense", r.total_damage - before});  // negative
-    log_("Superior Hunter's Defense: {} resists the damage ({} -> {})",
+    log_("Superior Hunter's Defense: {} resists the damage ({} -> {}) for the rest of the turn",
          agentName(bm, reactor_idx), before, r.total_damage);
     return true;
+}
+
+std::vector<int> CombatEngine::hordeBreakerTargets(const BattleMap& bm, int attacker_idx) const
+{
+    std::vector<int> out;
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (attacker_idx < 0 || attacker_idx >= n) return out;
+    const Agent::Conditions c = bm.getAgentConditions(attacker_idx);
+    if (!c.horde_breaker_available || c.horde_breaker_used) return out;
+    const int origin = c.horde_breaker_origin;
+    const auto weapons = bm.getAgentWeapons(attacker_idx);
+    if (origin < 0 || origin >= n || c.horde_breaker_weapon < 0 ||
+        c.horde_breaker_weapon >= static_cast<int>(weapons.size())) return out;
+    const Weapon& w = weapons[static_cast<std::size_t>(c.horde_breaker_weapon)];
+    if (w.name.empty()) return out;
+    const PlacedAgent& me = agents[static_cast<std::size_t>(attacker_idx)];
+    const PlacedAgent& og = agents[static_cast<std::size_t>(origin)];
+    for (int j = 0; j < n; ++j) {
+        if (j == attacker_idx || j == origin) continue;
+        const PlacedAgent& pt = agents[static_cast<std::size_t>(j)];
+        if (pt.removed_from_play || bm.isAgentOnDeck(j)) continue;
+        if (pt.agent->getConditions().dead || pt.agent->getStats().hp_cur <= 0) continue;
+        if (rules::alliedFactions(bm, attacker_idx, j)) continue;
+        if (std::find(c.attacked_this_turn.begin(), c.attacked_this_turn.end(), j) != c.attacked_this_turn.end())
+            continue;
+        if (footprintDistance(og.origin, og.agent->getSize(), pt.origin, pt.agent->getSize()) > 1) continue;
+        if (!canAttack(w, bm, me.origin, me.agent->getSize(), pt.origin, pt.agent->getSize(), false)) continue;
+        out.push_back(j);
+    }
+    return out;
 }
 
 bool CombatEngine::canParry(const BattleMap& bm, int defender_idx) const
@@ -4066,15 +4103,30 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
             log_("Colossus Slayer: +{} damage to the wounded target", cs);
         }
+    }
 
-        // Horde Breaker (L3 prey): once/turn a weapon hit lets you make another attack with the
-        // same weapon vs a different creature within 5 ft of the target. Flag availability; the GUI
-        // offers the extra attack (via _start_extra_attack) and sets horde_breaker_used.
-        if (atk_stats.classLevel(CharacterClass::Ranger) >= 3 && atk_stats.hunter_prey == HunterPrey::HordeBreaker &&
-            !updated_atk_cond.horde_breaker_used && !updated_atk_cond.horde_breaker_available) {
-            updated_atk_cond.horde_breaker_available = true;
-            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
-        }
+    // Every attack, hit or miss: remember who this creature has attacked this turn (Horde Breaker's
+    // "a creature you haven't attacked this turn"). Cleared in Agent::turn().
+    if (std::find(updated_atk_cond.attacked_this_turn.begin(), updated_atk_cond.attacked_this_turn.end(),
+                  action.target_idx) == updated_atk_cond.attacked_this_turn.end()) {
+        updated_atk_cond.attacked_this_turn.push_back(action.target_idx);
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
+    // Horde Breaker (Hunter L3 prey): "once on each of your turns when you make an attack with a
+    // weapon" — hit OR miss — you may make another attack with the same weapon against a different
+    // creature within 5 ft of the original target. Re-armed on each weapon attack until it is taken
+    // (so the latest attack is the "original target"); never on another creature's turn. The GUI
+    // offers it (riders.offer_horde_breaker) and the NpcDriver takes it after its attack loop; both
+    // set horde_breaker_used before the extra attack resolves, so it cannot re-arm itself.
+    if (is_weapon_atk && !action.opportunity && atk_stats.hasClass(CharacterClass::Ranger) &&
+        atk_stats.ranger_subclass == HunterPath && atk_stats.classLevel(CharacterClass::Ranger) >= 3 &&
+        atk_stats.hunter_prey == HunterPrey::HordeBreaker && !updated_atk_cond.horde_breaker_used &&
+        (ctx_.turn_agent_idx_ < 0 || ctx_.turn_agent_idx_ == action.attacker_idx)) {
+        updated_atk_cond.horde_breaker_available = true;
+        updated_atk_cond.horde_breaker_origin    = action.target_idx;
+        updated_atk_cond.horde_breaker_weapon    = action.weapon_idx;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 
     // Multiattack Defense (Hunter L7 Defensive Tactics): when a creature hits a Hunter who chose
