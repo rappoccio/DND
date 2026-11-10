@@ -100,10 +100,9 @@ control spells. Wizard Illusionist isn't implemented, so it's excluded.
 | Wizard | Evoker | MT | ST | Sculpt Spells, Potent Cantrip | y |
 
 **Party templates**, drawn in these proportions:
-- 50%: balanced 5, one of each role.
-- 30%: balanced 4, which is DEF + ST + SUP + one of MT/CC.
-- 20%: skewed, e.g. two DEF, no SUP, or a double caster. This guards against the
-  policy overfitting to textbook parties.
+- 50%: balanced 4, picking primary or secondary as ( DEF | ST, ST | MT, MT | CC | SUP, SUP).
+- 30%: random 4 out of primary DEF, ST, MT, CC, SUP, no duplicates
+- 20%: skewed, e.g. two DEF, no SUP, or a double caster. This guards against the policy overfitting to textbook parties.
 
 Levels are drawn across all four tiers. A party's level and the mob CR budget come from
 the 2024 encounter-difficulty table.
@@ -123,8 +122,8 @@ the 2024 encounter-difficulty table.
 - **The user rebuilds `rpg_map`.** Verification, in the container:
   `docker run --rm rpg_map -c "python3 -c 'import torch, sklearn, numpy; print(torch.__version__, sklearn.__version__)'"`,
   then `./test.sh`. The suite must be unchanged; no code has changed yet.
-- D1–D13 and the role table frozen 2026-11-09. Party-template proportions and the 75/25
-  primary/secondary split were accepted as proposed.
+- D1–D13 and the role table frozen 2026-11-09. The 75/25 primary/secondary split was
+  accepted as proposed; the party-template proportions are the user's revision above.
 
 ### Step 1 — Simulation trace format + recorder
 - New `gui/sim_trace.py`: a JSONL trace. The header holds the map path, the agents JSON
@@ -251,4 +250,4 @@ the 2024 encounter-difficulty table.
 2. ~~Level 5/6 split~~ → keep it (D11).
 3. ~~Scenario sources~~ → both (D12); the role table above is awaiting the user's check.
 4. ~~Trace retention~~ → 1-in-10 sample (D13).
-5. ~~Party template proportions and the 75/25 split~~ → accepted.
+5. ~~Party template proportions and the 75/25 split~~ → 75/25 accepted; templates revised by the user.
