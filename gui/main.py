@@ -6565,6 +6565,9 @@ class App:
                 self._combat_log_add(detection_msg)
         events = self.combat.take_npc_visual_events()
         self.events.extend_npc(events)   # M4b B-2: the players' copy of what plays below
+        t = self._sim_trace_live()
+        if t is not None:
+            t.set_decision(self.combat.last_npc_decision())
         self._trace_events(events)
         if status == rpg.FlowStatus.AwaitingDecision and self.combat.pending_decision().active:
             # The NPC attempted an action; a human gets a reaction/counter window. When it closes,

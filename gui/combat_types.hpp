@@ -24,6 +24,7 @@ namespace rpg {
 
 // Forward declarations (avoid pulling in the whole BattleMap header here).
 enum class MovementType;  // defined in battle_map.hpp
+enum class NpcAutomationStrategy;  // defined in battle_map.hpp
 
 struct HideResult {
     bool valid{false};           // agent exists and is out of LOS of all enemies
@@ -878,6 +879,32 @@ enum class NpcConcealRoute { RouteA=0, RouteB, RouteC, RouteD };
 // like Speak with Animals so a Centaur Warden doesn't classify as a caster); else Ranged = owns a ranged
 // weapon; else Melee. Classification rules are deliberately coarse — refinement is a planned follow-up.
 enum class NpcRole { Melee = 0, Ranged, Caster };
+
+// NPC archetype (NPC_LEARNING_PLAN.md D2 / Step 4): NpcRole refined — Caster splits on which Level 4 planner
+// the kit feeds (AoE blasts → Blaster, control_priority spells → Controller, heals/buffs → HealerSupport).
+// Each Level 5/6 policy is per archetype, and each archetype has a fallback chain (npcArchetypeChain).
+enum class NpcArchetype { Melee = 0, Ranged, Blaster, Controller, HealerSupport };
+inline constexpr int kNpcArchetypeCount = 5;
+
+// Which rung of the Level 5/6 fallback chain (NPC_LEARNING_PLAN.md Step 4) produced a turn's strategy.
+//   Heuristic  — not a policy turn: Levels 0-4, or Level 5/6 with no model loaded (clamped to Level 4).
+//   TreeTop    — rung 1: the model's top-ranked action, legal and actionable now.
+//   TreeRanked — rung 2: a lower-ranked action from the same model.
+//   Archetype  — rung 3: the archetype's own strategies, then its secondary archetypes'.
+//   Level4     — rung 4: the Level 4 resolver.
+//   Simple     — rung 5: Simple, unconditionally. An agent never goes without a decision.
+enum class NpcFallbackRung { Heuristic = 0, TreeTop, TreeRanked, Archetype, Level4, Simple };
+
+// The record of one strategy resolution: who, at which difficulty level, classified as what, which rung
+// decided, and the strategy it decided. runNpcTurn keeps the latest (CombatEngine::lastNpcDecision) so the
+// trace and the Playback HUD can show it.
+struct NpcDecision {
+    int                   agent_idx{-1};
+    int                   level{0};      // the agent's difficulty level as set (before any clamp)
+    NpcArchetype          archetype{NpcArchetype::Melee};
+    NpcFallbackRung       rung{NpcFallbackRung::Heuristic};
+    NpcAutomationStrategy strategy{};    // value-initialised = Simple (0)
+};
 
 // The behavioural knobs that distinguish one NPC strategy from another, fed to the single shared
 // turn executor runWeaponTurn. Each runNpcTurn dispatch case builds one of these from a strategy enum

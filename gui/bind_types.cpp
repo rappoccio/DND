@@ -1198,6 +1198,29 @@ void bindTypes(py::module_& m) {
         .value("Ranged", NpcRole::Ranged)
         .value("Caster", NpcRole::Caster);
 
+    py::enum_<NpcArchetype>(m, "NpcArchetype")
+        .value("Melee",         NpcArchetype::Melee)
+        .value("Ranged",        NpcArchetype::Ranged)
+        .value("Blaster",       NpcArchetype::Blaster)
+        .value("Controller",    NpcArchetype::Controller)
+        .value("HealerSupport", NpcArchetype::HealerSupport);
+
+    py::enum_<NpcFallbackRung>(m, "NpcFallbackRung")
+        .value("Heuristic",  NpcFallbackRung::Heuristic)
+        .value("TreeTop",    NpcFallbackRung::TreeTop)
+        .value("TreeRanked", NpcFallbackRung::TreeRanked)
+        .value("Archetype",  NpcFallbackRung::Archetype)
+        .value("Level4",     NpcFallbackRung::Level4)
+        .value("Simple",     NpcFallbackRung::Simple);
+
+    py::class_<NpcDecision>(m, "NpcDecision",
+        "How one automated turn's strategy was resolved (NPC_LEARNING_PLAN.md Step 4).")
+        .def_readonly("agent_idx", &NpcDecision::agent_idx, "the deciding agent; -1 = no decision this turn")
+        .def_readonly("level",     &NpcDecision::level,     "the agent's difficulty level as set (before any clamp)")
+        .def_readonly("archetype", &NpcDecision::archetype, "NpcArchetype the agent classified as")
+        .def_readonly("rung",      &NpcDecision::rung,      "NpcFallbackRung that decided (Heuristic = Levels 0-4 or no model)")
+        .def_readonly("strategy",  &NpcDecision::strategy,  "the NpcAutomationStrategy decided");
+
     py::enum_<NpcAutomationStrategy>(m, "NpcAutomationStrategy")
         .value("Simple",             NpcAutomationStrategy::Simple)
         .value("PreferTargetCaster", NpcAutomationStrategy::PreferTargetCaster)

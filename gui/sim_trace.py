@@ -5,7 +5,10 @@ raw index basis the events are keyed by), the seed, the policy per side and the 
 Then one **turn** record per turn: the actor, the round, the display snapshot taken before
 the turn (``App._npc_anim_snapshot``'s data), the turn's visual events, its combat-log
 lines, and ``spawned``: the agent records of anything placed since the last record (summons,
-reinforcements), which continue the header's raw index basis. A **footer** with the outcome closes the file; a trace without one was cut short.
+reinforcements), which continue the header's raw index basis. An automated turn also carries
+``decision``: the archetype, the fallback rung and the strategy the engine resolved
+(``CombatEngine.last_npc_decision``, Step 4). A **footer** with the outcome closes the file;
+a trace without one was cut short.
 
 Playback (Step 2) replays the recorded events over the recorded snapshots. It never
 re-executes the engine, so nothing here has to be deterministic beyond what it stores.
@@ -52,6 +55,15 @@ class TraceEvent:
     good: bool = False
     hp_after: int = -1
     died: bool = False
+
+
+def decision_to_dict(d) -> dict | None:
+    """An ``rpg.NpcDecision`` as a trace dict, names as strings like the event kinds. None
+    when the turn made no decision (``agent_idx`` -1: a corpse, Command Flee, Forcecage)."""
+    if d is None or d.agent_idx < 0:
+        return None
+    return {"level": int(d.level), "archetype": d.archetype.name, "rung": d.rung.name,
+            "strategy": d.strategy.name}
 
 
 def event_to_dict(ev) -> dict:
@@ -181,6 +193,13 @@ class TraceWriter:
     def add_events(self, events: Iterable) -> None:
         self._open_turn()["events"].extend(event_to_dict(ev) for ev in events)
 
+    def set_decision(self, decision) -> None:
+        """Record the open turn's strategy decision (an ``rpg.NpcDecision``). A parked
+        turn's resume reports the same decision again, so the last call wins."""
+        d = decision_to_dict(decision)
+        if d is not None:
+            self._open_turn()["decision"] = d
+
     def add_log(self, line: str) -> None:
         self._open_turn()["log"].append(str(line))
 
@@ -234,6 +253,7 @@ class TraceTurn:
     events: list[TraceEvent]
     log: list[str]
     spawned: list = field(default_factory=list)   # agent records new since the last turn
+    decision: dict | None = None   # {level, archetype, rung, strategy}; None = no decision
 
 
 @dataclass
@@ -271,7 +291,8 @@ def load_trace(path: str) -> Trace:
                     actor_name=rec.get("actor_name", ""), driver=rec["driver"],
                     snapshot=snapshot_from_list(rec.get("snapshot")),
                     events=[event_from_dict(e) for e in rec["events"]],
-                    log=list(rec["log"]), spawned=list(rec.get("spawned", []))))
+                    log=list(rec["log"]), spawned=list(rec.get("spawned", [])),
+                    decision=rec.get("decision")))
             elif t == "footer":
                 footer = rec.get("outcome", {})
             else:

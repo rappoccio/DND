@@ -13,7 +13,8 @@ Step 0 Dockerfile edit made; it awaits the user's image rebuild + verification.
 Step 1 (trace recorder) committed 4fcba0b; Step 2 (Playback) committed a386c7a (227/0),
 live-checked by the user 2026-11-09; Step 3 (arena) committed 2026-11-09 (228/0), with the
 party makeup in arena traces and on the Playback HUD. Open: the draw rate and the
-generated-party source (Step 3b).
+generated-party source (Step 3b). Step 4 (archetypes + fallback chain) implemented
+2026-11-09 (229/0), uncommitted.
 
 ---
 
@@ -257,6 +258,37 @@ the 2024 encounter-difficulty table.
   5. `Simple`.
 - No model file present → Level 4 for the whole run, with the existing one-time log line.
 - Tests: classification fixtures per archetype; each fallback rung is forced and observed.
+- **Implemented 2026-11-09 (229/0, uncommitted).** As built, in `combat_turn.cpp` +
+  `tests/test_npc_archetypes.py`:
+  - **Classifier.** `npcClassifyArchetype`: Melee/Ranged carry over from `NpcRole`. A Caster
+    tallies its *known* combat-relevant spells (not just castable ones, so the archetype
+    doesn't flicker as slots drain) with the planners' own predicates: AoE blast →
+    Blaster, `control_priority` → Controller, HP heal or Help buff → HealerSupport. The
+    largest tally wins, ties go by summed spell level, then Blaster → Controller →
+    HealerSupport. A caster feeding none of the three (single-target damage only) is
+    **Ranged**, which is what Level 4 already runs it as.
+  - **Chain.** `npcDecide` returns an `NpcDecision` (archetype, rung, strategy);
+    `resolveStrategy` is now `npcDecide(...).strategy`, and Levels 1–4 are the old code
+    moved unchanged into `resolveHeuristicStrategy`. Every rung uses one test,
+    `npcStrategyActionable`, which probes the executors' own planners. Ranged needs a ranged
+    weapon and LOS to an enemy (the engine tracks no ammo). Rung 3 walks the archetype's
+    strategies, then its secondaries': Melee {Simple}, Ranged {Hide (only with stealth
+    tools), Range}, Blaster {AoE}, Controller {Control}, HealerSupport {Heal, Support}.
+    Every chain ends Ranged → Melee. Rung 4 is taken only when Level 4's pick is
+    actionable; rung 5 is unconditional Simple.
+  - **Stand-in model.** Until Step 8 there are no trees, so a model is a ranked strategy
+    list per archetype (`set_npc_archetype_model`), what a tree leaf will hold. Strategies
+    stand in for Step 5's macro-actions. No model at all → Level 4 exactly, rung
+    `Heuristic`. Some models, but none for this archetype → the chain starts at rung 3.
+    Models live in memory only (no file format yet), and are not in a snapshot.
+  - **Recorded.** `runNpcTurn` keeps the fresh turn's decision (`last_npc_decision`; reset
+    at every fresh turn, so a corpse/Flee/Forcecage turn reports none). The GUI and the
+    arena write it on the turn record as `decision: {level, archetype, rung, strategy}`;
+    the Playback HUD shows `· Blaster: PreferAOE (rung 3 archetype)`.
+  - **Not built:** the optional per-agent DM archetype override (it needs an agent-file
+    field and a panel widget). Postponed by the user 2026-11-09. Determinism golden unchanged.
+  - **User-checked 2026-11-09:** the stand-in model, "an archetype without a model starts
+    at rung 3", and "owning a ranged weapon is the ammo test" are all accepted.
 
 ### Step 5 — Macro-action space + entity observation (C++)
 - `availableMacroActions(bm, idx)` returns a list of `{kind, target_agent, target_cell,

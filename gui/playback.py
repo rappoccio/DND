@@ -108,6 +108,20 @@ def outcome_text(trace: sim_trace.Trace) -> str:
     return f"{f.get('reason', '?')} · {who} · ended in round {last}"
 
 
+# The fallback rung as the HUD shows it (NPC_LEARNING_PLAN.md Step 4). Heuristic turns show none.
+RUNG_TEXT = {"TreeTop": "rung 1 tree", "TreeRanked": "rung 2 tree", "Archetype": "rung 3 archetype",
+             "Level4": "rung 4 Level 4", "Simple": "rung 5 Simple"}
+
+
+def decision_text(decision: dict | None) -> str:
+    """`` · Blaster: PreferAOE (rung 3 archetype)`` for a turn's decision; "" for none."""
+    if not decision:
+        return ""
+    rung = RUNG_TEXT.get(decision.get("rung", ""))
+    return (f" · {decision.get('archetype', '?')}: {decision.get('strategy', '?')}"
+            f"{f' ({rung})' if rung else ''}")
+
+
 # ── The mode ─────────────────────────────────────────────────────────────────
 
 def open_browser(app) -> None:
@@ -427,14 +441,16 @@ class Playback:
         return self.turns[min(self.ti, len(self.turns) - 1)]
 
     def hud_text(self) -> str:
-        """The map's top line: round, actor, driver, and the policy per side. The actor's
-        archetype and chosen macro-action join it once Step 5 records them."""
+        """The map's top line: round, actor, driver, the actor's archetype and strategy
+        (with the fallback rung on a Level 5/6 policy turn), and the policy per side. The
+        chosen macro-action replaces the strategy once Step 5 records it."""
         h = self.trace.header
         t = self.current_turn()
         if t is None:
             return ""
         done = " · END" if self.ti >= len(self.turns) and self.app._npc_anim is None else ""
         return (f"PLAYBACK · Round {t.round + 1} · {t.actor_name or t.actor} ({t.driver})"
+                f"{decision_text(t.decision)}"
                 f" · NPC policy {h.get('npc_policy', '?')} · PCs {h.get('pc_mode', '?')}"
                 f"{done}")
 

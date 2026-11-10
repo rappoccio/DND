@@ -131,13 +131,47 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "agent's role (npc_classify_role) + level: L1 all Simple; L2 ranged/casters kite (PreferRange);\n"
              "L3 casters with a castable AoE blast → PreferAOE; L4 ranged with stealth tools → PreferHide and\n"
              "casters resolve dynamically by probing the live planners (Heal → Control → Support, first\n"
-             "actionable plan wins, else the L3 result); L5/6 clamp to L4 until the NN policies exist.")
+             "actionable plan wins, else the L3 result); L5/6 run the archetype fallback chain when a model\n"
+             "is loaded (see npc_decide), else clamp to L4.")
         .def("npc_classify_role",
              &CombatEngine::npcClassifyRole,
              py::arg("battle_map"), py::arg("agent_idx"),
              "Combat role the difficulty resolver maps to a strategy: Caster (knows a combat-relevant spell —\n"
              "classification_ignore_spells filters flavor/utility like Speak with Animals), else Ranged (owns\n"
              "a non-shield ranged weapon), else Melee.")
+        // ── NPC archetypes + Level 5/6 fallback chain (NPC_LEARNING_PLAN.md Step 4) ──
+        .def("npc_decide",
+             &CombatEngine::npcDecide,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "resolve_strategy plus how it decided: an NpcDecision (archetype, fallback rung, strategy).")
+        .def("last_npc_decision",
+             &CombatEngine::lastNpcDecision,
+             py::return_value_policy::copy,
+             "The NpcDecision behind the latest fresh run_npc_turn (agent_idx -1 when that turn never\n"
+             "reached the resolver: a corpse, Command Flee, a Forcecage escape). A resume keeps its launch's.")
+        .def("npc_classify_archetype",
+             &CombatEngine::npcClassifyArchetype,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "NpcArchetype: npc_classify_role refined. A Caster tallies its known combat-relevant spells by the\n"
+             "Level 4 planner each feeds (AoE blast → Blaster, control_priority → Controller, heal/buff →\n"
+             "HealerSupport); largest tally wins, ties by summed spell level; none of the three → Ranged.")
+        .def("npc_strategy_actionable",
+             &CombatEngine::npcStrategyActionable,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("strategy"),
+             "Whether the strategy is legal and has work to do for the agent now (the fallback chain's test).")
+        .def_static("npc_archetype_chain",
+             &CombatEngine::npcArchetypeChain, py::arg("archetype"),
+             "Rung 3's archetype order: the archetype, then its secondaries.")
+        .def_static("npc_archetype_strategies",
+             &CombatEngine::npcArchetypeStrategies, py::arg("archetype"),
+             "The strategies one archetype contributes to rung 3, in preference order.")
+        .def("set_npc_archetype_model",
+             &CombatEngine::setNpcArchetypeModel,
+             py::arg("archetype"), py::arg("ranked"),
+             "Step 4 stand-in model: a ranked list of NpcAutomationStrategy for one archetype (what a tree\n"
+             "leaf will hold). An empty list clears it. With no model at all, Levels 5/6 run Level 4.")
+        .def("clear_npc_archetype_models", &CombatEngine::clearNpcArchetypeModels)
+        .def("npc_models_loaded", &CombatEngine::npcModelsLoaded)
         .def("npc_control_priority",
              &CombatEngine::npcControlPriority,
              "PreferControl (Step 8) config: the DM-authored control-spell priority order the planner walks,\n"

@@ -614,8 +614,10 @@ class _Fight:
             if idx < len(bm.placed_agents) and bm.placed_agents[idx].conditions.hidden:
                 eng.check_hidden_agent_detection(bm, idx, True)
             events = eng.take_npc_visual_events()
-            if self.trace is not None and events:
-                self.trace.add_events(events)
+            if self.trace is not None:
+                self.trace.set_decision(eng.last_npc_decision())
+                if events:
+                    self.trace.add_events(events)
             if status != rpg.FlowStatus.AwaitingDecision or not eng.pending_decision().active:
                 self._adopt_spawned(idx)
                 return True

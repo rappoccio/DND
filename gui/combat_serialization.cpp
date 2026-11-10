@@ -29,6 +29,9 @@
 //   · The npc_automation_config.json cache (npc_config_loaded_ and friends) and
 //     npc_nn_level_warned_. A lazy file cache and a one-shot log guard — not
 //     gameplay state; both re-derive themselves on demand after a restore.
+//   · The Level 5/6 archetype models (npc_models_) and last_npc_decision_. The
+//     models are loaded policy, like the config; the decision is a per-turn
+//     readout for the trace (NPC_LEARNING_PLAN.md Step 4).
 //
 //  ── What a snapshot is NOT ──────────────────────────────────────────────────
 //  It holds ENGINE state only. Agent HP/positions/conditions flags, terrain and

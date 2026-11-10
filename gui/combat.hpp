@@ -39,6 +39,7 @@
 #include "condition_tracker.hpp"   // ConditionTracker — active-condition store + stat snapshots (R4c)
 #include "spell_effect_store.hpp"  // SpellEffectStore — ticking effects, safe targets, zone ledger (R4e)
 
+#include <array>
 #include <cstdint>
 #include <format>
 #include <functional>
@@ -500,11 +501,42 @@ public:
     //       PreferHide; Casters resolve DYNAMICALLY by probing the live planners in priority order
     //       Heal → Control → Support (first actionable plan wins: it can cast now or approach to cast),
     //       then AoE, else the L3 result. Planner-probing guarantees the resolved executor finds work.
-    //   L5/6 NN policies (Steps 11-13) — not yet trained; clamp to L4 (one-time log line).
+    //   L5/6 the learned policies (NPC_LEARNING_PLAN.md). With no archetype model loaded, clamp to L4 (one-
+    //       time log line). With models loaded, walk the Step 4 fallback chain (npcDecide).
     // runNpcTurn must always go through this, never read the raw field, so the executors stay decoupled
     // from the resolver. State-dependent (L4), so runNpcTurn stamps the resolution on NpcTurnState when a
     // turn parks and reuses it on resume — never re-resolve mid-turn.
     [[nodiscard]] NpcAutomationStrategy resolveStrategy(const BattleMap& bm, int agent_idx) const noexcept;
+    // resolveStrategy plus the record of how it decided: the archetype and the fallback rung
+    // (NPC_LEARNING_PLAN.md Step 4). resolveStrategy == npcDecide(...).strategy.
+    [[nodiscard]] NpcDecision npcDecide(const BattleMap& bm, int agent_idx) const noexcept;
+    // The decision behind the latest FRESH runNpcTurn (a parked turn's resume keeps its launch decision).
+    // agent_idx == -1 until an automated turn has run.
+    [[nodiscard]] const NpcDecision& lastNpcDecision() const noexcept { return last_npc_decision_; }
+
+    // NPC archetype (NPC_LEARNING_PLAN.md Step 4): npcClassifyRole refined. Melee/Ranged carry over; a Caster
+    // tallies its combat-relevant known spells by the Level 4 planner each feeds — AoE blast → Blaster,
+    // control_priority → Controller, HP heal / Help buff → HealerSupport — and takes the largest tally, ties
+    // by spell-slot weight (sum of spell levels), then in that order. A caster feeding none of the three
+    // (single-target damage only) is Ranged, which is what Level 4 already runs it as (PreferRange).
+    [[nodiscard]] NpcArchetype npcClassifyArchetype(const BattleMap& bm, int agent_idx) const noexcept;
+    // Whether `s` is legal and has work to do for this agent right now — the actionability test every rung
+    // of the fallback chain applies. Probes the same planners the executors run. NoOp is never actionable.
+    [[nodiscard]] bool npcStrategyActionable(const BattleMap& bm, int agent_idx,
+                                             NpcAutomationStrategy s) const noexcept;
+    // Rung 3's order: the archetype itself, then its secondaries (Blaster → Ranged → Melee, Controller →
+    // Blaster → Ranged → Melee, HealerSupport → Controller → Ranged → Melee, Ranged → Melee).
+    [[nodiscard]] static std::vector<NpcArchetype> npcArchetypeChain(NpcArchetype a);
+    // The strategies one archetype contributes to rung 3, in preference order.
+    [[nodiscard]] static std::vector<NpcAutomationStrategy> npcArchetypeStrategies(NpcArchetype a);
+
+    // Archetype models. STEP 4 STAND-IN: a model is a ranked strategy list — what a tree leaf will hold
+    // (Step 8 replaces the list with a tree whose leaves store ranked macro-actions, loaded from
+    // gui/npc_models/). An empty list clears that archetype. With no model for any archetype, Levels 5/6
+    // run Level 4; with some, an archetype without one starts the chain at rung 3. Not in a snapshot.
+    void setNpcArchetypeModel(NpcArchetype a, std::vector<NpcAutomationStrategy> ranked);
+    void clearNpcArchetypeModels() noexcept;
+    [[nodiscard]] bool npcModelsLoaded() const noexcept;
 
     // Classify the combat role (Melee/Ranged/Caster) the difficulty resolver maps to a strategy. Caster =
     // knows any combat-relevant spell (npcClassificationIgnore filters flavor/utility spells); else Ranged
@@ -2281,6 +2313,13 @@ private:
     // One-time "Level 5/6 clamps to Level 4" combat-log warning (NN policies not yet trained). Mutable:
     // resolveStrategy is const.
     mutable bool npc_nn_level_warned_ = false;
+    // Level 5/6 archetype models (Step 4 stand-in, see setNpcArchetypeModel), indexed by NpcArchetype, and
+    // the latest fresh-turn decision. Neither is gameplay state, so neither is in a snapshot.
+    std::array<std::vector<NpcAutomationStrategy>, kNpcArchetypeCount> npc_models_{};
+    NpcDecision last_npc_decision_{};
+    // The Level 1-4 resolver (difficulty `eff`), split out so the Level 5/6 chain can call it as rung 4.
+    [[nodiscard]] NpcAutomationStrategy resolveHeuristicStrategy(const BattleMap& bm, int agent_idx,
+                                                                 int eff) const noexcept;
     // Everything runNpcTurn does AFTER the strategy is known (resume routing, NoOp, Bucket-D recharge,
     // policy dispatch). Split out so runNpcTurn can stamp the resolved strategy onto npc_turn_ when the
     // dispatched turn parks — the resume then reuses it instead of re-resolving (see resolveStrategy).

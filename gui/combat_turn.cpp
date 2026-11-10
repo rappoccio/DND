@@ -1394,24 +1394,72 @@ static int npcCastSlotLevel(const BattleMap& bm, int agent_idx, int spell_idx) n
 
 NpcAutomationStrategy CombatEngine::resolveStrategy(const BattleMap& bm, int agent_idx) const noexcept
 {
+    return npcDecide(bm, agent_idx).strategy;
+}
+
+NpcDecision CombatEngine::npcDecide(const BattleMap& bm, int agent_idx) const noexcept
+{
     // The difficulty-level → role → strategy override (NPC_AUTOMATION_PLAN.md "Difficulty is an
     // OVERRIDE"). Level 0 = manual: the per-agent strategy field rules. Levels 1+ IGNORE the field and
     // resolve a strategy from npcClassifyRole + the level, leaving the executors untouched.
-    const int level = bm.getAgentNpcAutomationDifficulty(agent_idx);
-    if (level <= 0) return bm.getAgentNpcAutomationStrategy(agent_idx);
+    NpcDecision d;
+    d.agent_idx = agent_idx;
+    d.level     = bm.getAgentNpcAutomationDifficulty(agent_idx);
+    d.archetype = npcClassifyArchetype(bm, agent_idx);
+    if (d.level <= 0) {
+        d.strategy = bm.getAgentNpcAutomationStrategy(agent_idx);
+        return d;
+    }
+    if (d.level <= 4) {
+        d.strategy = resolveHeuristicStrategy(bm, agent_idx, d.level);
+        return d;
+    }
 
-    // Levels 5/6 are the NN policies (Steps 11-13) — not yet trained. Clamp to the best heuristic level
-    // and say so ONCE per engine so a DM who dialed 5 knows what is actually running.
-    int eff = level;
-    if (level > 4) {
-        eff = 4;
+    // Levels 5/6 are the learned policies. With no model loaded, clamp to the best heuristic level and
+    // say so ONCE per engine so a DM who dialed 5 knows what is actually running.
+    if (!npcModelsLoaded()) {
         if (!npc_nn_level_warned_) {
             npc_nn_level_warned_ = true;
             log_("NPC automation: difficulty Level {} policy is not yet trained — using Level 4 heuristics.",
-                 level);
+                 d.level);
         }
+        d.strategy = resolveHeuristicStrategy(bm, agent_idx, 4);
+        return d;
     }
 
+    // The fallback chain (NPC_LEARNING_PLAN.md Step 4). Every rung applies the same actionability test.
+    const auto ok = [&](NpcAutomationStrategy s) { return npcStrategyActionable(bm, agent_idx, s); };
+    // Rungs 1-2: the archetype's model, top choice first, then down its ranking.
+    const auto& ranked = npc_models_[static_cast<std::size_t>(d.archetype)];
+    for (std::size_t i = 0; i < ranked.size(); ++i) {
+        if (!ok(ranked[i])) continue;
+        d.rung     = i == 0 ? NpcFallbackRung::TreeTop : NpcFallbackRung::TreeRanked;
+        d.strategy = ranked[i];
+        return d;
+    }
+    // Rung 3: the archetype's own strategies, then its secondary archetypes'.
+    for (NpcArchetype a : npcArchetypeChain(d.archetype))
+        for (NpcAutomationStrategy s : npcArchetypeStrategies(a))
+            if (ok(s)) {
+                d.rung     = NpcFallbackRung::Archetype;
+                d.strategy = s;
+                return d;
+            }
+    // Rung 4: the Level 4 resolver, when what it picks has work to do. Rung 5: Simple.
+    const NpcAutomationStrategy l4 = resolveHeuristicStrategy(bm, agent_idx, 4);
+    if (ok(l4)) {
+        d.rung     = NpcFallbackRung::Level4;
+        d.strategy = l4;
+        return d;
+    }
+    d.rung     = NpcFallbackRung::Simple;
+    d.strategy = NpcAutomationStrategy::Simple;
+    return d;
+}
+
+NpcAutomationStrategy CombatEngine::resolveHeuristicStrategy(const BattleMap& bm, int agent_idx,
+                                                             int eff) const noexcept
+{
     const NpcRole role = npcClassifyRole(bm, agent_idx);
     if (eff <= 1 || role == NpcRole::Melee)     // L1: everyone Simple; melee stays Simple at every level
         return NpcAutomationStrategy::Simple;
@@ -1521,6 +1569,11 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     const int n = static_cast<int>(bm.placedAgents().size());
     if (agent_idx < 0 || agent_idx >= n) return FlowStatus::Completed;
 
+    // A fresh turn forgets the last decision, so a turn that never reaches the strategy resolver (a corpse,
+    // Command Flee, a Forcecage escape) reports none rather than its predecessor's.
+    if (!(npc_turn_.active && npc_turn_.agent_idx == agent_idx))
+        last_npc_decision_ = NpcDecision{};
+
     // A dead/downed/removed NPC must NOT act. Initiative can still hand a turn to a creature that was
     // killed earlier this round (or tombstoned/benched), and without this gate that corpse would run a
     // full strategy — Anastrasya, already dead, cast Hunger of Hadar. Mirror npcAttackable's in-play test
@@ -1579,8 +1632,10 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     NpcAutomationStrategy strategy;
     if (npc_turn_.active && npc_turn_.agent_idx == agent_idx && npc_turn_.resolved_strategy >= 0)
         strategy = static_cast<NpcAutomationStrategy>(npc_turn_.resolved_strategy);
-    else
-        strategy = resolveStrategy(bm, agent_idx);
+    else {
+        last_npc_decision_ = npcDecide(bm, agent_idx);   // the trace / Playback HUD read it back
+        strategy = last_npc_decision_.strategy;
+    }
 
     const FlowStatus fs = dispatchNpcTurn(bm, agent_idx, strategy);
 
@@ -3683,6 +3738,132 @@ void CombatEngine::npcLogCastAnalysis(const BattleMap& bm, int caster_idx, int s
                  sp.name, agentName(bm, t), npcSpellHitChance(bm, caster_idx, t, sp) * 100.0);
         }
     }
+}
+
+// ── NPC archetypes + the Level 5/6 fallback chain (NPC_LEARNING_PLAN.md Step 4) ──────────────────────
+
+NpcArchetype CombatEngine::npcClassifyArchetype(const BattleMap& bm, int agent_idx) const noexcept
+{
+    const NpcRole role = npcClassifyRole(bm, agent_idx);
+    if (role == NpcRole::Melee)  return NpcArchetype::Melee;
+    if (role == NpcRole::Ranged) return NpcArchetype::Ranged;
+
+    // Caster: tally the KNOWN combat-relevant spells (not just the castable ones, so the archetype doesn't
+    // flicker as slots drain) by the planner each would feed. The predicates are the planners' own, so a
+    // spell counts here exactly when that planner would consider casting it. A spell may feed two.
+    const std::set<std::string>&    ignore  = npcClassificationIgnore();
+    const std::vector<std::string>& control = npcControlPriority();
+    std::array<int, kNpcArchetypeCount> count{};
+    std::array<int, kNpcArchetypeCount> weight{};   // spell-slot weight: the sum of spell levels
+    const auto tally = [&](NpcArchetype a, const Spell& sp) {
+        count [static_cast<std::size_t>(a)] += 1;
+        weight[static_cast<std::size_t>(a)] += std::max(0, sp.level);
+    };
+    for (const Spell& sp : bm.getAgentSpells(agent_idx)) {
+        if (ignore.contains(npcLowerName(sp.name))) continue;
+        if (isAoeBlastSpell(sp)) tally(NpcArchetype::Blaster, sp);
+        if (std::find(control.begin(), control.end(), sp.name) != control.end())
+            tally(NpcArchetype::Controller, sp);
+        if (isHpHealSpell(sp) || isSupportBuffSpell(sp)) tally(NpcArchetype::HealerSupport, sp);
+    }
+
+    // Largest tally wins; ties by slot weight, then Blaster → Controller → HealerSupport (strict > keeps
+    // the earlier one). Nothing tallied → Ranged.
+    NpcArchetype best = NpcArchetype::Ranged;
+    int bestCount = 0, bestWeight = 0;
+    for (NpcArchetype a : {NpcArchetype::Blaster, NpcArchetype::Controller, NpcArchetype::HealerSupport}) {
+        const int c = count [static_cast<std::size_t>(a)];
+        const int w = weight[static_cast<std::size_t>(a)];
+        if (c > bestCount || (c == bestCount && c > 0 && w > bestWeight)) {
+            best = a; bestCount = c; bestWeight = w;
+        }
+    }
+    return best;
+}
+
+bool CombatEngine::npcStrategyActionable(const BattleMap& bm, int agent_idx,
+                                         NpcAutomationStrategy s) const noexcept
+{
+    const auto agents = bm.placedAgents();
+    const int  n = static_cast<int>(agents.size());
+    if (agent_idx < 0 || agent_idx >= n) return false;
+
+    const auto anyEnemy = [&](auto&& pred) {
+        for (int j = 0; j < n; ++j)
+            if (npcAttackable(bm, agent_idx, j) && pred(j)) return true;
+        return false;
+    };
+    // Ranged needs a ranged weapon and an enemy it can see from here ("no LOS → Melee", Step 4). The
+    // engine tracks no ammunition, so owning the weapon is the ammo test.
+    const auto rangedOk = [&] {
+        bool hasRanged = false;
+        for (const Weapon& w : bm.getAgentWeapons(agent_idx))
+            if (!w.is_shield && w.type == WeaponType::Ranged) { hasRanged = true; break; }
+        if (!hasRanged) return false;
+        const PlacedAgent& me = agents[static_cast<std::size_t>(agent_idx)];
+        const int mySize = me.agent ? me.agent->getSize() : 1;
+        return anyEnemy([&](int j) {
+            const PlacedAgent& e = agents[static_cast<std::size_t>(j)];
+            return bm.hasLineOfSight(me.origin, mySize, e.origin, e.agent ? e.agent->getSize() : 1);
+        });
+    };
+    const auto castOk = [](const NpcCastPlan& p) { return p.spell_idx >= 0 || p.approach_target >= 0; };
+
+    switch (s) {
+        case NpcAutomationStrategy::Simple:             return anyEnemy([](int) { return true; });
+        case NpcAutomationStrategy::PreferTargetCaster: return anyEnemy([&](int j) { return npcIsCaster(bm, j); });
+        case NpcAutomationStrategy::PreferAOE:          return npcPlanAoeCast(bm, agent_idx).spell_idx >= 0;
+        case NpcAutomationStrategy::PreferRange:        return rangedOk();
+        case NpcAutomationStrategy::PreferHide:         return npcHasStealthTools(bm, agent_idx) && rangedOk();
+        case NpcAutomationStrategy::NoOp:               return false;
+        case NpcAutomationStrategy::PreferControl:      return castOk(npcPlanControlCast(bm, agent_idx));
+        case NpcAutomationStrategy::PreferHeal:         return castOk(npcPlanHealCast(bm, agent_idx));
+        case NpcAutomationStrategy::PreferSupport:      return castOk(npcPlanSupportCast(bm, agent_idx));
+    }
+    return false;
+}
+
+std::vector<NpcArchetype> CombatEngine::npcArchetypeChain(NpcArchetype a)
+{
+    using A = NpcArchetype;
+    switch (a) {
+        case A::Melee:         return {A::Melee};
+        case A::Ranged:        return {A::Ranged, A::Melee};
+        case A::Blaster:       return {A::Blaster, A::Ranged, A::Melee};
+        case A::Controller:    return {A::Controller, A::Blaster, A::Ranged, A::Melee};
+        case A::HealerSupport: return {A::HealerSupport, A::Controller, A::Ranged, A::Melee};
+    }
+    return {A::Melee};
+}
+
+std::vector<NpcAutomationStrategy> CombatEngine::npcArchetypeStrategies(NpcArchetype a)
+{
+    using S = NpcAutomationStrategy;
+    switch (a) {
+        case NpcArchetype::Melee:         return {S::Simple};
+        case NpcArchetype::Ranged:        return {S::PreferHide, S::PreferRange};   // Hide only with stealth tools
+        case NpcArchetype::Blaster:       return {S::PreferAOE};
+        case NpcArchetype::Controller:    return {S::PreferControl};
+        case NpcArchetype::HealerSupport: return {S::PreferHeal, S::PreferSupport};
+    }
+    return {S::Simple};
+}
+
+void CombatEngine::setNpcArchetypeModel(NpcArchetype a, std::vector<NpcAutomationStrategy> ranked)
+{
+    npc_models_[static_cast<std::size_t>(a)] = std::move(ranked);
+}
+
+void CombatEngine::clearNpcArchetypeModels() noexcept
+{
+    for (auto& m : npc_models_) m.clear();
+}
+
+bool CombatEngine::npcModelsLoaded() const noexcept
+{
+    for (const auto& m : npc_models_)
+        if (!m.empty()) return true;
+    return false;
 }
 
 } // namespace rpg
