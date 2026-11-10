@@ -2,7 +2,7 @@
 
 **Status 2026-11-09: Step 0 frozen (D1–D5 decided by the user). T1 committed 1b44e2c (222/0).
 T2 committed 19caef6 (223/0). T3 committed 4722635 (223/0). T5 + T4 committed 72fb29d
-(223/0). D5 amended + click-to-activate committed a4779f2. T4b committed a2ff22d. T6 implemented (uncommitted). T7 (live check) next.**
+(223/0). D5 amended + click-to-activate committed a4779f2. T4b committed a2ff22d. T6 committed 7620024. T7 (live check) next.**
 
 ## What the user asked for
 

@@ -1,7 +1,8 @@
 # Items and Chests
 
 **Status 2026-11-09: Step 0 frozen (user: "all good. go for it", P1–P6 accepted). I1–I6
-implemented; I7 (live check) is the user's.** Baseline before any code: 223/0.
+committed d1337cb (228/0); I7 live check done by the user. Plan complete.** Baseline
+before any code: 223/0.
 
 ## Status and handoff (2026-11-09)
 
@@ -44,7 +45,7 @@ implemented; I7 (live check) is the user's.** Baseline before any code: 223/0.
 - **Suite: 225/0** (223 + `test_chests.py`, `test_placed_items.py`); `Item::opens` added to
   the board snapshot (`battle_map_serialization.cpp`); map.json gets `items` / `chests`
   only when the map has some, so an untouched map stays untouched.
-- **Next: I7**, the user's live check.
+- **I7 (live check): done** by the user, 2026-11-09.
 
 ## Amendments (2026-11-09, during implementation)
 
