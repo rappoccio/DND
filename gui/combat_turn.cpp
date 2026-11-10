@@ -1964,9 +1964,16 @@ bool CombatEngine::npcIsCaster(const BattleMap& bm, int idx) const noexcept
     // config list filters flavor / out-of-combat utility (a Centaur Warden whose only spell is Speak with
     // Animals is NOT a caster — neither for the difficulty resolver's role classification nor as a
     // PreferTargetCaster priority target). Names compare lowercased so capitalization can't miss.
+    // An item-granted spell counts only while its item can pay for it (ENSPELLED E5): a fighter whose
+    // Mace of Terror is spent goes back to fighting like one, rather than kiting as a "caster".
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
     const std::set<std::string>& ignore = npcClassificationIgnore();
-    for (const Spell& sp : bm.getAgentSpells(idx))
-        if (!ignore.contains(npcLowerName(sp.name))) return true;
+    const PlacedAgent& pa = bm.placedAgents()[static_cast<std::size_t>(idx)];
+    for (const Spell& sp : bm.getAgentSpells(idx)) {
+        if (ignore.contains(npcLowerName(sp.name))) continue;
+        if (sp.item_source != Spell::NoItem && !rules::itemSpellCastable(pa, sp)) continue;
+        return true;
+    }
     return false;
 }
 
@@ -2976,13 +2983,18 @@ bool CombatEngine::npcTeleportEscape(BattleMap& bm, int agent_idx) noexcept
         PlacedAgent& pam = bm.placedAgentMut(agent_idx);
         Spell& sm = pam.spells[static_cast<std::size_t>(spellIdx)];
         Agent::Stats& stats = pam.agent->getStats();
-        if (slot > 0) {
-            int& left = stats.spell_slots_remaining[static_cast<std::size_t>(slot - 1)];
-            left = std::max(0, left - 1);
+        if (sm.item_source != Spell::NoItem) {
+            // Enspelled item: the item pays, no slot, and D2 doesn't see it (mirrors executeSpell).
+            if (ItemSpells* is = rules::itemSpellsFor(pam, sm)) is->spend(sm.name, sm.item_charge_cost);
+        } else {
+            if (slot > 0) {
+                int& left = stats.spell_slots_remaining[static_cast<std::size_t>(slot - 1)];
+                left = std::max(0, left - 1);
+            }
+            if (sm.level > 0) stats.markLeveledSpellCast(sm.level);
+            if (sm.uses_max > 0) sm.uses_remaining = std::max(0, sm.uses_remaining - 1);
+            if (sm.recharge_min > 0) sm.expended = true;
         }
-        if (sm.level > 0) stats.markLeveledSpellCast(sm.level);
-        if (sm.uses_max > 0) sm.uses_remaining = std::max(0, sm.uses_remaining - 1);
-        if (sm.recharge_min > 0) sm.expended = true;
     }
     log_("NPC {} teleports with {} to close on {}", agentName(bm, agent_idx),
          spells[static_cast<std::size_t>(spellIdx)].name, agentName(bm, tgt));
