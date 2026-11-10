@@ -27,3 +27,6 @@ session_log.jsonl
 
 # NPC_LEARNING_PLAN.md Step 1: the per-fight simulation trace, written beside replay_log.txt.
 sim_trace.jsonl
+
+# NPC_LEARNING_PLAN.md Step 6+: datasets, checkpoints and reports from gui/ml (regenerable).
+ml_runs/

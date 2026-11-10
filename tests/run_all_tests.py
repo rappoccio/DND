@@ -263,6 +263,8 @@ test_scripts = [
     # NPC_LEARNING_PLAN.md Step 4: archetypes + the Level 5/6 fallback chain.
     "test_npc_archetypes.py",
     "test_npc_macro_actions.py",
+    # Step 6: behaviour cloning of Level 4 (gui/ml/).
+    "test_ml_bc.py",
     "test_vitality.py",
     "test_resource.py",
     "test_bonus_actions.py",

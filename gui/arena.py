@@ -59,7 +59,9 @@ SIDES = {PC_FACTION: "pc", NPC_FACTION: "npc"}
 
 NPC_POLICIES = {"level1": 1, "level2": 2, "level3": 3, "level4": 4,
                 # Python-driven macro-action policies (Step 5), run at Level 5 through set_npc_policy.
-                "l4-macro": 5, "random-macro": 5}
+                "l4-macro": 5, "random-macro": 5,
+                # Step 6: a trained gui/ml checkpoint (``model=`` / ``--model``).
+                "bc": 5}
 PC_MODES = ("Heuristic", "SelfPlay")
 PC_HEURISTIC_LEVEL = 4
 ROUND_CAP = 20                        # a fight still going after this many rounds is a draw
@@ -404,14 +406,25 @@ class Arena:
     # ── one fight ──
     def run_episode(self, scenario: Scenario, seed: int, npc_policy: str = "level4",
                     pc_mode: str = "Heuristic", *, trace_path: str | None = None,
-                    round_cap: int = ROUND_CAP) -> dict:
+                    round_cap: int = ROUND_CAP, model: str | None = None,
+                    policy_factory=None) -> dict:
+        """``model``: the checkpoint the ``bc`` policy runs. ``policy_factory``: a factory
+        (engine, battle map, seed) -> rank installed in place of ``npc_policy``'s own; the
+        name still sets the NPCs' level and is what the outcome records."""
         if npc_policy not in NPC_POLICIES:
             raise ValueError(f"unknown npc_policy {npc_policy!r} ({sorted(NPC_POLICIES)})")
         if pc_mode not in PC_MODES:
             raise ValueError(f"unknown pc_mode {pc_mode!r} ({PC_MODES})")
+        if npc_policy == "bc" and policy_factory is None:
+            if not model:
+                raise ValueError("npc_policy 'bc' needs a model checkpoint")
+            from ml import policy as ml_policy      # torch is loaded only when a model runs
+            policy_factory = ml_policy.factory(model)
         t0 = time.perf_counter()
         bm, eng = self.load_board(scenario.map, scenario.terrain, seed)
-        if npc_policy in MACRO_POLICIES:
+        if policy_factory is not None:
+            eng.set_npc_policy(policy_factory(eng, bm, seed))
+        elif npc_policy in MACRO_POLICIES:
             eng.set_npc_policy(MACRO_POLICIES[npc_policy](eng, bm, seed))
         agents = copy.deepcopy(scenario.agents)
         npc_level = NPC_POLICIES[npc_policy]
@@ -771,7 +784,7 @@ def _episode_job(job: dict) -> dict:
         trace_path = os.path.join(job["trace_dir"], f"ep{job['k']:06d}_{sc.hash[:10]}.jsonl")
     t0 = time.perf_counter()
     out = run_episode(sc, seed, job["npc_policy"], job["pc_mode"], trace_path=trace_path,
-                      round_cap=job["round_cap"])
+                      round_cap=job["round_cap"], model=job.get("model"))
     out["episode"] = job["k"]
     out["wall_s"] = round(time.perf_counter() - t0, 4)
     out["scenario"] = sc.meta
@@ -832,9 +845,11 @@ def main(argv=None) -> int:
         p.add_argument("--trace-dir", default=None,
                        help="keep traces here for a seeded 1-in-10 sample of episodes")
         p.add_argument("--trace-all", action="store_true", help="trace every episode")
+        p.add_argument("--model", default=None, help="checkpoint for --npc-policy bc")
     a = ap.parse_args(argv)
     # Paths are the caller's, relative to where they ran; the Arena then works from gui/.
     a.out = os.path.abspath(a.out) if a.out else None
+    a.model = os.path.abspath(a.model) if a.model else None
     a.trace_dir = os.path.abspath(a.trace_dir) if a.trace_dir else None
     a.map = [os.path.abspath(m) for m in a.map] if a.map else None
     a.party = [os.path.abspath(p) for p in a.party] if a.party else None
@@ -849,7 +864,8 @@ def main(argv=None) -> int:
         os.makedirs(a.trace_dir, exist_ok=True)
     jobs = [{"base_seed": a.seed, "k": k, "split": a.split, "maps": maps,
              "parties": a.party, "npc_policy": a.npc_policy, "pc_mode": a.pc_mode,
-             "round_cap": a.round_cap, "trace_dir": a.trace_dir, "trace_all": a.trace_all}
+             "round_cap": a.round_cap, "trace_dir": a.trace_dir, "trace_all": a.trace_all,
+             "model": a.model}
             for k in range(a.episodes)]
     out_f = None
     if a.out:

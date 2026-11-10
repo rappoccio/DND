@@ -15,7 +15,7 @@ live-checked by the user 2026-11-09; Step 3 (arena) committed 2026-11-09 (228/0)
 party makeup in arena traces and on the Playback HUD. Open: the draw rate and the
 generated-party source (Step 3b). Step 4 (archetypes + fallback chain) committed cdac471
 (229/0). Step 5 (macro-actions, policy seam, entity observation) implemented 2026-11-09
-(230/0), uncommitted, awaiting the user's check of the choices flagged in its as-built notes.
+(230/0), committed 5d42944, awaiting the user's check of the choices flagged in its as-built notes.
 
 ---
 
@@ -306,7 +306,7 @@ the 2024 encounter-difficulty table.
   trees implement it in Step 8, and Python can drive it from the arena.
 - Every macro-action choice goes into the trace and the Playback HUD.
 - Determinism golden unchanged.
-- **Implemented 2026-11-09 (230/0, uncommitted).** As built, in `combat_turn.cpp` (+ types in
+- **Implemented 2026-11-09 (230/0), committed 5d42944.** As built, in `combat_turn.cpp` (+ types in
   `combat_types.hpp`, the interface in `combat.hpp`, bindings) and `tests/test_npc_macro_actions.py`:
   - **Kinds.** `NpcMacroKind` has 11 values: Attack, Kite, AoE, Control, Heal, Support, Hide, Dash,
     Disengage, Dodge, Flee. `NpcMacroAction` is `{kind, target_agent, target_cell, spell_idx, legal}`.
@@ -364,6 +364,20 @@ the 2024 encounter-difficulty table.
 - Labels: the macro-action Level 4 chose, recorded through Step 5's mapping.
 - **Gate:** ≥ 90% top-1 agreement on held-out data, **and** win rate vs Level 4 within ±3
   points. This proves the pipeline, not intelligence.
+- **Code written 2026-11-09; not trained (user: "Don't train yet") and the suite not yet run.**
+  As built, in `gui/ml/` + `tests/test_ml_bc.py`:
+  - `dataset.py`: arena episodes with the NPCs on `l4-macro`; each decision is featurized
+    (`features.py`) and labelled with Level 4's candidate → npz shards in `ml_runs/` (gitignored),
+    tagged by scenario split. 6000 episodes → 235k decisions in 53 s on 16 jobs.
+  - **Defer.** ~8.5% of decisions have Level 4 choosing a turn no legal candidate matches (e.g.
+    Simple with no targetable enemy); `l4-macro` then hands the turn to the Step 4 chain. These
+    get the label Defer, and the model has a Defer output that does the same (policy returns
+    `[]`). Decisions with nothing legal at all aren't stored. *For the user to check.*
+  - `model.py`: [archetype, map, creatures…] pre-norm encoder (4 layers, d=128); each candidate
+    scored from its features + its target's token + self + archetype; masked softmax + Defer.
+  - `train.py` (held-out top-1 per kind/archetype, best epoch kept), `policy.py` (arena
+    `--npc-policy bc --model x.pt`, one-thread inference), `gate.py` (both gate numbers, paired
+    held-out seeds, 95% CI on the win-rate difference).
 
 ### Step 7 — Reinforcement learning (PPO)
 - Start from the Step 6 weights. Reward: +1 win / −1 loss / 0 draw, plus a small
