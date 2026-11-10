@@ -5,6 +5,8 @@ A C++ core handles all the rules — attacks, spells, conditions, movement,
 line-of-sight, terrain and lighting — and a pygame GUI lets you place agents on
 a map image and run encounters turn by turn.
 
+Scaffolding is human-created, code written by both Claude and human. 
+
 ## Architecture
 
 - **C++ engine** (`gui/*.cpp`, `gui/*.hpp`) — the rules authority. Compiled
