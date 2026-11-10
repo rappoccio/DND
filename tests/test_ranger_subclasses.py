@@ -21,6 +21,18 @@ R2 — Gloom Stalker (D3–D6 + the spell list):
   · Umbral Sight: Darkvision 60 / +60 (once); Invisible in Darkness to Darkvision-only viewers.
   · Shadowy Dodge: a pre-roll reaction (Disadvantage), then a ≤30 ft teleport — parked for the
     GUI/arena, inline for a decider; the automated cell is out of every enemy's reach or sight.
+
+R3 — Fey Wanderer (D7, D8 + Summon Fey on the list):
+  · Summon Fey is always prepared at L9; Fey Reinforcements (L11, 1/LR) and Misty Wanderer (L15,
+    max(1, WIS mod)/LR) are resources.
+  · A fixed-duration summon (summon_rounds_left) counts down on its summoner's turns, is dismissed
+    at 0, and survives the summoner dropping Concentration.
+  · Misty Wanderer: a slotless Bonus-Action Misty Step that can bring one willing creature from
+    within 5 ft to a space within 5 ft of the destination; the NpcDriver's use takes a ranged
+    Ranger out of melee with an engaged ally.
+  · Beguiling Twist: Advantage on saves vs Charmed/Frightened at spell and non-spell sites; a
+    successful save is a Reaction trigger — automated Rangers react at once (Frightened), human
+    ones are queued for the GUI.
 """
 
 import sys
@@ -631,6 +643,262 @@ def test_shadowy_dodge_gates():
     d = engine.shadowy_dodge_destination(bm, r)
     assert (d.col, d.row) == (-1, -1), "already safe → stay put"
     print("✅ test_shadowy_dodge_gates")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  R3 — Fey Wanderer
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _make_fey(engine, bm, idx, level, wis=16, automated=True, weapon=None):
+    s = engine.get_agent_stats(bm, idx)
+    s.wis = wis
+    s.set_class_level(rpg.CharacterClass.Ranger, level)
+    s.ranger_subclass = rpg.RangerSubclass.FeyWanderer
+    s.initialize_class_resources(rpg.CharacterClass.Ranger, level)
+    s.str = 14
+    s.prof_bonus = 2 + (level - 1) // 4
+    s.hp_max = 200
+    s.hp_cur = 200
+    engine.set_agent_stats(bm, idx, s)
+    engine.set_agent_weapons(bm, idx, [weapon or _weapon(), rpg.Weapon(), rpg.Weapon()])
+    bm.set_agent_npc_automated(idx, automated)
+
+
+def _res_left(engine, bm, idx, name):
+    r = engine.get_agent_stats(bm, idx).get_resource(name)
+    return None if r is None else r.current
+
+
+def test_fey_wanderer_spells_and_resources():
+    import json
+    os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+    import main
+    table = main.App._RANGER_SUBCLASS_SPELLS["FeyWanderer"]
+    assert table[9] == ["Summon Fey"], table
+    gui = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui")
+    with open(os.path.join(gui, "spells.json")) as f:
+        data = json.load(f)
+    names = {sp.get("name") for sp in (data if isinstance(data, list) else data.get("spells", []))}
+    missing = [n for lst in table.values() for n in lst if n not in names]
+    assert not missing, f"Fey Wanderer spells missing from spells.json: {missing}"
+    assert "Summon Fey" in main.SUMMON_SPELL_TO_SPIRIT, "Summon Fey has spirit forms"
+
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    r = _place(engine, bm, "Wanderer", 5, 5, faction=1)
+    _make_fey(engine, bm, r, 10)
+    assert _res_left(engine, bm, r, "Fey Reinforcements") is None, "Fey Reinforcements is L11"
+    _make_fey(engine, bm, r, 11)
+    assert _res_left(engine, bm, r, "Fey Reinforcements") == 1
+    assert _res_left(engine, bm, r, "Misty Wanderer") is None, "Misty Wanderer is L15"
+    _make_fey(engine, bm, r, 15, wis=18)
+    assert _res_left(engine, bm, r, "Misty Wanderer") == 4, "WIS mod uses"
+    _make_fey(engine, bm, r, 15, wis=8)
+    assert _res_left(engine, bm, r, "Misty Wanderer") == 1, "at least one use"
+    print("✅ test_fey_wanderer_spells_and_resources")
+
+
+def _spawn(engine, bm, summoner, col, row, rounds=0):
+    cfg = rpg.AgentConfig()
+    cfg.name = "Fey Spirit"
+    cfg.size = 1
+    cfg.start_col, cfg.start_row = col, row
+    i = bm.spawn_agent(cfg)
+    assert i >= 0
+    bm.set_agent_summoner_idx(i, summoner)
+    bm.set_agent_summon_spell(i, "Summon Fey")
+    bm.set_agent_summon_rounds_left(i, rounds)
+    return i
+
+
+def test_timed_summon_counts_down_and_ignores_concentration():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    r = _place(engine, bm, "Wanderer", 5, 5, faction=1)
+    _make_fey(engine, bm, r, 11)
+    timed = _spawn(engine, bm, r, 6, 5, rounds=2)
+    tied  = _spawn(engine, bm, r, 7, 5, rounds=0)
+    c = engine.get_agent_conditions(bm, r)
+    c.concentrating, c.concentrating_on = True, "Hunter's Mark"
+    engine.set_agent_conditions(bm, r, c)
+    engine.drop_concentration(bm, r)
+    assert bm.is_agent_removed_from_play(tied), "a Concentration summon goes with Concentration"
+    assert not bm.is_agent_removed_from_play(timed), "a 1-minute summon does not"
+    engine.begin_turn(bm, r)
+    assert bm.get_agent_summon_rounds_left(timed) == 1 and not bm.is_agent_removed_from_play(timed)
+    engine.begin_turn(bm, timed)                       # someone else's turn: no tick
+    assert bm.get_agent_summon_rounds_left(timed) == 1
+    engine.begin_turn(bm, r)
+    assert bm.is_agent_removed_from_play(timed), "dismissed when the minute runs out"
+    assert bm.placed_agents[timed].summon_rounds_left == 0
+    print("✅ test_timed_summon_counts_down_and_ignores_concentration")
+
+
+def _sides(bm, **by_faction):
+    """Set factions once everyone is placed (placing an agent re-applies the configs)."""
+    for fac, idxs in by_faction.items():
+        for i in idxs:
+            bm.set_agent_faction(i, int(fac[1:]))
+
+
+def _misty_scene(level=15):
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    r = _place(engine, bm, "Wanderer", 5, 5)
+    a = _place(engine, bm, "Friend", 5, 6)
+    o = _place(engine, bm, "Orc", 6, 5)
+    _sides(bm, f1=(r, a), f2=(o,))
+    _make_fey(engine, bm, r, level)
+    for i in (a, o):
+        _hp(engine, bm, i)
+    engine.set_agent_weapons(bm, o, [_weapon(), rpg.Weapon(), rpg.Weapon()])
+    engine.begin_turn(bm, r)
+    return bm, engine, r, a, o
+
+
+def test_misty_wanderer_brings_an_ally():
+    bm, engine, r, a, o = _misty_scene()
+    assert list(engine.misty_wanderer_allies(bm, r)) == [a], "the willing creature within 5 ft"
+    left = _res_left(engine, bm, r, "Misty Wanderer")
+    assert engine.misty_wanderer(bm, r, 10, 5, a, -1, -1)
+    at, fa = bm.placed_agents[r].origin, bm.placed_agents[a].origin
+    assert (at.col, at.row) == (10, 5)
+    assert max(abs(fa.col - 10), abs(fa.row - 5)) == 1, "the ally lands within 5 ft of the Ranger"
+    assert _res_left(engine, bm, r, "Misty Wanderer") == left - 1
+    assert not engine.has_bonus_action(bm, r), "Misty Step is a Bonus Action"
+    assert not engine.misty_wanderer(bm, r, 12, 5), "no Bonus Action left"
+    print("✅ test_misty_wanderer_brings_an_ally")
+
+
+def test_misty_wanderer_gates():
+    bm, engine, r, a, o = _misty_scene(level=14)
+    assert not engine.misty_wanderer(bm, r, 10, 5), "Misty Wanderer is L15"
+    bm, engine, r, a, o = _misty_scene()
+    left = _res_left(engine, bm, r, "Misty Wanderer")
+    assert not engine.misty_wanderer(bm, r, 12, 5), "35 ft is beyond Misty Step's 30"
+    assert not engine.misty_wanderer(bm, r, 10, 5, o), "an enemy is not a willing creature"
+    assert not engine.misty_wanderer(bm, r, 10, 5, a, 15, 15), "the ally must land within 5 ft"
+    origin = bm.placed_agents[r].origin
+    assert (origin.col, origin.row) == (5, 5) and _res_left(engine, bm, r, "Misty Wanderer") == left, \
+        "a refused cast moves no one and spends nothing"
+    assert engine.misty_wanderer(bm, r, 10, 5), "alone is fine"
+    fa = bm.placed_agents[a].origin
+    assert (fa.col, fa.row) == (5, 6)
+    print("✅ test_misty_wanderer_gates")
+
+
+def test_auto_misty_wanderer_takes_the_engaged_ally():
+    bm, engine, r, a, o = _misty_scene()
+    assert engine.auto_misty_wanderer(bm, r)
+    at, fa, oo = bm.placed_agents[r].origin, bm.placed_agents[a].origin, bm.placed_agents[o].origin
+    assert max(abs(at.col - oo.col), abs(at.row - oo.row)) > 1, "out of the orc's reach"
+    assert max(abs(fa.col - at.col), abs(fa.row - at.row)) == 1, "the ally in melee came along"
+    bm, engine, r, a, o = _misty_scene()
+    bm.set_agent_position(o, rpg.Cell(9, 9))
+    assert not engine.auto_misty_wanderer(bm, r), "not in melee → no teleport"
+    print("✅ test_auto_misty_wanderer_takes_the_engaged_ally")
+
+
+def _bow():
+    w = rpg.Weapon()
+    w.name = "Longbow"
+    w.type = rpg.WeaponType.Ranged
+    w.normal_range_ft = 150
+    w.long_range_ft = 600
+    w.range_short_feet = 150
+    w.range_long_feet = 600
+    w.proficient = True
+    w.bonus_hit = 50
+    pr = rpg.PhysicalDamageRoll()
+    pr.type = rpg.PhysicalDamage.Piercing
+    pr.num_dice = 1
+    pr.die_size = 8
+    w.physical_damage_types = [pr]
+    return w
+
+
+def test_npc_driver_misty_wanders_out_of_melee():
+    """A ranged automated Fey Wanderer an enemy has in reach steps out before it shoots."""
+    bm, engine, r, a, o = _misty_scene()
+    engine.set_agent_weapons(bm, r, [_bow(), rpg.Weapon(), rpg.Weapon()])
+    bm.set_agent_npc_automation_difficulty(r, 2)
+    left = _res_left(engine, bm, r, "Misty Wanderer")
+    engine.run_npc_turn(bm, r)
+    assert engine.last_npc_decision().strategy == rpg.NpcAutomationStrategy.PreferRange
+    assert _res_left(engine, bm, r, "Misty Wanderer") == left - 1, "Misty Wanderer was used"
+    at, oo = bm.placed_agents[r].origin, bm.placed_agents[o].origin
+    assert max(abs(at.col - oo.col), abs(at.row - oo.row)) > 1, "no longer in the orc's reach"
+    print("✅ test_npc_driver_misty_wanders_out_of_melee")
+
+
+def test_beguiling_twist_advantage():
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    r = _place(engine, bm, "Wanderer", 5, 5, faction=1)
+    _make_fey(engine, bm, r, 7)
+    assert engine.beguiling_twist_advantage(bm, r, "Frightened")
+    assert engine.beguiling_twist_advantage(bm, r, "Charmed")
+    assert not engine.beguiling_twist_advantage(bm, r, "Prone")
+    _make_fey(engine, bm, r, 6)
+    assert not engine.beguiling_twist_advantage(bm, r, "Frightened"), "Beguiling Twist is L7"
+    print("✅ test_beguiling_twist_advantage")
+
+
+def _twist_scene(automated=True):
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    r = _place(engine, bm, "Wanderer", 5, 5)
+    s = _place(engine, bm, "Friend", 7, 5)
+    e = _place(engine, bm, "Goblin", 9, 5)
+    _sides(bm, f1=(r, s), f2=(e,))
+    _make_fey(engine, bm, r, 7, wis=20, automated=automated)
+    for i in (s, e):
+        _hp(engine, bm, i)
+    _timid(engine, bm, e)
+    return bm, engine, r, s, e
+
+
+def test_beguiling_twist_automated_reaction():
+    bm, engine, r, s, e = _twist_scene()
+    assert engine.can_beguiling_twist(bm, r, s)
+    assert sorted(engine.beguiling_twist_targets(bm, r, s)) == [e], "never the saver or the Ranger"
+    engine.charm_fear_save_succeeded(bm, s)
+    assert engine.get_agent_conditions(bm, r).reaction_used
+    assert engine.get_agent_conditions(bm, e).frightened, "automated: Frightened on the enemy"
+    assert list(engine.take_beguiling_twist_offers()) == []
+    print("✅ test_beguiling_twist_automated_reaction")
+
+
+def test_beguiling_twist_queued_for_a_human():
+    bm, engine, r, s, e = _twist_scene(automated=False)
+    engine.charm_fear_save_succeeded(bm, s)
+    assert not engine.get_agent_conditions(bm, r).reaction_used, "a human decides"
+    assert [tuple(o) for o in engine.take_beguiling_twist_offers()] == [(r, s)]
+    assert engine.apply_beguiling_twist(bm, r, s, e, False)
+    assert engine.get_agent_conditions(bm, e).charmed
+    assert not engine.can_beguiling_twist(bm, r, s), "the Reaction is spent"
+    print("✅ test_beguiling_twist_queued_for_a_human")
+
+
+def test_beguiling_twist_needs_to_see_the_saver():
+    bm, engine, r, s, e = _twist_scene()
+    assert engine.can_beguiling_twist(bm, r, e), "an enemy's success is a trigger too"
+    c = engine.get_agent_conditions(bm, e); c.invisible = True; engine.set_agent_conditions(bm, e, c)
+    assert not engine.can_beguiling_twist(bm, r, e), "a creature the Ranger can't see"
+    assert engine.can_beguiling_twist(bm, r, r), "the Ranger's own save counts"
+    print("✅ test_beguiling_twist_needs_to_see_the_saver")
+
+
+def test_beguiling_twist_from_a_non_spell_save():
+    """Mass Fear (a Ranger feature, no spell) is a Charm/Fear save: the Fey Wanderer gets
+    Advantage, and its success triggers the Reaction against the Gloom Stalker."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    g = _place(engine, bm, "Stalker", 5, 5)
+    f = _place(engine, bm, "Wanderer", 5, 6)
+    _sides(bm, f1=(f,), f2=(g,))
+    _make_gloom(engine, bm, g, 11, wis=10)
+    _make_fey(engine, bm, f, 7, wis=30)
+    _timid(engine, bm, g)
+    assert engine.apply_mass_fear(bm, g, f) == 0, "WIS 30 with Advantage shrugs it off"
+    assert engine.get_agent_conditions(bm, f).reaction_used, "the success triggered Beguiling Twist"
+    assert engine.get_agent_conditions(bm, g).frightened, "aimed at the enemy Ranger"
+    print("✅ test_beguiling_twist_from_a_non_spell_save")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

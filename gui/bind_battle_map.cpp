@@ -217,6 +217,13 @@ void bindBattleMap(py::module_& m) {
         .def("set_agent_summon_spell", &BattleMap::setAgentSummonSpell,
              py::arg("idx"), py::arg("spell_name"),
              "Record the spell name that summoned agent[idx].")
+        .def("get_agent_summon_rounds_left", &BattleMap::getAgentSummonRoundsLeft,
+             py::arg("idx"),
+             "Summoner turns a fixed-duration summon has left (0 = no timer; tied to Concentration).")
+        .def("set_agent_summon_rounds_left", &BattleMap::setAgentSummonRoundsLeft,
+             py::arg("idx"), py::arg("rounds"),
+             "Give agent[idx] a fixed duration in summoner turns (ticked at the summoner's turn start,\n"
+             "dismissed at 0, not dismissed by dropConcentration). 10 = 1 minute.")
         .def("is_agent_removed_from_play", &BattleMap::isAgentRemovedFromPlay,
              py::arg("idx"),
              "True if agent[idx] is tombstoned (e.g. dismissed summon): skip in turns + rendering.")

@@ -843,6 +843,21 @@ void Agent::Stats::applyClassResources(CharacterClass cls, int level) {
         fey_dreadful_strikes = true;
         fey_dreadful_strikes_die_size = (level >= 11) ? 6 : 4;
       }
+      // L11 Fey Reinforcements: one Summon Fey cast without a slot per Long Rest (the
+      // no-Concentration option is free at every cast; see summon_rounds_left).
+      if (ranger_subclass == FeyWandererPath && level >= 11) {
+        Resource fr("Fey Reinforcements", 1, 0);
+        fr.long_rest_regen = 1;
+        resources["Fey Reinforcements"] = fr;
+      }
+      // L15 Misty Wanderer: max(1, WIS mod) slotless Misty Steps per Long Rest, each able to
+      // bring one willing creature within 5 ft (CombatEngine::mistyWanderer).
+      if (ranger_subclass == FeyWandererPath && level >= 15) {
+        const int uses = std::max(1, _mod(wis));
+        Resource mw("Misty Wanderer", uses, 0);
+        mw.long_rest_regen = uses;
+        resources["Misty Wanderer"] = mw;
+      }
 
       // ── Class utility (no subclass gate) ────────────────────────────────
       // Tireless (L10): a Magic action grants yourself 1d8 + WIS mod (min 1) temp

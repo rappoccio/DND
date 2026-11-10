@@ -111,6 +111,7 @@ _BONUS_ECONOMY = {
     "clockwork_cavalcade":   ECONOMY_ACTION,
     "warping_implosion":     ECONOMY_ACTION,
     "tireless":              ECONOMY_ACTION,
+    "fey_reinforcements":    ECONOMY_ACTION,   # a Summon Fey cast (Magic action)
     "psychic_veil":          ECONOMY_ACTION,
     "shadow_arts_darkness":  ECONOMY_ACTION,
     "elemental_attunement":  ECONOMY_ACTION,
@@ -994,6 +995,18 @@ class ActionMenu:
             nv = _res(stats, "Nature's Veil")
             if lvl >= 14 and nv > 0:
                 out.append(Action("natures_veil", f"Nature's Veil ({nv})", GROUP_BONUS))
+            if stats.ranger_subclass == rpg.RangerSubclass.FeyWanderer:
+                # Fey Reinforcements (L11): a slotless Summon Fey, an Action like any cast.
+                fr = _res(stats, "Fey Reinforcements")
+                if (not app.action_used and lvl >= 11 and fr > 0
+                        and any(sp.name == "Summon Fey"
+                                for sp in app.combat.get_agent_spells(app.bm, agent_idx))):
+                    out.append(Action("fey_reinforcements",
+                                      f"Fey Reinforcements: Summon Fey ({fr})", GROUP_BONUS))
+                # Misty Wanderer (L15): a slotless Misty Step (Bonus Action), with an ally.
+                mw = _res(stats, "Misty Wanderer")
+                if lvl >= 15 and mw > 0:
+                    out.append(Action("misty_wanderer", f"Misty Wanderer ({mw})", GROUP_BONUS))
 
         # ── Soulknife Rogue (M2d) ──
         # Both labels carry the Psionic Energy count, and both features can be paid for

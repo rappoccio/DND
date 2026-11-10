@@ -1335,6 +1335,18 @@ void BattleMap::setAgentSummonSpell(int idx, std::string spell_name) noexcept
     placedAgents_[static_cast<std::size_t>(idx)].summon_spell = std::move(spell_name);
 }
 
+int BattleMap::getAgentSummonRoundsLeft(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return 0;
+    return placedAgents_[static_cast<std::size_t>(idx)].summon_rounds_left;
+}
+
+void BattleMap::setAgentSummonRoundsLeft(int idx, int rounds) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].summon_rounds_left = std::max(0, rounds);
+}
+
 bool BattleMap::isAgentRemovedFromPlay(int idx) const noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return false;

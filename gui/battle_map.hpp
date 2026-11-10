@@ -368,6 +368,10 @@ struct PlacedAgent {
     int         summoner_idx      = -1;    // index of the summoner; -1 = not a summon
     bool        removed_from_play = false; // tombstoned (summon dismissed): skip in turns + rendering
     std::string summon_spell;              // name of the spell that created this summon (if any)
+    // >0 = a fixed-duration summon (not tied to Concentration): the summoner's turns it has left.
+    // Ticked at the summoner's beginTurn, tombstoned at 0, and spared by dropConcentration. Fey
+    // Wanderer Fey Reinforcements' no-Concentration Summon Fey is 10 (1 minute). 0 = no timer.
+    int         summon_rounds_left = 0;
     // ── Faction / team ─────────────────────────────────────────────────────
     // Encounter-side team assignment (NOT an intrinsic Stat). 0 = neutral/unassigned
     // (its own faction, hostile to everyone). 1+ = red/blue/... Used for hide vs only
@@ -601,6 +605,8 @@ public:
     void setAgentName(int idx, std::string name) noexcept;
     void setAgentSprite(int idx, std::string sprite_path) noexcept;
     [[nodiscard]] std::string getAgentSummonSpell(int idx) const noexcept;
+    [[nodiscard]] int getAgentSummonRoundsLeft(int idx) const noexcept;
+    void setAgentSummonRoundsLeft(int idx, int rounds) noexcept;
     void setAgentSummonSpell(int idx, std::string spell_name) noexcept;
     [[nodiscard]] bool isAgentRemovedFromPlay(int idx) const noexcept;
     void setAgentRemovedFromPlay(int idx, bool removed) noexcept;

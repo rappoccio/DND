@@ -781,6 +781,11 @@ class _Fight:
         eng.tick_light_effects_for_turn(bm, idx)
         if bm.is_agent_on_deck(idx):
             return True
+        # Fey Wanderer Summon Fey (Ranger R3): a Python-side cast that is the whole turn.
+        if self.app._auto_summon_fey(idx) >= 0:
+            self._flush()
+            self._adopt_spawned(idx)
+            return True
         for _ in range(MAX_PARKS_PER_TURN):
             status = eng.run_npc_turn(bm, idx)
             self._flush()

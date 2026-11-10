@@ -231,9 +231,11 @@ int CombatEngine::applyMassFear(BattleMap& bm, int ranger_idx, int target_idx)
         if (pt.agent->getConditions().dead || pt.agent->getStats().hp_cur <= 0) continue;
         if (j != target_idx &&
             footprintDistance(tg.origin, tg.agent->getSize(), pt.origin, pt.agent->getSize()) > 2) continue;
-        const int save = roll(20, saveModFor(bm, j, SaveWis));
+        const int save = (beguilingTwistAdvantage(bm, j, "Frightened") ? rollAdvantage(20) : roll(20)) +
+                         saveModFor(bm, j, SaveWis);
         if (save >= dc) {
             log_("{} resists Mass Fear (WIS save {} vs DC {})", agentName(bm, j), save, dc);
+            charmFearSaveSucceeded(bm, j);   // Beguiling Twist's trigger
             continue;
         }
         if (hasAuraOfCourage(bm, j)) {
@@ -250,6 +252,137 @@ int CombatEngine::applyMassFear(BattleMap& bm, int ranger_idx, int target_idx)
         log_("{} is Frightened (Mass Fear — WIS save {} vs DC {})", agentName(bm, j), save, dc);
     }
     return frightened;
+}
+
+bool CombatEngine::beguilingTwistAdvantage(const BattleMap& bm, int saver,
+                                           std::string_view condition_name) const
+{
+    if (condition_name != "Charmed" && condition_name != "Frightened") return false;
+    if (saver < 0 || saver >= static_cast<int>(bm.placedAgents().size())) return false;
+    const Agent::Stats s = bm.getAgentStats(saver);
+    return s.hasClass(CharacterClass::Ranger) && s.ranger_subclass == FeyWandererPath &&
+           s.classLevel(CharacterClass::Ranger) >= 7;
+}
+
+std::vector<int> CombatEngine::beguilingTwistTargets(const BattleMap& bm, int reactor, int saver) const
+{
+    std::vector<int> out;
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (reactor < 0 || reactor >= n) return out;
+    const PlacedAgent& me = agents[static_cast<std::size_t>(reactor)];
+    for (int i = 0; i < n; ++i) {
+        if (i == reactor || i == saver) continue;
+        const PlacedAgent& o = agents[static_cast<std::size_t>(i)];
+        if (o.removed_from_play || o.on_deck) continue;
+        if (o.agent->getConditions().dead || o.agent->getStats().hp_cur <= 0) continue;
+        if (footprintDistance(me.origin, me.agent->getSize(), o.origin, o.agent->getSize()) > 24) continue;
+        if (!bm.hasLineOfSight(me.origin, me.agent->getSize(), o.origin, o.agent->getSize())) continue;
+        if (!canPerceiveTarget(bm, reactor, i)) continue;
+        out.push_back(i);
+    }
+    return out;
+}
+
+bool CombatEngine::canBeguilingTwist(const BattleMap& bm, int reactor, int saver) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (reactor < 0 || reactor >= n || saver < 0 || saver >= n) return false;
+    const PlacedAgent& rp = agents[static_cast<std::size_t>(reactor)];
+    if (rp.removed_from_play || rp.on_deck) return false;
+    const Agent::Stats s = rp.agent->getStats();
+    if (s.hp_cur <= 0 || !s.hasClass(CharacterClass::Ranger) || s.ranger_subclass != FeyWandererPath ||
+        s.classLevel(CharacterClass::Ranger) < 7) return false;
+    if (!canTakeReaction(rp.agent->getConditions())) return false;
+    if (saver != reactor) {   // "you or a creature you can see within 120 feet of you"
+        const PlacedAgent& sp = agents[static_cast<std::size_t>(saver)];
+        if (footprintDistance(rp.origin, rp.agent->getSize(), sp.origin, sp.agent->getSize()) > 24) return false;
+        if (!bm.hasLineOfSight(rp.origin, rp.agent->getSize(), sp.origin, sp.agent->getSize())) return false;
+        if (!canPerceiveTarget(bm, reactor, saver)) return false;
+    }
+    return !beguilingTwistTargets(bm, reactor, saver).empty();
+}
+
+bool CombatEngine::applyBeguilingTwist(BattleMap& bm, int reactor, int saver, int target, bool frightened)
+{
+    if (!canBeguilingTwist(bm, reactor, saver)) return false;
+    const std::vector<int> legal = beguilingTwistTargets(bm, reactor, saver);
+    if (std::find(legal.begin(), legal.end(), target) == legal.end()) return false;
+    Agent::Conditions rc = bm.getAgentConditions(reactor);
+    rc.reaction_used = true;
+    bm.setAgentConditions(reactor, rc);
+
+    const char* cond_name = frightened ? "Frightened" : "Charmed";
+    const int dc = rules::spellSaveDc(bm.getAgentStats(reactor));
+    log_("{}: Beguiling Twist — {} must make a WIS save (DC {}) or be {}", agentName(bm, reactor),
+         agentName(bm, target), dc, cond_name);
+    recordNpcAnnounce(reactor, target, std::format("{} uses Beguiling Twist!", agentName(bm, reactor)));
+    const bool adv = beguilingTwistAdvantage(bm, target, cond_name);
+    const int  d20 = adv ? rollAdvantage(20) : roll(20);
+    const int  save = d20 + saveModFor(bm, target, SaveWis);
+    if (save >= dc) {
+        log_("{} resists Beguiling Twist (WIS save {} vs DC {})", agentName(bm, target), save, dc);
+        charmFearSaveSucceeded(bm, target);   // that success is itself a trigger (another Ranger's Reaction)
+        return true;
+    }
+    if (frightened && hasAuraOfCourage(bm, target)) {
+        log_("{} can't be Frightened (Aura of Courage) — Beguiling Twist has no effect", agentName(bm, target));
+        return true;
+    }
+    ActiveAgentCondition cond;
+    cond.agent_idx           = target;
+    cond.caster_idx          = reactor;
+    cond.condition_name      = cond_name;
+    cond.turns_remaining     = 10;        // 1 minute (ticked on the Ranger's turns)
+    cond.save_ability        = SaveWis;
+    cond.save_dc             = dc;
+    cond.save_repeat_turns   = 1;
+    cond.save_at_end_of_turn = true;      // "repeats the save at the end of each of its turns"
+    cond.next_save_turn      = 0;
+    (void)addAgentCondition(bm, cond);
+    log_("{} is {} by Beguiling Twist for 1 minute (WIS save {} vs DC {})", agentName(bm, target),
+         cond_name, save, dc);
+    return true;
+}
+
+void CombatEngine::charmFearSaveSucceeded(BattleMap& bm, int saver)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (saver < 0 || saver >= n) return;
+    for (int r = 0; r < n; ++r) {
+        if (!canBeguilingTwist(bm, r, saver)) continue;
+        if (!bm.placedAgents()[static_cast<std::size_t>(r)].is_npc_automated) {
+            // The GUI asks the Ranger's player. Bounded: a headless caller that never drains it
+            // (non-automated agents outside the GUI) keeps only the latest few.
+            if (beguiling_twist_offers_.size() >= 16)
+                beguiling_twist_offers_.erase(beguiling_twist_offers_.begin());
+            beguiling_twist_offers_.emplace_back(r, saver);
+            continue;
+        }
+        // D7 auto: Frightened, on the enemy the auto-target heuristic ranks first, else the nearest.
+        const std::vector<int> legal = beguilingTwistTargets(bm, r, saver);
+        int tgt = npcSelectTarget(bm, r);
+        if (std::find(legal.begin(), legal.end(), tgt) == legal.end()) {
+            tgt = -1;
+            const PlacedAgent& me = bm.placedAgents()[static_cast<std::size_t>(r)];
+            int best = 1 << 30;
+            for (int t : legal) {
+                if (rules::alliedFactions(bm, r, t)) continue;
+                const PlacedAgent& o = bm.placedAgents()[static_cast<std::size_t>(t)];
+                const int d = footprintDistance(me.origin, me.agent->getSize(), o.origin, o.agent->getSize());
+                if (d < best) { best = d; tgt = t; }
+            }
+        }
+        if (tgt >= 0) (void)applyBeguilingTwist(bm, r, saver, tgt, /*frightened=*/true);
+    }
+}
+
+std::vector<std::pair<int,int>> CombatEngine::takeBeguilingTwistOffers()
+{
+    std::vector<std::pair<int,int>> out;
+    out.swap(beguiling_twist_offers_);
+    return out;
 }
 
 std::vector<int> CombatEngine::suddenStrikeTargets(const BattleMap& bm, int attacker_idx) const
@@ -1178,7 +1311,9 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
         }
     } else if (maneuver_type == 1) {
         // Menacing: WIS save or Frightened for 1 turn
-        res.save_roll = roll(20, saveModFor(bm, target_idx, SaveWis));
+        res.save_roll = (beguilingTwistAdvantage(bm, target_idx, "Frightened") ? rollAdvantage(20)
+                                                                               : roll(20)) +
+                        saveModFor(bm, target_idx, SaveWis);
         if (res.save_roll < dc && hasAuraOfCourage(bm, target_idx)) {
             // Aura of Courage: the target can't be Frightened — the maneuver lands no condition.
             log_("{} can't be Frightened (Aura of Courage) — Menacing Attack has no effect",
@@ -1199,6 +1334,7 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
         } else {
             log_("{} resists Menacing Attack (Battle Master — save {} vs DC {})",
                  agentName(bm, target_idx), res.save_roll, dc);
+            charmFearSaveSucceeded(bm, target_idx);   // Beguiling Twist's trigger
         }
     } else if (maneuver_type == 2) {
         // Pushing: forceMoveAgent 15 feet

@@ -267,6 +267,19 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         if (leap) log_("{}: Ambusher's Leap (+10 ft Speed this turn)", agent_name);
     }
 
+    // Fixed-duration summons (summon_rounds_left > 0, e.g. Fey Reinforcements' 1-minute Summon Fey)
+    // count down on their summoner's turns and are dismissed (tombstoned) when the count runs out.
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        const PlacedAgent& sp = agents[static_cast<std::size_t>(i)];
+        if (sp.summoner_idx != agent_idx || sp.removed_from_play || sp.summon_rounds_left <= 0) continue;
+        const int left = sp.summon_rounds_left - 1;
+        bm.setAgentSummonRoundsLeft(i, left);
+        if (left == 0) {
+            bm.setAgentRemovedFromPlay(i, true);
+            log_("{}'s {} fades ({} ends)", agent_name, agentName(bm, i), sp.summon_spell);
+        }
+    }
+
     // Paladin Oath of Vengeance — Avenging Angel: Frightful Aura. When this creature starts its turn
     // inside an enemy Avenging Angel paladin's Aura of Protection, it must succeed on a WIS save or be
     // Frightened for 1 minute (or until it takes any damage). Modeled as a Turn-Undead-style tracked
@@ -292,7 +305,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                 continue;
             const int save_dc  = rules::spellSaveDcFromAbility(ps, SaveCha);
             const int save_mod = saveModFor(bm, agent_idx, SaveWis);
-            const int save_d20 = roll(20);
+            const int save_d20 = beguilingTwistAdvantage(bm, agent_idx, "Frightened") ? rollAdvantage(20)
+                                                                                       : roll(20);
             const int save_total = save_d20 + save_mod;
             log_("{} makes a WIS save vs Frightful Aura (DC {}): {} + {} = {} ({})",
                  agent_name, save_dc, save_d20, save_mod, save_total,
@@ -309,6 +323,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                 cond.on_damage        = OnDamage_t::End;
                 cond.next_save_turn   = 0;
                 (void)addAgentCondition(bm, cond);
+            } else {
+                charmFearSaveSucceeded(bm, agent_idx);   // Beguiling Twist's trigger
             }
             break;   // one Frightful Aura save per turn
         }
@@ -990,9 +1006,10 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
         // Save modifier (ability + proficiency + Aura of Protection).
         int save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
-        // Advantage (scoped save buff, Phase 0.3) / Disadvantage (Vistani Curse of Weakness) on
-        // saves tied to this ability; they cancel when both apply.
-        bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability);
+        // Advantage (scoped save buff, Phase 0.3; Beguiling Twist vs Charmed/Frightened) /
+        // Disadvantage (Vistani Curse of Weakness) on saves tied to this ability; they cancel.
+        bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability) ||
+                        beguilingTwistAdvantage(bm, agent_idx, active_cond.condition_name);
         bool save_dis = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability);
         int save_d20 = (save_adv == save_dis) ? roll(20)
                      : save_adv               ? rollAdvantage(20)
@@ -1021,6 +1038,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             log_("{} save vs {} — rolled {} + {} = {} vs DC {} — SAVED!",
                  ability_name(ended.save_ability), ended.condition_name,
                  save_d20, save_mod, save_total, save_dc);
+            if (ended.condition_name == "Charmed" || ended.condition_name == "Frightened")
+                charmFearSaveSucceeded(bm, agent_idx);   // Beguiling Twist's trigger
         } else {
             // Save failed, reset next save time (use save_repeat_turns-1 so first decrement
             // in the > 0 branch still yields the correct inter-save interval).
@@ -1144,7 +1163,8 @@ void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
 
         // Save modifier + advantage/disadvantage, mirroring the beginTurn save loops.
         int  save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
-        bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability);
+        bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability) ||
+                        beguilingTwistAdvantage(bm, agent_idx, active_cond.condition_name);
         bool save_dis = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability);
         int  save_d20 = (save_adv == save_dis) ? roll(20)
                       : save_adv               ? rollAdvantage(20)
@@ -1168,6 +1188,8 @@ void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
             log_("{} save vs {} (end of turn) — rolled {} + {} = {} vs DC {} — SAVED! ({} ends)",
                  ability_name(ended.save_ability), ended.condition_name,
                  save_d20, save_mod, save_total, save_dc, ended.condition_name);
+            if (ended.condition_name == "Charmed" || ended.condition_name == "Frightened")
+                charmFearSaveSucceeded(bm, agent_idx);   // Beguiling Twist's trigger
         } else {
             active_cond.next_save_turn = std::max(0, active_cond.save_repeat_turns - 1);
             log_("{} save vs {} (end of turn) — rolled {} + {} = {} vs DC {} — FAILED",
@@ -2016,6 +2038,9 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
         const Agent::Stats s = bm.getAgentStats(agent_idx);
         bm.placedAgents()[static_cast<std::size_t>(agent_idx)].agent->initMovement(
             s.speed_walk + ambushersLeapFt(bm, agent_idx), s.speed_fly, s.speed_swim, s.speed_burrow);
+        // Fey Wanderer L15 Misty Wanderer: a ranged Ranger caught in melee steps out first (Bonus
+        // Action), taking an engaged ally along. A teleport, so nothing here can park.
+        if (policy.prefer_ranged) (void)autoMistyWanderer(bm, agent_idx);
     }
 
     // Live kite flag: usually just policy.kite, but a PreferHide Route-D agent (no stealth tools) flips this

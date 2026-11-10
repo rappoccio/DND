@@ -1541,6 +1541,129 @@ def test_shadowy_dodge_cell_pick_submits_the_parked_window():
     print("✅ test_shadowy_dodge_cell_pick_submits_the_parked_window passed")
 
 
+def _fey(app, name, level, **fields):
+    """`name` re-classed as a Fey Wanderer of `level`, with Summon Fey known (R3)."""
+    idx = _reclass(app, name, rpg.CharacterClass.Ranger, level,
+                   ranger_subclass=rpg.RangerSubclass.FeyWanderer, wis=16, **fields)
+    if not any(sp.name == "Summon Fey" for sp in app.combat.get_agent_spells(app.bm, idx)):
+        app.combat.add_spell_to_agent(app.bm, idx, _spell(app, "Summon Fey"))
+    return idx
+
+
+def test_the_fey_wanderer_rows():
+    """Fey Reinforcements (L11, an Action) and Misty Wanderer (L15, inside the band) are offered
+    while a use is left (RANGER_SUBCLASSES_PLAN.md R3, D8)."""
+    app = _app()
+    aria = _fey(app, "Aria", 10)
+    assert "fey_reinforcements" not in _bonus(app, aria), "Fey Reinforcements is L11"
+    aria = _fey(app, "Aria", 15)
+    got = _by_id(app, aria)
+    assert got["fey_reinforcements"].economy == "action"
+    assert "misty_wanderer" in got
+    app.action_used = True
+    assert "fey_reinforcements" not in _bonus(app, aria), "it is a cast: the Action is spent"
+    app.action_used = False
+    _set_res(app, aria, "Fey Reinforcements", 0)
+    _set_res(app, aria, "Misty Wanderer", 0)
+    ids = _bonus(app, aria)
+    assert "fey_reinforcements" not in ids and "misty_wanderer" not in ids, "no uses left"
+    print("✅ test_the_fey_wanderer_rows passed")
+
+
+def test_fey_reinforcements_casts_a_one_minute_summon_without_a_slot():
+    from net.roster import DM_PRINCIPAL_ID
+    app = _app()
+    aria = _fey(app, "Aria", 11)
+    slots = list(app.combat.get_agent_stats(app.bm, aria).spell_slots_remaining)
+    n = len(app.bm.placed_agents)
+    _draw(app)
+    assert app.perform("fey_reinforcements", DM_PRINCIPAL_ID) is True
+    assert app.prompts.live is not None and "Concentration" in app.prompts.live.title
+    app.prompts.choose_label("No Concentration (1 minute)")
+    form = next(o.label for o in app.prompts.live.options if "Fuming" in o.label)
+    app.prompts.choose_label(form)
+    assert app.pending_summon_slot and app.pending_summon_no_conc and app.pending_summon_fey_reinforcements
+    app._resolve_summon(rpg.Cell(3, 4))
+    assert len(app.bm.placed_agents) == n + 1, "the spirit is on the map"
+    spirit = app.bm.placed_agents[n]
+    assert spirit.summon_spell == "Summon Fey" and spirit.summoner_idx == aria
+    assert spirit.summon_rounds_left == 10, "1 minute"
+    st = app.combat.get_agent_stats(app.bm, aria)
+    assert st.get_resource("Fey Reinforcements").current == 0
+    assert list(st.spell_slots_remaining) == slots, "no slot spent"
+    assert not app.combat.get_agent_conditions(app.bm, aria).concentrating
+    assert app.action_used
+    assert [e.agent_idx for e in app.initiative_order].index(n) == \
+        [e.agent_idx for e in app.initiative_order].index(aria) + 1, "acts right after the Ranger"
+    print("✅ test_fey_reinforcements_casts_a_one_minute_summon_without_a_slot passed")
+
+
+def test_misty_wanderer_pick_and_the_passenger_prompt():
+    from net.roster import DM_PRINCIPAL_ID
+    app = _app()
+    aria = _fey(app, "Aria", 15)
+    cyra = _idx(app, "Cyra")
+    assert app.combat.teleport_agent(app.bm, cyra, 3, 2)          # a willing ally within 5 ft
+    _draw(app)
+    assert app.perform("misty_wanderer", DM_PRINCIPAL_ID) is True
+    assert app.pending_misty_wanderer
+    app._resolve_misty_wanderer(rpg.Cell(8, 3))
+    assert app.prompts.live is not None, "an ally is within 5 ft: who comes along?"
+    app.prompts.choose_label("Bring Cyra")
+    at, ca = app.bm.placed_agents[aria].origin, app.bm.placed_agents[cyra].origin
+    assert (at.col, at.row) == (8, 3)
+    assert max(abs(ca.col - 8), abs(ca.row - 3)) == 1, "Cyra lands beside Aria"
+    assert app.bonus_used and not app.pending_misty_wanderer
+    print("✅ test_misty_wanderer_pick_and_the_passenger_prompt passed")
+
+
+def test_automated_summon_fey():
+    """The NpcDriver casts no summons, so `_auto_summon_fey` is the automated Fey Wanderer's cast:
+    Fey Reinforcements first, no Concentration from L11, the spirit automated and next in order."""
+    app = _app()
+    aria = _fey(app, "Aria", 11)
+    app.bm.set_agent_npc_automated(aria, True)
+    n = len(app.bm.placed_agents)
+    new = app._auto_summon_fey(aria)
+    assert new == n
+    pt = app.bm.placed_agents[new]
+    assert pt.summon_spell == "Summon Fey" and pt.summon_rounds_left == 10
+    assert app.bm.is_agent_npc_automated(new)
+    assert pt.faction == app.bm.placed_agents[aria].faction
+    assert app.combat.get_agent_stats(app.bm, aria).get_resource("Fey Reinforcements").current == 0
+    assert not app.combat.get_agent_conditions(app.bm, aria).concentrating
+    order = [e.agent_idx for e in app.initiative_order]
+    assert order.index(new) == order.index(aria) + 1
+    assert app._auto_summon_fey(aria) == -1, "one spirit at a time"
+    app.bm.set_agent_removed_from_play(new, True)
+    st = app.combat.get_agent_stats(app.bm, aria)
+    st.spell_slots_remaining = [4, 3, 3] + [0] * (len(st.spell_slots_remaining) - 3)
+    app.combat.set_agent_stats(app.bm, aria, st)
+    slots = list(st.spell_slots_remaining)
+    assert app._auto_summon_fey(aria) >= 0, "no Reinforcements left: it pays with a slot"
+    after = list(app.combat.get_agent_stats(app.bm, aria).spell_slots_remaining)
+    assert after[2] == slots[2] - 1 and after[:2] == slots[:2], "its highest slot of 3rd+ level"
+    lvl8 = _fey(app, "Cyra", 8)
+    assert app._auto_summon_fey(lvl8) == -1, "Summon Fey is L9"
+    print("✅ test_automated_summon_fey passed")
+
+
+def test_beguiling_twist_is_offered_to_a_human_ranger():
+    app = _app()
+    aria = _fey(app, "Aria", 7)
+    brannor, skarn = _idx(app, "Brannor"), _idx(app, "Skarn")
+    app.combat.charm_fear_save_succeeded(app.bm, brannor)
+    app._offer_beguiling_twist_if_pending()
+    live = app.prompts.live
+    assert live is not None and "Beguiling Twist" in live.title
+    labels = [o.label for o in live.options]
+    assert "Frighten Skarn" in labels and "Charm Skarn" in labels
+    assert not any("Brannor" in lb for lb in labels), "never the creature that saved"
+    app.prompts.choose_label("Frighten Skarn")
+    assert app.combat.get_agent_conditions(app.bm, aria).reaction_used
+    print("✅ test_beguiling_twist_is_offered_to_a_human_ranger passed")
+
+
 def test_cunning_action_is_all_three_or_none():
     """One flag offers the whole row; a row with two of three would be a layout bug no
     availability test could see, which is what the smoke suite's row check is for."""
@@ -1835,6 +1958,11 @@ if __name__ == "__main__":
         test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click()
         test_sudden_strike_is_offered_from_the_engine_list_and_checks_the_click()
         test_shadowy_dodge_cell_pick_submits_the_parked_window()
+        test_the_fey_wanderer_rows()
+        test_fey_reinforcements_casts_a_one_minute_summon_without_a_slot()
+        test_misty_wanderer_pick_and_the_passenger_prompt()
+        test_automated_summon_fey()
+        test_beguiling_twist_is_offered_to_a_human_ranger()
         test_cunning_action_is_all_three_or_none()
         test_the_two_telekinetic_options_are_two_widgets()
         test_every_action_carries_an_economy_from_the_vocabulary()

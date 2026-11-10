@@ -198,7 +198,7 @@ namespace {
 //    z / stats / conditions / movement keys of the same record ─────────────────────
 #define RPG_PLACED_AGENT_FIELDS(X) \
     X(origin) X(weapons) X(spells) X(items) X(armor) X(summoner_idx) \
-    X(removed_from_play) X(summon_spell) X(faction) X(controller) X(on_deck) \
+    X(removed_from_play) X(summon_spell) X(summon_rounds_left) X(faction) X(controller) X(on_deck) \
     X(is_npc_automated) X(npc_automation_difficulty_level) X(npc_automation_strategy)
 
 template <typename T>

@@ -140,6 +140,30 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("attacker_idx"),
              "Sudden Strike: indices the armed free attack may strike — a different creature within 5 ft\n"
              "of the Dreadful Strike target, not an ally, in reach/range + LoS of the same weapon.")
+        .def("beguiling_twist_advantage",
+             [](const CombatEngine& e, const BattleMap& bm, int saver, const std::string& cond) {
+                 return e.beguilingTwistAdvantage(bm, saver, cond);
+             },
+             py::arg("battle_map"), py::arg("saver"), py::arg("condition_name"),
+             "Beguiling Twist (Fey Wanderer L7): True iff saver has Advantage on a save vs this condition\n"
+             "('Charmed' / 'Frightened').")
+        .def("charm_fear_save_succeeded", &CombatEngine::charmFearSaveSucceeded,
+             py::arg("battle_map"), py::arg("saver"),
+             "Beguiling Twist's trigger: saver just succeeded a save to avoid or end Charmed/Frightened.\n"
+             "Automated Fey Wanderers react at once; human ones are queued (take_beguiling_twist_offers).")
+        .def("can_beguiling_twist", &CombatEngine::canBeguilingTwist,
+             py::arg("battle_map"), py::arg("reactor"), py::arg("saver"),
+             "May the Fey Wanderer reactor use Beguiling Twist on saver's success right now?")
+        .def("beguiling_twist_targets", &CombatEngine::beguilingTwistTargets,
+             py::arg("battle_map"), py::arg("reactor"), py::arg("saver"),
+             "Beguiling Twist: the creatures (not the saver) the reactor can see within 120 ft.")
+        .def("apply_beguiling_twist", &CombatEngine::applyBeguilingTwist,
+             py::arg("battle_map"), py::arg("reactor"), py::arg("saver"), py::arg("target"),
+             py::arg("frightened"),
+             "Beguiling Twist: spend the Reaction; target saves (WIS vs spell DC) or is Charmed /\n"
+             "Frightened for 1 minute, repeating the save at the end of each of its turns.")
+        .def("take_beguiling_twist_offers", &CombatEngine::takeBeguilingTwistOffers,
+             "Drain the queued (reactor, saver) Beguiling Twist offers for human-controlled Rangers.")
         .def("umbral_sight_hides", &CombatEngine::umbralSightHides,
              py::arg("battle_map"), py::arg("viewer_idx"), py::arg("ranger_idx"),
              "Umbral Sight: True iff the Gloom Stalker is entirely in Darkness and viewer sees there only\n"

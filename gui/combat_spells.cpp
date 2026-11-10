@@ -441,15 +441,12 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     }
 
     // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs a spell that applies Charmed/Frightened.
-    if (!target_cond.incapacitated && tgt_stats.hasClass(CharacterClass::Ranger) &&
-        tgt_stats.ranger_subclass == FeyWandererPath && tgt_stats.classLevel(CharacterClass::Ranger) >= 7) {
-        for (const auto& c : sp.conditions)
-            if (c.condition_name == "Charmed" || c.condition_name == "Frightened") {
-                target_adv = true;
-                log_("Beguiling Twist: {} has Advantage on the save vs charm/fear", agentName(bm, tgt_idx));
-                break;
-            }
-    }
+    for (const auto& c : sp.conditions)
+        if (beguilingTwistAdvantage(bm, tgt_idx, c.condition_name)) {
+            target_adv = true;
+            log_("Beguiling Twist: {} has Advantage on the save vs charm/fear", agentName(bm, tgt_idx));
+            break;
+        }
 
     // Aberrant Mind Psychic Defenses (L6): Advantage on saves vs spells that apply Charmed/Frightened.
     if (!target_cond.incapacitated && tgt_stats.hasClass(CharacterClass::Sorcerer) &&
@@ -524,6 +521,13 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
     // NPC turn playback: flash the save outcome above the target. No HP sync from this event —
     // a failed save's damage applies later in the cast pipeline; the bar catches up at playback end.
     recordNpcOutcome(bm, tgt_idx, ss.saved ? "Saved" : "Failed", /*good=*/ss.saved, /*sync_hp=*/false);
+    // Beguiling Twist's trigger: a save that avoided Charmed/Frightened.
+    if (ss.saved)
+        for (const auto& c : sp.conditions)
+            if (c.condition_name == "Charmed" || c.condition_name == "Frightened") {
+                charmFearSaveSucceeded(bm, tgt_idx);
+                break;
+            }
     return ss;
 }
 
@@ -2257,11 +2261,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
 
                         // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs Charmed/Frightened.
                         const bool fey_twist =
-                            tgt_stats.hasClass(CharacterClass::Ranger) &&
-                            tgt_stats.ranger_subclass == FeyWandererPath &&
-                            tgt_stats.classLevel(CharacterClass::Ranger) >= 7 &&
-                            (spell_cond.condition_name == "Charmed" ||
-                             spell_cond.condition_name == "Frightened");
+                            beguilingTwistAdvantage(bm, tgt_idx, spell_cond.condition_name);
                         // Aberrant Mind Psychic Defenses (L6): same advantage vs Charmed/Frightened.
                         const bool aberrant_defense =
                             tgt_stats.hasClass(CharacterClass::Sorcerer) &&
@@ -2286,6 +2286,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action)
                         bool save_succeeded = (cond_save_total >= save_dc);
                         target_failed_save = !save_succeeded;
                         condition_applies = target_failed_save;
+                        if (save_succeeded && (spell_cond.condition_name == "Charmed" ||
+                                               spell_cond.condition_name == "Frightened"))
+                            charmFearSaveSucceeded(bm, tgt_idx);   // Beguiling Twist's trigger
 
                         log_("{} save vs {} condition: rolled {} + {} = {} vs DC {} — {}",
                              ability_name(spell_cond.save_ability),
@@ -3224,11 +3227,12 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
             adv = true;
         // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs a spell that applies
         // Charmed or Frightened (this is the Save-for-half site; the condition reuses tr.saved).
-        if (!tc.incapacitated && target_stats.hasClass(CharacterClass::Ranger) &&
-            target_stats.ranger_subclass == FeyWandererPath && target_stats.classLevel(CharacterClass::Ranger) >= 7) {
-            for (const auto& c : sp.conditions)
-                if (c.condition_name == "Charmed" || c.condition_name == "Frightened") { adv = true; break; }
-        }
+        bool charm_fear = false;
+        for (const auto& c : sp.conditions)
+            if (c.condition_name == "Charmed" || c.condition_name == "Frightened") {
+                charm_fear = true;
+                if (beguilingTwistAdvantage(bm, target_idx, c.condition_name)) adv = true;
+            }
         // Vistani Curse of Weakness: Disadvantage on saves tied to the cursed ability.
         if (curseSaveDisadvantage(bm, target_idx, sp.save_ability)) dis = true;
 
@@ -3246,6 +3250,7 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
         if (effect.caster_idx >= 0 && static_cast<std::size_t>(effect.caster_idx) < agents.size())
             dc = rules::spellSaveDcFromAbility(bm.getAgentStats(effect.caster_idx), sp.save_ability);
         saved = !auto_fail && (save_d20 + saveModFor(bm, target_idx, sp.save_ability) >= dc);
+        if (saved && charm_fear) charmFearSaveSucceeded(bm, target_idx);   // Beguiling Twist's trigger
     }
 
     // Calculate total by rolling all damage types and applying multipliers (then halving on a save).
@@ -3677,12 +3682,14 @@ DropConcentrationResult CombatEngine::dropConcentration(BattleMap& bm, int agent
     //    The GUI skips removed_from_play agents in turns and rendering.
     //    EXCEPTION: the Trickery Cleric's Invoke Duplicity illusion is NOT a concentration effect
     //    (Channel Divinity, 1-minute fixed duration), so losing concentration must not dismiss it.
+    //    Nor is any fixed-duration summon (summon_rounds_left > 0 — Fey Reinforcements' 1-minute
+    //    Summon Fey); its own timer ends it (beginTurn).
     {
         auto summons = bm.placedAgents();
         for (int i = 0; i < static_cast<int>(summons.size()); ++i) {
             const auto& s = summons[static_cast<std::size_t>(i)];
             if (s.summoner_idx == agent_idx && !s.removed_from_play &&
-                s.summon_spell != "Invoke Duplicity") {
+                s.summon_spell != "Invoke Duplicity" && s.summon_rounds_left <= 0) {
                 bm.setAgentRemovedFromPlay(i, true);
                 result.dismissed_summons.push_back(i);
             }

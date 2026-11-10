@@ -192,6 +192,7 @@ void bindTypes(py::module_& m) {
         // Summoning (read-only view; mutate via BattleMap.set_agent_* methods)
         .def_property_readonly("summoner_idx",      [](const PlacedAgent& p){ return p.summoner_idx; })
         .def_property_readonly("summon_spell",      [](const PlacedAgent& p){ return p.summon_spell; })
+        .def_property_readonly("summon_rounds_left", [](const PlacedAgent& p){ return p.summon_rounds_left; })
         .def_property_readonly("removed_from_play", [](const PlacedAgent& p){ return p.removed_from_play; })
         .def_property_readonly("faction",           [](const PlacedAgent& p){ return p.faction; })
         // Ownership (read-only view; mutate via BattleMap.set_agent_controller)

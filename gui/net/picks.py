@@ -164,6 +164,8 @@ def cancel_summon(app) -> None:
     app.pending_summon_monster    = ""
     app.pending_summon_spirit     = None
     app.pending_summon_free_cast  = False
+    app.pending_summon_no_conc    = False
+    app.pending_summon_fey_reinforcements = False
     app.summon_hover_cell         = None
     app._combat_log_add("Summon cancelled.")
 
@@ -355,6 +357,8 @@ ARMS: tuple[Arm, ...] = (
         _flag("pending_psychic_teleport", False, "Psychic Teleportation")),
     Arm("pending_shadow_step", False, CELL, _t("Shadow Step: choose a destination"),
         _flag("pending_shadow_step", False, "Shadow Step")),
+    Arm("pending_misty_wanderer", False, CELL, _t("Misty Wanderer: choose a destination"),
+        _flag("pending_misty_wanderer", False, "Misty Wanderer")),
     Arm("pending_steps_of_fey", False, CELL, _t("Steps of the Fey: choose a destination"),
         _flag("pending_steps_of_fey", False, "Steps of the Fey")),
     Arm("pending_misty_escape", False, CELL, _t("Misty Escape: choose a destination"),
@@ -461,6 +465,8 @@ WIRED = frozenset({
     "pending_elemental_burst", "jump_overlay_active",
     # Ranger R2 — Shadowy Dodge's teleport, inside its parked AfterAttack window
     "pending_shadowy_dodge_cell",
+    # Ranger R3 — Misty Wanderer's destination (the passenger question is a bus prompt)
+    "pending_misty_wanderer",
     # M5d.4 — multi-picks
     "pending_mantle_active", "pending_invoke_duplicity", "pending_move_duplicity",
     "pending_swap_duplicity",

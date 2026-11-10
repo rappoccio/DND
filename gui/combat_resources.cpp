@@ -590,6 +590,142 @@ bool CombatEngine::bewitchingMistyStep(BattleMap& bm, int idx, int target_col, i
     return true;
 }
 
+// Misty Wanderer (Fey Wanderer Ranger L15): cast Misty Step without a slot, spending one "Misty
+// Wanderer" use (max(1, WIS mod) per Long Rest). It is still a Bonus Action spell. The Ranger may bring
+// one willing creature it can see within 5 ft: that creature teleports to an unoccupied space within
+// 5 ft of the Ranger's destination.
+std::vector<int> CombatEngine::mistyWandererAllies(const BattleMap& bm, int idx) const
+{
+    std::vector<int> out;
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (idx < 0 || idx >= n) return out;
+    const PlacedAgent& me = agents[static_cast<std::size_t>(idx)];
+    const int ms = me.agent->getSize();
+    for (int i = 0; i < n; ++i) {
+        if (i == idx || !rules::alliedFactions(bm, idx, i)) continue;   // "willing" = on the Ranger's side
+        const PlacedAgent& o = agents[static_cast<std::size_t>(i)];
+        if (o.removed_from_play || o.on_deck) continue;
+        if (o.agent->getConditions().dead || o.agent->getStats().hp_cur <= 0) continue;
+        if (footprintDistance(me.origin, ms, o.origin, o.agent->getSize()) != 1) continue;   // within 5 ft
+        if (!bm.hasLineOfSight(me.origin, ms, o.origin, o.agent->getSize())) continue;       // you can see
+        out.push_back(i);
+    }
+    return out;
+}
+
+bool CombatEngine::isMistyWandererAllyCell(const BattleMap& bm, int ally_idx, Cell dest,
+                                           int ranger_idx, Cell ranger_dest) const
+{
+    const auto& agents = bm.placedAgents();
+    if (ally_idx < 0 || ally_idx >= static_cast<int>(agents.size())) return false;
+    if (ranger_idx < 0 || ranger_idx >= static_cast<int>(agents.size())) return false;
+    const int as = agents[static_cast<std::size_t>(ally_idx)].agent->getSize();
+    const int rs = agents[static_cast<std::size_t>(ranger_idx)].agent->getSize();
+    if (footprintDistance(dest, as, ranger_dest, rs) != 1) return false;   // within 5 ft, not overlapping
+    for (int r = 0; r < as; ++r)
+        for (int c = 0; c < as; ++c)
+            if (!isValidTeleportDestination(bm, dest.col + c, dest.row + r)) return false;
+    // Unoccupied by anyone but the two travellers (the Ranger has already left its square).
+    const auto& pa = bm.placedAgents();
+    for (int j = 0; j < static_cast<int>(pa.size()); ++j) {
+        if (j == ally_idx || j == ranger_idx) continue;
+        const PlacedAgent& o = pa[static_cast<std::size_t>(j)];
+        if (o.removed_from_play || o.on_deck || o.agent->getConditions().dead) continue;
+        if (footprintDistance(dest, as, o.origin, o.agent->getSize()) == 0) return false;
+    }
+    return true;
+}
+
+Cell CombatEngine::mistyWandererAllyCell(const BattleMap& bm, int ally_idx, int ranger_idx,
+                                         Cell ranger_dest) const
+{
+    const Cell none{-1, -1};
+    const auto& agents = bm.placedAgents();
+    if (ally_idx < 0 || ally_idx >= static_cast<int>(agents.size())) return none;
+    const int as = agents[static_cast<std::size_t>(ally_idx)].agent->getSize();
+    const int rs = ranger_idx >= 0 && ranger_idx < static_cast<int>(agents.size())
+                 ? agents[static_cast<std::size_t>(ranger_idx)].agent->getSize() : 1;
+    for (int dr = -as; dr <= rs; ++dr)
+        for (int dc = -as; dc <= rs; ++dc) {
+            const Cell at{ranger_dest.col + dc, ranger_dest.row + dr};
+            if (isMistyWandererAllyCell(bm, ally_idx, at, ranger_idx, ranger_dest)) return at;
+        }
+    return none;
+}
+
+bool CombatEngine::mistyWanderer(BattleMap& bm, int idx, int target_col, int target_row,
+                                 int ally_idx, int ally_col, int ally_row) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.lacksClass(CharacterClass::Ranger) || s.ranger_subclass != FeyWandererPath ||
+        s.classLevel(CharacterClass::Ranger) < 15) return false;
+    const Resource* mw = s.getResource("Misty Wanderer");
+    if (!mw || mw->current <= 0) {
+        log_("{} has no Misty Wanderer uses left", agentName(bm, idx));
+        return false;
+    }
+    if (!hasBonusAction(bm, idx)) return false;
+    const Cell from = agents[static_cast<std::size_t>(idx)].origin;
+    const Cell dest{target_col, target_row};
+    if (!isShadowyDodgeDestination(bm, idx, dest)) {   // ≤30 ft, unoccupied, a space you can see
+        log_("{}: Misty Wanderer — can't teleport there", agentName(bm, idx));
+        return false;
+    }
+    // The passenger: one willing creature within 5 ft, to a free space within 5 ft of the destination.
+    Cell ally_dest{-1, -1};
+    if (ally_idx >= 0) {
+        const std::vector<int> allies = mistyWandererAllies(bm, idx);
+        if (std::find(allies.begin(), allies.end(), ally_idx) == allies.end()) {
+            log_("{}: Misty Wanderer — {} isn't a willing creature within 5 ft", agentName(bm, idx),
+                 agentName(bm, ally_idx));
+            return false;
+        }
+        ally_dest = (ally_col >= 0 && ally_row >= 0) ? Cell{ally_col, ally_row}
+                                                     : mistyWandererAllyCell(bm, ally_idx, idx, dest);
+        if (ally_dest.col < 0 || !isMistyWandererAllyCell(bm, ally_idx, ally_dest, idx, dest)) {
+            log_("{}: Misty Wanderer — no room for {} beside the destination", agentName(bm, idx),
+                 agentName(bm, ally_idx));
+            return false;
+        }
+    }
+
+    if (!teleportAgent(bm, idx, dest.col, dest.row)) return false;
+    s = bm.getAgentStats(idx);   // teleportAgent may re-persist the stats
+    if (Resource* r = s.getResource("Misty Wanderer")) r->spend(1);
+    s.markLeveledSpellCast(2);   // it is still a Misty Step: the one-leveled-spell rule sees it
+    bm.setAgentStats(idx, s);
+    spendBonusAction(bm, idx);
+    log_("{}: Misty Wanderer — casts Misty Step ({} ft)", agentName(bm, idx),
+         5 * std::max(std::abs(dest.col - from.col), std::abs(dest.row - from.row)));
+    recordNpcAnnounce(idx, -1, std::format("{} casts Misty Step!", agentName(bm, idx)));
+    if (ally_idx >= 0 && teleportAgent(bm, ally_idx, ally_dest.col, ally_dest.row))
+        log_("Misty Wanderer: {} is carried along", agentName(bm, ally_idx));
+    return true;
+}
+
+bool CombatEngine::autoMistyWanderer(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    const Agent::Stats s = bm.getAgentStats(idx);
+    if (s.lacksClass(CharacterClass::Ranger) || s.ranger_subclass != FeyWandererPath ||
+        s.classLevel(CharacterClass::Ranger) < 15) return false;
+    const Resource* mw = s.getResource("Misty Wanderer");
+    if (!mw || mw->current <= 0 || !hasBonusAction(bm, idx)) return false;
+    // Only to get a ranged Ranger out of melee: an enemy must have it in reach.
+    if (!isThreatened(bm, idx)) return false;
+    const Cell dest = shadowyDodgeDestination(bm, idx);
+    if (dest.col < 0) return false;
+    // D8: bring an adjacent ally who is in melee with an enemy, if there is one with room.
+    int ally = -1;
+    for (int a : mistyWandererAllies(bm, idx))
+        if (isThreatened(bm, a) && mistyWandererAllyCell(bm, a, idx, dest).col >= 0) { ally = a; break; }
+    return mistyWanderer(bm, idx, dest.col, dest.row, ally, -1, -1);
+}
+
 // Warrior of Shadow Monk — Cloak of Shadows (L17): a Bonus Action. Gain Invisible in dim/dark.
 // Invisibility persists through attacks (doesn't end on action like standard Invisibility).
 // Expires on turn start if in bright light, or at end of turn naturally.
@@ -1488,7 +1624,7 @@ bool CombatEngine::useIntimidatingPresence(BattleMap& bm, int idx) noexcept
         // Roll WIS save for the target
         const int wis_save_mod = saveModFor(bm, target_idx, SaveWis);
 
-        const int save_d20 = roll(20);
+        const int save_d20 = beguilingTwistAdvantage(bm, target_idx, "Frightened") ? rollAdvantage(20) : roll(20);
         const int save_total = save_d20 + wis_save_mod;
         const bool failed = save_total < save_dc;
 
@@ -1506,6 +1642,8 @@ bool CombatEngine::useIntimidatingPresence(BattleMap& bm, int idx) noexcept
             aac.caster_idx = idx;
             aac.turns_remaining = 2;  // until end of next turn (turn starts, runs, then starts next turn)
             (void)addAgentCondition(bm, aac);
+        } else {
+            charmFearSaveSucceeded(bm, target_idx);   // Beguiling Twist's trigger
         }
     }
 
@@ -3329,10 +3467,12 @@ bool CombatEngine::bardBeguilingMagic(BattleMap& bm, int bard_idx, int target_id
     const char* cond_name = use_frightened ? "Frightened" : "Charmed";
     const int   dc        = rules::spellSaveDc(bs);
     const int   save_mod  = saveModFor(bm, target_idx, SaveWis);
-    const int   save_roll = roll(20, save_mod);
+    const int   save_roll = (beguilingTwistAdvantage(bm, target_idx, cond_name) ? rollAdvantage(20)
+                                                                                : roll(20)) + save_mod;
 
     if (save_roll >= dc) {
         log_("{} resists Beguiling Magic (WIS save {} vs DC {})", agentName(bm, target_idx), save_roll, dc);
+        charmFearSaveSucceeded(bm, target_idx);   // Beguiling Twist's trigger
         return true;
     }
     // Frightened can be refused outright by Aura of Courage — the use is still spent.

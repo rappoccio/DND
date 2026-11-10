@@ -67,13 +67,15 @@ WIRED = frozenset({
     # M5d.3 — place picks
     "long_jump", "blink_steps", "psychic_teleport", "shadow_step", "shadow_arts_darkness",
     "steps_of_fey", "misty_escape", "warping_implosion", "wild_magic_teleport",
-    "elemental_burst",
+    "elemental_burst", "misty_wanderer",
     # M5d.4 — multi-picks
     "mantle", "invoke_duplicity", "move_duplicity", "swap_duplicity",
     # M5e.1 — the spell pipeline
     "spell_action", "spell_bonus", "mantle_majesty", "wild_magic_bonus_cast",
     # M5e.2 — its spell list is a bus prompt now (E-5)
     "divine_intervention",
+    # Ranger R3 — a slotless Summon Fey through the same pipeline
+    "fey_reinforcements",
 })
 
 # Why a disabled row is disabled, in the player's words. The DM can still run any of these
@@ -162,6 +164,8 @@ CLASS: dict[str, str] = {
     "telekinetic_psi": A,
     "tireless": I,
     "natures_veil": I,
+    "fey_reinforcements": S,
+    "misty_wanderer": X,
     "psychic_veil": I,
     "psychic_teleport": X,
     "shadow_step": X,

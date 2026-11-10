@@ -356,6 +356,25 @@ void bindCombatResources(py::class_<CombatEngine>& engine) {
              "cast right after an Enchantment/Illusion action-cast. effect matches steps_of_the_fey\n"
              "(0 None, 1 Refreshing, 2 Taunting, 3 Disappearing, 4 Dreadful). The GUI enforces the\n"
              "'just cast Enchantment/Illusion' timing. Returns True iff the teleport happens.")
+        .def("misty_wanderer_allies", &CombatEngine::mistyWandererAllies,
+             py::arg("battle_map"), py::arg("idx"),
+             "Fey Wanderer L15 Misty Wanderer: the willing creatures within 5 ft who may come along.")
+        .def("misty_wanderer_ally_cell", &CombatEngine::mistyWandererAllyCell,
+             py::arg("battle_map"), py::arg("ally_idx"), py::arg("ranger_idx"), py::arg("ranger_dest"),
+             "First free space within 5 ft of ranger_dest for the passenger (Cell(-1,-1) = none).")
+        .def("is_misty_wanderer_ally_cell", &CombatEngine::isMistyWandererAllyCell,
+             py::arg("battle_map"), py::arg("ally_idx"), py::arg("dest"), py::arg("ranger_idx"),
+             py::arg("ranger_dest"),
+             "True if dest is a legal landing space for the passenger beside ranger_dest.")
+        .def("misty_wanderer", &CombatEngine::mistyWanderer,
+             py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
+             py::arg("ally_idx") = -1, py::arg("ally_col") = -1, py::arg("ally_row") = -1,
+             "Fey Wanderer L15 Misty Wanderer: a slotless Bonus-Action Misty Step (30 ft), spending one\n"
+             "use, optionally bringing ally_idx (within 5 ft) to (ally_col, ally_row) beside the\n"
+             "destination (negative = first free space). Returns True iff the Ranger teleported.")
+        .def("auto_misty_wanderer", &CombatEngine::autoMistyWanderer,
+             py::arg("battle_map"), py::arg("idx"),
+             "The NpcDriver's Misty Wanderer: out of melee to the nearest safe cell, with an engaged ally.")
         .def("cloak_of_shadows",
              &CombatEngine::cloakOfShadows,
              py::arg("battle_map"), py::arg("idx"),

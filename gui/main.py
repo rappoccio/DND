@@ -182,7 +182,7 @@ _BON_RUN_BAND      = (
     # Psi Warrior: Telekinetic Movement (the feat's shove is in _BON_RUN_ESCAPE)
     "telekinetic_psi",
     # Ranger
-    "tireless", "natures_veil",
+    "tireless", "natures_veil", "fey_reinforcements", "misty_wanderer",
     # Soulknife Rogue
     "psychic_teleport", "psychic_veil",
     # Shadow Monk
@@ -950,6 +950,9 @@ class App:
         self.pending_summon_monster    = ""    # monster-JSON key to spawn
         self.pending_summon_spirit     = None  # scaling spirit block (summons.json) or None
         self.pending_summon_free_cast  = False # Wish-duplicated summon: charge no slot of its own
+        self.pending_summon_no_conc    = False # Fey Wanderer L11: Summon Fey without Concentration (1 min)
+        self.pending_summon_fey_reinforcements = False # the slotless cast spends "Fey Reinforcements"
+        self._summon_conc_chosen       = False # Summon Fey's Concentration question already answered
         self.summon_hover_cell         = None  # cell under mouse while choosing a summon spot
         # Wish: spells duplicated by Wish are injected into the caster's own spell list (the engine
         # casts by index) and kept there permanently — indices stay stable so any concentration /
@@ -971,6 +974,7 @@ class App:
         self.pending_shadow_darkness   = False # Warrior of Shadow L3: awaiting a Shadow Arts: Darkness center cell
         # Archfey Warlock — Misty Step teleports (Steps of the Fey / Misty Escape / Bewitching Magic).
         self.pending_steps_of_fey      = False # Archfey L3+: awaiting a Steps of the Fey destination (Bonus)
+        self.pending_misty_wanderer    = False # Fey Wanderer L15: awaiting a Misty Wanderer destination (Bonus)
         self.pending_misty_escape      = False # Archfey L6+: awaiting a Misty Escape destination (Reaction)
         self.pending_bewitching_misty  = False # Archfey L14: awaiting a free Bewitching Magic Misty Step
         self.steps_of_fey_effect       = 0     # rider: 0 None,1 Refreshing,2 Taunting,3 Disappearing,4 Dreadful
@@ -1026,6 +1030,8 @@ class App:
         # automated turn per frame (so the board renders between turns and a run is watchable), then
         # advances. -1 = no automated turn pending.
         self._npc_drive_idx       = -1
+        self._npc_fresh_turn      = False  # the armed drive is a turn's first step, not a resume
+        self._beguiling_twist_queue = []   # (reactor, saver) offers drained from the engine
         # Legendary Actions: after a creature's turn ends, eligible legendary creatures (enemies of
         # the just-ended creature, with actions left) may each spend legendary actions before the
         # next turn begins. _legendary_queue holds those creature indices, drained one at a time.
@@ -1971,6 +1977,12 @@ class App:
         self.btn_cbt_tireless = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Tireless (Magic Action)",
                                           (90, 150, 120), (120, 185, 155), self.font_md)
+        self.btn_cbt_fey_reinforcements = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Fey Reinforcements (Magic Action)",
+                                          (120, 90, 160), (150, 120, 195), self.font_md)
+        self.btn_cbt_misty_wanderer = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Misty Wanderer (Bonus Action)",
+                                          (100, 110, 170), (130, 140, 205), self.font_md)
         self.btn_cbt_natures_veil = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Nature's Veil (Bonus Action)",
                                           (70, 120, 90), (100, 155, 120), self.font_md)
@@ -5903,6 +5915,8 @@ class App:
             self._resolve_psychic_teleport(cell)
         elif self.pending_shadow_step:
             self._resolve_shadow_step(cell)
+        elif self.pending_misty_wanderer:
+            self._resolve_misty_wanderer(cell)
         elif self.pending_steps_of_fey:
             self._resolve_steps_of_fey(cell)
         elif self.pending_misty_escape:
@@ -6076,6 +6090,7 @@ class App:
         self.pending_warping_implosion   = False
         self.pending_shadow_darkness     = False
         self.pending_steps_of_fey        = False
+        self.pending_misty_wanderer      = False
         self.pending_misty_escape        = False
         self.pending_bewitching_misty    = False
         self.pending_invoke_duplicity    = False
@@ -6121,6 +6136,8 @@ class App:
         self.pending_summon_monster      = ""
         self.pending_summon_spirit       = None
         self.pending_summon_free_cast    = False
+        self.pending_summon_no_conc      = False
+        self.pending_summon_fey_reinforcements = False
         self.summon_hover_cell           = None
         self._aoe_aim                    = None   # M5e E-8: an unconfirmed aim
         self._di_wish_free               = False  # F-M5e-12: an unused Greater DI Wish
@@ -6136,6 +6153,7 @@ class App:
         ("pending_psychic_teleport", False), ("pending_shadow_step", False),
         ("pending_wild_magic_teleport", False), ("pending_warping_implosion", False),
         ("pending_shadow_darkness", False), ("pending_steps_of_fey", False),
+        ("pending_misty_wanderer", False),
         ("pending_misty_escape", False), ("pending_bewitching_misty", False),
         ("pending_invoke_duplicity", False), ("pending_move_duplicity", False),
         ("pending_swap_duplicity", False), ("pending_heal_light", False),
@@ -6165,6 +6183,7 @@ class App:
         "_duplicity_cd_pending", "pending_mantle_targets",
         "pending_summon_idx", "pending_summon_slot_level", "pending_summon_monster",
         "pending_summon_spirit", "pending_summon_free_cast", "summon_hover_cell",
+        "pending_summon_no_conc", "pending_summon_fey_reinforcements",
         "_aoe_aim", "_di_wish_free", "pending_horde_breaker_targets",
         "pending_sudden_strike_targets",
     )
@@ -6487,6 +6506,7 @@ class App:
                 and self.bm.is_agent_npc_automated(new_idx)
                 and not self.bm.is_agent_on_deck(new_idx)):
             self._npc_drive_idx = new_idx
+            self._npc_fresh_turn = True
 
         # The autosave ring (MULTIPLAYER_PLAN.md D-M6-1): the turn-start reactions have
         # resolved, the action economy is reset and an NPC's turn has not run yet, so this
@@ -6515,6 +6535,49 @@ class App:
                 continue
             self._offer_keeper_of_souls(c)
             return
+
+    def _offer_beguiling_twist_if_pending(self):
+        """Fey Wanderer Beguiling Twist (L7), the human half. The engine queues (reactor, saver) when a
+        save against Charmed/Frightened succeeds and the Ranger who may react is not automated (an
+        automated one reacted already). Drained every frame, offered one at a time when nothing else is
+        waiting on an answer; an offer whose Reaction or target is gone by then is dropped."""
+        if not self.combat_active:
+            self._beguiling_twist_queue = []
+            self.combat.take_beguiling_twist_offers()
+            return
+        self._beguiling_twist_queue.extend(self.combat.take_beguiling_twist_offers())
+        if not self._beguiling_twist_queue:
+            return
+        if self._npc_anim is not None or self.prompts.live is not None:
+            return
+        if self.combat.pending_decision().active:
+            return
+        while self._beguiling_twist_queue:
+            reactor, saver = self._beguiling_twist_queue.pop(0)
+            if self.combat.can_beguiling_twist(self.bm, reactor, saver):
+                self._offer_beguiling_twist(reactor, saver)
+                return
+
+    def _offer_beguiling_twist(self, reactor: int, saver: int):
+        agents = self.bm.placed_agents
+
+        def _twist(t, frightened):
+            if not self.combat.apply_beguiling_twist(self.bm, reactor, saver, t, frightened):
+                self._combat_log_add("Beguiling Twist unavailable.")
+            self._flush_combat_log()
+
+        def _skip():
+            self._combat_log_add(f"{agents[reactor].name}: Beguiling Twist not used.")
+
+        options = []
+        for t in self.combat.beguiling_twist_targets(self.bm, reactor, saver):
+            options.append((f"Frighten {agents[t].name}", (lambda tt=t: _twist(tt, True))))
+            options.append((f"Charm {agents[t].name}", (lambda tt=t: _twist(tt, False))))
+        options.append(("Don't use Beguiling Twist", _skip))
+        who = "you" if saver == reactor else agents[saver].name
+        self._ask_actor(reactor, "reaction",
+                        f"{agents[reactor].name}: {who} shook off a charm/fear — Beguiling Twist?",
+                        options, on_cancel=_skip)
 
     def _offer_keeper_of_souls(self, cleric_idx: int):
         agents = self.bm.placed_agents
@@ -6568,6 +6631,13 @@ class App:
         if (not self.combat_active or self.tracker_mode
                 or idx < 0 or idx >= len(self.bm.placed_agents)):
             return
+        # Fey Wanderer Summon Fey (Ranger R3): a Python-side cast that spends the whole turn.
+        fresh, self._npc_fresh_turn = self._npc_fresh_turn, False
+        if fresh and self._auto_summon_fey(idx) >= 0:
+            self._mark_fog_dirty()
+            self._flush_combat_log()
+            self._advance_turn()
+            return
         snapshot = self._npc_anim_snapshot()   # display state BEFORE the turn mutates the world
         status = self.combat.run_npc_turn(self.bm, idx)
         self._mark_fog_dirty()   # the automated turn moved tokens / opened doors / placed lights
@@ -6605,6 +6675,7 @@ class App:
     def _resume_npc_turn(self, idx: int):
         """Re-arm the NPC driver after a parked human reaction window closed mid-automated-turn."""
         self._npc_drive_idx = idx
+        self._npc_fresh_turn = False
 
     def _drop_concentration(self):
         """Drop concentration for the current agent (game logic in C++)."""
@@ -9115,6 +9186,28 @@ class App:
             f"(was {old_thp}, now {stats.temp_hp}).")
         self.action_used = True
 
+    def _fey_reinforcements_level(self, agent_idx: int) -> bool:
+        """Fey Wanderer Ranger L11+: Summon Fey may skip Concentration (Fey Reinforcements)."""
+        if not (0 <= agent_idx < len(self.bm.placed_agents)):
+            return False
+        st = self.combat.get_agent_stats(self.bm, agent_idx)
+        return (st.ranger_subclass == rpg.RangerSubclass.FeyWanderer
+                and st.class_level(rpg.CharacterClass.Ranger) >= 11)
+
+    def _start_fey_reinforcements(self, agent_idx: int):
+        """Fey Wanderer L11 Fey Reinforcements: cast Summon Fey once without a spell slot (at its
+        base level, 3rd). The cast runs through the normal summon flow; _resolve_summon spends
+        the "Fey Reinforcements" use when the spirit is placed."""
+        spells = self.combat.get_agent_spells(self.bm, agent_idx)
+        si = next((i for i, sp in enumerate(spells) if sp.name == "Summon Fey"), -1)
+        stats = self.combat.get_agent_stats(self.bm, agent_idx)
+        fr = stats.get_resource("Fey Reinforcements")
+        if si < 0 or not (fr and fr.current > 0):
+            self._combat_log_add(f"{self.bm.placed_agents[agent_idx].name}: no Fey Reinforcements use.")
+            return
+        self.pending_summon_fey_reinforcements = True
+        self._activate_spell("action", si, spells[si].level, agent_idx, spells, stats, free_cast=True)
+
     def _use_natures_veil(self, agent_idx: int):
         """Ranger L14 Nature's Veil: Bonus action, turn Invisible (drops on attack)."""
         if not (0 <= agent_idx < len(self.bm.placed_agents)):
@@ -9193,6 +9286,43 @@ class App:
             # Out of range, blocked, or light-level gate failed — keep the prompt up for retry.
             self._flush_combat_log()
             self._combat_log_add("Shadow Step: out of range, blocked, or light requirement not met — pick a closer cell.")
+
+    def _resolve_misty_wanderer(self, cell):
+        """Fey Wanderer L15 Misty Wanderer: a slotless Bonus-Action Misty Step (30 ft). With a
+        willing creature within 5 ft, ask who comes along; the engine lands them in the first free
+        space beside the destination. Click your own cell to cancel."""
+        idx = self._current_agent_idx()
+        self.pending_misty_wanderer = False
+        if idx < 0:
+            return
+        origin = self.bm.placed_agents[idx].origin
+        if cell.col == origin.col and cell.row == origin.row:
+            self._combat_log_add("Misty Wanderer cancelled.")
+            return
+
+        def _go(ally=-1):
+            if self.combat.misty_wanderer(self.bm, idx, cell.col, cell.row, ally, -1, -1):
+                self._flush_combat_log()
+                self.bonus_used = True
+                self._reset_movement(idx)
+                self._update_reach()
+                self._update_attack_overlay()
+                self.sprites.clear()
+            else:
+                self._flush_combat_log()
+                self._combat_log_add("Misty Wanderer: can't go there — pick another cell.")
+                self.pending_misty_wanderer = True
+
+        dest = rpg.Cell(cell.col, cell.row)
+        allies = [a for a in self.combat.misty_wanderer_allies(self.bm, idx)
+                  if self.combat.misty_wanderer_ally_cell(self.bm, a, idx, dest).col >= 0]
+        if not allies:
+            _go()
+            return
+        items = [(f"Bring {self.bm.placed_agents[a].name}", (lambda a=a: _go(a))) for a in allies]
+        items.append(("Go alone", lambda: _go()))
+        self._ask_actor(idx, "action", "Misty Wanderer: bring a willing creature?", items,
+                        render="picker", on_cancel=lambda: _go())
 
     def _resolve_steps_of_fey(self, cell):
         """Archfey L3+ Steps of the Fey: a Bonus-Action Misty Step (30 ft) with the selected rider.
@@ -10286,7 +10416,7 @@ class App:
                         continue
                     idx = self.spell_name_to_idx.get(name)
                     if idx is None:
-                        continue  # not in spells.json (e.g. Summon Fey) — skip gracefully
+                        continue  # not in spells.json — skip gracefully
                     cpp_spells.append(_dict_to_spell(self.all_spells[idx]))
                     existing.add(name)
 
@@ -10423,7 +10553,6 @@ class App:
     )
 
     # Always-prepared Ranger subclass spells by subclass and Ranger level (2024 PHB).
-    # (Summon Fey at L9 is intentionally omitted — not yet in spells.json; see known_limitations.)
     _RANGER_SUBCLASS_SPELLS = {
         "GloomStalker": {
             3: ["Disguise Self"],
@@ -10435,6 +10564,7 @@ class App:
         "FeyWanderer": {
             3: ["Charm Person"],
             5: ["Misty Step"],
+            9: ["Summon Fey"],
             13: ["Dimension Door"],
             17: ["Mislead"],
         },
@@ -10668,12 +10798,35 @@ class App:
         spirit_forms = SUMMON_SPELL_TO_SPIRIT.get(sp_.name)
         monster      = SUMMON_SPELL_TO_MONSTER.get(sp_.name)
         if spirit_forms:
+            # Fey Wanderer L11 Fey Reinforcements: any Summon Fey may be cast without
+            # Concentration (1 minute). Ask first, then come back here for the form.
+            if (sp_.name == "Summon Fey" and self._fey_reinforcements_level(idx)
+                    and not self._summon_conc_chosen):
+                def _on_conc(no_conc, s=s, si_=si_, slot_level_=slot_level_, idx=idx):
+                    # Re-enter this branch past the question; the form prompt it opens
+                    # leaves the placement armed, and the choice rides along with it.
+                    self._summon_conc_chosen = True
+                    try:
+                        self._activate_spell(s, si_, slot_level_, idx, spells, stats,
+                                             free_cast=free_cast)
+                    finally:
+                        self._summon_conc_chosen = False
+                    self.pending_summon_no_conc = no_conc
+                self._ask_actor(idx, "action", "Summon Fey: Concentration?",
+                                [("Concentration (1 hour)", lambda: _on_conc(False)),
+                                 ("No Concentration (1 minute)", lambda: _on_conc(True))],
+                                render="picker",
+                                on_cancel=lambda: net_picks.cancel_summon(self))
+                return
+            fey_free = self.pending_summon_fey_reinforcements
             self.pending_summon_slot       = s
             self.pending_summon_idx        = si_
             self.pending_summon_slot_level = slot_level_
             self.pending_summon_free_cast  = free_cast
             self.pending_summon_monster    = ""
             self.pending_summon_spirit     = None
+            self.pending_summon_no_conc    = False
+            self.pending_summon_fey_reinforcements = fey_free
             items = [(f"✨ {form}",
                       lambda b=block, n=sp_.name: self._choose_summon_form(n, b))
                      for form, block in spirit_forms.items()]
@@ -11924,7 +12077,8 @@ class App:
         after them) and is auto-dismissed when the summoner loses concentration — that cascade
         lives in C++ (dropConcentration scans summoner_idx and tombstones via removed_from_play).
         The creature is spawned non-destructively (bm.spawn_agent) so no existing agent's runtime
-        state is disturbed."""
+        state is disturbed. The spawn itself is _spawn_summon, shared with the automated Summon
+        Fey cast (features.auto_summon_fey)."""
         caster_idx = self._current_agent_idx()
         slot       = self.pending_summon_slot
         monster    = self.pending_summon_monster
@@ -11938,15 +12092,14 @@ class App:
         sp = spells[spell_idx] if 0 <= spell_idx < len(spells) else None
         if spirit is not None:
             # Scaling spirit (summons.json): no bestiary record; size comes from the block.
-            mob_stats = None
             size = self._size_category_to_grid_size(spirit.get("size", "Medium"))
+            has_block = True
         else:
-            # Mage Hand isn't in the bestiary — use its synthetic block (deep-copied so dict_to_stats'
-            # in-place legendary tweak in _mob_stats_to_d_d_stats can't mutate the shared constant).
-            mob_stats = (copy.deepcopy(MAGE_HAND_STATBLOCK) if monster == "Mage Hand"
+            mob_stats = (MAGE_HAND_STATBLOCK if monster == "Mage Hand"
                          else self.mob_stats_json.get(monster))
             size = self._size_category_to_grid_size(mob_stats.get("size", "Medium")) if mob_stats else 1
-        if sp is None or (spirit is None and not mob_stats):
+            has_block = bool(mob_stats)
+        if sp is None or not has_block:
             self._combat_log_add(f"Summon failed: missing spell or '{monster}' stat block.")
             return
 
@@ -11963,6 +12116,77 @@ class App:
             self._combat_log_add("That cell is blocked or occupied.")
             return
 
+        new_idx = self._spawn_summon(caster_idx, sp, monster, spirit, slot_level, cell,
+                                     no_conc=self.pending_summon_no_conc)
+        if new_idx < 0:
+            self._combat_log_add("Summon failed: could not place the creature.")
+            return
+
+        # Spend the spell slot (PC slots only; NPC spell-group casting is out of scope here). A
+        # Wish-duplicated summon is free (Wish already paid its 9th-level slot); a Fey
+        # Reinforcements cast spends its use instead.
+        cstats = self.combat.get_agent_stats(self.bm, caster_idx)
+        if self.pending_summon_fey_reinforcements:
+            self.combat.spend_resource(self.bm, caster_idx, "Fey Reinforcements", 1)
+        elif not cstats.is_npc and slot_level >= 1 and not self.pending_summon_free_cast:
+            slots = list(cstats.spell_slots_remaining)
+            if slots[slot_level - 1] > 0:
+                slots[slot_level - 1] -= 1
+                cstats.spell_slots_remaining = slots
+                self.combat.set_agent_stats(self.bm, caster_idx, cstats)
+
+        # Insert into initiative immediately after the summoner (shares its count).
+        if self.combat_active and self.initiative_order:
+            caster_pos = next((p for p, e in enumerate(self.initiative_order)
+                               if e.agent_idx == caster_idx), -1)
+            if caster_pos >= 0:
+                base = self.initiative_order[caster_pos]
+                entry = rpg.InitiativeEntry()
+                entry.agent_idx = new_idx
+                entry.d20       = base.d20
+                entry.modifier  = base.modifier
+                entry.total     = base.total
+                self.initiative_order.insert(caster_pos + 1, entry)
+
+        self._combat_log_add(f"{caster.name} summons a {monster}!")
+
+        # Clear pending state + consume the action economy.
+        fey_free = self.pending_summon_fey_reinforcements
+        self.pending_summon_slot       = ""
+        self.pending_summon_idx        = 0
+        self.pending_summon_slot_level = 0
+        self.pending_summon_monster    = ""
+        self.pending_summon_spirit     = None
+        self.pending_summon_free_cast  = False
+        self.pending_summon_no_conc    = False
+        self.pending_summon_fey_reinforcements = False
+        self.summon_hover_cell         = None
+        self.sprites.clear()
+        self._consume_cast_slot(slot, caster_idx)
+        # Wild Magic Surge: a summon spell cast with a spell slot triggers a surge (not a free
+        # Wish-duplicated summon — no slot was spent).
+        if slot_level >= 1 and not cstats.is_npc and not free_summon and not fey_free:
+            features.maybe_wild_magic_surge(self, caster_idx)
+
+    def _spawn_summon(self, caster_idx: int, sp, monster: str, spirit, slot_level: int, cell,
+                      no_conc: bool = False) -> int:
+        """Spawn `monster` (a summons.json spirit `block` when `spirit` is given, else a bestiary
+        record) for `caster_idx`'s spell `sp` at `cell`, linked to the caster and its faction,
+        and take up Concentration when the spell needs it. No placement checks, no slot, no
+        initiative. `no_conc` (Fey Reinforcements) skips Concentration and gives the summon a
+        1-minute timer instead (summon_rounds_left = 10). Returns the new index, or -1."""
+        if spirit is not None:
+            mob_stats = None
+            size = self._size_category_to_grid_size(spirit.get("size", "Medium"))
+        else:
+            # Mage Hand isn't in the bestiary — use its synthetic block (deep-copied so dict_to_stats'
+            # in-place legendary tweak in _mob_stats_to_d_d_stats can't mutate the shared constant).
+            mob_stats = (copy.deepcopy(MAGE_HAND_STATBLOCK) if monster == "Mage Hand"
+                         else self.mob_stats_json.get(monster))
+            if not mob_stats:
+                return -1
+            size = self._size_category_to_grid_size(mob_stats.get("size", "Medium"))
+
         # Spawn WITHOUT rebuilding existing agents (preserves HP/conditions/concentration).
         cfg = rpg.AgentConfig()
         cfg.name        = monster
@@ -11972,8 +12196,7 @@ class App:
         cfg.start_row   = cell.row
         new_idx = self.bm.spawn_agent(cfg)
         if new_idx < 0:
-            self._combat_log_add("Summon failed: could not place the creature.")
-            return
+            return -1
 
         if spirit is not None:
             # Scaling spirit: stats + the single natural attack scale off the slot level and the
@@ -12008,9 +12231,13 @@ class App:
         # spared by the summoner's selective spells / can be healed by them).
         self.bm.set_agent_faction(new_idx, self.bm.get_agent_faction(caster_idx))
 
-        # Concentration: a new concentration spell replaces the caster's previous one
-        # (which dismisses any creature the earlier spell had summoned).
-        if sp.requires_concentration:
+        if no_conc:
+            # Fey Reinforcements: no Concentration, and the spell lasts 1 minute (10 rounds).
+            self.bm.set_agent_summon_rounds_left(new_idx, 10)
+            self._combat_log_add(f"{sp.name} cast without Concentration (lasts 1 minute).")
+        elif sp.requires_concentration:
+            # A new concentration spell replaces the caster's previous one (which dismisses
+            # any creature the earlier spell had summoned).
             cond = self.combat.get_agent_conditions(self.bm, caster_idx)
             if cond.concentrating:
                 self._drop_concentration_for_agent(caster_idx)
@@ -12018,48 +12245,96 @@ class App:
             cond.concentrating    = True
             cond.concentrating_on = sp.name
             self.combat.set_agent_conditions(self.bm, caster_idx, cond)
+        return new_idx
 
-        # Spend the spell slot (PC slots only; NPC spell-group casting is out of scope here). A
-        # Wish-duplicated summon is free (Wish already paid its 9th-level slot).
-        cstats = self.combat.get_agent_stats(self.bm, caster_idx)
-        if not cstats.is_npc and slot_level >= 1 and not self.pending_summon_free_cast:
-            slots = list(cstats.spell_slots_remaining)
-            if slots[slot_level - 1] > 0:
-                slots[slot_level - 1] -= 1
-                cstats.spell_slots_remaining = slots
-                self.combat.set_agent_stats(self.bm, caster_idx, cstats)
+    def _auto_summon_fey(self, idx: int) -> int:
+        """The automated Fey Wanderer's Summon Fey (Ranger R3, D8). The engine's NpcDriver casts no
+        summon spells, so the arena and the GUI's automated driver call this at the top of the
+        Ranger's turn; when it summons, that cast is the turn (no move or Bonus Action follows).
 
-        # Insert into initiative immediately after the summoner (shares its count).
+        Casts when the Ranger (L9+, Summon Fey prepared) has no spirit of its own out and a living
+        enemy is on the board. Pays with Fey Reinforcements first (L11, slotless, 3rd level), else
+        its highest slot of 3rd level or above. From L11 it always skips Concentration (1 minute),
+        which keeps Concentration free for Hunter's Mark; below L11 it casts only when it is not
+        already concentrating. The spirit (the first mood in summons.json) lands in the free,
+        visible cell within 90 ft nearest the nearest enemy, joins the Ranger's side, is automated
+        like its summoner, and takes the next initiative slot. Returns the new index, or -1."""
+        agents = self.bm.placed_agents
+        if not (0 <= idx < len(agents)):
+            return -1
+        st = self.combat.get_agent_stats(self.bm, idx)
+        rlvl = st.class_level(rpg.CharacterClass.Ranger)
+        if st.ranger_subclass != rpg.RangerSubclass.FeyWanderer or rlvl < 9:
+            return -1
+        spells = self.combat.get_agent_spells(self.bm, idx)
+        si = next((i for i, sp in enumerate(spells) if sp.name == "Summon Fey"), -1)
+        forms = SUMMON_SPELL_TO_SPIRIT.get("Summon Fey")
+        if si < 0 or not forms:
+            return -1
+        if any(pt.summoner_idx == idx and not pt.removed_from_play and pt.summon_spell == "Summon Fey"
+               for pt in agents):
+            return -1
+        me = agents[idx]
+        foes = [pt for i, pt in enumerate(agents)
+                if i != idx and (pt.faction != me.faction or me.faction == 0)
+                and not pt.removed_from_play
+                and not self.bm.is_agent_on_deck(i) and not pt.conditions.dead and pt.stats.hp_cur > 0]
+        if not foes:
+            return -1
+        no_conc = rlvl >= 11
+        if not no_conc and self.combat.get_agent_conditions(self.bm, idx).concentrating:
+            return -1
+        fr = st.get_resource("Fey Reinforcements")
+        use_fr = rlvl >= 11 and fr is not None and fr.current > 0
+        slot_level = 3
+        if not use_fr:
+            slots = list(st.spell_slots_remaining)
+            usable = [lv for lv in range(len(slots), 2, -1) if slots[lv - 1] > 0]
+            if not usable:
+                return -1
+            slot_level = usable[0]
+        block = next(iter(forms.values()))
+        size = self._size_category_to_grid_size(block.get("size", "Medium"))
+        sp = spells[si]
+        rng = max(1, int(sp.range // 5))
+        best, best_d = None, None
+        for r in range(me.origin.row - rng, me.origin.row + rng + 1):
+            for c in range(me.origin.col - rng, me.origin.col + rng + 1):
+                if math.hypot(c - me.origin.col, r - me.origin.row) * 5.0 > sp.range + 1e-6:
+                    continue
+                cell = rpg.Cell(c, r)
+                if not self._can_place(cell, size):
+                    continue
+                if not self.bm.has_line_of_sight(me.origin, me.size, cell, size):
+                    continue
+                d = min(max(abs(c - f.origin.col), abs(r - f.origin.row)) for f in foes)
+                if best_d is None or d < best_d:
+                    best, best_d = cell, d
+        if best is None:
+            return -1
+        new_idx = self._spawn_summon(idx, sp, block.get("name", "Fey Spirit"), block, slot_level,
+                                     best, no_conc=no_conc)
+        if new_idx < 0:
+            return -1
+        self.bm.set_agent_npc_automated(new_idx, True)
+        if use_fr:
+            self.combat.spend_resource(self.bm, idx, "Fey Reinforcements", 1)
+            how = "Fey Reinforcements, no slot"
+        else:
+            self.combat.spend_spell_slot(self.bm, idx, slot_level)
+            how = f"level {slot_level} slot"
         if self.combat_active and self.initiative_order:
-            caster_pos = next((p for p, e in enumerate(self.initiative_order)
-                               if e.agent_idx == caster_idx), -1)
-            if caster_pos >= 0:
-                base = self.initiative_order[caster_pos]
+            pos = next((p for p, e in enumerate(self.initiative_order) if e.agent_idx == idx), -1)
+            if pos >= 0:
+                base = self.initiative_order[pos]
                 entry = rpg.InitiativeEntry()
-                entry.agent_idx = new_idx
-                entry.d20       = base.d20
-                entry.modifier  = base.modifier
-                entry.total     = base.total
-                self.initiative_order.insert(caster_pos + 1, entry)
-
-        self._combat_log_add(f"{caster.name} summons a {monster}!")
-
-        # Clear pending state + consume the action economy.
-        self.pending_summon_slot       = ""
-        self.pending_summon_idx        = 0
-        self.pending_summon_slot_level = 0
-        self.pending_summon_monster    = ""
-        self.pending_summon_spirit     = None
-        self.pending_summon_free_cast  = False
-        self.summon_hover_cell         = None
+                entry.agent_idx, entry.d20 = new_idx, base.d20
+                entry.modifier, entry.total = base.modifier, base.total
+                self.initiative_order.insert(pos + 1, entry)
         self.sprites.clear()
-        self._consume_cast_slot(slot, caster_idx)
-        # Wild Magic Surge: a summon spell cast with a spell slot triggers a surge (not a free
-        # Wish-duplicated summon — no slot was spent).
-        if slot_level >= 1 and not cstats.is_npc and not free_summon:
-            features.maybe_wild_magic_surge(self, caster_idx)
+        self._combat_log_add(f"{me.name} casts Summon Fey ({how}) — a {block.get('name')} appears!")
+        return new_idx
 
-    # ── Trickery Domain: Invoke Duplicity ───────────────────────────────────
     def _my_duplicates(self, idx: int) -> list:
         """Indices of `idx`'s live Invoke Duplicity illusions (tombstoned ones skipped)."""
         return [i for i, pt in enumerate(self.bm.placed_agents)
@@ -19372,6 +19647,10 @@ class App:
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
                     self._use_tireless(idx)
+            if action_id == "fey_reinforcements":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self._start_fey_reinforcements(idx)
             if action_id == "natures_veil":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
@@ -19416,6 +19695,12 @@ class App:
                     self.steps_of_fey_effect = (self.steps_of_fey_effect + 1) % n_effects
                     self._combat_log_add(
                         f"Steps of the Fey rider: {self._FEY_EFFECT_NAMES[self.steps_of_fey_effect]}")
+            if action_id == "misty_wanderer":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_misty_wanderer = True
+                    self._combat_log_add(
+                        "Misty Wanderer: click a destination (or click yourself to cancel).")
             if action_id == "steps_of_fey":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
@@ -21710,6 +21995,7 @@ class App:
                 net_link.pump_submits(self)     # M5a: remote answers, decided where clicks are; D-M5-7 expiry
                 self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
                 self._offer_keeper_of_souls_if_pending()   # Grave Cleric L17: an enemy died nearby
+                self._offer_beguiling_twist_if_pending()   # Fey Wanderer L7: a Charm/Fear save succeeded
             else:
                 pb.tick()                       # Playback: start the next recorded turn
             self._advance_npc_playback()        # NPC turn playback: animate the recorded turn

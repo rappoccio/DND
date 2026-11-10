@@ -49,6 +49,7 @@
 #include <random>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -1234,6 +1235,22 @@ public:
     // and applies the chosen rider. The GUI enforces the "just cast Enchantment/Illusion" timing.
     bool bewitchingMistyStep(BattleMap& bm, int idx, int target_col, int target_row, int effect) noexcept;
 
+    // Misty Wanderer (Fey Wanderer Ranger L15): a slotless Misty Step (Bonus Action, ≤30 ft to an
+    // unoccupied space you can see), spending one "Misty Wanderer" use. ally_idx >= 0 brings one willing
+    // creature from within 5 ft (mistyWandererAllies) to (ally_col, ally_row), a free space within 5 ft of
+    // the destination; a negative ally cell picks the first free one (mistyWandererAllyCell). Every check
+    // runs before anything moves. autoMistyWanderer is the NpcDriver's use: a ranged Ranger an enemy has
+    // in reach teleports to the nearest cell out of every enemy's reach or sight (shadowyDodgeDestination),
+    // bringing an adjacent ally who is in melee too, if there is room.
+    [[nodiscard]] std::vector<int> mistyWandererAllies(const BattleMap& bm, int idx) const;
+    [[nodiscard]] bool isMistyWandererAllyCell(const BattleMap& bm, int ally_idx, Cell dest,
+                                               int ranger_idx, Cell ranger_dest) const;
+    [[nodiscard]] Cell mistyWandererAllyCell(const BattleMap& bm, int ally_idx, int ranger_idx,
+                                             Cell ranger_dest) const;
+    bool mistyWanderer(BattleMap& bm, int idx, int target_col, int target_row,
+                       int ally_idx = -1, int ally_col = -1, int ally_row = -1) noexcept;
+    bool autoMistyWanderer(BattleMap& bm, int idx) noexcept;
+
     // Cloak of Shadows (L17): a Bonus Action for Warrior of Shadow Monks. Gain Invisible condition
     // in dim/dark light. Invisibility persists through attacks (doesn't end on action). Returns true
     // iff activated. Expires on turn start if agent moves to bright light.
@@ -1674,6 +1691,25 @@ public:
     // makes a WIS save vs the Ranger's spell save DC or is Frightened of it until the start of the
     // Ranger's next turn. Returns how many became Frightened.
     int applyMassFear(BattleMap& bm, int ranger_idx, int target_idx);
+    // ── Fey Wanderer L7 Beguiling Twist ──────────────────────────────────────────────────────
+    // Advantage half: true when `saver` (a Fey Wanderer Ranger L7+) has Advantage
+    // on a save against `condition_name` ("Charmed" / "Frightened"). Every Charm/Fear save site asks.
+    [[nodiscard]] bool beguilingTwistAdvantage(const BattleMap& bm, int saver,
+                                               std::string_view condition_name) const;
+    // Reaction half. Every site where a save to AVOID or END Charmed/Frightened succeeds calls
+    // charmFearSaveSucceeded(saver). Each Fey Wanderer L7+ with its Reaction — the saver itself, or
+    // one that can see the saver within 120 ft — that has a target may react: an automated one
+    // (is_npc_automated) resolves at once (Frightened, on the enemy npcSelectTarget ranks first, else
+    // the nearest), a human one is queued for the GUI (takeBeguilingTwistOffers → (reactor, saver)).
+    void charmFearSaveSucceeded(BattleMap& bm, int saver);
+    [[nodiscard]] bool canBeguilingTwist(const BattleMap& bm, int reactor, int saver) const;
+    // A different creature (not the saver, not the reactor) the reactor can see within 120 ft.
+    [[nodiscard]] std::vector<int> beguilingTwistTargets(const BattleMap& bm, int reactor, int saver) const;
+    // Spend the Reaction; the target makes a WIS save vs the Ranger's spell DC or is Charmed
+    // (frightened = false) / Frightened of the Ranger for 1 minute, repeating the save at the end of
+    // each of its turns. Returns true iff the reaction was spent.
+    bool applyBeguilingTwist(BattleMap& bm, int reactor, int saver, int target, bool frightened);
+    [[nodiscard]] std::vector<std::pair<int,int>> takeBeguilingTwistOffers();
     // Sudden Strike: the creatures the armed free attack may strike — a different creature within 5 ft
     // of the Dreadful Strike target, not an ally, alive and in play, in reach/range + LoS of the same
     // weapon. Empty unless sudden_strike_available.
@@ -2318,6 +2354,8 @@ private:
     int consumePendingAdvantageFor(int idx) noexcept { return ctx_.consumePendingAdvantageFor(idx); }
 
     CombatDecider* decider_{nullptr};  // nullptr = built-in defaults (RL/headless)
+    // Beguiling Twist offers for human-controlled reactors, (reactor, saver), drained by the GUI.
+    std::vector<std::pair<int,int>> beguiling_twist_offers_;
 
     // Notify the GUI (if a hook is installed) that an automated NPC's action from attacker→target
     // resolved, so it can animate. No-op when no hook is installed (headless / tests).
