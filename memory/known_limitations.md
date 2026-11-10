@@ -1272,3 +1272,16 @@ Planned in `EPIC_BOONS_PLAN.md` (SRD 5.2 p.88, 7 boons). Locked scope decisions:
 - **A long rest refills carried items only.** `applyLongRest` refills the item spells on every
   agent's items, weapons and worn armor. An enspelled item lying on the floor or in a chest keeps
   whatever uses it had until someone picks it up and rests.
+- **Attunement travels with the item.** `attuned` is item state (D0's runtime state), so an
+  attuned item handed to another creature, dropped and picked up, or taken from a chest arrives
+  still attuned and grants its spells at once. By the rules attunement belongs to one creature;
+  here the DM unticks *Attuned* on the new holder's row if it should not carry over.
+- **Protection from Evil and Good does nothing mechanical** (found in the E6 check,
+  2026-11-10). Its `spells.json` record is `type: Harm`, `attack_type: AttackRoll`, with no
+  damage and no protective effect: casting it rolls a spell attack against the target's AC and
+  applies nothing. That predates this plan and affects slot casts too. The Icon's at-will cast and
+  the Doss Lute's cast spend correctly (the Icon's `requires_concentration: false` override holds:
+  casting it leaves the caster's existing concentration alone), but the ward itself is not modeled.
+- **The player client has no character sheet yet.** `sheet.item_spells` is sent by
+  `net/view.py` and nothing renders it. Players see item spells only as cast-menu labels in
+  prompts.
