@@ -254,6 +254,8 @@ test_scripts = [
     "test_npc_automation_slider.py",
     "test_npc_analysis.py",
     "test_npc_visual_events.py",
+    # NPC_LEARNING_PLAN.md Step 1: the per-fight simulation trace (gui/sim_trace.py).
+    "test_sim_trace.py",
     "test_vitality.py",
     "test_resource.py",
     "test_bonus_actions.py",

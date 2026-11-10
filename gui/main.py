@@ -78,6 +78,7 @@ from scene_store import CampaignStore, LegacyStore
 import save_layout
 import autosave
 import run_control
+import sim_trace
 import saves
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
@@ -857,6 +858,8 @@ class App:
         self.logger = rpg.MessageLogger()
         self.combat.set_logger(self.logger)
         self.replay_log_file = None  # Will be set during combat start
+        self._sim_trace = None       # sim_trace.TraceWriter for the fight (NPC_LEARNING_PLAN Step 1)
+        self._sim_trace_nagents = 0  # placed_agents the trace has records for (header + spawned)
 
         # ── Attack-range overlay ──────────────────────────────────────────
         self._attack_cells_melee:  list = []   # cells attackable by active melee weapon
@@ -3993,6 +3996,7 @@ class App:
         if not events:
             return
         self.events.extend_npc(events)
+        self._trace_events(events)
         a = self._npc_anim
         if a is None:
             self._npc_anim_start(events, {}, on_done=None)
@@ -5060,6 +5064,7 @@ class App:
         self._tracker_edit = None
         self._tracker_hp = -1
         self.combat_active       = True
+        self._open_sim_trace(resumed=False)
         self._fight_started      = time.time()
         self._seen_armed         = set()
         self.combat_paused       = False
@@ -5390,6 +5395,7 @@ class App:
         self.combat.apply_superior_inspiration(self.bm)
         self.initiative_order    = order
         self.combat_active       = True
+        self._open_sim_trace(resumed=False)          # before anything logs (sim_trace.py)
         self._fight_started      = time.time()      # names this fight's saves (gui/saves.py)
         self._seen_armed         = set()
         self.combat_paused       = False
@@ -5576,6 +5582,7 @@ class App:
         # Award XP for enemies defeated this combat before combat state is cleared.
         if award_xp:
             self._award_encounter_xp()
+        self._close_sim_trace("end" if award_xp else "discarded")
         self.move_remaining_walk   = 0
         self.move_remaining_fly    = 0
         self.move_remaining_swim   = 0
@@ -6180,6 +6187,7 @@ class App:
             self._update_attack_overlay()
             return
         self._turn_start_idx  = new_idx
+        self._trace_begin_turn(new_idx)   # before begin_turn_flow, whose log lines are this turn's
         self._reaction_finish = self._finish_turn_start
         status = self.combat.begin_turn_flow(self.bm, new_idx, True)
         self._flush_combat_log()
@@ -6539,6 +6547,7 @@ class App:
                 self._combat_log_add(detection_msg)
         events = self.combat.take_npc_visual_events()
         self.events.extend_npc(events)   # M4b B-2: the players' copy of what plays below
+        self._trace_events(events)
         if status == rpg.FlowStatus.AwaitingDecision and self.combat.pending_decision().active:
             # The NPC attempted an action; a human gets a reaction/counter window. When it closes,
             # re-arm the driver so run_npc_turn resumes next frame (one step per frame, still watchable).
@@ -6608,6 +6617,7 @@ class App:
         self.combat_log_wire.append(msg)
         # Print to console
         print(msg)
+        self._trace_log(msg)
         # Write to combat log file
         try:
             if not hasattr(self, '_combat_log_file'):
@@ -6621,6 +6631,92 @@ class App:
         """Flush messages from the combat engine logger into the combat log."""
         for msg in self.logger.flush():
             self._combat_log_add(msg)
+
+    # ── Simulation trace (NPC_LEARNING_PLAN.md Step 1) ──────────────────────
+    # Every fight writes SIM_TRACE_FILE beside replay_log.txt: the agents, then per turn the
+    # display snapshot, the visual events and the log lines. Playback (Step 2) reads it.
+    SIM_TRACE_FILE = "sim_trace.jsonl"
+
+    def _open_sim_trace(self, resumed: bool):
+        """Start this fight's trace. ``resumed``: a fight restored from a save, opened
+        lazily by the first thing it records, so its first turn may be part-played."""
+        if self._sim_trace is not None:
+            self._sim_trace.close({"reason": "superseded"})
+        agents = self._trace_agents_doc()
+        self._sim_trace_nagents = len(self.bm.placed_agents)
+        names = self.bm.placed_agents
+        self._sim_trace = sim_trace.TraceWriter(
+            self.SIM_TRACE_FILE, map_path=getattr(self, "_map_path", "") or "", agents=agents,
+            seed=self.combat_seed, npc_policy="gui", pc_mode="Human",
+            initiative=[(e.agent_idx, names[e.agent_idx].name, e.total)
+                        for e in self.initiative_order
+                        if 0 <= e.agent_idx < len(names)],
+            resumed=resumed, extra={"tracker_mode": bool(self.tracker_mode)})
+
+    def _trace_agents_doc(self):
+        """The agents file's document in the raw index basis the events are keyed by
+        (summons and tombstones kept), or None if it could not be built."""
+        tmp = self.SIM_TRACE_FILE + ".agents.tmp"
+        try:
+            self._save_agents(tmp, raw=True)
+            with open(tmp) as f:
+                doc = json.load(f)
+            os.remove(tmp)
+            return doc
+        except Exception as e:   # the trace is diagnostic; never let it stop a fight
+            print(f"[SIM TRACE] agents not recorded: {e}")
+            return None
+
+    def _sim_trace_live(self):
+        """The open writer, opening one for a fight restored from a save; else None."""
+        if not self.combat_active:
+            return None
+        if self._sim_trace is None:
+            self._open_sim_trace(resumed=True)
+        return self._sim_trace if self._sim_trace.active else None
+
+    def _trace_begin_turn(self, idx: int):
+        t = self._sim_trace_live()
+        if t is None:
+            return
+        automated = (not self.tracker_mode) and self.bm.is_agent_npc_automated(idx)
+        spawned = []
+        n = len(self.bm.placed_agents)
+        if n > self._sim_trace_nagents:   # summons / reinforcements since the last record
+            doc = self._trace_agents_doc()
+            if doc is not None:
+                spawned = doc["agents"][self._sim_trace_nagents:]
+            self._sim_trace_nagents = n
+        t.begin_turn(round_num=self.round_num, actor=idx,
+                     actor_name=self.bm.placed_agents[idx].name,
+                     driver=sim_trace.DRIVER_NPC if automated else sim_trace.DRIVER_HUMAN,
+                     snapshot=self._npc_anim_snapshot(), spawned=spawned)
+
+    def _trace_events(self, events):
+        t = self._sim_trace_live()
+        if t is not None and events:
+            t.add_events(events)
+
+    def _trace_log(self, msg: str):
+        t = self._sim_trace_live()
+        if t is not None:
+            t.add_log(msg)
+
+    def _close_sim_trace(self, reason: str):
+        """Footer: who is still standing, by faction. ``winner`` is the one faction left
+        with living creatures in play, else None."""
+        if self._sim_trace is None:
+            return
+        alive = {}
+        for pt in self.bm.placed_agents:
+            if pt.removed_from_play or pt.conditions.dead:
+                continue
+            key = str(pt.faction)
+            alive[key] = alive.get(key, 0) + 1
+        self._sim_trace.close({"reason": reason, "rounds": self.round_num,
+                               "alive_by_faction": alive,
+                               "winner": next(iter(alive)) if len(alive) == 1 else None})
+        self._sim_trace = None
 
     # FLAG: Move to C++
     def _drop_weapon(self, slot_idx: int):
@@ -13742,6 +13838,9 @@ class App:
             entry.total     = int(e.get("total", 0))
             order.append(entry)
         self.initiative_order = order
+        if self._sim_trace is not None:   # the restored fight gets its own trace, opened lazily
+            self._sim_trace.close({"reason": "superseded"})
+            self._sim_trace = None
         self.combat_active    = bool(doc.get("combat_active", False)) and bool(order)
         self._seen_armed      = set()
         self.combat_paused    = bool(doc.get("combat_paused", False))

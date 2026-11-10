@@ -10,6 +10,7 @@ NN training). Levels 1–4 and the "clamp to Level 4 until trained" behaviour st
 
 Status: **Step 0 decisions D1–D13 FROZEN 2026-11-09**, including the user-checked role table.
 Step 0 Dockerfile edit made; it awaits the user's image rebuild + verification.
+Step 1 (trace recorder) implemented 2026-11-09; Step 2 (Playback) next.
 
 ---
 
@@ -136,6 +137,17 @@ the 2024 encounter-difficulty table.
 - The GUI writes a trace for every combat, next to `replay_log.txt` (and likewise
   untracked). Human turns record as snapshot + log only.
 - Test: record → load → identical event stream (`tests/test_sim_trace.py`).
+- **Implemented 2026-11-09 (226/0).** As built: the event round-trip is in
+  Python (`event_to_dict` / `event_from_dict`, every field, kinds as strings pinned to
+  `NpcVisualEvent.Kind`); loaded events are `TraceEvent`s with the engine's attribute
+  names, so `_npc_anim_start` takes them unchanged. The GUI writes `gui/sim_trace.jsonl`
+  (gitignored). Three additions to the format above:
+  - `spawned` on a turn record: the agent records of summons/reinforcements placed since
+    the last record. Header + all `spawned`, in order, is the raw agent list.
+  - A prelude record (`actor: -1`) holds log lines written before the first turn.
+  - Human turns also carry their move events (the `record_moves` slides), since Playback
+    would otherwise teleport those tokens.
+  A fight restored from a save opens a fresh trace lazily, with `resumed: true`.
 
 ### Step 2 — GUI Playback mode
 - **Load Playback…** from the menu → a read-only board. The controls are play/pause,

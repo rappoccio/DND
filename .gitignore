@@ -24,3 +24,6 @@ tools/__pycache__
 submit_log.jsonl
 # The M7 session log (net/sessionlog.py): the table's log, with real names in it.
 session_log.jsonl
+
+# NPC_LEARNING_PLAN.md Step 1: the per-fight simulation trace, written beside replay_log.txt.
+sim_trace.jsonl
