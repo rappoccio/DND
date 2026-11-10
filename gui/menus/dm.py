@@ -17,6 +17,7 @@ the board opens, not a panel button.
 
 import rpg_battle_map as rpg
 import autosave
+import playback
 import run_control
 import saves
 from helpers import door_touch_cells
@@ -196,6 +197,7 @@ def show_table_menu(app, anchor=None):
             app, anchor=anchor, parent=app.prompts.answering)),
         (f"Save limit: {roster.save_limit} ▸", lambda: _save_limit_menu(app, anchor)),
         ("Session log…", lambda: _session_log_menu(app, anchor)),
+        ("Load Playback…", lambda: playback.open_browser(app)),
         (f"Tracker mode: {'ON' if app.tracker_mode else 'OFF'}",
          lambda: set_tracker_mode(app, not app.tracker_mode)),
     ]

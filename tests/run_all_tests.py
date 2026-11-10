@@ -256,6 +256,8 @@ test_scripts = [
     "test_npc_visual_events.py",
     # NPC_LEARNING_PLAN.md Step 1: the per-fight simulation trace (gui/sim_trace.py).
     "test_sim_trace.py",
+    # NPC_LEARNING_PLAN.md Step 2: GUI Playback of a trace (gui/playback.py).
+    "test_sim_playback.py",
     "test_vitality.py",
     "test_resource.py",
     "test_bonus_actions.py",

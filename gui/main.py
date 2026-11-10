@@ -79,6 +79,7 @@ import save_layout
 import autosave
 import run_control
 import sim_trace
+import playback
 import saves
 # Multiplayer (MULTIPLAYER_PLAN.md M0). The roster owns identity and the single
 # authorization chokepoint; main.py only wires it to the save path and the DM's menu.
@@ -1051,6 +1052,8 @@ class App:
                                              # {agent_idx, text, color, spawn_ms, dur_ms, rise}
         self._npc_anim               = None  # in-flight NPC-turn playback (see _npc_anim_start);
                                              # None = live rendering, no animation running
+        self._npc_anim_speed         = 1.0   # playback-time multiplier (Playback's speed control)
+        self.playback                = None  # playback.Playback while a trace is on screen
         self.show_spell_effects      = True  # toggle for showing persistent spell effect overlays
         self.show_visible_targets    = False # toggle for showing visible target debug info
         self._spell_metadata: dict = {} # {(agent_idx, spell_idx): {"terrain_effect": dict, "hatch_pattern": str, "level", "upcast_dice_bonus"}}
@@ -3941,7 +3944,7 @@ class App:
                 self._npc_anim_finish()
                 return
             ev = a["events"][a["ei"]]
-            el = now - a["t0"]
+            el = (now - a["t0"]) * self._npc_anim_speed
             if ev.kind == self._NPC_EV_MOVE:
                 path  = ev.path
                 steps = len(path) - 1
@@ -4068,7 +4071,8 @@ class App:
         if self._npc_concealed_from_party(idx, pt):
             return
         now   = pygame.time.get_ticks()
-        shown = ev.text[:max(1, int((now - a["t0"]) / 1000.0 * NPC_TYPEWRITER_CPS))]
+        el    = (now - a["t0"]) * self._npc_anim_speed
+        shown = ev.text[:max(1, int(el / 1000.0 * NPC_TYPEWRITER_CPS))]
         pos = a["pos"].get(idx, (float(pt.origin.col), float(pt.origin.row)))
         sx, sy = self._cell_to_screen_f(pos[0], pos[1])
         cpx     = int(self.bm.cell_pixel_size * self.map_scale)
@@ -6651,7 +6655,10 @@ class App:
             initiative=[(e.agent_idx, names[e.agent_idx].name, e.total)
                         for e in self.initiative_order
                         if 0 <= e.agent_idx < len(names)],
-            resumed=resumed, extra={"tracker_mode": bool(self.tracker_mode)})
+            resumed=resumed, extra={"tracker_mode": bool(self.tracker_mode),
+                                    # Playback rebuilds the board from the PNG; a page
+                                    # calibrated by hand needs its grid back (Step 2).
+                                    "manual_grid": self._manual_grid})
 
     def _trace_agents_doc(self):
         """The agents file's document in the raw index basis the events are keyed by
@@ -18438,14 +18445,17 @@ class App:
         # ── Doors (slab + lock glyphs; beneath all agents) ─────────────────
         self._draw_doors(cpx)
 
-        # ── Ladders (vertical portals; beneath all agents) ────────────────
-        self._draw_ladders(cpx)
+        # Ladders, staircases and room keys come from the DM's scene (terrain, manifest),
+        # not the board, so Playback (whose board is a trace's) leaves them out.
+        if self.playback is None:
+            # ── Ladders (vertical portals; beneath all agents) ────────────
+            self._draw_ladders(cpx)
 
-        # ── Staircase ends (manifest portals; beneath all agents) ─────────
-        self._draw_staircases(cpx)
+            # ── Staircase ends (manifest portals; beneath all agents) ─────
+            self._draw_staircases(cpx)
 
-        # ── Room keys (DM-only label layer; beneath all agents) ───────────
-        self._draw_room_labels(cpx)
+            # ── Room keys (DM-only label layer; beneath all agents) ───────
+            self._draw_room_labels(cpx)
 
         # ── Paladin aura rings (beneath all agents) ───────────────────────
         self._draw_paladin_auras(cpx)
@@ -20404,7 +20414,14 @@ class App:
     def _handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
+                if self.playback is not None:   # quit asks about the DM's scene, not the trace's
+                    self.playback.exit()
                 self._request_quit()
+                continue
+
+            # Playback mode (playback.py): a read-only board, so it takes every event but a
+            # resize, ahead of the any-click fast-forward below (its own Step does that).
+            if self.playback is not None and self.playback.handle_event(event):
                 continue
 
             # NPC turn playback: any click or keypress fast-forwards the animation. The event
@@ -21447,13 +21464,21 @@ class App:
         running = True
         while running:
             running = self._handle_events() and self._quit_requested is None
-            net_link.pump_submits(self)         # M5a: remote answers, decided where clicks are; D-M5-7 expiry
-            self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
-            self._offer_keeper_of_souls_if_pending()   # Grave Cleric L17: an enemy died nearby
+            # Playback (playback.py) shows a trace's board in place of the DM's scene: nothing
+            # may act on it, and nothing about it may reach the players. Their submits and
+            # reads wait, and are answered from the DM's scene once Playback closes.
+            pb = self.playback
+            if pb is None:
+                net_link.pump_submits(self)     # M5a: remote answers, decided where clicks are; D-M5-7 expiry
+                self._drive_npc_turn_if_pending()   # NPC automation: one engine-driven turn per frame
+                self._offer_keeper_of_souls_if_pending()   # Grave Cleric L17: an enemy died nearby
+            else:
+                pb.tick()                       # Playback: start the next recorded turn
             self._advance_npc_playback()        # NPC turn playback: animate the recorded turn
-            self._refresh_fog()                 # fog of war: monotonic reveal when marked stale
-            self._pump_net()                    # M4c: answer what the net thread asked for
-            net_link.push_cycle(self)           # M4: publish the party's page image to the net thread
+            if pb is None:
+                self._refresh_fog()             # fog of war: monotonic reveal when marked stale
+                self._pump_net()                # M4c: answer what the net thread asked for
+                net_link.push_cycle(self)       # M4: publish the party's page image to the net thread
             self.screen.fill(COL_BG)
             self._draw_map()
             self._draw_fog_overlay()            # fog of war: grey never-seen cells (above map, below agents)
@@ -21464,14 +21489,18 @@ class App:
             self._draw_safe_target_highlights()
             self._draw_hover_cursor()                       # always-on map cursor (in & out of combat)
             self._draw_agent_hover_name()                   # token name shown only under the pointer
-            self._draw_staircase_hover()                    # staircase name/label/destination
-            self._draw_room_label_hover()                   # "K10. Dining Hall" under the pointer
-            self._draw_dm_view_banner()                     # D1: "DM VIEW" while it is on
-            self._draw_zoom_control()                       # − 100% + Fit, bottom-right of the map
-            self._draw_panel()                              # config panel (hosts the Floor-nav block)
-            net_offer.ensure(self)                          # D-M5-2: the offer, from the menu just built
-            self._draw_cursor_cell_info()                   # debug: cell under cursor
-            self._draw_xp_total()                           # running party-XP scoreboard (bottom-right)
+            if pb is not None:
+                pb.draw_map_layer()                         # Playback: actor ring + HUD line
+                pb.draw_panel()                             # Playback: its controls, in the panel
+            else:
+                self._draw_staircase_hover()                # staircase name/label/destination
+                self._draw_room_label_hover()               # "K10. Dining Hall" under the pointer
+                self._draw_dm_view_banner()                 # D1: "DM VIEW" while it is on
+                self._draw_zoom_control()                   # − 100% + Fit, bottom-right of the map
+                self._draw_panel()                          # config panel (hosts the Floor-nav block)
+                net_offer.ensure(self)                      # D-M5-2: the offer, from the menu just built
+                self._draw_cursor_cell_info()               # debug: cell under cursor
+                self._draw_xp_total()                       # running party-XP scoreboard (bottom-right)
             self.terrain_editor.draw(self.screen)          # modal — always on top
             self.lighting_editor.draw(self.screen)         # modal — always on top
             self._wall_detect_dialog.draw(self.screen)     # docked over the panel
@@ -21498,6 +21527,8 @@ class App:
             self.name_prompt.draw(self.screen)     # rename prompt — topmost modal
             pygame.display.flip()
             self.clock.tick(60)
+        if self.playback is not None:       # the save below is the DM's scene's
+            self.playback.exit()
         # Clean up temporary terrain effects before quitting
         self.bm.clear_terrain_effects()
         self._clear_temporary_terrain()

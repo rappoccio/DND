@@ -10,7 +10,8 @@ NN training). Levels 1–4 and the "clamp to Level 4 until trained" behaviour st
 
 Status: **Step 0 decisions D1–D13 FROZEN 2026-11-09**, including the user-checked role table.
 Step 0 Dockerfile edit made; it awaits the user's image rebuild + verification.
-Step 1 (trace recorder) implemented 2026-11-09; Step 2 (Playback) next.
+Step 1 (trace recorder) committed 4fcba0b; Step 2 (Playback) implemented 2026-11-09 (227/0),
+awaiting the user's live check; Step 3 (arena) next.
 
 ---
 
@@ -157,6 +158,28 @@ the 2024 encounter-difficulty table.
 - A HUD line shows the round, the actor, the actor's archetype + chosen macro-action (once
   Step 5 records it), and the policy per side.
 - Verified headlessly through `tests/gui_driver.py` (load a trace, step, PNG).
+- **Implemented 2026-11-09 (227/0).** As built, in `gui/playback.py` + small hooks in `main.py`:
+  - **Table menu → Load Playback…** opens a `.jsonl` trace. Refused mid-combat or while an
+    animation plays; an unreadable trace, a missing map image or a roster that won't place
+    is refused with a flash and leaves the scene untouched.
+  - **The DM's scene is set aside, not reloaded.** Entering stashes `bm`, `combat`, the map
+    surfaces, the index-keyed metadata and the view flags by reference and builds the
+    trace's board in fresh objects (a bare `CombatEngine`, so the checked replay log is not
+    touched). Exit puts the same objects back. The test checks identity, the board, the
+    window size, the roster's ownership and that no file in the scene folder changed.
+  - While Playback is up, `run()` skips net submits, the NPC drive, the fog reveal, the
+    net pump and push; `_handle_events` hands Playback every event but a resize (Quit
+    leaves Playback first, so its prompt and terrain save are the DM's scene's).
+  - Controls: Back / Play-Pause / Step, a 5-stop speed slider (½× 1× 2× 4× 8×, scales the
+    animation clock via `App._npc_anim_speed`), a scrubber with round ticks, the turn's
+    log lines, Exit. Keys: Space, ←/→, +/−, Esc. HUD line on the map: round, actor,
+    driver, policy per side; a gold ring marks the actor.
+  - After the last turn the board shows that turn's events folded over its snapshot.
+  - **Format addition:** the header now records `manual_grid`; an older trace falls back
+    to grid auto-detection.
+  - **Not drawn:** the trace has no terrain, so doors, painted walls, lights and spell
+    effects don't show; it's the map image, its grid and the tokens. A later format
+    version can add the terrain doc to the header if wanted.
 
 ### Step 3 — Headless arena
 - New `gui/arena.py` (CLI + importable). `run_episode(scenario, seed, npc_policy,
