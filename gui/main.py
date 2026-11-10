@@ -52,7 +52,8 @@ from helpers import (
     _ABILITY_TO_INT, _INT_TO_ABILITY, _DEFAULT_SPELL,
     _spell_to_dict, _dict_to_spell,
     _item_to_dict, _dict_to_item,
-    is_item_spell, sync_item_spells,
+    is_item_spell, sync_item_spells, item_spell_label, item_spells_summary,
+    attuned_count, attunement_warning,
     _condition_to_dict, _dict_to_condition,
     can_place_agent, summon_cell_placeable, compute_companion_loadout,
     compute_summon_loadout, edge_key, edge_from_key, door_touch_cells, _weapon_slot_is_empty,
@@ -10440,6 +10441,39 @@ class App:
         for i in range(len(self.bm.placed_agents)):
             self._sync_item_spells(i)
 
+    def _carried_item_spells(self, agent_idx: int) -> list:
+        """(name, ItemSpells) for every carried item, weapon and worn armor piece (D9) that
+        has spells, attuned or not."""
+        rows = (list(self.combat.get_agent_items(self.bm, agent_idx))
+                + list(self.combat.get_agent_weapons(self.bm, agent_idx))
+                + list(self.combat.get_agent_armor(self.bm, agent_idx)))
+        return [(r.name, r.item_spells) for r in rows if r.name and not r.item_spells.empty()]
+
+    def _draw_item_spells_panel(self, agent_idx: int, lx: int, y: int, txt) -> int:
+        """The side panel's 'Item spells' block (E4): one header per item, then its spell
+        lines; an item still waiting on attunement says so instead. Returns the new y."""
+        carried = self._carried_item_spells(agent_idx)
+        if not carried:
+            return y
+        y += 4
+        txt("Item spells:", lx, y, (120, 180, 200), self.font_sm)
+        y += 14
+        for name, s in carried:
+            if not s.active():
+                txt(f"  {name} (not attuned)", lx, y, (130, 130, 150), self.font_sm)
+                y += 14
+                continue
+            txt(f"  {name}", lx, y, (170, 200, 220), self.font_sm)
+            y += 14
+            for line in item_spells_summary(s):
+                txt(f"    {line}", lx, y, (200, 200, 220), self.font_sm)
+                y += 14
+        warn = attunement_warning(attuned_count(self.combat, self.bm, agent_idx))
+        if warn:
+            txt(warn, lx, y, (230, 170, 90), self.font_sm)
+            y += 14
+        return y
+
     def _on_spell_done(self, agent_idx: int, spells: list[dict]):
         # The Spells dialog lists the creature's own spells only (item entries are derived);
         # drop any item entries before the dialog's list replaces them, then re-grant.
@@ -11248,7 +11282,13 @@ class App:
             if self._spell_costs_action_and_bonus(sp) and (slot != "action" or self.bonus_used):
                 continue
 
-            if sp_level == 0:
+            if is_item_spell(sp):
+                # Enspelled item: the item pays, at the spell's base level (E2, D6) — no slot
+                # to pick. Labelled with the item and its uses, at will, or charges (E4).
+                def _pick_item(s=slot, si_=si, lvl=sp_level):
+                    _activate(s, si_, lvl)
+                options.append((item_spell_label(self.combat, self.bm, idx, sp), _pick_item))
+            elif sp_level == 0:
                 # Cantrip - always available, no level to pick
                 def _pick_cantrip(s=slot, si_=si):
                     _activate(s, si_, 0)
@@ -20419,6 +20459,9 @@ class App:
                         for line in lines:
                             txt(line, lx, y, (160, 120, 200), self.font_sm)
                             y += 14
+
+            # Enspelled items (E4): what each carried item can still cast, PC or NPC alike.
+            y = self._draw_item_spells_panel(cur_idx, lx, y, txt)
 
         y += section_gap
 

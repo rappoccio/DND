@@ -1366,3 +1366,76 @@ def sync_item_spells(combat, bm, idx: int, spell_catalog: dict):
         return None
     combat.set_agent_spells(bm, idx, kept)
     return moved
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Enspelled items E4 — what the GUI shows (plans/ENSPELLED_ITEMS_PLAN.md)
+# ─────────────────────────────────────────────────────────────────────────────
+
+ATTUNEMENT_LIMIT = 3   # D5: more than this many attuned items warns, it never blocks
+
+
+def item_spells_for(combat, bm, idx: int, sp):
+    """The ItemSpells a tagged spell is cast from, or None — Python's rules::itemSpellsFor."""
+    rows = {rpg.SpellItemSource.FromItem:   combat.get_agent_items,
+            rpg.SpellItemSource.FromWeapon: combat.get_agent_weapons,
+            rpg.SpellItemSource.FromArmor:  combat.get_agent_armor}.get(sp.item_source)
+    if rows is None or sp.item_slot < 0:
+        return None
+    carried = rows(bm, idx)
+    if sp.item_slot >= len(carried) or carried[sp.item_slot].name != sp.item_name:
+        return None
+    return carried[sp.item_slot].item_spells
+
+
+def item_spell_status(s, spell: str, charge_cost: int = 0) -> str:
+    """'2/2', 'at will' (D3), or '3 ch · charges 5/7' for a pool spell (D4)."""
+    if charge_cost > 0:
+        return f"{charge_cost} ch · charges {s.charges}/{s.charges_max}"
+    n = s.uses_per_day(spell)
+    if n == rpg.ItemSpells.AT_WILL:
+        return "at will"
+    return f"{s.uses_remaining.get(spell, 0)}/{n}"
+
+
+def item_spell_label(combat, bm, idx: int, sp) -> str:
+    """The spell-menu row for an item-granted spell: 'Fear (Mace of Terror) 2/2'."""
+    s = item_spells_for(combat, bm, idx, sp)
+    tail = f" {item_spell_status(s, sp.name, sp.item_charge_cost)}" if s is not None else ""
+    return f"{sp.name} ({sp.item_name}){tail}"
+
+
+def item_spells_summary(s) -> list[str]:
+    """One line per cost group of an item's spells, for item info and sheets:
+    ['Fear 2/2'], ['Protection from Evil and Good at will', 'Cure Wounds 1/1'],
+    ['charges 5/7: Burning Hands (1), Fireball (3)']. [] for an ordinary item."""
+    if s.empty():
+        return []
+    lines = [f"{name} {item_spell_status(s, name)}"
+             for _, names in sorted(s.spell_groups.items(), reverse=True) for name in names]
+    if s.charges_max > 0 and s.charge_spells:
+        pool = ", ".join(f"{name} ({cost})"
+                         for cost, names in sorted(s.charge_spells.items()) for name in names)
+        lines.append(f"charges {s.charges}/{s.charges_max}: {pool}")
+    return lines
+
+
+def item_dict_summary(d: dict) -> list[str]:
+    """item_spells_summary for an item/weapon/armor record (catalog or dialog row)."""
+    return item_spells_summary(_item_spells_from_dict(d))
+
+
+def attuned_count(combat, bm, idx: int, kinds=("items", "weapons", "armor")) -> int:
+    """How many carried items (D9) creature ``idx`` is attuned to, over ``kinds`` — a dialog
+    editing one kind passes the other two, and counts its own rows itself."""
+    getters = {"items": combat.get_agent_items, "weapons": combat.get_agent_weapons,
+               "armor": combat.get_agent_armor}
+    rows = [r for k in kinds for r in getters[k](bm, idx)]
+    return sum(1 for r in rows
+               if r.name and r.item_spells.requires_attunement and r.item_spells.attuned)
+
+
+def attunement_warning(n: int) -> str:
+    """'' at or under the limit, else the D5 warning text."""
+    return (f"⚠ attuned to {n} items (limit {ATTUNEMENT_LIMIT})"
+            if n > ATTUNEMENT_LIMIT else "")

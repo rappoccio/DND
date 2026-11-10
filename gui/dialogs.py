@@ -4082,6 +4082,47 @@ class WeaponSelectionDialog:
                 surf.blit(text, (item_rect.x + 4, item_rect.y + 2))
 
 
+# ── Enspelled items E4: the Attuned toggle shared by the Armor / Weapons / Items dialogs ──
+# (plans/ENSPELLED_ITEMS_PLAN.md D5). A row's dict is the helpers' *_to_dict shape, so the
+# toggle just flips its "attuned" key and the caller's _dict_to_* carries it onto the item.
+
+def _is_enspelled(d: dict) -> bool:
+    return bool(d.get("item_spell_groups") or d.get("charge_spells"))
+
+
+def _needs_attunement(d: dict) -> bool:
+    return bool(d.get("name")) and bool(d.get("requires_attunement")) and _is_enspelled(d)
+
+
+def _attune_rect(row_rect: pygame.Rect, right_inset: int = 4) -> pygame.Rect:
+    """The toggle, tucked into the right end of a row's name area."""
+    return pygame.Rect(row_rect.right - right_inset - 84, row_rect.y + 4, 84, row_rect.h - 8)
+
+
+def _draw_attune_toggle(surf, font, rect: pygame.Rect, on: bool):
+    pygame.draw.rect(surf, (60, 90, 110) if on else (50, 50, 65), rect, border_radius=4)
+    pygame.draw.rect(surf, (80, 80, 120), rect, 1, border_radius=4)
+    t = font.render("attuned ✓" if on else "attune", True,
+                    (200, 225, 240) if on else (150, 150, 170))
+    surf.blit(t, t.get_rect(center=rect.center))
+
+
+def _attune_warning(rows: list, other_attuned: int) -> str:
+    """D5's > 3 warning over this dialog's rows plus what the creature has attuned elsewhere."""
+    from helpers import attunement_warning
+    return attunement_warning(other_attuned + sum(
+        1 for d in rows if _needs_attunement(d) and d.get("attuned")))
+
+
+def _fit_text(font, text: str, width: int) -> str:
+    """``text`` cut with '…' to fit ``width`` pixels."""
+    if font.size(text)[0] <= width:
+        return text
+    while text and font.size(text + "…")[0] > width:
+        text = text[:-1]
+    return text + "…"
+
+
 class ArmorDialog:
     """Dialog for managing armor equipment across all 6 slots."""
     DLG_W = 500
@@ -4112,16 +4153,22 @@ class ArmorDialog:
         self.callback = None
         self._hover_slot = -1
         self.armor_selection_dialog = None
+        self.other_attuned = 0       # E4: attuned elsewhere on the creature (D5 warning)
 
-    def open(self, screen, agent_idx: int, agent_name: str, armor_array, armor_selection_dialog, callback):
+    def open(self, screen, agent_idx: int, agent_name: str, armor_array, armor_selection_dialog, callback,
+             other_attuned: int = 0):
+        from helpers import _armor_to_dict
         self.active = True
         self.agent_idx = agent_idx
         self.agent_name = agent_name
         self.callback = callback
         self.armor_selection_dialog = armor_selection_dialog
-        # Convert armor objects to dicts for display
-        self.current_armor = [{"name": a.name, "description": a.description} if a.name else {"name": "", "description": ""} 
+        # Full dicts, so the caller's _dict_to_armor gets back what it gave: AC bonus, multipliers,
+        # and an enspelled piece's uses and attunement (E4). Name + description alone rebuilt
+        # every worn piece with ac_bonus 0.
+        self.current_armor = [_armor_to_dict(a) if a.name else {"name": "", "description": ""}
                               for a in armor_array]
+        self.other_attuned = other_attuned   # attuned items/weapons, for the D5 warning
         sw, sh = screen.get_size()
         self.rect = pygame.Rect((sw - self.DLG_W) // 2, (sh - self.DLG_H) // 2, self.DLG_W, self.DLG_H)
 
@@ -4157,6 +4204,12 @@ class ArmorDialog:
                 # Check slot clicks
                 for i in range(6):
                     slot_rect = self._slot_rect(i)
+                    # The Attuned toggle sits inside the slot, so it is checked first (E4).
+                    if (_needs_attunement(self.current_armor[i])
+                            and _attune_rect(slot_rect).collidepoint(*event.pos)):
+                        d = self.current_armor[i]
+                        d["attuned"] = not d.get("attuned", False)
+                        return True
                     if slot_rect.collidepoint(*event.pos):
                         def _on_armor_selected(armor_dict, slot_idx=i):
                             self.current_armor[slot_idx] = armor_dict
@@ -4208,6 +4261,14 @@ class ArmorDialog:
             armor_name = self.current_armor[i].get("name", "—")
             armor_text = self.font_sm.render(armor_name if armor_name else "—", True, (200, 200, 220))
             surf.blit(armor_text, (slot_rect.x + 120, slot_rect.y + 4))
+            if _needs_attunement(self.current_armor[i]):
+                _draw_attune_toggle(surf, self.font_sm, _attune_rect(slot_rect),
+                                    bool(self.current_armor[i].get("attuned")))
+
+        warn = _attune_warning(self.current_armor, self.other_attuned)
+        if warn:
+            w = self.font_sm.render(warn, True, (230, 170, 90))
+            surf.blit(w, (self.rect.x + self.PAD, self._slot_rect(5).bottom + 10))
 
 
 class WeaponsDialog:
@@ -4249,6 +4310,7 @@ class WeaponsDialog:
         self.callback = None
         self._hover_slot = -1
         self.weapon_selection_dialog = None
+        self.other_attuned = 0       # E4: attuned elsewhere on the creature (D5 warning)
 
     def _row_label(self, i: int) -> str:
         base = f"Attack {i + 1}"
@@ -4264,7 +4326,9 @@ class WeaponsDialog:
         sw, sh = screen.get_size()
         self.rect = pygame.Rect((sw - self.DLG_W) // 2, max(20, (sh - h) // 2), self.DLG_W, h)
 
-    def open(self, screen, agent_idx: int, agent_name: str, weapon_array, weapon_selection_dialog, callback, combat_engine=None, battle_map=None):
+    def open(self, screen, agent_idx: int, agent_name: str, weapon_array, weapon_selection_dialog, callback, combat_engine=None, battle_map=None,
+             other_attuned: int = 0):
+        self.other_attuned = other_attuned   # attuned items/armor, for the D5 warning (E4)
         self.active = True
         self.agent_idx = agent_idx
         self.agent_name = agent_name
@@ -4313,6 +4377,10 @@ class WeaponsDialog:
         return (pygame.Rect(sr.right - 82, y, 20, h),
                 pygame.Rect(sr.right - 28, y, 20, h))
 
+    def _attune_rect(self, slot_idx: int) -> pygame.Rect:
+        # Left of the quantity steppers when a thrown weapon has both.
+        return _attune_rect(self._slot_rect(slot_idx), 90 if self._is_thrown(slot_idx) else 4)
+
     def _add_rect(self) -> pygame.Rect:
         n = len(self.current_weapons)
         y = self.rect.y + 45 + n * (self.ITEM_H + self.ROW_GAP)
@@ -4357,6 +4425,12 @@ class WeaponsDialog:
                     if self._offhand_rect(i).collidepoint(*event.pos):
                         cur = bool(self.current_weapons[i].get("off_hand", False))
                         self.current_weapons[i]["off_hand"] = not cur
+                        return True
+                    # Attuned toggle (E4), inside the name area like the steppers below.
+                    if (_needs_attunement(self.current_weapons[i])
+                            and self._attune_rect(i).collidepoint(*event.pos)):
+                        d = self.current_weapons[i]
+                        d["attuned"] = not d.get("attuned", False)
                         return True
                     # Quantity steppers for a thrown weapon (a bundle of javelins/darts). Checked
                     # BEFORE the name area they sit inside, or the click would open the picker.
@@ -4450,6 +4524,10 @@ class WeaponsDialog:
                 surf.blit(qty, qty.get_rect(center=((minus_r.right + plus_r.x) // 2,
                                                     minus_r.centery)))
 
+            if _needs_attunement(self.current_weapons[i]) and not disabled:
+                _draw_attune_toggle(surf, self.font_sm, self._attune_rect(i),
+                                    bool(self.current_weapons[i].get("attuned")))
+
             # Off-hand toggle
             off_rect = self._offhand_rect(i)
             is_off = bool(self.current_weapons[i].get("off_hand", False))
@@ -4470,6 +4548,11 @@ class WeaponsDialog:
         pygame.draw.rect(surf, self.C_ADD, add_rect, border_radius=4)
         add_txt = self.font_sm.render("＋ Add Attack", True, (220, 240, 220))
         surf.blit(add_txt, add_txt.get_rect(center=add_rect.center))
+
+        warn = _attune_warning(self.current_weapons, self.other_attuned)
+        if warn:
+            w = self.font_sm.render(warn, True, (230, 170, 90))
+            surf.blit(w, w.get_rect(x=add_rect.right + 12, centery=add_rect.centery))
 
 
 class ItemSelectionDialog:
@@ -4520,6 +4603,10 @@ class ItemSelectionDialog:
         """'Potion of Healing  (2d4+2)', 'Acid  (2d6 Acid)', 'Net  (Restrained)' — whatever the
         DM is actually picking the item by."""
         name = item.get("name", "Unknown")
+        if _is_enspelled(item):
+            from helpers import item_dict_summary
+            att = " · attunement" if item.get("requires_attunement") else ""
+            return f"{name}   ({'; '.join(item_dict_summary(item))}){att}"
         if item.get("type") == "Thrown":
             dmg = item.get("damage_type") or {}
             n, d = dmg.get("num_dice", 0), dmg.get("die_size", 0)
@@ -4636,7 +4723,8 @@ class ItemSelectionDialog:
                 item_rect = pygame.Rect(self.rect.x + self.PAD, item_y, self.rect.w - self.PAD * 2, self.ITEM_H)
                 if i == self._hover_idx:
                     pygame.draw.rect(surf, (70, 70, 90), item_rect)
-                text = self.font_sm.render(self._row_text(item), True, (200, 200, 220))
+                text = self.font_sm.render(_fit_text(self.font_sm, self._row_text(item), item_rect.w - 8),
+                                           True, (200, 200, 220))
                 surf.blit(text, (item_rect.x + 4, item_rect.y + 2))
 
 
@@ -4674,6 +4762,7 @@ class ItemsDialog:
         self.callback = None
         self._hover_slot = -1
         self.item_selection_dialog = None
+        self.other_attuned = 0       # E4: attuned elsewhere on the creature (D5 warning)
 
     def _recompute_rect(self, screen):
         n = max(1, len(self.current_items))
@@ -4682,8 +4771,10 @@ class ItemsDialog:
         sw, sh = screen.get_size()
         self.rect = pygame.Rect((sw - self.DLG_W) // 2, max(20, (sh - h) // 2), self.DLG_W, h)
 
-    def open(self, screen, agent_idx: int, agent_name: str, item_array, item_selection_dialog, callback):
+    def open(self, screen, agent_idx: int, agent_name: str, item_array, item_selection_dialog, callback,
+             other_attuned: int = 0):
         from helpers import _item_to_dict
+        self.other_attuned = other_attuned   # attuned weapons/armor, for the D5 warning (E4)
         self.active = True
         self.agent_idx = agent_idx
         self.agent_name = agent_name
@@ -4744,7 +4835,8 @@ class ItemsDialog:
 
                 if self._add_rect().collidepoint(*event.pos):
                     def _on_item_selected(item_dict):
-                        for row in self.current_items:
+                        # An enspelled item never stacks: its uses and attunement are its own (D0).
+                        for row in ([] if _is_enspelled(item_dict) else self.current_items):
                             if row.get("name") == item_dict.get("name"):
                                 row["quantity"] = int(row.get("quantity", 1)) + 1
                                 return
@@ -4756,6 +4848,11 @@ class ItemsDialog:
                     return True
 
                 for i in range(len(self.current_items)):
+                    if (_needs_attunement(self.current_items[i])
+                            and _attune_rect(self._slot_rect(i)).collidepoint(*event.pos)):
+                        d = self.current_items[i]
+                        d["attuned"] = not d.get("attuned", False)
+                        return True
                     if self._remove_rect(i).collidepoint(*event.pos):
                         del self.current_items[i]
                         self._recompute_rect(screen)
@@ -4812,10 +4909,21 @@ class ItemsDialog:
             pygame.draw.rect(surf, color, slot_rect, border_radius=4)
             pygame.draw.rect(surf, self.C_SLOT_BORDER, slot_rect, 1, border_radius=4)
 
-            h = item.get("healing_type") or {}
-            dice = f"{h.get('num_dice', 0)}d{h.get('die_size', 0)}+{h.get('bonus', 0)}"
-            label = f"{item.get('name', '—')}   ({dice})"
-            surf.blit(self.font_sm.render(label, True, (200, 200, 220)), (slot_rect.x + 8, slot_rect.y + 6))
+            text_w = slot_rect.w - 16
+            if _is_enspelled(item):
+                # Item info shows its spells and what is left of them (E4).
+                from helpers import item_dict_summary
+                label = f"{item.get('name', '—')} · " + "; ".join(item_dict_summary(item))
+                if _needs_attunement(item):
+                    text_w -= 90
+                    _draw_attune_toggle(surf, self.font_sm, _attune_rect(slot_rect),
+                                        bool(item.get("attuned")))
+            else:
+                h = item.get("healing_type") or {}
+                dice = f"{h.get('num_dice', 0)}d{h.get('die_size', 0)}+{h.get('bonus', 0)}"
+                label = f"{item.get('name', '—')}   ({dice})"
+            surf.blit(self.font_sm.render(_fit_text(self.font_sm, label, text_w), True, (200, 200, 220)),
+                      (slot_rect.x + 8, slot_rect.y + 6))
 
             for rect, glyph, col in ((self._minus_rect(i), "−", self.C_BUTTON),
                                      (self._plus_rect(i),  "＋", self.C_BUTTON),
@@ -4832,3 +4940,24 @@ class ItemsDialog:
         pygame.draw.rect(surf, self.C_ADD, add_rect, border_radius=4)
         add_txt = self.font_sm.render("＋ Add Item", True, (220, 240, 220))
         surf.blit(add_txt, add_txt.get_rect(center=add_rect.center))
+
+        warn = _attune_warning(self.current_items, self.other_attuned)
+        if warn:
+            w = self.font_sm.render(warn, True, (230, 170, 90))
+            surf.blit(w, w.get_rect(x=add_rect.right + 12, centery=add_rect.centery))
+
+        # Hovering an enspelled row lists all its spells — the row itself is cut to fit (E4).
+        if 0 <= self._hover_slot < len(self.current_items) and _is_enspelled(
+                self.current_items[self._hover_slot]):
+            from helpers import item_dict_summary
+            lines = item_dict_summary(self.current_items[self._hover_slot])
+            sr = self._slot_rect(self._hover_slot)
+            line_h = self.font_sm.get_linesize()
+            box = pygame.Rect(sr.x + 20, sr.bottom + 2,
+                              max(self.font_sm.size(l)[0] for l in lines) + 16,
+                              len(lines) * line_h + 10)
+            pygame.draw.rect(surf, (20, 20, 30), box, border_radius=4)
+            pygame.draw.rect(surf, self.C_BORDER, box, 1, border_radius=4)
+            for k, line in enumerate(lines):
+                surf.blit(self.font_sm.render(line, True, (210, 210, 230)),
+                          (box.x + 8, box.y + 5 + k * line_h))

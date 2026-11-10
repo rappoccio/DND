@@ -24,7 +24,7 @@ import os
 
 import rpg_battle_map as rpg
 
-from helpers import _dict_to_armor, _dict_to_item, _dict_to_weapon, is_item_spell
+from helpers import _dict_to_armor, _dict_to_item, _dict_to_weapon, attuned_count, is_item_spell
 from net.roster import DM_PRINCIPAL_ID, Role
 
 
@@ -106,7 +106,8 @@ def show_agent_menu(app, hit, pos):
             app.combat.set_agent_stats(app.bm, h, stats)
         app.weapons_dialog.open(app.screen, h, pt2.name, weapon_array,
                                 app.weapon_selection_dialog, _on_weapons_done,
-                                app.combat, app.bm)
+                                app.combat, app.bm,
+                                other_attuned=attuned_count(app.combat, app.bm, h, ("items", "armor")))
     def _open_spells(h=hit):
         pt2 = app.bm.placed_agents[h]
         # Own spells only: item-granted entries are derived from the inventory (E3).
@@ -134,7 +135,8 @@ def show_agent_menu(app, hit, pos):
             app.combat.set_agent_armor(app.bm, h, cpp_armor)
             app._sync_item_spells(h)
         app.armor_dialog.open(app.screen, h, pt2.name, armor_array,
-                              app.armor_selection_dialog, _on_armor_done)
+                              app.armor_selection_dialog, _on_armor_done,
+                              other_attuned=attuned_count(app.combat, app.bm, h, ("items", "weapons")))
     def _open_items(h=hit):
         pt2 = app.bm.placed_agents[h]
         item_array = app.combat.get_agent_items(app.bm, h)
@@ -145,7 +147,8 @@ def show_agent_menu(app, hit, pos):
                  if d.get("name")])
             app._sync_item_spells(h)
         app.items_dialog.open(app.screen, h, pt2.name, item_array,
-                               app.item_selection_dialog, _on_items_done)
+                               app.item_selection_dialog, _on_items_done,
+                               other_attuned=attuned_count(app.combat, app.bm, h, ("weapons", "armor")))
     def _edit_safe_targets(h=hit):
         app.safe_target_edit_idx = h
         app._combat_log_add(

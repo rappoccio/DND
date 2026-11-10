@@ -42,7 +42,7 @@ import os
 
 import rpg_battle_map as rpg
 
-from helpers import door_touch_cells, edge_key
+from helpers import door_touch_cells, edge_key, item_spells_summary
 
 from net import events as net_events, mapimg
 from net.roster import (Action, PC_FACTION, PROTOCOL_VERSION, Principal,
@@ -295,8 +295,22 @@ def _agent(app, roster, viewer, idx: int, pt, is_dm: bool) -> dict:
             # creature with no resources at all).
             "resources": [{"name": r.name, "current": int(r.current), "max": int(r.max)}
                           for r in stats.resources.values()],
+            "item_spells": _item_spells(app, idx),
         }
     return rec
+
+
+def _item_spells(app, idx: int) -> list[dict]:
+    """Enspelled items E4: each carried item with spells (D9), whether it is attuned, and the
+    same per-group lines the DM's side panel shows — 'Fear 2/2', 'charges 5/7: …'. Sheet tier
+    only: what an enemy's mace can still do is its holder's business."""
+    rows = (list(app.combat.get_agent_items(app.bm, idx))
+            + list(app.combat.get_agent_weapons(app.bm, idx))
+            + list(app.combat.get_agent_armor(app.bm, idx)))
+    return [{"item":    r.name,
+             "attuned": bool(r.item_spells.attuned) if r.item_spells.requires_attunement else None,
+             "spells":  item_spells_summary(r.item_spells) if r.item_spells.active() else []}
+            for r in rows if r.name and not r.item_spells.empty()]
 
 
 def _band(stats, cond) -> str:
