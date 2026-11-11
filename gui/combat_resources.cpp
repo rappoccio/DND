@@ -165,7 +165,11 @@ UseItemResult CombatEngine::useItem(BattleMap& bm, int user_idx, int item_slot, 
         const int before = bm.getAgentStats(target_idx).hp_cur;
         healAgent(bm, target_idx, amount);
         res.amount_healed = bm.getAgentStats(target_idx).hp_cur - before;
-        if (target_idx == user_idx)
+        const bool heals = item.healing.num_dice > 0 || item.healing.bonus > 0;
+        if (!heals)   // a potion that only buffs (Potion of Heroism): no "regains 0 HP"
+            log_("{} {} {}.", agentName(bm, user_idx),
+                 target_idx == user_idx ? "drinks" : "administers", item.name);
+        else if (target_idx == user_idx)
             log_("{} drinks {} and regains {} HP.", agentName(bm, user_idx), item.name, res.amount_healed);
         else
             log_("{} administers {} to {}, who regains {} HP.", agentName(bm, user_idx), item.name,

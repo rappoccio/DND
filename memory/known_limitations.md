@@ -1285,3 +1285,35 @@ Planned in `EPIC_BOONS_PLAN.md` (SRD 5.2 p.88, 7 boons). Locked scope decisions:
 - **The player client has no character sheet yet.** `sheet.item_spells` is sent by
   `net/view.py` and nothing renders it. Players see item spells only as cast-menu labels in
   prompts.
+
+## Ravenloft items (plans/RAVENLOFT_ITEMS_PLAN.md)
+
+- **Postponed by the plan:** no item sheds light (Thighbone, Sunsword sunlight, the Helm's
+  flaming weapon, the Holy Symbol's Sunlight: M3), and the Holy Symbol does not empower Turn
+  Undead (M9). The Luck Blade carries no Wish (M7, dropped: the DM places Scrolls of Wish).
+- **Recharges are simplified on purpose:** the Staff of Power and the Holy Symbol refill to their
+  full 10 charges on a long rest (no 2d8+4 / 1d6+4 roll, no last-charge d20); the Helm of
+  Brilliance's gems are uses per day and it never self-destructs on Fire damage.
+- **Fireball and Lightning Bolt from the Staff are cast at 3rd level** (enspelled D6), not 5th.
+- **A class-limited bonus covers all of a multiclass caster's spells.** The Rod of the Pact
+  Keeper's +N applies when the holder has the Warlock class; the engine doesn't tag a spell with
+  the class that cast it, so a Warlock/Wizard's Wizard spells get it too. It never applies to a
+  spell cast from another item.
+- **A few hard-coded saves skip item save bonuses** (slippery terrain's DEX save and other
+  sites that compute a save without `saveModFor`). Every spell, condition, item and attack save
+  goes through `saveModFor` and takes them.
+- **Diamond Light hurts Undead already inside the aura when it is switched on** (the cast
+  resolves its area once), then at the start of each Undead's turn. It ignores the creature-type
+  sweep when the wearer moves (`effects_on_enter` false). Any Undead ally is hurt too.
+- **Fire Opal Flames lights every held weapon**, not one chosen weapon, for 99 rounds (or until
+  a long rest); dropping the weapon doesn't put the flames out.
+- **Luck is Advantage on the next D20 Test**, the Lucky feat's mechanic, rather than a reroll of
+  a failed one. The `Luck (n)` button spends the Lucky feat's points before an item's.
+- **Disruption is cast like Shining Smite** (Action + Bonus Action, reach 5 ft), not as a
+  rider on a hit that has already landed. Its Frightened lasts one round.
+- **Hold Vampires keys on `is_vampire`**, which the bestiary sets on Strahd, vampires and
+  vampire spawn; a homebrew vampire needs the flag ticked.
+- **NPC automation:** automated creatures get every passive bonus and plan Hold Vampires and
+  Disruption as control spells (only against valid creature types), and Diamond Light as an area
+  spell. They don't cast the self-buff riders (Fire Opal Flames, Crusader's Mantle), spend Luck,
+  regain a slot from a Rod, or drink a Potion of Heroism on their own.

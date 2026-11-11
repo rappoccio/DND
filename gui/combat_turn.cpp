@@ -3332,6 +3332,10 @@ NpcCastPlan CombatEngine::npcPlanControlCast(const BattleMap& bm, int agent_idx)
             int best = -1, bestDist = std::numeric_limits<int>::max(), bestHp = std::numeric_limits<int>::max();
             for (int j = 0; j < n; ++j) {
                 if (!npcAttackable(bm, agent_idx, j)) continue;
+                // A spell limited to some creature types (Disruption: Fiends and Undead) only plans
+                // against those (RAVENLOFT_ITEMS_PLAN.md RI7); executeSpell would drop anyone else.
+                if (sp.affects_creature_mask &&
+                    !(bm.getAgentStats(j).creatureTypeMask() & sp.affects_creature_mask)) continue;
                 const Cell tOrigin = agents[static_cast<std::size_t>(j)].origin;
                 const int  tSize   = agents[static_cast<std::size_t>(j)].agent
                                    ? agents[static_cast<std::size_t>(j)].agent->getSize() : 1;

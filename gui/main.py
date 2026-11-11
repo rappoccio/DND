@@ -1841,6 +1841,13 @@ class App:
         self.btn_cbt_drop_weapon_rng  = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Drop Ranged",
                                           (130, 80, 60), (170, 110, 90), self.font_md)
+        # Ravenloft items (M6 / M10): the label is the ActionMenu's ("Luck (n)").
+        self.btn_cbt_use_luck = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Luck",
+                                          (60, 120, 70), (90, 160, 100), self.font_md)
+        self.btn_cbt_regain_slot = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "Regain Slot (Rod)",
+                                          (80, 70, 140), (110, 100, 180), self.font_md)
         self.btn_cbt_use_portent = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Use Portent Die",
                                           (200, 160, 100), (220, 180, 120), self.font_md)
@@ -10020,8 +10027,10 @@ class App:
 
         # Healing is clamped to the target's max HP, so a potion drunk at full health rolls its
         # dice, restores nothing, and still burns the charge and the Bonus Action. Refuse it here
-        # rather than let the engine silently eat it ("regains 0 HP").
-        if item.type == rpg.ItemType.Heal:
+        # rather than let the engine silently eat it ("regains 0 HP"). A potion that also grants
+        # Temporary HP or a condition (Potion of Heroism, RAVENLOFT M11) is worth drinking anyway.
+        if (item.type == rpg.ItemType.Heal and item.temp_hp <= 0
+                and not item.applies_condition):
             tgt = self.combat.get_agent_stats(self.bm, target_idx)
             if tgt.hp_cur >= tgt.hp_max - tgt.available_hit_points:
                 self._combat_log_add(

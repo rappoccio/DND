@@ -183,6 +183,45 @@ def test_action_menu_offers_luck_and_rod():
     print("✅ test_action_menu_offers_luck_and_rod")
 
 
+def test_panel_draws_luck_and_potion_works_at_full_hp():
+    """Found in the RI7 live check: the panel needs a button for every action it lays out (it
+    crashed drawing Luck), and the full-HP guard refused a Potion of Heroism."""
+    import tempfile
+    from gui_driver import screenshot
+    from test_combat_panel import App, MAP_PATH, SEED, _build_scene
+    app = App(MAP_PATH, seed=SEED)
+    _build_scene(app)
+    app._start_combat()
+    app.combat.stop_recording()
+    idx = app._current_agent_idx()
+    _blade(app.combat, app.bm, idx)
+    s = app.combat.get_agent_stats(app.bm, idx)
+    s.spell_slots_max = [1] + [0] * 8
+    s.spell_slots_remaining = [0] * 9
+    app.combat.set_agent_stats(app.bm, idx, s)
+    rod = _dict_to_item(ITEMS["Rod of the Pact Keeper +1"])
+    rod.item_spells.attuned = True
+    pot = _dict_to_item(ITEMS["Potion of Heroism"])
+    app.combat.set_agent_items(app.bm, idx, list(app.combat.get_agent_items(app.bm, idx)) + [rod, pot])
+    with tempfile.TemporaryDirectory() as d:
+        screenshot(app, os.path.join(d, "panel.png"))        # draws Luck and Regain Slot
+    assert app.btn_cbt_use_luck.text == "Luck (1)"
+
+    app._perform_action("regain_slot", None)
+    assert list(app.combat.get_agent_stats(app.bm, idx).spell_slots_remaining)[0] == 1
+    assert app.action_used, "the Rod's slot is a Magic action"
+
+    st = app.combat.get_agent_stats(app.bm, idx)
+    assert st.hp_cur == st.hp_max
+    app.bonus_used = False
+    inv = app.combat.get_agent_items(app.bm, idx)
+    app.pending_use_item = next(i for i, it in enumerate(inv) if it.name == "Potion of Heroism")
+    app._resolve_use_item(idx)
+    st = app.combat.get_agent_stats(app.bm, idx)
+    assert st.temp_hp == 10 and st.blessed, "drunk at full HP for its temp HP and Bless"
+    print("✅ test_panel_draws_luck_and_potion_works_at_full_hp")
+
+
 if __name__ == "__main__":
     test_luck_blade_point()
     test_feat_points_go_first()
@@ -190,4 +229,5 @@ if __name__ == "__main__":
     test_rod_needs_a_missing_slot_and_attunement()
     test_potion_of_heroism()
     test_action_menu_offers_luck_and_rod()
+    test_panel_draws_luck_and_potion_works_at_full_hp()
     print("\nAll Ravenloft items RI6 tests passed!")
