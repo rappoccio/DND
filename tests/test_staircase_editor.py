@@ -307,11 +307,67 @@ def test_drag_moves_an_end():
     print("  ✅ dragging an end moves it, undoes, and is written on close")
 
 
+def _right_click(ed, cell):
+    v, h = ed.bm.v_line_positions, ed.bm.h_line_positions
+    pos = (v[cell[0]] + CELL // 2, h[cell[1]] + CELL // 2)
+    ed.handle(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=3, pos=pos))
+
+
+def test_right_click_link_unlink_goto():
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon(tmp)
+        d = app.dungeon
+        below = d.new_staircase("B", (1, 1), label="K20")
+        above = d.new_staircase("U", (6, 5))
+        far = d.new_staircase("M", (8, 1))                  # same floor: never offered
+        ed = _editor(app)
+        ed.stair_finish_id = None                           # [F] to "new", not finish 2
+        ed._stair_click(rpg.Cell(2, 2))                     # end A of Staircase 4 on M
+        mine = d.staircase_by_id(4)
+
+        _right_click(ed, (2, 2))                            # the menu: floor below first
+        rows = [o.label for o in app.prompts.live.options]
+        assert rows == ["Link to Staircase 1, floor -1 (1, 1) — K20",
+                        "Link to Staircase 2, floor 1 (6, 5)"], rows
+        assert ed.stair_selected == (4, 0)
+        assert app.prompts.choose_label("Link to Staircase 2, floor 1 (6, 5)").ok
+        assert _ends(mine) == [("M", (2, 2)), ("U", (6, 5))]
+        assert d.staircase_by_id(above.id) is None and d.staircase_by_id(far.id)
+
+        _right_click(ed, (2, 2))                            # now finished: go to / unlink
+        rows = [o.label for o in app.prompts.live.options]
+        assert rows == ["Go to linked end (floor 1 (6, 5))",
+                        "Unlink from floor 1 (6, 5)"], rows
+        assert app.prompts.choose_label("Unlink from floor 1 (6, 5)").ok
+        assert _ends(mine) == [("M", (2, 2))]
+        split = d.staircase_by_id(5)
+        assert _ends(split) == [("U", (6, 5))]
+        _key(app, pygame.K_z, mod=pygame.KMOD_CTRL)         # undo the unlink…
+        assert _ends(d.staircase_by_id(4)) == [("M", (2, 2)), ("U", (6, 5))]
+        assert d.staircase_by_id(5) is None
+
+        _right_click(ed, (5, 5))                            # an empty cell: just deselects
+        assert ed.stair_selected is None and app.prompts.live is None
+
+        _right_click(ed, (2, 2))                            # go to: the editor reopens on U
+        assert app.prompts.choose_label("Go to linked end (floor 1 (6, 5))").ok
+        assert app.dungeon_page.id == "U"
+        ed = app.terrain_editor
+        assert ed.active and ed.selected_type == "Staircase"
+        assert ed.stair_selected == (4, 1)
+        _key(app, pygame.K_ESCAPE)
+        on_disk = _on_disk(app)
+        assert _ends(on_disk.staircase_by_id(4)) == [("M", (2, 2)), ("U", (6, 5))]
+        assert on_disk.staircase_by_id(2) is None and on_disk.staircase_by_id(below.id)
+    print("  ✅ right-click an end: link up / down, unlink, undo, go to the other end")
+
+
 def main():
     pygame.init()
     tests = [test_two_phase_placement, test_finish_refused_off_adjacent_floor,
              test_delete_removes_both_ends, test_edit_and_undo, test_shared_landing,
-             test_staircases_list, test_without_a_dungeon, test_drag_moves_an_end]
+             test_staircases_list, test_without_a_dungeon, test_drag_moves_an_end,
+             test_right_click_link_unlink_goto]
     failed = 0
     for t in tests:
         try:

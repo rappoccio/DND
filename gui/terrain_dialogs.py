@@ -451,9 +451,14 @@ class TerrainEditorDialog:
         # end B of ``stair_finish_id`` when one is picked. ``stair_selected`` is the
         # (id, end_index) picked for editing; with ``stair_moving`` the next click moves
         # that end. ``ask_text(initial, commit, title, allow_empty)`` is the app's prompt.
+        # A right-click on an end opens ``ask_menu(title, [(label, fn)], anchor)``, the
+        # app's popup: link / unlink / go to the other end. ``on_stair_goto(id, end)``
+        # leaves the editor for that end's floor and reopens it there.
         self.dungeon = None
         self.page_id = None
         self.ask_text = None
+        self.ask_menu = None
+        self.on_stair_goto = None
         self.stair_finish_id = None
         self.stair_selected = None
         self.stair_moving = False
@@ -474,7 +479,8 @@ class TerrainEditorDialog:
     def open(self, map_surf, terrain_regions, bm=None, ladders=None, door_links=None,
              on_regions_changed=None, edge_overrides=None, edges_enabled=False,
              on_edges_changed=None, edge_review=None, edge_review_source="",
-             dungeon=None, page_id=None, ask_text=None, grid_scale=1.0):
+             dungeon=None, page_id=None, ask_text=None, ask_menu=None, on_stair_goto=None,
+             grid_scale=1.0):
         """Open the terrain editor with existing terrain data.
 
         ``ladders`` is the app's live ladder list (Python-only cell objects); the editor
@@ -510,6 +516,8 @@ class TerrainEditorDialog:
         self.dungeon = dungeon
         self.page_id = page_id
         self.ask_text = ask_text
+        self.ask_menu = ask_menu
+        self.on_stair_goto = on_stair_goto
         self.stair_selected = None
         self.stair_moving = False
         self.stair_message = ""
@@ -668,9 +676,11 @@ class TerrainEditorDialog:
                 return
             if self.selected_type == "Staircase" and event.button in (1, 3):
                 if event.button == 3:
-                    self.stair_selected = None
                     self.stair_moving = False
                     self.portal_drag = None
+                    cell = self._pos_to_cell(pos)
+                    if not (cell is not None and self._stair_menu(cell, event.pos)):
+                        self.stair_selected = None
                     return
                 cell = self._pos_to_cell(pos)
                 if cell is not None:
@@ -1128,8 +1138,93 @@ class TerrainEditorDialog:
             st = self.dungeon.new_staircase(self.page_id, c)
             self.stair_selected = (st.id, 0)
             z = self.dungeon.page_by_id(self.page_id).z
-            self.stair_message = (f"{st.name}: end A placed. Switch to floor {z - 1} or "
-                                  f"{z + 1} and open the editor there to finish it.")
+            self.stair_message = (f"{st.name}: end A placed. Right-click it to link it to an "
+                                  f"unfinished staircase on floor {z - 1} or {z + 1}.")
+
+    def _link_candidates(self, st):
+        """Unfinished staircases ``st`` (unfinished) could link to: end A one floor up
+        or down from ``st``'s, nearest floor first (below before above), then by id."""
+        here = self.dungeon.page_by_id(st.ends[0].page)
+        out = []
+        for other in self.dungeon.staircases:
+            if other.id == st.id or other.finished:
+                continue
+            p = self.dungeon.page_by_id(other.ends[0].page)
+            if p is not None and here is not None and abs(p.z - here.z) == 1:
+                out.append((p.z, other.id, other, p))
+        return [(o, p) for _, _, o, p in sorted(out, key=lambda t: (t[0], t[1]))]
+
+    def _stair_menu(self, cell, anchor):
+        """Right-click with the Staircase tool: select the end on ``cell`` and open the
+        app's popup for it — Link to an unfinished staircase one floor up or down (an
+        unfinished end), or Go to / Unlink (a finished one). False when ``cell`` holds
+        no end, so the right-click deselects as before."""
+        if not self._stairs_ok() or self.ask_menu is None:
+            return False
+        c = (int(cell.col), int(cell.row))
+        here = self.dungeon.staircase_ends_at(self.page_id, c)
+        if not here:
+            return False
+        keys = [(st.id, i) for st, i in here]
+        if self.stair_selected not in keys:
+            self.stair_selected = keys[0]
+        named = len(here) > 1           # a shared landing: say which staircase each row is
+        options = []
+        for st, i in here:
+            who = f"{st.name}: " if named else ""
+            if st.finished:
+                other = st.other_end(i)
+                p = self.dungeon.page_by_id(other.page)
+                where = f"floor {p.z} {tuple(other.cell)}" if p is not None else other.page
+                if self.on_stair_goto is not None:
+                    options.append((f"{who}Go to linked end ({where})",
+                                    lambda s=st.id, e=1 - i: self.on_stair_goto(s, e)))
+                options.append((f"{who}Unlink from {where}",
+                                lambda s=st.id, e=i: self._unlink_stair(s, e)))
+                continue
+            for other, p in self._link_candidates(st):
+                label = f" — {other.label}" if other.label else ""
+                options.append((f"{who}Link to {other.name}, floor {p.z} "
+                                f"{tuple(other.ends[0].cell)}{label}",
+                                lambda s=st.id, o=other.id: self._link_stair(s, o)))
+        if not options:
+            z = self.dungeon.page_by_id(self.page_id).z
+            self.stair_message = (f"No unfinished staircase on floor {z - 1} or {z + 1} "
+                                  f"to link to: place one there first.")
+            return True
+        sel = self.dungeon.staircase_by_id(self.stair_selected[0])
+        z = self.dungeon.page_by_id(self.page_id).z
+        title = sel.name if not named else f"Staircases at {c}"
+        self.ask_menu(f"{title} (floor {z})", options, anchor)
+        return True
+
+    def _link_stair(self, sid, other_sid):
+        self._stair_snapshot()
+        try:
+            st = self.dungeon.link_staircases(sid, other_sid)
+        except ValueError as e:
+            self._stair_undo.pop()
+            self.stair_message = f"Refused: {e}."
+            return
+        self.stair_selected = (st.id, 0)
+        if self.stair_finish_id in (sid, other_sid):
+            self.stair_finish_id = self._default_finish_id()
+        b = st.ends[1]
+        self.stair_message = (f"Linked: {st.name} now joins {st.ends[0].page} and "
+                              f"{b.page} {tuple(b.cell)} (Staircase {other_sid} merged in).")
+
+    def _unlink_stair(self, sid, keep_end):
+        self._stair_snapshot()
+        try:
+            new = self.dungeon.unlink_staircase(sid, keep_end)
+        except ValueError as e:
+            self._stair_undo.pop()
+            self.stair_message = f"Refused: {e}."
+            return
+        st = self.dungeon.staircase_by_id(sid)
+        self.stair_selected = (sid, 0)
+        self.stair_message = (f"Unlinked: {st.name} is unfinished here; the far end is now "
+                              f"{new.name} on {new.ends[0].page}.")
 
     def _delete_selected_stair(self):
         st, _ = self._selected_stair()
@@ -1240,8 +1335,10 @@ class TerrainEditorDialog:
                       "Ctrl+drag an end to move it; Shift+click places on an end",
                       (170, 170, 170)))
         lines.append(("[F] new / finish  [M] move end  [N] rename  [L] label  "
-                      "[Del] delete staircase  [Ctrl+Z] undo  [Right click] deselect",
+                      "[Del] delete staircase  [Ctrl+Z] undo",
                       (170, 170, 170)))
+        lines.append(("[Right click] an end: link to floor above / below, unlink, go to "
+                      "its other end; elsewhere: deselect", (170, 170, 170)))
         if self.stair_message:
             lines.append((self.stair_message, (255, 230, 140)))
         return lines
@@ -1648,6 +1745,18 @@ class TerrainEditorDialog:
         screen.blit(src, dest)
         screen.set_clip(prev_clip)
 
+    HUD_BACK = (0, 0, 0, 200)   # behind every editor text line: legible on any map art
+
+    def _hud_text(self, screen, text, colour, pos):
+        """One line of editor HUD text on a near-opaque black backing, so light text
+        stays readable over pale map art."""
+        surf = self.font_sm.render(text, True, colour)
+        pad = 3
+        back = pygame.Surface((surf.get_width() + 2 * pad, surf.get_height() + 2), pygame.SRCALPHA)
+        back.fill(self.HUD_BACK)
+        screen.blit(back, (pos[0] - pad, pos[1] - 1))
+        screen.blit(surf, pos)
+
     def draw(self, screen):
         """Draw the terrain editor UI."""
         if not self.active or not self.map_surf:
@@ -1780,8 +1889,7 @@ class TerrainEditorDialog:
         ]
         y = 10
         for text in sel_texts:
-            txt = self.font_sm.render(text, True, (255, 255, 255))
-            screen.blit(txt, (10, y))
+            self._hud_text(screen, text, (255, 255, 255), (10, y))
             y += 18
 
         # Current type highlight
@@ -1792,12 +1900,10 @@ class TerrainEditorDialog:
 
         if self.selected_type == "Ladder":
             dir_str = "UP (z+1)" if self.ladder_up else "DOWN (z-1)"
-            lad_surf = self.font_sm.render(f"Ladder travels: {dir_str}", True, (220, 200, 120))
-            screen.blit(lad_surf, (10, y + 10))
-            keys_surf = self.font_sm.render(
-                "[U] toggle up/down  (click places; click again removes; Ctrl+drag one to move it)",
-                True, (170, 170, 170))
-            screen.blit(keys_surf, (10, y + 28))
+            self._hud_text(screen, f"Ladder travels: {dir_str}", (220, 200, 120),
+                           (10, y + 10))
+            self._hud_text(screen, "[U] toggle up/down  (click places; click again removes; "
+                           "Ctrl+drag one to move it)", (170, 170, 170), (10, y + 28))
         elif self.selected_type == "Door":
             # Door placement settings (toggled with keyboard while Door is selected).
             lock_str = "Locked" if self.door_locked else "Unlocked"
@@ -1805,24 +1911,20 @@ class TerrainEditorDialog:
             link_str = "  + Link→neighbor" if self.door_link else ""
             door_text = (f"Door: [{lock_str}{arc_str}]  lock DC {self.door_lock_dc}"
                          f"  break DC {self.door_break_dc}{link_str}")
-            door_surf = self.font_sm.render(door_text, True, (220, 200, 120))
-            screen.blit(door_surf, (10, y + 10))
+            self._hud_text(screen, door_text, (220, 200, 120), (10, y + 10))
             if self._edge_doors():
                 hint = ("[L] lock  [A] arcane  [+/-] lock DC  [ [ / ] ] break DC  "
                         "(click a grid line toggles; Ctrl+drag along it for a wide door, max 4)")
             else:
                 hint = ("[L] lock  [A] arcane  [K] link  [+/-] lock DC  [ [ / ] ] break DC  "
                         "(click toggles; Ctrl+drag for a wide door, max 4)")
-            keys_surf = self.font_sm.render(hint, True, (170, 170, 170))
-            screen.blit(keys_surf, (10, y + 28))
+            self._hud_text(screen, hint, (170, 170, 170), (10, y + 28))
         elif self.selected_type == "Staircase":
             for k, (text, colour) in enumerate(self._stair_hud_lines()):
-                screen.blit(self.font_sm.render(text, True, colour), (10, y + 10 + 18 * k))
+                self._hud_text(screen, text, colour, (10, y + 10 + 18 * k))
         elif self.selected_type == "Floor":
-            fl = self.font_sm.render(
-                "Floor: Ctrl+drag a box to clear the detected wall cells and edges inside it",
-                True, (140, 220, 160))
-            screen.blit(fl, (10, y + 10))
+            self._hud_text(screen, "Floor: Ctrl+drag a box to clear the detected wall cells "
+                           "and edges inside it", (140, 220, 160), (10, y + 10))
         elif self.selected_type == "Edge":
             if self.edges_enabled:
                 lines = [("Edge: Ctrl+drag along a grid line to add a run (or remove it, if it starts "
@@ -1839,12 +1941,11 @@ class TerrainEditorDialog:
                 lines = [("Edge: needs Walls ON and the Drawn detector "
                           "(Terrain… → Wall Detection…)", (230, 140, 140))]
             for k, (text, colour) in enumerate(lines):
-                screen.blit(self.font_sm.render(text, True, colour), (10, y + 10 + 18 * k))
+                self._hud_text(screen, text, colour, (10, y + 10 + 18 * k))
         else:
             # Difficulty multiplier indicator
             diff_text = f"Difficulty: {'[H]alved (0.5)' if self.difficulty_mult == 0.5 else '[Q]uartered (0.25)'}"
-            diff_surf = self.font_sm.render(diff_text, True, (200, 200, 200))
-            screen.blit(diff_surf, (10, y + 10))
+            self._hud_text(screen, diff_text, (200, 200, 200), (10, y + 10))
 
         # Instructions
         if self.selected_region_idx >= 0:
@@ -1860,8 +1961,7 @@ class TerrainEditorDialog:
                           " | Pan: drag, arrows | Ctrl+drag draws")
         y_inst = screen.get_height() - 25 - len(inst_texts) * 20
         for text in inst_texts:
-            inst = self.font_sm.render(text, True, (180, 180, 180))
-            screen.blit(inst, (10, y_inst))
+            self._hud_text(screen, text, (180, 180, 180), (10, y_inst))
             y_inst += 20
 
 

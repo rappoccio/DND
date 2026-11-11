@@ -3203,8 +3203,24 @@ class App:
                                  ask_text=lambda text, commit, title, allow_empty:
                                      self.name_prompt.show(text, commit, title=title,
                                                            allow_empty=allow_empty),
+                                 ask_menu=lambda title, pairs, anchor:
+                                     self._ask_dm("action", title, pairs, anchor=anchor),
+                                 on_stair_goto=self._editor_stair_goto,
                                  grid_scale=self.base_map_scale)
         self.terrain_editor.set_view(*view)
+
+    def _editor_stair_goto(self, sid: int, end_index: int):
+        """Staircase tool → Go to linked end: close the editor as Esc does (asking before
+        overwriting the terrain file), switch to that end's floor, and reopen the editor
+        there with the Staircase tool on and that end selected."""
+        def go():
+            self._close_terrain_editor()
+            if not self._staircase_goto(sid, end_index):
+                return
+            self._open_terrain_editor()
+            self.terrain_editor.selected_type = "Staircase"
+            self.terrain_editor.stair_selected = (sid, end_index)
+        self._confirm_overwrite([self._terrain_path], "Go to the other end", go)
 
     def _close_terrain_editor(self):
         """Esc in the terrain editor: take its edits, save them, give new / removed

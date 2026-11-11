@@ -177,6 +177,65 @@ def test_counter_never_below_live_ids():
     print("  ✅ counter repaired to stay above every live id")
 
 
+def test_link_two_unfinished():
+    d = _three_floors()
+    a = d.new_staircase("M", (3, 4), label="K18")
+    b = d.new_staircase("U", (7, 2), label="ignored")
+    c = d.new_staircase("B", (1, 1), label="from below")
+    st = d.link_staircases(a.id, b.id)
+    assert st is a and st.finished
+    assert st.ends[1].page == "U" and st.ends[1].cell == (7, 2)
+    assert d.staircase_by_id(b.id) is None                 # merged away
+    assert st.label == "K18"                                # kept its own label
+    assert d.staircase_direction(st, 0) == "up"
+    d2 = d.new_staircase("M", (0, 0))                       # blank label takes the other's
+    assert d.link_staircases(d2.id, c.id).label == "from below"
+    assert d.new_staircase("M", (9, 9)).id == 5             # ids still never reused
+    print("  ✅ link joins two unfinished staircases, keeping the right-clicked one")
+
+
+def test_link_refused():
+    d = _three_floors()
+    m = d.new_staircase("M", (1, 1))
+    m2 = d.new_staircase("M", (2, 2))
+    t = d.new_staircase("T", (0, 0))
+    done = d.new_staircase("U", (5, 5))
+    d.finish_staircase(done.id, "M", (6, 6))
+    for x, y in ((m.id, m2.id), (m.id, t.id), (m.id, done.id), (m.id, m.id), (m.id, 99)):
+        try:
+            d.link_staircases(x, y)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"link {x}→{y} should be refused")
+    assert not m.finished and d.staircase_by_id(m2.id) and d.staircase_by_id(t.id)
+    print("  ✅ link refused: same floor, two floors apart, finished, itself, missing")
+
+
+def test_unlink_splits():
+    d = _three_floors()
+    st = d.new_staircase("M", (3, 4), label="K20")
+    d.finish_staircase(st.id, "U", (7, 2))
+    new = d.unlink_staircase(st.id, 0)
+    assert not st.finished and st.ends[0].page == "M" and st.ends[0].cell == (3, 4)
+    assert new.id == 2 and not new.finished
+    assert new.ends[0].page == "U" and new.ends[0].cell == (7, 2)
+    assert st.label == "K20"
+    back = d.link_staircases(st.id, new.id)                 # round trip
+    assert back.finished and back.ends[1].cell == (7, 2)
+    st2 = d.new_staircase("B", (1, 1))
+    d.finish_staircase(st2.id, "M", (2, 2))
+    kept_far = d.unlink_staircase(st2.id, 1)                # keep end B instead
+    assert st2.ends[0].page == "M" and kept_far.ends[0].page == "B"
+    try:
+        d.unlink_staircase(st2.id, 0)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unlink of an unfinished staircase should be refused")
+    print("  ✅ unlink splits a staircase into two unfinished ones; relink restores it")
+
+
 def main():
     tests = [
         test_two_phase_placement,
@@ -189,6 +248,9 @@ def main():
         test_json_roundtrip,
         test_old_manifest_loads_unchanged,
         test_counter_never_below_live_ids,
+        test_link_two_unfinished,
+        test_link_refused,
+        test_unlink_splits,
     ]
     print("Running staircase manifest tests…")
     for t in tests:

@@ -439,6 +439,39 @@ class Dungeon:
         st.ends.append(StaircaseEnd(page_id, (int(cell[0]), int(cell[1]))))
         return st
 
+    def link_staircases(self, sid: int, other_sid: int) -> Staircase:
+        """Join two unfinished staircases on adjacent floors into one: ``other_sid``'s
+        end becomes end B of ``sid``, and ``other_sid`` is deleted (its id is not reused).
+        ``sid`` keeps its name; its label, if blank, takes ``other_sid``'s. Refused
+        (ValueError) unless both are unfinished and their floors are adjacent."""
+        st, other = self.staircase_by_id(sid), self.staircase_by_id(other_sid)
+        if st is None or other is None:
+            raise ValueError(f"no staircase {sid if st is None else other_sid}")
+        if st.id == other.id:
+            raise ValueError("a staircase can't link to itself")
+        for s in (st, other):
+            if s.finished:
+                raise ValueError(f"{s.name} already has both ends")
+        end = other.ends[0]
+        self.finish_staircase(st.id, end.page, end.cell)
+        if not st.label:
+            st.label = other.label
+        self.remove_staircase(other.id)
+        return st
+
+    def unlink_staircase(self, sid: int, keep_end: int) -> Staircase:
+        """Split a finished staircase: ``sid`` keeps end ``keep_end`` and is unfinished
+        again; the other end becomes a new unfinished staircase (next id), so no landing
+        is lost. Returns the new staircase."""
+        st = self.staircase_by_id(sid)
+        if st is None:
+            raise ValueError(f"no staircase {sid}")
+        if not st.finished or keep_end not in (0, 1):
+            raise ValueError(f"{st.name} has only one end")
+        dropped = st.ends[1 - keep_end]
+        st.ends = [st.ends[keep_end]]
+        return self.new_staircase(dropped.page, dropped.cell)
+
     def remove_staircase(self, sid: int) -> None:
         """Delete a staircase and both its ends. Its id is not reused."""
         self.staircases = [st for st in self.staircases if st.id != sid]

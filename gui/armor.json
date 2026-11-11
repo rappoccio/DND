@@ -11,6 +11,17 @@
     "str_requirement": 15
   },
   {
+    "name": "Plate + 2",
+    "description": "Heavy full plate armor (AC 18, no DEX)",
+    "ac": 20,
+    "dex_mod_cap": 0,
+    "magic_damage_multipliers": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    "physical_damage_multipliers": [1.0, 1.0, 1.0],
+    "damage_reduction": 0,
+    "requires_strength": true,
+    "str_requirement": 15
+  },    
+  {
     "name": "Chain Mail",
     "description": "Heavy interlocked metal rings (AC 16, no DEX)",
     "ac": 16,
