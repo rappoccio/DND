@@ -463,6 +463,7 @@ test_scripts = [
     "test_ravenloft_bonuses.py",
     "test_ravenloft_damage.py",
     "test_ravenloft_helm.py",
+    "test_ravenloft_spells.py",
     "test_green_slaad.py",
     "test_npc_multiattack.py",
     "test_permanently_armed.py",

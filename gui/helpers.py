@@ -913,6 +913,8 @@ def _spell_to_dict(s) -> dict:
     # RAVENLOFT M4/M5/M8 — only when set, so ordinary spells' dicts are unchanged.
     if s.affects_creature_mask:
         out["affects_creature_types"] = _creature_names(s.affects_creature_mask)
+    if s.no_damage_on_save:
+        out["no_damage_on_save"] = True
     if s.weapon_rider.num_dice > 0:
         out["weapon_rider"] = {"type": s.weapon_rider.type.name, "num_dice": s.weapon_rider.num_dice,
                                "die_size": s.weapon_rider.die_size}
@@ -1040,6 +1042,7 @@ def _dict_to_spell(d: dict):
     s.effects_on_enter = d.get("effects_on_enter", True)
     # RAVENLOFT M4/M8: only these creature types are affected; M5: a weapon damage rider.
     s.affects_creature_mask = _creature_mask(d.get("affects_creature_types"))
+    s.no_damage_on_save = bool(d.get("no_damage_on_save", False))
     rider = d.get("weapon_rider")
     if isinstance(rider, dict):
         r = rpg.MagicDamageRoll()
@@ -1084,6 +1087,8 @@ def _dict_to_spell(d: dict):
             # compiled module still loads spells.json (falls back to start-of-turn saves).
             if hasattr(c, "save_at_end_of_turn"):
                 c.save_at_end_of_turn = bool(cond_entry.get("save_at_end_of_turn", False))
+            # RAVENLOFT M8: lands on a successful save instead (Disruption's Frightened).
+            c.applies_on_save_success = bool(cond_entry.get("applies_on_save_success", False))
             # Condition requires a save if it names its own save_ability, or if the spell itself
             # is a Save spell: a failed spell save is what lands the condition (Hold Person, Web,
             # Entangle carry no per-condition save_ability, and used to apply unconditionally).
@@ -1468,6 +1473,7 @@ SCROLL_DC_TABLE = {0: (13, 5), 1: (13, 5), 2: (13, 5), 3: (15, 7), 4: (15, 7),
 _EXTRA_SPELL_CLASSES = {
     "Arms of Hadar":      {"Warlock"},
     "Blade Ward":         {"Bard", "Sorcerer", "Warlock", "Wizard"},
+    "Crusader's Mantle":  {"Paladin"},
     "Booming Blade":      {"Sorcerer", "Warlock", "Wizard"},
     "Hunger of Hadar":    {"Warlock"},
     "Mind Sliver":        {"Sorcerer", "Warlock", "Wizard"},

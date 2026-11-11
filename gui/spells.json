@@ -10488,5 +10488,116 @@
       "num_dice": 1,
       "die_size": 6
     }
+  },
+  {
+    "name": "Crusader's Mantle",
+    "description": "You radiate a holy aura in a 30-foot Emanation for the duration. While in the aura, you and your allies each deal an extra 1d4 Radiant damage when hitting with a weapon or an Unarmed Strike.",
+    "type": "Help",
+    "geometry": "Sphere",
+    "attack_type": "Automatic",
+    "save_ability": "SaveDex",
+    "casting_time": "Action",
+    "range": 0,
+    "radius": 30,
+    "width": 0,
+    "length": 0,
+    "duration": 10,
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 3,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": true,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "evocation",
+    "moves_with_caster": true,
+    "selective_targeting": true,
+    "effects_on_begin_turn": false,
+    "effects_on_enter": false,
+    "weapon_rider": {
+      "type": "Radiant",
+      "num_dice": 1,
+      "die_size": 4
+    }
+  },
+  {
+    "name": "Disruption",
+    "description": "Saint Markovia's Thighbone (item-only, 1/day). Modeled on Shining Smite: you strike a Fiend or an Undead within reach, which must make a DC 15 Wisdom saving throw. On a failed save it takes 25 Radiant damage. On a successful save it has the Frightened condition until the end of your next turn.",
+    "costs_action_and_bonus": true,
+    "type": "Harm",
+    "geometry": "Single",
+    "attack_type": "Save",
+    "save_ability": "SaveWis",
+    "casting_time": "Action",
+    "range": 5,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 1,
+    "magic_damage_types": [
+      {
+        "type": "Radiant",
+        "num_dice": 0,
+        "die_size": 6,
+        "bonus": 25
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": true,
+    "check_los_on_center": true,
+    "school": "evocation",
+    "no_damage_on_save": true,
+    "affects_creature_types": [
+      "Fiend",
+      "Undead"
+    ],
+    "conditions": [
+      {
+        "condition_name": "Frightened",
+        "condition_duration": 1,
+        "save_repeat_turns": 99,
+        "applies_on_save_success": true,
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ]
+  },
+  {
+    "name": "Hold Vampires",
+    "description": "Holy Symbol of Ravenkind (item-only, 1 charge). You present the holy symbol and it flares with holy power. Vampires and vampire spawn within 30 feet of it must make a DC 15 Wisdom saving throw. On a failed save, a target has the Paralyzed condition for 1 minute. It repeats the save at the end of each of its turns, ending the effect on itself on a success.",
+    "type": "Harm",
+    "geometry": "Sphere",
+    "attack_type": "Save",
+    "save_ability": "SaveWis",
+    "casting_time": "Action",
+    "range": 0,
+    "radius": 30,
+    "width": 0,
+    "length": 0,
+    "duration": 1,
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "abjuration",
+    "moves_with_caster": true,
+    "excludes_caster": true,
+    "affects_creature_types": [
+      "Vampire"
+    ],
+    "conditions": [
+      {
+        "condition_name": "Paralyzed",
+        "condition_duration": 10,
+        "save_repeat_turns": 1,
+        "save_at_end_of_turn": true,
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ]
   }
 ]

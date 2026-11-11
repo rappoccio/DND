@@ -1095,6 +1095,8 @@
   "light": false,
   "rarity": "Legendary",
   "requires_attunement": true,
+  "spell_dc": 15,
+  "item_spell_groups": {"1": ["Disruption"]},
   "description": "The thighbone of Saint Markovia, with the properties of a Mace of Disruption. When you hit a Fiend or an Undead with it, that creature takes an extra 2d6 Radiant damage. Once per day the wielder can call on its Disruption: a Fiend or Undead struck must succeed on a DC 15 Wisdom saving throw or take 25 Radiant damage; on a success it is Frightened until the end of the wielder's next turn. It sheds Bright Light in a 20-foot radius and Dim Light for 20 more feet."
  },
  {
@@ -3990,6 +3992,7 @@
   "heavy": false,
   "light": true,
   "rarity": "Rare",
+  "item_spell_groups": {"1": ["Crusader's Mantle"]},
   "description": "A +1 Shortsword. Once per day its wielder can cast Crusader's Mantle from it (concentration)."
  },
  {

@@ -220,6 +220,10 @@ namespace rpg {
       // rounds: the Helm of Brilliance's flaming weapon, +1d6 Fire on every weapon hit.
       MagicDamageRoll weapon_rider{MagicDamage_t::Fire, 0, 6, 0};
 
+      // M8: a Save spell that deals no damage at all on a successful save (Disruption: 25 Radiant
+      // on a failure, Frightened on a success) instead of the usual half.
+      bool no_damage_on_save{false};
+
       // Condition application (e.g., Hold Person applies "Paralyzed")
       // Each condition can have its own duration and save rules
       std::vector<AttackCondition> conditions;  // Conditions applied to targets

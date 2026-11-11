@@ -639,6 +639,37 @@ inline bool hasAdvantageAura(const BattleMap& bm, int agent_idx) noexcept
     return false;
 }
 
+// Weapon damage rider from an ally's aura (RAVENLOFT M8: Crusader's Mantle — "you and your allies
+// each deal an extra 1d4 Radiant damage when hitting with a weapon or an Unarmed Strike" while in
+// the 30-ft Emanation). The rider of the first live anchored effect whose spell carries a
+// weapon_rider and reaches agent_idx; num_dice 0 when none. Same reach rules as hasAdvantageAura.
+inline MagicDamageRoll weaponRiderAura(const BattleMap& bm, int agent_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    MagicDamageRoll none{MagicDamage_t::Radiant, 0, 4, 0};
+    if (agent_idx < 0 || static_cast<std::size_t>(agent_idx) >= agents.size()) return none;
+    const PlacedAgent& self_pa = agents[static_cast<std::size_t>(agent_idx)];
+    for (const ActiveSpellEffect& eff : bm.activeSpellEffects()) {
+        if (eff.spell.weapon_rider.num_dice <= 0 || !eff.spell.moves_with_caster) continue;
+        const int src = eff.caster_idx;
+        if (src < 0 || static_cast<std::size_t>(src) >= agents.size()) continue;
+        const PlacedAgent& src_pa = agents[static_cast<std::size_t>(src)];
+        if (src_pa.agent->getStats().hp_cur <= 0) continue;
+        const Agent::Conditions& sc = src_pa.agent->getConditions();
+        if (sc.unconscious || sc.incapacitated) continue;
+        if (agent_idx != src && !alliedFactions(bm, agent_idx, src)) continue;
+        const int dx = self_pa.origin.col - src_pa.origin.col;
+        const int dy = self_pa.origin.row - src_pa.origin.row;
+        if ((dx * dx + dy * dy) * 25 > eff.spell.radius * eff.spell.radius) continue;
+        if (agent_idx != src &&
+            !bm.hasLineOfSight(src_pa.origin, src_pa.agent->getSize(),
+                               self_pa.origin, self_pa.agent->getSize()))
+            continue;
+        return eff.spell.weapon_rider;
+    }
+    return none;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Saving throws
 // ─────────────────────────────────────────────────────────────────────────────

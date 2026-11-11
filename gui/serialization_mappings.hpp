@@ -48,7 +48,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(HealingRoll, num_dice, die_size,
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     AttackCondition,
     condition_name, condition_duration, push_ft, save_repeat_turns,
-    save_ability, save_dc_ability, requires_save, save_at_end_of_turn, on_damage,
+    save_ability, save_dc_ability, requires_save, save_at_end_of_turn, applies_on_save_success,
+    on_damage,
     dot_dice, dot_die_size, dot_flat_bonus, dot_damage_type, prevents_healing,
     contested, escape_dc,
     curse_kind, kickback_dice, kickback_die_size, kickback_damage_type)
@@ -102,7 +103,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     teleportation_spell, max_teleport_targets, teleport_range_ft, \
     effects_on_begin_turn, effects_on_end_turn, effects_on_enter, conditions
 #define RPG_SPELL_FIELDS_B \
-    affects_creature_mask, weapon_rider
+    affects_creature_mask, weapon_rider, no_damage_on_save
 
 inline void to_json(nlohmann::json& nlohmann_json_j, const Spell& nlohmann_json_t) {
     NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_TO, RPG_SPELL_FIELDS_A))

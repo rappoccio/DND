@@ -30,6 +30,9 @@ struct AttackCondition {
     // the save"). The creature is still barred from acting on the intervening turn; a
     // success only frees it starting on its NEXT turn. Copied onto the tracked condition.
     bool save_at_end_of_turn = false;
+    // A Save spell's condition that lands on a SUCCESSFUL save instead of a failed one
+    // (RAVENLOFT M8: Disruption frightens the Fiend or Undead that resists it).
+    bool applies_on_save_success = false;
     OnDamage_t on_damage = OnDamage_t::None;   // behavior when the affected creature takes damage
 
     // ── Damage-over-time rider (Pit Fiend poison, and any future recurring DoT) ──

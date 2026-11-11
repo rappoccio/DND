@@ -1049,6 +1049,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("condition_duration", &AttackCondition::condition_duration)
         .def_readwrite("push_ft",            &AttackCondition::push_ft)
         .def_readwrite("save_repeat_turns",  &AttackCondition::save_repeat_turns)
+        .def_readwrite("applies_on_save_success", &AttackCondition::applies_on_save_success,
+             "Save spells: the condition lands on a successful save, not a failed one (Disruption).")
         .def_readwrite("save_at_end_of_turn", &AttackCondition::save_at_end_of_turn,
              "If true, the periodic save is rolled at the END of the affected creature's turn\n"
              "(endTurn) rather than the start — Hold Person / Hold Monster RAW. The creature is\n"
@@ -1952,6 +1954,8 @@ void bindTypes(py::module_& m) {
              "If true, apply spell effects to agents that enter the area during a move.")
         .def_readwrite("affects_creature_mask", &Spell::affects_creature_mask,
              "CreatureType mask: only these creatures are affected (0 = everyone).")
+        .def_readwrite("no_damage_on_save", &Spell::no_damage_on_save,
+             "A Save spell that deals nothing on a success (not half).")
         .def_readwrite("weapon_rider", &Spell::weapon_rider,
              "Casting gives the caster this extra damage on weapon hits (num_dice 0 = none).")
         .def_readwrite("conditions", &Spell::conditions,

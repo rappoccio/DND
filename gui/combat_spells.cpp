@@ -1795,6 +1795,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
             if (sp.level == 0 && sp.cantrip_dice_per_tier > 0 && sp.type == Spell::Harm &&
                 tr.saved && !potent_cantrip)
                 dmg = 0;
+            // All or nothing (RAVENLOFT M8: Disruption).
+            if (sp.no_damage_on_save && sp.type == Spell::Harm && tr.saved)
+                dmg = 0;
 
             tr.dice_results = dice;
 
@@ -2295,7 +2298,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
                     if (sp.attack_type == Spell::Save) {
                         // For Save spells, reuse the existing save result
                         target_failed_save = !tr.saved;
-                        condition_applies = target_failed_save;
+                        // Disruption (RAVENLOFT M8): this condition is the price of resisting.
+                        condition_applies = spell_cond.applies_on_save_success ? tr.saved
+                                                                               : target_failed_save;
                         log_("[COND SAVE] {} vs {}: tr.saved={}, target_failed_save={}, condition_applies={}",
                              spell_cond.condition_name, agentName(bm, tgt_idx), tr.saved, target_failed_save, condition_applies);
                     } else {
@@ -2691,7 +2696,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
 
     // Weapon damage rider (RAVENLOFT M5: the Helm of Brilliance's flaming weapon): every weapon hit
     // the caster lands for the spell's duration deals the rider's extra dice.
-    if (result.valid && sp.weapon_rider.num_dice > 0) {
+    // An Emanation carrying a rider (Crusader's Mantle) is an aura instead: weaponRiderAura.
+    if (result.valid && sp.weapon_rider.num_dice > 0 && !sp.moves_with_caster) {
         Agent::Stats cs = bm.getAgentStats(action.caster_idx);
         cs.weapon_rider_dice        = sp.weapon_rider.num_dice;
         cs.weapon_rider_die_size    = sp.weapon_rider.die_size;
