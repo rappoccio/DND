@@ -859,7 +859,7 @@ def _spell_to_dict(s) -> dict:
             "die_size": roll.die_size
         })
 
-    return {
+    out = {
         "name":                  s.name,
         "type":                  s.type.name,
         "geometry":              geo,
@@ -910,6 +910,13 @@ def _spell_to_dict(s) -> dict:
         "item_name":              s.item_name,
         "item_charge_cost":       s.item_charge_cost,
     }
+    # RAVENLOFT M4/M5/M8 — only when set, so ordinary spells' dicts are unchanged.
+    if s.affects_creature_mask:
+        out["affects_creature_types"] = _creature_names(s.affects_creature_mask)
+    if s.weapon_rider.num_dice > 0:
+        out["weapon_rider"] = {"type": s.weapon_rider.type.name, "num_dice": s.weapon_rider.num_dice,
+                               "die_size": s.weapon_rider.die_size}
+    return out
 
 
 def _dict_to_spell(d: dict):
@@ -1031,6 +1038,15 @@ def _dict_to_spell(d: dict):
     s.effects_on_begin_turn = d.get("effects_on_begin_turn", True)
     s.effects_on_end_turn = d.get("effects_on_end_turn", False)
     s.effects_on_enter = d.get("effects_on_enter", True)
+    # RAVENLOFT M4/M8: only these creature types are affected; M5: a weapon damage rider.
+    s.affects_creature_mask = _creature_mask(d.get("affects_creature_types"))
+    rider = d.get("weapon_rider")
+    if isinstance(rider, dict):
+        r = rpg.MagicDamageRoll()
+        r.type = _parse_magic_damage(rider.get("type", "Fire"))
+        r.num_dice = int(rider.get("num_dice", 1))
+        r.die_size = int(rider.get("die_size", 6))
+        s.weapon_rider = r
 
     # N/day + Recharge (breath weapons / limited innate actions). uses_max==0
     # ⇒ unlimited; recharge_min==0 ⇒ no recharge. uses_remaining defaults to

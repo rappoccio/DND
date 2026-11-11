@@ -122,6 +122,6 @@
     "str_requirement": 0,
     "requires_attunement": true,
     "spell_dc": 18,
-    "item_spell_groups": {"3": ["Daylight", "Fireball"], "1": ["Prismatic Spray", "Wall of Fire"]}
+    "item_spell_groups": {"99": ["Diamond Light", "Fire Opal Flames"], "3": ["Daylight", "Fireball"], "1": ["Prismatic Spray", "Wall of Fire"]}
   }
 ]

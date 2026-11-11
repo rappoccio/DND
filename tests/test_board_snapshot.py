@@ -117,6 +117,11 @@ def _xmacro(src, name):
 
 
 def _nlohmann(src, type_name):
+    # Spell outgrew one macro: its pair is spelled out over RPG_SPELL_FIELDS_A / _B.
+    split = re.findall(r"#define RPG_" + type_name.upper() + r"_FIELDS_\w+ \\\n((?:[^\n]*\\\n)*[^\n]*)", src)
+    if split:
+        return [f.strip(" \\\n") for part in split for f in part.split(",")
+                if f.strip(" \\\n")]
     m = re.search(r"NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT\(\s*" + type_name
                   + r"\s*,(.*?)\)\n", src, re.S)
     assert m, f"no mapping for {type_name}"

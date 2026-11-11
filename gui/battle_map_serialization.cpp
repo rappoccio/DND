@@ -107,7 +107,8 @@ namespace {
     X(rogue_subclass) X(cleric_subclass) X(blessed_strike) X(divine_intervention_lock) \
     X(ranger_subclass) X(hunter_prey) X(defensive_tactics) X(primal_companion) \
     X(hunters_mark_target) X(hunters_mark_dice) X(hunters_mark_die_size) \
-    X(hunters_mark_damage_type) X(dread_ambusher) X(dreadful_strike_dice) \
+    X(hunters_mark_damage_type) X(weapon_rider_dice) X(weapon_rider_die_size) \
+    X(weapon_rider_damage_type) X(weapon_rider_turns) X(dread_ambusher) X(dreadful_strike_dice) \
     X(dreadful_strike_die_size) X(umbral_sight_dv) X(fey_dreadful_strikes) \
     X(fey_dreadful_strikes_die_size) X(wild_shape_active) X(wild_shape_form_name) \
     X(wild_shape_saved_ac) X(wild_shape_saved_str) X(wild_shape_saved_dex) \

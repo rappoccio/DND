@@ -10427,5 +10427,66 @@
     "check_los_on_center": true,
     "recharge_min": 5,
     "school": "evocation"
+  },
+  {
+    "name": "Diamond Light",
+    "description": "Helm of Brilliance. The helm emits a 30-foot Emanation. Any Undead that starts its turn in that area takes 1d6 Radiant damage. (Item-only: switch it on once and it lasts the encounter.)",
+    "type": "Harm",
+    "geometry": "Sphere",
+    "attack_type": "Automatic",
+    "save_ability": "SaveDex",
+    "casting_time": "BonusAction",
+    "range": 0,
+    "radius": 30,
+    "width": 0,
+    "length": 0,
+    "duration": 99,
+    "magic_damage_types": [
+      {
+        "type": "Radiant",
+        "num_dice": 1,
+        "die_size": 6
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "evocation",
+    "moves_with_caster": true,
+    "selective_targeting": false,
+    "effects_on_enter": false,
+    "affects_creature_types": [
+      "Undead"
+    ]
+  },
+  {
+    "name": "Fire Opal Flames",
+    "description": "Helm of Brilliance. You cause one weapon you are holding to burst into flames. When you hit with an attack using the blazing weapon, the target takes an extra 1d6 Fire damage. The flames last for the rest of the encounter (item-only).",
+    "type": "Help",
+    "geometry": "Single",
+    "attack_type": "Automatic",
+    "save_ability": "SaveDex",
+    "casting_time": "Action",
+    "range": 0,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 99,
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "evocation",
+    "weapon_rider": {
+      "type": "Fire",
+      "num_dice": 1,
+      "die_size": 6
+    }
   }
 ]

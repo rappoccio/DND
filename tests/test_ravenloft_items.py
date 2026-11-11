@@ -156,7 +156,8 @@ def test_helm_and_holy_symbol_parse():
     s = helm.item_spells
     assert s.requires_attunement and s.spell_dc == 18
     assert {n: s.uses_per_day(n) for n in s.spell_names()} == \
-        {"Daylight": 3, "Fireball": 3, "Prismatic Spray": 1, "Wall of Fire": 1}
+        {"Daylight": 3, "Fireball": 3, "Prismatic Spray": 1, "Wall of Fire": 1,
+         "Diamond Light": 99, "Fire Opal Flames": 99}
 
     sym = _dict_to_item(ITEMS["Holy Symbol of Ravenkind"])
     assert sym.type == rpg.ItemType.Wondrous and not sym.consumable
@@ -207,8 +208,9 @@ def test_helm_uses_per_day_and_dc():
     armor[0] = helm
     engine.set_agent_armor(bm, caster, armor)
     _grant(engine, bm, caster)
-    assert _castable(engine, bm, caster) == ["Daylight", "Fireball", "Prismatic Spray",
-                                             "Wall of Fire"], "no slots needed"
+    assert _castable(engine, bm, caster) == ["Daylight", "Diamond Light", "Fire Opal Flames",
+                                             "Fireball", "Prismatic Spray", "Wall of Fire"], \
+        "no slots needed"
 
     spells = engine.get_agent_spells(bm, caster)
     fb = next(i for i, sp in enumerate(spells) if sp.name == "Fireball")

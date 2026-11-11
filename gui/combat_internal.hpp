@@ -304,6 +304,10 @@ inline std::vector<int> resolveAoeTargets(
         }
 
         const PlacedAgent& tpa = agents[static_cast<std::size_t>(i)];
+        // Only some creature types (RAVENLOFT M4: the Helm's Undead-only aura, Hold Vampires).
+        if (sp.affects_creature_mask && tpa.agent &&
+            !(tpa.agent->getStats().creatureTypeMask() & sp.affects_creature_mask))
+            continue;
         const Cell& tc = tpa.origin;
         const int   ts = tpa.agent ? tpa.agent->getSize() : 1;
 

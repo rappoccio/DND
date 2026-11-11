@@ -226,6 +226,9 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
         for (const auto& e : bm.activeSpellEffects())
             if (e.effect_id == eff_id) { eff = &e; break; }
         if (!eff) continue;
+        // An Emanation that only hurts creatures starting their turn in it (the Helm of
+        // Brilliance's Diamond Light: effects_on_enter false) does nothing as it sweeps on.
+        if (!eff->spell.effects_on_enter) continue;
         for (int j = 0; j < static_cast<int>(agents.size()); ++j) {
             if (zoneSparesTarget(bm, *eff, j)) continue;  // anchor + allies (faction rules)
             const PlacedAgent& other = agents[static_cast<std::size_t>(j)];

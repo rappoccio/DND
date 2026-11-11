@@ -1209,6 +1209,9 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
 
         // Restore spell slots and all resources
         stats.restore_resources_long_rest();
+        // A spell's weapon damage rider (RAVENLOFT M5: the Helm's flames) is long gone by morning.
+        stats.weapon_rider_dice  = 0;
+        stats.weapon_rider_turns = 0;
 
         // Greater Divine Intervention lock (Cleric L20): a Wish use costs 2d4 Long Rests before
         // DI returns. restore_resources_long_rest() just refilled the DI resource generically, so

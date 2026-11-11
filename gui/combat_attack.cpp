@@ -4239,6 +4239,31 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
+    // ── Weapon damage rider (RAVENLOFT M5: the Helm of Brilliance's flaming weapon) ──
+    // Every hit with a held weapon (not an unarmed or natural attack, not a shield) while the rider
+    // lasts deals its extra dice, scaled by the target's multiplier for that type.
+    if (r.hit && atk_stats.weapon_rider_turns > 0 && atk_stats.weapon_rider_dice > 0 &&
+        w.droppable() && !w.is_shield) {
+        const int type = std::clamp(atk_stats.weapon_rider_damage_type, 0,
+                                    static_cast<int>(MagicDamage_t::NumMagicDamage_t) - 1);
+        const int n = r.critical ? atk_stats.weapon_rider_dice * 2 : atk_stats.weapon_rider_dice;
+        int raw = 0;
+        for (int i = 0; i < n; ++i) raw += roll(atk_stats.weapon_rider_die_size);
+        const float mult = tgt_stats.magic_damage_multipliers[static_cast<std::size_t>(type)];
+        const int wr_damage = static_cast<int>(static_cast<float>(raw) * mult);
+
+        r.total_damage += wr_damage;
+        r.damage_breakdown.push_back({"weapon rider", wr_damage});
+        r.magic_damage_types.push_back(static_cast<MagicDamage_t>(type));
+        int overflow = std::max(0, wr_damage - tgt_stats.temp_hp);
+        tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - wr_damage);
+        tgt_stats.hp_cur = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+        r.hp_after = tgt_stats.hp_cur;
+        r.target_down = (r.hp_after <= 0);
+        log_("{} flaming weapon: +{} {} damage", agentName(bm, action.attacker_idx), wr_damage,
+             magicDamageName(static_cast<MagicDamage_t>(type)));
+    }
+
     // ── Bestial Fury (Beast Master Ranger L11) — companion Hunter's Mark splash ──
     // When the attacker is a Ranger's Primal Companion, the first time each turn it hits the
     // creature marked by the owning Ranger's Hunter's Mark, it deals extra damage equal to the

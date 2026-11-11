@@ -641,6 +641,12 @@ void bindTypes(py::module_& m) {
              "Marked-target rider die size (6=d6 Hunter's Mark, 10=d10 Foe Slayer)")
         .def_readwrite("hunters_mark_damage_type", &Agent::Stats::hunters_mark_damage_type,
              "Marked-target rider MagicDamage_t (3=Force HM, 7=Psychic Hex)")
+        .def_readwrite("weapon_rider_dice", &Agent::Stats::weapon_rider_dice,
+             "RAVENLOFT M5: extra dice on every weapon hit while weapon_rider_turns > 0")
+        .def_readwrite("weapon_rider_die_size", &Agent::Stats::weapon_rider_die_size)
+        .def_readwrite("weapon_rider_damage_type", &Agent::Stats::weapon_rider_damage_type,
+             "MagicDamage_t of the weapon rider (2 = Fire)")
+        .def_readwrite("weapon_rider_turns", &Agent::Stats::weapon_rider_turns)
         .def_readwrite("dread_ambusher", &Agent::Stats::dread_ambusher,
              "Gloom Stalker: add WIS modifier to Initiative rolls (Dread Ambusher Initiative Bonus)")
         .def_readwrite("dreadful_strike_dice", &Agent::Stats::dreadful_strike_dice,
@@ -995,7 +1001,8 @@ void bindTypes(py::module_& m) {
         .value("Elemental",  CT_Elemental)
         .value("Fey",        CT_Fey)
         .value("Fiend",      CT_Fiend)
-        .value("Undead",     CT_Undead);
+        .value("Undead",     CT_Undead)
+        .value("Vampire",    CT_Vampire);
 
     // ── Damage type enums ─────────────────────────────────────────────────────
     py::enum_<MagicDamage_t>(m, "MagicDamage")
@@ -1943,6 +1950,10 @@ void bindTypes(py::module_& m) {
              "If true, apply spell effects to agents in area at the end of their turn.")
         .def_readwrite("effects_on_enter", &Spell::effects_on_enter,
              "If true, apply spell effects to agents that enter the area during a move.")
+        .def_readwrite("affects_creature_mask", &Spell::affects_creature_mask,
+             "CreatureType mask: only these creatures are affected (0 = everyone).")
+        .def_readwrite("weapon_rider", &Spell::weapon_rider,
+             "Casting gives the caster this extra damage on weapon hits (num_dice 0 = none).")
         .def_readwrite("conditions", &Spell::conditions,
              "List of AttackCondition objects applied to targets (includes name, duration, save rules).")
         .def("__repr__", [](const Spell& s){

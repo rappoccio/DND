@@ -199,6 +199,15 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     ++ctx_.turnCounter_;
     ctx_.turn_agent_idx_ = agent_idx;
 
+    // A spell's weapon damage rider (RAVENLOFT M5) counts down at its holder's turn start.
+    if (Agent::Stats rs = bm.getAgentStats(agent_idx); rs.weapon_rider_turns > 0) {
+        if (--rs.weapon_rider_turns == 0) {
+            rs.weapon_rider_dice = 0;
+            log_("{}'s weapon rider ends", agentName(bm, agent_idx));
+        }
+        bm.setAgentStats(agent_idx, rs);
+    }
+
     // Self-heal any grapple whose grappler can no longer maintain it (died/downed/incapacitated,
     // possibly on another creature's turn, or via a kill path that missed the down chokepoint, or
     // a stale grappler_idx). This frees a creature grappled by a now-dead captor at the start of its

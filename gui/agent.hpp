@@ -81,6 +81,9 @@ namespace rpg {
     CT_Fey        = 1u << 3,
     CT_Fiend      = 1u << 4,
     CT_Undead     = 1u << 5,
+    // Not a creature type but a kind (vampires and vampire spawn): lets a spell or weapon entry
+    // single them out (the Holy Symbol of Ravenkind's Hold Vampires). No ward uses it.
+    CT_Vampire    = 1u << 6,
   };
 
   // ── Abstract base class implementing the AgentLike contract ───────────────
@@ -680,6 +683,16 @@ namespace rpg {
       int  hunters_mark_die_size{6};                             // rider die size (6 = d6; 10 once Foe Slayer)
       int  hunters_mark_damage_type{3};                          // MagicDamage_t (3 = Force for HM; 7 = Psychic for Hex)
 
+      // ── Weapon damage rider from a spell (RAVENLOFT_ITEMS_PLAN.md M5) ────
+      // Every weapon hit deals weapon_rider_dice × d(weapon_rider_die_size) extra damage of
+      // weapon_rider_damage_type while weapon_rider_turns > 0 (the Helm of Brilliance's flaming
+      // weapon). Set by a spell's weapon_rider; counts down at the holder's turn start; a long
+      // rest clears it.
+      int  weapon_rider_dice{0};
+      int  weapon_rider_die_size{6};
+      int  weapon_rider_damage_type{2};                          // MagicDamage_t (2 = Fire)
+      int  weapon_rider_turns{0};
+
       // ── Gloom Stalker (Ranger subclass) — Dread Ambusher ────────────────
       // Initiative Bonus (passive) + Dreadful Strike (an on-hit Psychic rider, "Dread Ambusher" uses).
       bool dread_ambusher{false};        // +WIS modifier to Initiative rolls (set at GloomStalker L3+)
@@ -742,6 +755,7 @@ namespace rpg {
           if (is_fey)        m |= CT_Fey;
           if (is_fiend)      m |= CT_Fiend;
           if (is_undead)     m |= CT_Undead;
+          if (is_vampire)    m |= CT_Vampire;
           return m;
       }
       bool magic_resistance{false};                              // Magic Resistance trait: Advantage on saves vs spells & other magical effects (Pit Fiend, Balor, many fiends/elementals)

@@ -82,23 +82,38 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     bonus_hit, bonus_damage, ac_bonus,
     conditions, condition_rider, sprite_path, item_spells)
 
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
-    Spell,
-    name, type, geometry, attack_type, save_ability, school, casting_time,
-    range, radius, width, length, duration,
-    num_targets, targets_per_upcast_level,
-    magic_damage_rolls, physical_damage_rolls, healing_type,
-    terrain_difficulty, slip_save_dc, slip_distance_feet, light_level,
-    requires_concentration, moves_with_caster, requires_los, check_los_on_center,
-    requires_sight, selective_targeting, excludes_caster, grants_advantage_aura,
-    level, upcast_dice_bonus, cantrip_dice_per_tier, uses_max, uses_remaining, recharge_min, expended,
-    resource_name, resource_cost, item_source, item_slot, item_name, item_charge_cost,
-    opens_doors, dispels_magic,
-    instant_kill_threshold, condition_hp_threshold,
-    hp_pool, pool_is_temp_hp, heal_to_full, revives_dead, animates_dead,
-    creates_movement_ward, ward_blocks_living, creates_wall_terrain, binds_creature,
-    ends_conditions,
-    teleportation_spell, max_teleport_targets, teleport_range_ft,
-    effects_on_begin_turn, effects_on_end_turn, effects_on_enter, conditions)
+// Spell outgrew the 63 members one NLOHMANN_DEFINE_TYPE_* macro can list, so its pair is
+// spelled out: the same expansion the macro produces, over two member lists.
+#define RPG_SPELL_FIELDS_A \
+    name, type, geometry, attack_type, save_ability, school, casting_time, \
+    range, radius, width, length, duration, \
+    num_targets, targets_per_upcast_level, \
+    magic_damage_rolls, physical_damage_rolls, healing_type, \
+    terrain_difficulty, slip_save_dc, slip_distance_feet, light_level, \
+    requires_concentration, moves_with_caster, requires_los, check_los_on_center, \
+    requires_sight, selective_targeting, excludes_caster, grants_advantage_aura, \
+    level, upcast_dice_bonus, cantrip_dice_per_tier, uses_max, uses_remaining, recharge_min, expended, \
+    resource_name, resource_cost, item_source, item_slot, item_name, item_charge_cost, \
+    opens_doors, dispels_magic, \
+    instant_kill_threshold, condition_hp_threshold, \
+    hp_pool, pool_is_temp_hp, heal_to_full, revives_dead, animates_dead, \
+    creates_movement_ward, ward_blocks_living, creates_wall_terrain, binds_creature, \
+    ends_conditions, \
+    teleportation_spell, max_teleport_targets, teleport_range_ft, \
+    effects_on_begin_turn, effects_on_end_turn, effects_on_enter, conditions
+#define RPG_SPELL_FIELDS_B \
+    affects_creature_mask, weapon_rider
+
+inline void to_json(nlohmann::json& nlohmann_json_j, const Spell& nlohmann_json_t) {
+    NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_TO, RPG_SPELL_FIELDS_A))
+    NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_TO, RPG_SPELL_FIELDS_B))
+}
+inline void from_json(const nlohmann::json& nlohmann_json_j, Spell& nlohmann_json_t) {
+    const Spell nlohmann_json_default_obj{};
+    NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM_WITH_DEFAULT, RPG_SPELL_FIELDS_A))
+    NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_FROM_WITH_DEFAULT, RPG_SPELL_FIELDS_B))
+}
+#undef RPG_SPELL_FIELDS_A
+#undef RPG_SPELL_FIELDS_B
 
 } // namespace rpg

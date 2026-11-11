@@ -986,6 +986,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         ? action.target_indices
         : resolveAoeTargets(bm, sp, action.caster_idx, center_col, center_row,
                             action.aoe_col2, action.aoe_row2);
+    // A spell limited to some creature types (RAVENLOFT M4/M8) drops a direct target of any other
+    // type; resolveAoeTargets already skipped them in an area.
+    if (sp.affects_creature_mask) {
+        std::erase_if(targets, [&](int t) {
+            return t < 0 || t >= static_cast<int>(agents.size()) ||
+                   !(agents[static_cast<std::size_t>(t)].agent->getStats().creatureTypeMask() &
+                     sp.affects_creature_mask);
+        });
+    }
 
     // Single- and Multiple-geometry directly-targeted spells are authoritatively capped to the
     // engine's target budget — num_targets + (slot_level - level) * targets_per_upcast_level,
@@ -2680,6 +2689,19 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         bm.setAgentConditions(action.caster_idx, cond);
     }
 
+    // Weapon damage rider (RAVENLOFT M5: the Helm of Brilliance's flaming weapon): every weapon hit
+    // the caster lands for the spell's duration deals the rider's extra dice.
+    if (result.valid && sp.weapon_rider.num_dice > 0) {
+        Agent::Stats cs = bm.getAgentStats(action.caster_idx);
+        cs.weapon_rider_dice        = sp.weapon_rider.num_dice;
+        cs.weapon_rider_die_size    = sp.weapon_rider.die_size;
+        cs.weapon_rider_damage_type = static_cast<int>(sp.weapon_rider.type);
+        cs.weapon_rider_turns       = std::max(1, sp.duration);
+        bm.setAgentStats(action.caster_idx, cs);
+        log_("{}: weapon hits deal +{}d{} extra damage ({})", agentName(bm, action.caster_idx),
+             cs.weapon_rider_dice, cs.weapon_rider_die_size, sp.name);
+    }
+
     // Hunter's Mark / Hex: set the caster's marked-target rider state (cleared on concentration
     // drop). The +Xd6 on-hit damage is applied generically in applyAttackResult. Keys on the
     // single designated target (targets[0]); Foe Slayer (Ranger L20) upgrades the die to a d10.
@@ -3382,6 +3404,12 @@ bool CombatEngine::zoneSparesTarget(const BattleMap& bm, const ActiveSpellEffect
 {
     // A creature is never caught in its own Emanation/zone.
     if (target_idx == effect.caster_idx) return true;
+
+    // A zone limited to some creature types (the Helm of Brilliance's Undead-only aura) spares
+    // everyone else.
+    if (effect.spell.affects_creature_mask &&
+        !(bm.getAgentStats(target_idx).creatureTypeMask() & effect.spell.affects_creature_mask))
+        return true;
 
     // Forcecage Box (10-ft solid): a persistent zone can't reach across the wall either — spare a
     // sealed occupant from a zone cast by someone outside (and vice versa). Same two-way seal as

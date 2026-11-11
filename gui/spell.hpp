@@ -211,6 +211,15 @@ namespace rpg {
       // affect creatures present when the spell is cast (Entangle), which stay as terrain afterwards.
       bool effects_on_enter{true};
 
+      // RAVENLOFT_ITEMS_PLAN.md M4/M8: only creatures of these types are affected (a CreatureTypeBit
+      // mask: the Helm's Undead-only aura, Hold Vampires, Disruption vs Fiends and Undead). Others in
+      // the area are skipped, and a direct target of another type is dropped. 0 = everyone.
+      uint32_t affects_creature_mask{0};
+
+      // M5: casting this gives the caster a weapon damage rider (num_dice > 0) for `duration`
+      // rounds: the Helm of Brilliance's flaming weapon, +1d6 Fire on every weapon hit.
+      MagicDamageRoll weapon_rider{MagicDamage_t::Fire, 0, 6, 0};
+
       // Condition application (e.g., Hold Person applies "Paralyzed")
       // Each condition can have its own duration and save rules
       std::vector<AttackCondition> conditions;  // Conditions applied to targets
