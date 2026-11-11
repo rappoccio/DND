@@ -709,9 +709,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         const Edge sides[] = {{at, EdgeSide::East}, {at, EdgeSide::South},
                               {Cell{at.col - 1, at.row}, EdgeSide::East},
                               {Cell{at.col, at.row - 1}, EdgeSide::South}};
+        // A secret door nobody has found is wall: Knock doesn't see it.
+        const auto hidden = [&](int i) {
+            return i >= 0 && bm.doors()[static_cast<std::size_t>(i)].hidden;
+        };
+        if (hidden(didx)) didx = -1;
         for (const Edge& e : sides) {
             if (didx >= 0) break;
             didx = bm.doorAtEdge(e);
+            if (hidden(didx)) didx = -1;
         }
         if (didx >= 0) {
             const Door& d = bm.doors()[static_cast<std::size_t>(didx)];

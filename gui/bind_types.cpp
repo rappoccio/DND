@@ -115,6 +115,10 @@ void bindTypes(py::module_& m) {
              "Smashed off its frame: permanently open, cannot be closed or (re)locked.")
         .def_readwrite("arcane_lock", &Door::arcane_lock)
         .def_readwrite("arcane_suppressed_turns", &Door::arcane_suppressed_turns)
+        .def_readonly("secret",      &Door::secret,
+             "A secret door by design (BattleMap.set_door_secret); see hidden.")
+        .def_readonly("hidden",      &Door::hidden,
+             "Secret door not yet revealed: a wall to everyone (BattleMap.set_door_hidden).")
         .def("__repr__", [](const Door& d){
             Cell a = d.anchor();
             return "<Door #" + std::to_string(d.id) + " ("
@@ -122,7 +126,8 @@ void bindTypes(py::module_& m) {
                  + std::to_string(d.cells.size()) + " "
                  + (d.broken ? "broken" : (d.open ? "open" : "closed"))
                  + (d.locked ? " locked" : "")
-                 + (d.arcane_lock ? " arcane" : "") + ">"; });
+                 + (d.arcane_lock ? " arcane" : "")
+                 + (d.hidden ? " hidden" : "") + ">"; });
 
     // ── Chest / ChestTrap (plans/ITEMS_AND_CHESTS_PLAN.md) ──────────────────
     py::class_<ChestTrap>(m, "ChestTrap")

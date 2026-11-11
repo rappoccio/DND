@@ -496,6 +496,9 @@ test_scripts = [
 
     # Confirm before saves / big operations overwrite an existing file
     "test_confirm_overwrite.py",
+
+    # Secret doors, and Walls: ON / HIDDEN / OFF
+    "test_secret_doors.py",
 ]
 
 def run_tests():

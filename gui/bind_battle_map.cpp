@@ -144,6 +144,12 @@ void bindBattleMap(py::module_& m) {
              py::arg("id"), py::arg("arcane_suppress_turns") = 100,
              "Knock spell: removes a mundane lock, suppresses an Arcane Lock for\n"
              "arcane_suppress_turns, then opens the door. Returns true if opened.")
+        .def("set_door_hidden", &BattleMap::setDoorHidden, py::arg("id"), py::arg("hidden"),
+             "Secret door: hide (shuts it; refused on a broken door) or reveal it.\n"
+             "Returns true if the door now has that state.")
+        .def("set_door_secret", &BattleMap::setDoorSecret, py::arg("id"), py::arg("secret"),
+             "Design: make a door secret (and hidden) or ordinary (and revealed).\n"
+             "Refused on a broken door. Returns true if the door now has that state.")
         .def("break_door", &BattleMap::breakDoor, py::arg("id"),
              "Force a door off its frame: unlock it, mark it broken, and open it permanently\n"
              "(works even on a locked/arcane-locked door). Returns true if the door now broke open.")

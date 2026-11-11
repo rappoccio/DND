@@ -86,6 +86,12 @@ struct Door {
     // pull or a mundane pick. Knock suppresses it for arcane_suppressed_turns.
     bool arcane_lock{false};
     int  arcane_suppressed_turns{0};
+    // Secret door (the map's design) and whether it is still hidden (play state). Hidden,
+    // it is a wall to everyone: it stays shut, and opening, Knock, picking and forcing all
+    // fail until the DM reveals it (setDoorHidden false). A revealed secret door is an
+    // ordinary door; a reset of the map hides it again.
+    bool secret{false};
+    bool hidden{false};
     // Anchor cell (first occupied cell): the glyph/label anchor and the value the
     // single-cell convenience API reports. Empty door → {-1,-1}.
     [[nodiscard]] Cell anchor() const noexcept {
@@ -764,6 +770,11 @@ public:
     // yet — a large count keeps the lock suppressed for the rest of combat, matching RAW's
     // 10-minute suppression.)
     bool knockDoor(int id, int arcane_suppress_turns = 100) noexcept;
+    // Secret doors: hiding a door shuts it (a broken door can't be hidden: returns false);
+    // revealing it leaves an ordinary closed door. Returns true if the door now has that state.
+    bool setDoorHidden(int id, bool hidden) noexcept;
+    // Design: make a door secret (and hidden) or ordinary (and revealed). Same refusal.
+    bool setDoorSecret(int id, bool secret) noexcept;
 
     // ── Temporary terrain effects ──────────────────────────────────────────
     // Place a temporary terrain effect (from spells, items, etc.).

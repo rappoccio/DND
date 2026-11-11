@@ -47,8 +47,8 @@ from atomic_io import atomic_write_json
 RUN_VERSION = 1
 
 # Terrain keys that describe the drawing, copied to map.json as they are.
-MAP_KEYS = ("regions", "walls_enabled", "manual_grid", "detection", "edge_overrides",
-            "edge_review", "edges_carried_from", "rooms", "items", "chests")
+MAP_KEYS = ("regions", "walls_enabled", "walls_shown", "manual_grid", "detection",
+            "edge_overrides", "edge_review", "edges_carried_from", "rooms", "items", "chests")
 # Placed items / chests: the terrain document's play-state key ⇄ the run state's key.
 PLACED_STATE = (("items_state", "items"), ("chests_state", "chests"))
 # Door fields: the designed door (map.json) and what play changes (run.json).
@@ -56,6 +56,8 @@ DOOR_DESIGN = ("open", "locked", "lock_dc", "arcane_lock", "break_dc")
 DOOR_STATE = ("open", "locked", "broken")
 _DOOR_DEFAULTS = {"open": False, "locked": False, "lock_dc": 15, "arcane_lock": False,
                   "break_dc": 15, "broken": False}
+# A secret door: "secret" is design and rides only on secret doors, so other doors' records
+# are unchanged; "hidden" is play state (not yet found), absent ⇒ as hidden as it is secret.
 
 
 # ── Doors ────────────────────────────────────────────────────────────────────
@@ -99,6 +101,11 @@ def split_terrain(terrain: dict, design: dict | None = None) -> tuple[dict, dict
         src = designed.get(door_key(d), d)
         doors.append({**geom, **{f: src.get(f, _DOOR_DEFAULTS[f]) for f in DOOR_DESIGN}})
         door_state.append({**geom, **{f: d.get(f, _DOOR_DEFAULTS[f]) for f in DOOR_STATE}})
+        # Making a door secret is a design edit (the editor, or the DM's menu), so the
+        # document's word wins over the map on disk, unlike the play-changed fields above.
+        if d.get("secret"):
+            doors[-1]["secret"] = True
+            door_state[-1]["hidden"] = bool(d.get("hidden", True))
         lt = d.get("link_target")
         if lt and "cells" in geom:
             door_links.append({"cells": geom["cells"], "target": [int(v) for v in lt[:3]]})
@@ -131,9 +138,14 @@ def merge_terrain(map_doc: dict | None, extras: dict | None = None,
         geom = _door_geometry(d)
         rec = {**geom, **{f: d.get(f, _DOOR_DEFAULTS[f]) for f in DOOR_DESIGN},
                "broken": False}
+        secret = bool(d.get("secret", False))
+        if secret:
+            rec.update(secret=True, hidden=True)
         now = played.get(door_key(d))
         if now is not None:
             rec.update({f: now.get(f, rec[f]) for f in DOOR_STATE})
+            if secret:
+                rec["hidden"] = bool(now.get("hidden", True))
         rec["link_target"] = (list(links[door_key(d)])
                               if "cells" in geom and door_key(d) in links else None)
         doors.append(rec)

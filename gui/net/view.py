@@ -567,6 +567,8 @@ def _terrain(app, is_dm: bool, hide_map: bool, explored) -> dict:
 
     doors = []
     for d in app.bm.doors:
+        if d.hidden and not is_dm:
+            continue        # a secret door nobody has found is wall to the players
         dc = [[c.col, c.row] for c in d.cells]
         # "Any cell seen" reveals the door: a doorway is one feature, and a party that has
         # stood in half of it has seen it. An edge door is seen from either side.
@@ -580,6 +582,7 @@ def _terrain(app, is_dm: bool, hide_map: bool, explored) -> dict:
         if is_dm:
             rec.update(lock_dc=d.lock_dc, break_dc=d.break_dc,
                        arcane_lock=bool(d.arcane_lock),
+                       secret=bool(d.secret), hidden=bool(d.hidden),
                        link_target=app._door_link_at(d))
         doors.append(rec)
     out["doors"] = doors

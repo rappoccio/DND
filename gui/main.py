@@ -595,6 +595,11 @@ class App:
         self.font_room = pygame.font.SysFont("sans", 12)   # the DM's room-key layer
         self._letter_fonts = {}   # size -> bold SysFont, for on-token placeholder glyphs
 
+        # Walls: HIDDEN is enabled but not shown: the walls block and the fog respects them,
+        # but the DM console draws no red wall lines. Persisted as "walls_shown". Set before
+        # the map loads, whose overlay reads it.
+        self._walls_shown = True
+
         # ── Load C++ battle map + image + overlay (re-entrant) ────────────
         # Builds self.bm, map_surf, map_scale, map_rect, overlay and (re)creates
         # the display window. Callable at runtime to swap the active PNG (floor
@@ -1271,9 +1276,10 @@ class App:
         for x in vlines:
             pygame.draw.line(self.overlay, grid_color, (x, oy), (x, oy + span_y))
 
-        # Edge-based walls (thick red lines between cells) – only when enabled.
+        # Edge-based walls (thick red lines between cells) – only when enabled, and not
+        # under Walls: HIDDEN (which keeps them blocking but undrawn).
         wall_color = (200, 60, 60, 220)
-        for w in bm.walls:
+        for w in (bm.walls if self._walls_shown else ()):
             ax = ox + w.a.col * cpx
             ay = oy + w.a.row * cpx
             bx = ox + w.b.col * cpx
@@ -1298,7 +1304,7 @@ class App:
                     pygame.draw.circle(self.overlay, (10, 60, 30, 255), (cx, cy), rad, 2)
 
         # Blocking edge walls (DUNGEON_LEVELS_PLAN Phase 2A), on the exact grid lines.
-        for e in getattr(bm, "edge_walls", ()):
+        for e in (getattr(bm, "edge_walls", ()) if self._walls_shown else ()):
             c, rw = e.cell.col, e.cell.row
             if c + 1 >= len(vlines) or rw + 1 >= len(hlines):
                 continue
@@ -1605,7 +1611,7 @@ class App:
                                   (95, 80, 115), (130, 110, 155), font=self.font_md)
         toggle_walls_y = dung_y + B + self._BTN_GAP
         self.btn_toggle_walls = Button(pygame.Rect(px, toggle_walls_y, W, B),
-                                       "Walls: ON" if self._walls_enabled else "Walls: OFF",
+                                       self._walls_label(),
                                        (90, 80, 110), (125, 110, 150), font=self.font_md)
         toggle_fog_y = toggle_walls_y + B + self._BTN_GAP
         self.btn_toggle_fog = Button(pygame.Rect(px, toggle_fog_y, HW, B),
@@ -7300,6 +7306,28 @@ class App:
         self.bm.close_door(door_id)
         self._combat_log_add("The door closes.")
         self._after_door_change()
+
+    def _door_set_hidden(self, door_id: int, hidden: bool):
+        """DM: reveal a secret door (an ordinary closed door from now on) or hide it
+        again. Play state: the map's design is unchanged, and a reset hides it again."""
+        if not self.bm.set_door_hidden(door_id, hidden):
+            return
+        self._combat_log_add("The secret door is hidden again." if hidden
+                             else "A secret door is revealed!")
+        self._after_door_change()
+        self._build_overlay()
+
+    def _door_set_secret(self, door_id: int, secret: bool):
+        """DM: make a door secret (hidden, a wall to everyone) or ordinary. Design: it is
+        saved into the map, as the terrain editor's Secret toggle is."""
+        if not self.bm.set_door_secret(door_id, secret):
+            self._flash_status("A broken door can't be made secret.")
+            return
+        self._combat_log_add("The door is now a secret door (hidden)." if secret
+                             else "The door is now an ordinary door.")
+        self._after_door_change()
+        self._build_overlay()
+        self._save_terrain()
 
     def _door_pick_lock(self, actor_idx: int, door_id: int):
         if actor_idx < 0:
@@ -15158,7 +15186,7 @@ class App:
         self._terrain_regions = regions
         self._terrain_rooms = rooms_meta
         self._walls_enabled = False
-        self.btn_toggle_walls.text = "Walls: OFF"
+        self.btn_toggle_walls.text = self._walls_label()
         self._apply_terrain_to_battle_map()
         self.bm.clear_walls()
 
@@ -16386,6 +16414,7 @@ class App:
         # must match the generator's choice rather than re-deriving "room 0". None ⇒ none.
         self._staging_cells = None
         self._walls_enabled = True
+        self._walls_shown = True
         self._detection = None
         self._edge_overrides = None
         self._edge_review = None
@@ -16434,6 +16463,7 @@ class App:
                     except Exception:
                         self._manual_grid = None
                 self._walls_enabled = bool(data.get("walls_enabled", True))
+                self._walls_shown = bool(data.get("walls_shown", True))
                 self._detection = data.get("detection")
                 self._edge_overrides = data.get("edge_overrides")
                 self._edge_review = data.get("edge_review")
@@ -16459,6 +16489,7 @@ class App:
                 self._terrain_rooms = data.get("rooms", [])
                 self._staging_cells = data.get("staging_cells")  # None if absent
                 self._walls_enabled = bool(data.get("walls_enabled", True))
+                self._walls_shown = bool(data.get("walls_shown", True))
                 self._detection = data.get("detection")
                 self._edge_overrides = data.get("edge_overrides")
                 self._edge_review = data.get("edge_review")
@@ -16495,6 +16526,7 @@ class App:
                                                 int(d.get("break_dc", 15)))
                     if bool(d.get("broken", False)):
                         self.bm.break_door(did)
+                    self._restore_secret_door(did, d)
                     continue
                 if raw:
                     cells = [rpg.Cell(int(c[0]), int(c[1])) for c in raw]
@@ -16510,6 +16542,7 @@ class App:
                 # A door saved smashed off its frame comes back broken (permanently open).
                 if bool(d.get("broken", False)):
                     self.bm.break_door(did)
+                self._restore_secret_door(did, d)
                 # Re-associate a cross-map staple target (null/absent on ordinary doors).
                 lt = d.get("link_target")
                 if lt:
@@ -16541,6 +16574,8 @@ class App:
         # page showed "Walls: ON" with nothing drawn until Walls was toggled off and on,
         # and that OFF window let the fog reveal straight through every wall.
         self._build_overlay()
+        if hasattr(self, "btn_toggle_walls"):     # the first load runs before the panel exists
+            self.btn_toggle_walls.text = self._walls_label()
 
     @staticmethod
     def _normalize_ladders(raw):
@@ -16558,6 +16593,14 @@ class App:
                 continue
         return out
 
+    def _restore_secret_door(self, did: int, rec: dict):
+        """A saved door record's secret design and hidden state onto door ``did``: a
+        secret door comes back hidden unless the record says it was found."""
+        if rec.get("secret"):
+            self.bm.set_door_secret(did, True)
+            if not rec.get("hidden", True):
+                self.bm.set_door_hidden(did, False)
+
     def _ladder_at(self, cell):
         """Index of the ladder occupying ``cell`` (an rpg.Cell), or -1."""
         col, row = cell.col, cell.row
@@ -16570,6 +16613,8 @@ class App:
         """Save terrain data to JSON file (defaults to the active encounter's path)."""
         path = path or self._terrain_path
         data = {"regions": self._terrain_regions, "walls_enabled": self._walls_enabled}
+        if not self._walls_shown:           # only HIDDEN writes it: other files stay as they were
+            data["walls_shown"] = False
         # Doors (source of truth is BattleMap.doors). "cells" carries every doorway cell
         # so wide (multi-cell) doors round-trip; "cell" is kept for backward readability.
         # An edge door (drawn maps) carries "edges", [c, r, "E"|"S"] each, in place of
@@ -16581,7 +16626,9 @@ class App:
                  open=d.open, locked=d.locked, lock_dc=d.lock_dc,
                  arcane_lock=d.arcane_lock, break_dc=d.break_dc, broken=d.broken,
                  # Cross-map staple target in GLOBAL (X,Y,Z); null for an ordinary in-map door.
-                 link_target=self._door_link_at(d))
+                 link_target=self._door_link_at(d),
+                 # Only a secret door carries these, so other doors' records are unchanged.
+                 **({"secret": True, "hidden": d.hidden} if d.secret else {}))
             for d in self.bm.doors
         ]
         # Placed items and chests: the design (map data) and what play did to them. Only
@@ -16706,7 +16753,7 @@ class App:
                              "square_ft": square_ft}
         self._terrain_regions = []
         self._walls_enabled = False
-        self.btn_toggle_walls.text = "Walls: OFF"
+        self.btn_toggle_walls.text = self._walls_label()
         # Seeds and edge overrides name cells, so they don't survive a new grid.
         dropped = bool((self._detection or {}).get("outside_seeds")) or bool(self._edge_overrides)
         if self._detection:
@@ -16967,7 +17014,7 @@ class App:
             det["outside_seeds"] = [s for s in seeds if 0 <= s[0] < cols and 0 <= s[1] < rows]
             self._detection = det
             self._walls_enabled = True
-            self.btn_toggle_walls.text = "Walls: ON"
+            self.btn_toggle_walls.text = self._walls_label()
 
         if os.path.exists(self._terrain_path):
             try:
@@ -17109,20 +17156,31 @@ class App:
                                       self._panel_rect())
         self._build_overlay()       # seed markers
 
+    def _walls_label(self) -> str:
+        if not self._walls_enabled:
+            return "Walls: OFF"
+        return "Walls: ON" if self._walls_shown else "Walls: HIDDEN"
+
     def _toggle_walls(self):
-        """Turn auto-detected walls/obstacles on or off.
+        """Cycle auto-detected walls/obstacles ON → HIDDEN → OFF → ON.
 
         The detector occasionally mis-reads a map (the "janky walls" bug). Toggling
         OFF discards every auto-detected obstacle so only explicit terrain blocks
-        movement; toggling ON re-runs detection from a clean slate. The choice is
-        persisted in the terrain JSON so it survives a reload.
+        movement; toggling ON re-runs detection from a clean slate. HIDDEN keeps the
+        walls exactly as ON does (they block, the fog respects them) but draws no red
+        wall lines. The choice is persisted in the terrain JSON so it survives a reload.
         """
-        self._walls_enabled = not self._walls_enabled
-        self._redetect_walls()
-        self.btn_toggle_walls.text = "Walls: ON" if self._walls_enabled else "Walls: OFF"
+        if self._walls_enabled and self._walls_shown:        # ON → HIDDEN: nothing re-detects
+            self._walls_shown = False
+            state = "hidden (still blocking)"
+        else:                                                # HIDDEN → OFF, OFF → ON
+            self._walls_enabled = not self._walls_enabled
+            self._walls_shown = True
+            self._redetect_walls()
+            state = "on" if self._walls_enabled else "off"
+        self.btn_toggle_walls.text = self._walls_label()
         self._build_overlay()       # redraw blocked/wall cells
         self._save_terrain()        # persist the preference
-        state = "on" if self._walls_enabled else "off"
         n = len(self.bm.disallowed_cells)
         self._combat_log_add(f"Wall auto-detection turned {state} ({n} blocked cells).")
 

@@ -293,8 +293,8 @@ def test_floor_regions_survive_save_reload_and_redetect():
         app._save_terrain()
         app._load_terrain(terrain)
         check()
-        app._toggle_walls()
-        app._toggle_walls()
+        for _ in range(3):                        # ON → HIDDEN → OFF → ON
+            app._toggle_walls()
         check()
         assert app.bm.get_terrain_type(C(0, 0)) == rpg.TerrainType.Standard, \
             "Floor paints no terrain"
@@ -377,7 +377,9 @@ def test_menu_offers_wall_detection_only_with_walls_on():
     with tempfile.TemporaryDirectory() as tmp:
         app, _ = _app(tmp)
         assert "Wall Detection…" in _menu_items(app)
-        app._toggle_walls()
+        app._toggle_walls()                       # HIDDEN: the walls are still on
+        assert "Wall Detection…" in _menu_items(app)
+        app._toggle_walls()                       # OFF
         assert not app._walls_enabled
         assert "Wall Detection…" not in _menu_items(app)
     print("✅ test_menu_offers_wall_detection_only_with_walls_on passed")
@@ -770,6 +772,7 @@ def test_fog_does_not_reveal_while_the_map_has_no_walls():
         app.bm.set_agent_faction(idx, PC_FACTION)
         app.bm.clear_fog()
 
+        app._toggle_walls()                       # HIDDEN
         app._toggle_walls()                       # OFF: no walls anywhere on this page
         assert not app._walls_enabled and _blocked(app.bm) == set()
         app._mark_fog_dirty()

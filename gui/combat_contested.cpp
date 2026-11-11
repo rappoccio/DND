@@ -141,7 +141,7 @@ PickLockResult CombatEngine::attemptPickLock(BattleMap& bm, int agent_idx, int d
     for (const Door& d : bm.doors()) {
         if (d.id == door_id) { door = &d; break; }
     }
-    if (door == nullptr) {
+    if (door == nullptr || door->hidden) {     // a secret door nobody has found is wall
         result.log_message = "No such door.";
         return result;
     }
@@ -201,7 +201,7 @@ BreakDoorResult CombatEngine::attemptBreakDoor(BattleMap& bm, int agent_idx, int
     for (const Door& d : bm.doors()) {
         if (d.id == door_id) { door = &d; break; }
     }
-    if (door == nullptr) {
+    if (door == nullptr || door->hidden) {     // a secret door nobody has found is wall
         result.log_message = "No such door.";
         return result;
     }

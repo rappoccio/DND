@@ -467,10 +467,11 @@ def door_is_near(app, actor, door) -> bool:
 
 
 def doors_near(app, actor) -> list:
-    """The doors creature ``actor`` stands next to, in ``bm.doors`` order."""
+    """The doors creature ``actor`` stands next to, in ``bm.doors`` order. A hidden
+    secret door is wall to every creature, so it is never one of them."""
     if not 0 <= actor < len(app.bm.placed_agents):
         return []
-    return [d for d in app.bm.doors if door_is_near(app, actor, d)]
+    return [d for d in app.bm.doors if not d.hidden and door_is_near(app, actor, d)]
 
 
 def door_options(app, actor, door) -> list:
@@ -528,6 +529,10 @@ def show_door_menu(app, cell, pos):
     if di < 0:
         return
     door = app.bm.doors[di]
+    if door.hidden:
+        # A secret door nobody has found: only the DM knows it is there.
+        app._ask_dm("action", "Secret door", secret_door_options(app, door), anchor=pos)
+        return
     actor = app._current_agent_idx() if app.combat_active else app.selected_idx
 
     if app.combat_active:
@@ -538,10 +543,28 @@ def show_door_menu(app, cell, pos):
             return
 
     options = door_options(app, actor, door)
+    # The secret-door rows are DM authoring: only on a menu the DM answers.
+    if app.roster.controller_of(actor) == DM_PRINCIPAL_ID:
+        options += secret_door_options(app, door)
     if options:
         # Out of combat `actor` is the selected token (or -1), and controller_of folds
         # an unknown index to the DM — which is the right owner for DM-side authoring.
         app._ask_actor(actor, "action", "Door", options, anchor=pos)
+
+
+def secret_door_options(app, door) -> list:
+    """The DM's secret-door rows for ``door``: reveal or re-hide a secret one, make a
+    door secret or ordinary again. A broken door can't be made secret."""
+    did = door.id
+    if door.hidden:
+        return [("Reveal secret door", lambda: app._door_set_hidden(did, False)),
+                ("Make ordinary door", lambda: app._door_set_secret(did, False))]
+    if door.secret:
+        return [("Hide secret door again", lambda: app._door_set_hidden(did, True)),
+                ("Make ordinary door", lambda: app._door_set_secret(did, False))]
+    if door.broken:
+        return []
+    return [("Make secret door", lambda: app._door_set_secret(did, True))]
 
 
 def show_ladder_menu(app, cell, pos):

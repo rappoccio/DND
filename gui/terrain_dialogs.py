@@ -53,6 +53,8 @@ def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None, link
     elongated slab over its full bounding rect: pass w/h covering all of its cells.
     `linked` marks a cross-map door staple (leads to an abutting page) with a small
     teal corner chevron so a DM can tell a portal door from an ordinary one.
+    A hidden secret door (only the DM sees one) is a dashed grey outline with an "S";
+    once found, a secret door is drawn as any door, with a small "S" in its corner.
     """
     if w is None:
         w = size
@@ -60,6 +62,10 @@ def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None, link
         h = size
     short = min(w, h)
     pad = max(2, short // 8)
+    if getattr(door, "hidden", False):
+        draw_secret_door_ghost(screen, pygame.Rect(x + pad, y + pad, w - 2 * pad, h - 2 * pad),
+                               font_sm)
+        return
     if getattr(door, "broken", False):
         # Broken: splintered red-brown frame with a couple of jagged shards — the door
         # has been smashed off its hinges (permanently open, no lock to draw).
@@ -108,6 +114,10 @@ def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None, link
                         pygame.Rect(cx - sh_r, cy - sh_r, sh_r * 2, sh_r * 2),
                         0.0, math.pi, 2)
 
+    if getattr(door, "secret", False) and font_sm is not None and short >= 14:
+        # A found secret door: a small "S" in the top-left corner, for the DM.
+        screen.blit(font_sm.render("S", True, (200, 200, 220)), (x + 2, y + 1))
+
     if linked:
         # Cross-map staple marker: a small teal chevron ">>" in the top-right corner.
         m = max(3, short // 6)
@@ -118,6 +128,26 @@ def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None, link
         pygame.draw.lines(screen, teal, False,
                           [(tx + m // 2, ty), (tx + m + m // 2, ty + m // 2),
                            (tx + m // 2, ty + m)], 2)
+
+
+def draw_secret_door_ghost(screen, rect, font_sm=None):
+    """A hidden secret door: a dashed grey outline of ``rect`` and an "S" at its centre
+    when it fits. The player screen never draws one (it is wall to them)."""
+    col = (190, 190, 210)
+    dash = max(3, min(rect.w, rect.h) // 3)
+    for x0, y0, x1, y1 in ((rect.left, rect.top, rect.right, rect.top),
+                           (rect.right, rect.top, rect.right, rect.bottom),
+                           (rect.right, rect.bottom, rect.left, rect.bottom),
+                           (rect.left, rect.bottom, rect.left, rect.top)):
+        n = max(1, int(math.hypot(x1 - x0, y1 - y0)) // dash)
+        for i in range(0, n, 2):
+            a, b = i / n, min(1.0, (i + 1) / n)
+            pygame.draw.line(screen, col, (x0 + (x1 - x0) * a, y0 + (y1 - y0) * a),
+                             (x0 + (x1 - x0) * b, y0 + (y1 - y0) * b), 2)
+    if font_sm is not None:
+        label = font_sm.render("S", True, col)
+        if label.get_width() <= rect.w + 4 and label.get_height() <= rect.h + 8:
+            screen.blit(label, label.get_rect(center=rect.center))
 
 
 def draw_ladder_glyph(screen, x, y, size, going_up=True, font_sm=None, w=None, h=None):
@@ -387,6 +417,7 @@ class TerrainEditorDialog:
         self.door_locked = False
         self.door_lock_dc = 15
         self.door_arcane = False
+        self.door_secret = False  # [S]: the next door is secret (hidden until the DM reveals it)
         self.door_break_dc = 15   # STR (Athletics) DC to force the next placed door
         # Drag-to-span door placement: start/end cells while the mouse is held.
         self.door_drag_start = None
@@ -803,6 +834,8 @@ class TerrainEditorDialog:
                 self.door_locked = not self.door_locked
             elif event.key == pygame.K_a and self.selected_type == "Door":
                 self.door_arcane = not self.door_arcane
+            elif event.key == pygame.K_s and self.selected_type == "Door":
+                self.door_secret = not self.door_secret
             elif event.key == pygame.K_k and self.selected_type == "Door":
                 self.door_link = not self.door_link
             elif event.key in (pygame.K_PLUS, pygame.K_EQUALS) and self.selected_type == "Door":
@@ -920,8 +953,10 @@ class TerrainEditorDialog:
                 self.bm.remove_door(self.bm.doors[di].id)
                 self._edges_changed()       # re-detect: the outside flood stops at doors
                 return
-        self.bm.add_door(cells, False, self.door_locked,
-                         self.door_lock_dc, self.door_arcane, self.door_break_dc)
+        did = self.bm.add_door(cells, False, self.door_locked,
+                               self.door_lock_dc, self.door_arcane, self.door_break_dc)
+        if self.door_secret:
+            self.bm.set_door_secret(did, True)
         self._edges_changed()
         # Cross-map staple: if link mode is on and this door sits on a page edge, target
         # the abutting page's matching global cell (resolved to a page at use time).
@@ -1602,8 +1637,10 @@ class TerrainEditorDialog:
                 self.bm.remove_door(self.bm.doors[di].id)
                 self._edges_changed()       # re-detect: the outside flood stops at doors
                 return
-        self.bm.add_edge_door([edge_from_key(k) for k in keys], False, self.door_locked,
-                              self.door_lock_dc, self.door_arcane, self.door_break_dc)
+        did = self.bm.add_edge_door([edge_from_key(k) for k in keys], False, self.door_locked,
+                                    self.door_lock_dc, self.door_arcane, self.door_break_dc)
+        if self.door_secret:
+            self.bm.set_door_secret(did, True)
         self._edges_changed()
 
     def _apply_terrain_to_selection(self):
@@ -1909,14 +1946,15 @@ class TerrainEditorDialog:
             lock_str = "Locked" if self.door_locked else "Unlocked"
             arc_str = " + Arcane Lock" if self.door_arcane else ""
             link_str = "  + Link→neighbor" if self.door_link else ""
+            arc_str += " + Secret" if self.door_secret else ""
             door_text = (f"Door: [{lock_str}{arc_str}]  lock DC {self.door_lock_dc}"
                          f"  break DC {self.door_break_dc}{link_str}")
             self._hud_text(screen, door_text, (220, 200, 120), (10, y + 10))
             if self._edge_doors():
-                hint = ("[L] lock  [A] arcane  [+/-] lock DC  [ [ / ] ] break DC  "
+                hint = ("[L] lock  [A] arcane  [S] secret  [+/-] lock DC  [ [ / ] ] break DC  "
                         "(click a grid line toggles; Ctrl+drag along it for a wide door, max 4)")
             else:
-                hint = ("[L] lock  [A] arcane  [K] link  [+/-] lock DC  [ [ / ] ] break DC  "
+                hint = ("[L] lock  [A] arcane  [S] secret  [K] link  [+/-] lock DC  [ [ / ] ] break DC  "
                         "(click toggles; Ctrl+drag for a wide door, max 4)")
             self._hud_text(screen, hint, (170, 170, 170), (10, y + 28))
         elif self.selected_type == "Staircase":

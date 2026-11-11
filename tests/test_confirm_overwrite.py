@@ -56,22 +56,22 @@ def test_toggle_walls_asks_only_over_an_existing_file():
         app = _app(tmp)
         if os.path.exists(app._terrain_path):
             os.remove(app._terrain_path)
-        on = app._walls_enabled
+        on = app._walls_label()
         app._confirm_overwrite([app._terrain_path], "Toggle walls", app._toggle_walls)
         assert app.prompts.live is None, "asked before writing a file that did not exist"
-        assert app._walls_enabled != on and os.path.exists(app._terrain_path)
+        assert app._walls_label() != on and os.path.exists(app._terrain_path)
 
-        before, on = _read(app._terrain_path), app._walls_enabled
+        before, on = _read(app._terrain_path), app._walls_label()
         app._confirm_overwrite([app._terrain_path], "Toggle walls", app._toggle_walls)
         assert _labels(app) == ["Overwrite", "Cancel"], _labels(app)
         assert "grid_terrain.json" in app.prompts.live.title, app.prompts.live.title
         assert app.prompts.choose_label("Cancel").ok
-        assert app._walls_enabled == on and _read(app._terrain_path) == before, \
+        assert app._walls_label() == on and _read(app._terrain_path) == before, \
             "Cancel still toggled or wrote"
 
         app._confirm_overwrite([app._terrain_path], "Toggle walls", app._toggle_walls)
         assert app.prompts.choose_label("Overwrite").ok
-        assert app._walls_enabled != on and _read(app._terrain_path) != before
+        assert app._walls_label() != on and _read(app._terrain_path) != before
     print("✅ test_toggle_walls_asks_only_over_an_existing_file passed")
 
 
@@ -80,7 +80,7 @@ def test_headless_app_never_asks():
         app = _app(tmp)
         app.confirm_overwrites = False
         app._save_terrain()
-        on = app._walls_enabled
+        on = app._walls_label()
         app._confirm_overwrite([app._terrain_path], "Toggle walls", app._toggle_walls)
         assert app.prompts.live is None and app._walls_enabled != on
     print("✅ test_headless_app_never_asks passed")

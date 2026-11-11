@@ -2018,8 +2018,9 @@ void BattleMap::removeDoor(int id) noexcept {
 bool BattleMap::openDoor(int id) noexcept {
     for (std::size_t i = 0; i < doors_.size(); ++i) {
         if (doors_[i].id == id) {
-            // A locked or (un-suppressed) arcane-locked door cannot simply be opened.
-            if (doors_[i].locked) return false;
+            // A locked or (un-suppressed) arcane-locked door cannot simply be opened,
+            // nor can a secret door nobody has found.
+            if (doors_[i].locked || doors_[i].hidden) return false;
             if (doors_[i].arcane_lock && doors_[i].arcane_suppressed_turns <= 0)
                 return false;
             doors_[i].open = true;
@@ -2064,6 +2065,7 @@ void BattleMap::unlockDoor(int id) noexcept {
 bool BattleMap::knockDoor(int id, int arcane_suppress_turns) noexcept {
     for (std::size_t i = 0; i < doors_.size(); ++i) {
         if (doors_[i].id != id) continue;
+        if (doors_[i].hidden) return false;               // a secret door is just wall
         doors_[i].locked = false;                         // mundane lock removed
         if (doors_[i].arcane_lock)                        // Arcane Lock suppressed, not removed
             doors_[i].arcane_suppressed_turns = arcane_suppress_turns;
@@ -2077,6 +2079,7 @@ bool BattleMap::knockDoor(int id, int arcane_suppress_turns) noexcept {
 bool BattleMap::breakDoor(int id) noexcept {
     for (std::size_t i = 0; i < doors_.size(); ++i) {
         if (doors_[i].id != id) continue;
+        if (doors_[i].hidden) return false;               // a secret door is just wall
         // Smashed off its frame: no lock (mundane or arcane) can hold what isn't there.
         doors_[i].locked                 = false;
         doors_[i].arcane_lock            = false;
@@ -2087,6 +2090,27 @@ bool BattleMap::breakDoor(int id) noexcept {
         return true;
     }
     return false;
+}
+
+bool BattleMap::setDoorHidden(int id, bool hidden) noexcept {
+    for (std::size_t i = 0; i < doors_.size(); ++i) {
+        if (doors_[i].id != id) continue;
+        if (hidden && doors_[i].broken) return false;     // nothing left to disguise
+        doors_[i].hidden = hidden;
+        if (hidden) {
+            doors_[i].open = false;
+            syncDoorTerrain(static_cast<int>(i));
+        }
+        return true;
+    }
+    return false;
+}
+
+bool BattleMap::setDoorSecret(int id, bool secret) noexcept {
+    if (!setDoorHidden(id, secret)) return false;
+    for (auto& d : doors_)
+        if (d.id == id) d.secret = secret;
+    return true;
 }
 
 // ── Light levels (visibility & darkvision) ────────────────────────────────────
