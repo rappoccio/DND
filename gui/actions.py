@@ -1133,6 +1133,18 @@ class ActionMenu:
             out.append(Action("drop_concentration", "Drop Concentration", GROUP_UTILITY,
                               economy=ECONOMY_FREE))
 
+        # Ravenloft items (RAVENLOFT_ITEMS_PLAN.md M6/M10): spend a Luck Point (the Lucky feat's
+        # or a Luck Blade's) for Advantage on the next D20 Test; the Rod of the Pact Keeper's
+        # once-per-long-rest slot (a Magic action).
+        luck = app.combat.luck_available(app.bm, agent_idx)
+        if luck > 0:
+            out.append(Action("use_luck", f"Luck ({luck})", GROUP_UTILITY, economy=ECONOMY_FREE))
+        from helpers import item_slot_regain_ready
+        if (not getattr(app, "action_used", False)
+                and item_slot_regain_ready(app.combat, app.bm, agent_idx)):
+            out.append(Action("regain_slot", "Regain Slot (Rod)", GROUP_UTILITY,
+                              economy=ECONOMY_ACTION))
+
         # One drop per weapon slot that actually holds a droppable weapon. The engine
         # returns all three slots always, so "empty" is a name test, and a permanently
         # armed natural weapon (claws, a monster's bite) is not droppable at all.

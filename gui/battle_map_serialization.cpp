@@ -48,8 +48,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Item,
-    name, description, type, action_type, range, healing, damage, save_ability,
-    condition_applied, only_vs_fiend_undead, max_target_size, escape_dc,
+    name, description, type, action_type, range, healing, temp_hp, applies_condition,
+    applies_condition_turns, damage, save_ability, condition_applied, only_vs_fiend_undead, max_target_size, escape_dc,
     opens, quantity, consumable, sprite_path, item_spells)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(

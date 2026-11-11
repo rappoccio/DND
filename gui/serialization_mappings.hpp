@@ -62,7 +62,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     ItemSpells,
     requires_attunement, spell_dc, spell_attack, spell_groups, charge_spells,
-    charges_max, charges_regain, spell_overrides_json, bonuses, attuned, uses_remaining, charges)
+    charges_max, charges_regain, spell_overrides_json, bonuses, luck_max, slot_regain,
+    attuned, uses_remaining, charges, luck, slot_regain_used)
 
 // ── Weapon / Spell ───────────────────────────────────────────────────────────
 // Both are carried BY VALUE inside engine state (InFlightAttack::w snapshots the

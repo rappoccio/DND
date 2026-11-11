@@ -1205,8 +1205,13 @@ def _item_spells_from_dict(d: dict):
     overrides = d.get("spell_overrides")
     s.spell_overrides_json = json.dumps(overrides) if overrides else ""
     _item_bonuses_from_dict(s.bonuses, d.get("item_bonuses"))
+    s.luck_max = int(d.get("luck_points", 0) or 0)                 # RAVENLOFT M6
+    s.slot_regain = bool(d.get("regain_slot", False))              # RAVENLOFT M10
     s.attuned = bool(d.get("attuned", False))
     s.refill()
+    if "luck_remaining" in d:
+        s.luck = max(0, min(int(d["luck_remaining"]), s.luck_max))
+    s.slot_regain_used = bool(d.get("slot_regain_used", False))
     saved_uses = d.get("item_spell_uses")
     if isinstance(saved_uses, dict):
         uses = dict(s.uses_remaining)
@@ -1276,6 +1281,10 @@ def _item_spells_to_dict(s) -> dict:
     bonuses = _item_bonuses_to_dict(s.bonuses)
     if bonuses:
         out["item_bonuses"] = bonuses
+    if s.luck_max:
+        out["luck_points"], out["luck_remaining"] = s.luck_max, s.luck
+    if s.slot_regain:
+        out["regain_slot"], out["slot_regain_used"] = True, s.slot_regain_used
     return out
 
 
@@ -1300,6 +1309,10 @@ def _dict_to_item(d: dict):
         h.die_size = int(healing_raw.get("die_size", 4))
         h.bonus    = int(healing_raw.get("bonus", 0))
         it.healing = h
+    # RAVENLOFT M11 (Potion of Heroism): temp HP and a condition on the drinker.
+    it.temp_hp = int(d.get("temp_hp", 0) or 0)
+    it.applies_condition = str(d.get("applies_condition", "") or "")
+    it.applies_condition_turns = int(d.get("applies_condition_turns", 0) or 0)
 
     # ── Thrown items (Acid, Alchemist's Fire, Holy Water, Net) ───────────────
     # The save DC is derived from the thrower (8 + DEX mod + PB), so it is never authored.
@@ -1355,6 +1368,10 @@ def _item_to_dict(it) -> dict:
         "max_target_size":      it.max_target_size,
         "escape_dc":            it.escape_dc,
         "opens":                list(it.opens),
+        # RAVENLOFT M11 (Potion of Heroism)
+        "temp_hp":                 it.temp_hp,
+        "applies_condition":       it.applies_condition,
+        "applies_condition_turns": it.applies_condition_turns,
         "quantity": it.quantity,
         "consumable": it.consumable,
         "sprite_path": it.sprite_path,
@@ -1640,10 +1657,13 @@ def item_spells_summary(s) -> list[str]:
     ['Fear 2/2'], ['Protection from Evil and Good at will', 'Cure Wounds 1/1'],
     ['charges 5/7: Burning Hands (1), Fireball (3)']. A line of passive bonuses comes first
     ('+2 AC, +2 saves', RAVENLOFT M1). [] for an ordinary item."""
-    bonus = item_bonuses_line(s.bonuses)
+    bonus = [l for l in (item_bonuses_line(s.bonuses),
+                         f"luck {s.luck}/{s.luck_max}" if s.luck_max else "",
+                         ("slot regain used" if s.slot_regain_used else "slot regain ready")
+                         if s.slot_regain else "") if l]
     if s.empty():
-        return [bonus] if bonus else []
-    lines = [bonus] if bonus else []
+        return bonus
+    lines = list(bonus)
     lines += [f"{name} {item_spell_status(s, name)}"
              for _, names in sorted(s.spell_groups.items(), reverse=True) for name in names]
     if s.charges_max > 0 and s.charge_spells:
@@ -1670,6 +1690,20 @@ def attuned_count(combat, bm, idx: int, kinds=("items", "weapons", "armor")) -> 
     rows = [r for k in kinds for r in getters[k](bm, idx)]
     return sum(1 for r in rows
                if r.name and r.item_spells.requires_attunement and r.item_spells.attuned)
+
+
+def item_slot_regain_ready(combat, bm, idx: int) -> bool:
+    """RAVENLOFT M10: a carried, switched-on item can regain a slot now (the Rod of the Pact
+    Keeper unused since the last long rest) and the creature has a slot to regain."""
+    if not (0 <= idx < len(bm.placed_agents)):
+        return False
+    rows = (list(combat.get_agent_items(bm, idx)) + list(combat.get_agent_weapons(bm, idx))
+            + list(combat.get_agent_armor(bm, idx)))
+    if not any(r.name and r.item_spells.slot_regain and not r.item_spells.slot_regain_used
+               and r.item_spells.attuned_or_free() for r in rows):
+        return False
+    s = combat.get_agent_stats(bm, idx)
+    return any(rem < mx for rem, mx in zip(s.spell_slots_remaining, s.spell_slots_max))
 
 
 def attunement_warning(n: int) -> str:

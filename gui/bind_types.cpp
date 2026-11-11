@@ -1124,6 +1124,11 @@ void bindTypes(py::module_& m) {
         .def_readwrite("spell_overrides_json", &ItemSpells::spell_overrides_json,
              "JSON text {spell: {spells.json field: value}}, applied by Python.")
         .def_readwrite("bonuses",             &ItemSpells::bonuses, "Passive ItemBonuses (M1).")
+        .def_readwrite("luck_max",            &ItemSpells::luck_max, "M6: Luck Points per day.")
+        .def_readwrite("luck",                &ItemSpells::luck, "M6: Luck Points left today.")
+        .def_readwrite("slot_regain",         &ItemSpells::slot_regain,
+             "M10: once per long rest, regain one expended spell slot.")
+        .def_readwrite("slot_regain_used",    &ItemSpells::slot_regain_used)
         .def_readwrite("attuned",             &ItemSpells::attuned)
         .def_readwrite("uses_remaining",      &ItemSpells::uses_remaining,
              "{spell name: uses left today} for N/day spells (at-will ones are absent).")
@@ -1770,6 +1775,10 @@ void bindTypes(py::module_& m) {
         .def_readwrite("range",       &Item::range,
              "Reach in feet for administering a Heal item to another creature (0 = self only); "
              "the throwing range for a Thrown item.")
+        .def_readwrite("temp_hp",     &Item::temp_hp, "RAVENLOFT M11: Temporary HP granted on use.")
+        .def_readwrite("applies_condition", &Item::applies_condition,
+             "RAVENLOFT M11: condition put on the target (\"Blessed\"), no Concentration.")
+        .def_readwrite("applies_condition_turns", &Item::applies_condition_turns)
         .def_readwrite("healing",     &Item::healing,
              "HealingRoll (num_dice/die_size/bonus) restored by a Heal item.")
         .def_readwrite("damage",      &Item::damage,

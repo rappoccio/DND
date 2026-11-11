@@ -20126,6 +20126,19 @@ class App:
             self._drop_weapon(1)
         if action_id == "drop_weapon_rng":
             self._drop_weapon(2)
+        # Ravenloft items (M6 / M10).
+        if action_id == "use_luck":
+            idx = self._current_agent_idx()
+            if self.combat.spend_luck_for_advantage(self.bm, idx):
+                self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Luck — "
+                                     "Advantage on the next D20 Test")
+        if action_id == "regain_slot" and not self.action_used:
+            idx = self._current_agent_idx()
+            level = self.combat.regain_slot_from_item(self.bm, idx)
+            if level:
+                self.action_used = True
+                self._combat_log_add(f"{self.bm.placed_agents[idx].name} regains a level "
+                                     f"{level} spell slot (Magic action)")
 
     def _draw_combat_panel(self):
         """Draw the right panel while combat is active.
@@ -20742,8 +20755,12 @@ class App:
         # Which of these exist is ActionMenu's call now (§9); this only lays them out.
         y = panel.draw_action_row(self, panel.menu_group(self, "utility", only=("drop_concentration",)),
                                   lx, y, W, gap)
+        y = panel.draw_action_row(self, panel.menu_group(self, "utility",
+                                                         only=("use_luck", "regain_slot")),
+                                  lx, y, W, gap)
         y = panel.draw_action_row(self, panel.menu_group(self, "utility", skip=("place_terrain",
-                                                                    "drop_concentration")),
+                                                                    "drop_concentration",
+                                                                    "use_luck", "regain_slot")),
                                   lx, y, W, gap)
 
         y += section_gap

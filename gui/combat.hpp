@@ -1926,6 +1926,13 @@ public:
     // then by agent_idx.  Call once at combat start; reuse the order for
     // all subsequent runRound() calls.
     std::vector<InitiativeEntry> rollInitiative(const BattleMap& bm);
+
+    // ── Ravenloft items (RAVENLOFT_ITEMS_PLAN.md M6 / M10) ─────────────────
+    // Luck Points the agent can spend right now: the Lucky feat's plus its items' (the Luck Blade).
+    [[nodiscard]] int luckAvailable(const BattleMap& bm, int idx) const noexcept;
+    // An item regains one expended spell slot (the Rod of the Pact Keeper), once per long rest.
+    // Returns the slot level regained, 0 if nothing could be.
+    int regainSlotFromItem(BattleMap& bm, int idx) noexcept;
     // Single-agent Initiative roll for deploying on-deck reinforcements (see .cpp).
     InitiativeEntry rollInitiativeFor(const BattleMap& bm, int agent_idx);
 
@@ -2338,6 +2345,7 @@ private:
     // One agent's Initiative d20: at Advantage for Feral Instinct (Barbarian L7+), Assassinate
     // (Assassin L3+) or an armed Tides of Chaos, which this consumes.
     int rollInitiativeD20(const BattleMap& bm, int agent_idx, const Agent::Stats& s);
+    ItemSpells* itemLuckSource(BattleMap& bm, int idx) noexcept;   // M6
 
     // Per-agent turn overrides.  Empty = everyone gets exactly 1 turn/round.
     // Only agents with turns != 1 are stored here (optimises the common case).

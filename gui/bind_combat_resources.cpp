@@ -166,6 +166,15 @@ void bindCombatResources(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("idx"),
              "Lucky feat: spend one Luck Point to grant the agent Advantage on its next d20\n"
              "Test (consumed by the next d20 roll). Returns False if no points remain.")
+        .def("luck_available",
+             &CombatEngine::luckAvailable,
+             py::arg("battle_map"), py::arg("idx"),
+             "Luck Points spendable now: the Lucky feat's plus carried items' (RAVENLOFT M6).")
+        .def("regain_slot_from_item",
+             &CombatEngine::regainSlotFromItem,
+             py::arg("battle_map"), py::arg("idx"),
+             "RAVENLOFT M10: an item (Rod of the Pact Keeper) regains one expended spell slot,\n"
+             "once per long rest. Returns the level regained, 0 if none.")
         .def("tick_terrain_for_turn",
              &CombatEngine::tickTerrainForTurn,
              py::arg("battle_map"), py::arg("agent_idx"),

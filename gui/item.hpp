@@ -46,6 +46,12 @@ struct Item {
     // (20 ft for the flasks, 15 ft for a Net).
     int         range{5};
     HealingRoll healing{};   // Heal items: dice + flat bonus (2d4+2 for a Potion of Healing)
+    // RAVENLOFT M11 (Potion of Heroism): a Heal item may also grant Temporary Hit Points and put a
+    // condition on the creature it is given to ("Blessed" for `applies_condition_turns` rounds,
+    // without Concentration). 0 / empty = none.
+    int         temp_hp{0};
+    std::string applies_condition{};
+    int         applies_condition_turns{0};
 
     // ── Thrown items (Acid, Alchemist's Fire, Holy Water, Net) ──────────────────────────
     //  "Target one creature you can see within <range> feet. The target must succeed on a

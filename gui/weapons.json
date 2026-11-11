@@ -3137,6 +3137,7 @@
   "rarity": "Legendary",
   "requires_attunement": true,
   "item_bonuses": {"saves": 1},
+  "luck_points": 1,
   "description": "You gain a +1 bonus to attack and damage rolls made with this magic weapon. While it is on your person you gain a +1 bonus to saving throws. Luck: once per day, reroll one failed d20 Test (one Luck Point, spent like the Lucky feat's)."
  },
  {

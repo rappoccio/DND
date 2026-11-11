@@ -238,7 +238,7 @@ def test_summary_lines():
     assert any(l.startswith("charges 10/10") for l in lines)
     rod = _dict_to_item(ITEMS["Rod of the Pact Keeper +2"])
     assert item_spells_summary(rod.item_spells) == \
-        ["+2 spell attack, +2 spell save DC (Warlock spells)"]
+        ["+2 spell attack, +2 spell save DC (Warlock spells)", "slot regain ready"]
     shield = _dict_to_weapon(WEAPONS["Shield of Initiative +2"])
     assert item_spells_summary(shield.item_spells) == ["+2 Initiative"]
     print("✅ test_summary_lines")

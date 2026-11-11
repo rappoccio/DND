@@ -209,6 +209,8 @@ CLASS: dict[str, str] = {
     "end_combat": DM,
     "table": DM,                 # D-M7-5: the Table menu
     "drop_concentration": I,
+    "use_luck": I,              # RAVENLOFT M6: the Lucky feat's / a Luck Blade's point
+    "regain_slot": I,           # RAVENLOFT M10: the Rod of the Pact Keeper's slot
     "drop_weapon_main": I,
     "drop_weapon_off": I,
     "drop_weapon_rng": I,

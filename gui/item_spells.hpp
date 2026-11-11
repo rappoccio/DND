@@ -61,10 +61,17 @@ struct ItemSpells {
 
     ItemBonuses bonuses{};   // M1 passive bonuses; all zero on an ordinary item
 
+    // M6: Luck Points per day, spent like the Lucky feat's (the Luck Blade: 1). 0 = none.
+    int  luck_max{0};
+    // M10: once per long rest, regain one expended spell slot (the Rod of the Pact Keeper).
+    bool slot_regain{false};
+
     // ── Runtime (saved with the item, not authored) ─────────────────────────
     bool attuned{false};
     std::map<std::string, int> uses_remaining{};   // per spell in spell_groups (not at-will ones)
     int  charges{0};                               // current pool charges
+    int  luck{0};                                  // M6: Luck Points left today
+    bool slot_regain_used{false};                  // M10: spent until the next long rest
 
     [[nodiscard]] bool empty() const noexcept {
         return spell_groups.empty() && charge_spells.empty();
@@ -72,7 +79,8 @@ struct ItemSpells {
 
     // Anything to save or show beyond a plain item: spells, a pool, bonuses or attunement.
     [[nodiscard]] bool magical() const noexcept {
-        return !empty() || charges_max > 0 || bonuses.any() || requires_attunement;
+        return !empty() || charges_max > 0 || bonuses.any() || requires_attunement ||
+               luck_max > 0 || slot_regain;
     }
 
     // D5: is the item switched on for whoever carries it (attuned, or no attunement needed)?
@@ -133,6 +141,8 @@ struct ItemSpells {
             if (n != kAtWill)
                 for (const auto& s : names) uses_remaining[s] = n;
         charges = charges_max;
+        luck = luck_max;
+        slot_regain_used = false;
     }
 };
 

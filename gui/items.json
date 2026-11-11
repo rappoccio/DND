@@ -237,7 +237,8 @@
     "consumable": false,
     "sprite_path": "",
     "requires_attunement": true,
-    "item_bonuses": {"spell_attack": 1, "spell_dc": 1, "spell_class": "Warlock"}
+    "item_bonuses": {"spell_attack": 1, "spell_dc": 1, "spell_class": "Warlock"},
+    "regain_slot": true
   },
   {
     "name": "Rod of the Pact Keeper +2",
@@ -250,7 +251,8 @@
     "consumable": false,
     "sprite_path": "",
     "requires_attunement": true,
-    "item_bonuses": {"spell_attack": 2, "spell_dc": 2, "spell_class": "Warlock"}
+    "item_bonuses": {"spell_attack": 2, "spell_dc": 2, "spell_class": "Warlock"},
+    "regain_slot": true
   },
   {
     "name": "Rod of the Pact Keeper +3",
@@ -263,6 +265,22 @@
     "consumable": false,
     "sprite_path": "",
     "requires_attunement": true,
-    "item_bonuses": {"spell_attack": 3, "spell_dc": 3, "spell_class": "Warlock"}
+    "item_bonuses": {"spell_attack": 3, "spell_dc": 3, "spell_class": "Warlock"},
+    "regain_slot": true
+  },
+  {
+    "name": "Potion of Heroism",
+    "description": "When you drink this potion, you gain 10 Temporary Hit Points that last for 1 hour. For the same duration, you are under the effect of the Bless spell (no Concentration required).",
+    "type": "Heal",
+    "action_type": "BonusAction",
+    "rarity": "Rare",
+    "range": 5,
+    "healing_type": {"num_dice": 0, "die_size": 4, "bonus": 0},
+    "temp_hp": 10,
+    "applies_condition": "Blessed",
+    "applies_condition_turns": 600,
+    "quantity": 1,
+    "consumable": true,
+    "sprite_path": ""
   }
 ]

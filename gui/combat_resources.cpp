@@ -170,6 +170,29 @@ UseItemResult CombatEngine::useItem(BattleMap& bm, int user_idx, int item_slot, 
         else
             log_("{} administers {} to {}, who regains {} HP.", agentName(bm, user_idx), item.name,
                  agentName(bm, target_idx), res.amount_healed);
+        // Potion of Heroism (RAVENLOFT M11): Temporary Hit Points (they don't stack: keep the
+        // larger) and Bless without Concentration — a condition no spell owns (spell_idx -1),
+        // so no concentration drop can end it; it runs out on its own timer.
+        if (item.temp_hp > 0) {
+            Agent::Stats ts = bm.getAgentStats(target_idx);
+            ts.temp_hp = std::max(ts.temp_hp, item.temp_hp);
+            bm.setAgentStats(target_idx, ts);
+            log_("{} gains {} Temporary Hit Points ({}).", agentName(bm, target_idx), item.temp_hp,
+                 item.name);
+        }
+        if (!item.applies_condition.empty() && item.applies_condition_turns > 0) {
+            ActiveAgentCondition c{};
+            c.agent_idx         = target_idx;
+            c.caster_idx        = user_idx;
+            c.spell_idx         = -1;
+            c.condition_name    = item.applies_condition;
+            c.turns_remaining   = item.applies_condition_turns;
+            c.save_dc           = 0;
+            c.save_repeat_turns = item.applies_condition_turns + 1;
+            c.next_save_turn    = item.applies_condition_turns + 1;
+            addAgentCondition(bm, c);
+            log_("{} is {} ({}).", agentName(bm, target_idx), item.applies_condition, item.name);
+        }
     } else if (item.type == Item::Thrown) {
         resolveThrownItem(bm, user_idx, target_idx, item, res);
     }
@@ -1141,13 +1164,86 @@ bool CombatEngine::spendLuckForAdvantage(BattleMap& bm, int idx)
 {
     Agent::Stats s = bm.getAgentStats(idx);
     if (s.hp_max == 0 && s.hp_cur == 0) return false;  // invalid idx
-    if (!s.hasFeat("Lucky") || s.luck_points <= 0) return false;
-    s.luck_points -= 1;
+    if (s.hasFeat("Lucky") && s.luck_points > 0) {
+        s.luck_points -= 1;
+        bm.setAgentStats(idx, s);
+        grantPendingAdvantage(true, idx);   // consumed by idx's own next D20 Test, nobody else's
+        log_("{} spends a Luck Point for Advantage ({} remaining)",
+             agentName(bm, idx), s.luck_points);
+        return true;
+    }
+    // RAVENLOFT M6: a carried, switched-on item's Luck Point (the Luck Blade), spent the same way.
+    // Not while Incapacitated ("if you don't have the Incapacitated condition").
+    if (bm.getAgentConditions(idx).incapacitated) return false;
+    if (ItemSpells* is = itemLuckSource(bm, idx)) {
+        is->luck -= 1;
+        grantPendingAdvantage(true, idx);
+        log_("{} calls on an item's luck for Advantage ({} left today)", agentName(bm, idx), is->luck);
+        return true;
+    }
+    return false;
+}
+
+// RAVENLOFT M6: the first carried, switched-on item with a Luck Point left; nullptr if none.
+ItemSpells* CombatEngine::itemLuckSource(BattleMap& bm, int idx) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return nullptr;
+    PlacedAgent& pa = bm.placedAgentMut(idx);
+    auto ok = [](const std::string& name, const ItemSpells& is) {
+        return !name.empty() && is.attunedOrFree() && is.luck > 0;
+    };
+    for (auto& it : pa.items)   if (ok(it.name, it.item_spells)) return &it.item_spells;
+    for (auto& w  : pa.weapons) if (ok(w.name, w.item_spells))   return &w.item_spells;
+    for (auto& a  : pa.armor)   if (ok(a.name, a.item_spells))   return &a.item_spells;
+    return nullptr;
+}
+
+int CombatEngine::luckAvailable(const BattleMap& bm, int idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return 0;
+    const PlacedAgent& pa = agents[static_cast<std::size_t>(idx)];
+    const Agent::Stats& s = pa.agent->getStats();
+    int n = s.hasFeat("Lucky") ? std::max(0, s.luck_points) : 0;
+    auto add = [&](const std::string& name, const ItemSpells& is) {
+        if (!name.empty() && is.attunedOrFree()) n += std::max(0, is.luck);
+    };
+    for (const auto& it : pa.items)   add(it.name, it.item_spells);
+    for (const auto& w  : pa.weapons) add(w.name, w.item_spells);
+    for (const auto& a  : pa.armor)   add(a.name, a.item_spells);
+    return n;
+}
+
+// RAVENLOFT M10: a carried, switched-on item regains one expended spell slot (the highest level
+// with one missing; a Warlock's pact slot) once per long rest. The Magic action is the GUI's.
+int CombatEngine::regainSlotFromItem(BattleMap& bm, int idx) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return 0;
+    Agent::Stats s = bm.getAgentStats(idx);
+    int level = 0;
+    for (int i = static_cast<int>(s.spell_slots_max.size()) - 1; i >= 0; --i) {
+        const auto k = static_cast<std::size_t>(i);
+        if (s.spell_slots_remaining[k] < s.spell_slots_max[k]) { level = i + 1; break; }
+    }
+    if (level == 0) return 0;
+    PlacedAgent& pa = bm.placedAgentMut(idx);
+    ItemSpells* src = nullptr;
+    std::string src_name;
+    auto pick = [&](const std::string& name, ItemSpells& is) {
+        if (!src && !name.empty() && is.attunedOrFree() && is.slot_regain && !is.slot_regain_used) {
+            src = &is;
+            src_name = name;
+        }
+    };
+    for (auto& it : pa.items)   pick(it.name, it.item_spells);
+    for (auto& w  : pa.weapons) pick(w.name, w.item_spells);
+    for (auto& a  : pa.armor)   pick(a.name, a.item_spells);
+    if (!src) return 0;
+    src->slot_regain_used = true;
+    s.spell_slots_remaining[static_cast<std::size_t>(level - 1)] += 1;
     bm.setAgentStats(idx, s);
-    grantPendingAdvantage(true, idx);   // consumed by idx's own next D20 Test, nobody else's
-    log_("{} spends a Luck Point for Advantage ({} remaining)",
-         agentName(bm, idx), s.luck_points);
-    return true;
+    log_("{} regains a level {} spell slot from {}", agentName(bm, idx), level, src_name);
+    return level;
 }
 
 TerrainTickResult CombatEngine::tickTerrainForTurn(BattleMap& bm, int agent_idx)
@@ -1310,9 +1406,9 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
         {
             PlacedAgent& rpa = bm.placedAgentMut(agent_idx);
             for (auto& it : rpa.items)
-                if (!it.item_spells.empty() && it.type != Item::Scroll) it.item_spells.refill();
-            for (auto& w  : rpa.weapons) if (!w.item_spells.empty())  w.item_spells.refill();
-            for (auto& a  : rpa.armor)   if (!a.item_spells.empty())  a.item_spells.refill();
+                if (it.item_spells.magical() && it.type != Item::Scroll) it.item_spells.refill();
+            for (auto& w  : rpa.weapons) if (w.item_spells.magical()) w.item_spells.refill();
+            for (auto& a  : rpa.armor)   if (a.item_spells.magical()) a.item_spells.refill();
         }
 
         // Regenerate Portent Dice for Diviners
