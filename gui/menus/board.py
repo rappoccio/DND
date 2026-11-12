@@ -9,6 +9,8 @@ Four builders, one per thing a right-click can land on:
   · **a downed mob, in combat** — clear it off the board so a PC can take its square.
   · **an empty cell, with fog on** — reveal all fog, or reset it.
 
+The panel's FOG button menu (on/off, DM-screen opacity, reset) lives here too.
+
 A dropped item is the fifth target, and its menu is `dm.show_item_context_menu`.
 
 All four end in `_ask_dm`, for the same reason `dm.py`'s builders do: the owner is
@@ -443,6 +445,28 @@ def reset_fog(app):
     app._mark_fog_dirty()
     app._flash_status("Fog reset")
     app.session_log.add("The DM reset the fog of war.")
+
+
+FOG_OPACITIES = (100, 75, 50, 25)
+
+
+def show_fog_button_menu(app, pos):
+    """The panel's FOG button: turn fog on/off, set how opaque the DM's own screen draws
+    it, or reset it. Opacity is the DM console's only — the players' fog stays opaque."""
+    items = [("Fog: turn OFF" if app.show_fog else "Fog: turn ON",
+              lambda: app._set_fog(not app.show_fog)),
+             (f"Opacity: {app.fog_opacity}% ▸",
+              lambda: _fog_opacity_menu(app, pos, parent=app.prompts.answering)),
+             ("Reset fog…", lambda: confirm_reset_fog(app, pos))]
+    app._ask_dm("action", "Fog of war", items, anchor=pos)
+
+
+def _fog_opacity_menu(app, pos, parent=None):
+    """Opacity choices for the DM's fog overlay. Below 100% the DM can see through the
+    fog, so enemy tokens standing in it are drawn as well."""
+    items = [(("✓ " if pct == app.fog_opacity else "") + f"{pct}%",
+              lambda p=pct: app._set_fog_opacity(p)) for pct in FOG_OPACITIES]
+    app._ask_dm("action", "Fog opacity (DM screen)", items, anchor=pos, parent=parent)
 
 
 def confirm_reset_fog(app, pos):

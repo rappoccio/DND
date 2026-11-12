@@ -499,6 +499,7 @@ test_scripts = [
 
     # Secret doors, and Walls: ON / HIDDEN / OFF
     "test_secret_doors.py",
+    "test_fog_menu.py",
 ]
 
 def run_tests():

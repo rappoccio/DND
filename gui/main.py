@@ -847,9 +847,14 @@ class App:
         self._fog_dirty = True   # force one reveal on first frame
         # Render toggle for the grey "never seen" overlay + enemy-token hiding. Default
         # OFF so a freshly opened map (terrain authoring) isn't a wall of grey; the DM
-        # flips "Fog: ON" (btn_toggle_fog) when running a party through. Generate Dungeon
-        # turns it on for you (_set_fog) since a generated dungeon is meant to be explored.
+        # turns it on from the FOG button's menu (btn_fog) when running a party through.
+        # Generate Dungeon turns it on for you (_set_fog) since a generated dungeon is
+        # meant to be explored.
         self.show_fog = False
+        # How opaque the DM's own screen draws the fog, in percent (FOG button → Opacity).
+        # Below 100 the DM sees through it, enemy tokens in it included, to keep track of
+        # what is going on; the players' fog (net/mapimg.py) stays opaque regardless.
+        self.fog_opacity = 100
         # Ask before a save or a big operation writes over an existing file
         # (_confirm_overwrite). Off until run() starts the real loop, so a headless App —
         # every test — keeps writing at once.
@@ -1614,13 +1619,10 @@ class App:
                                        self._walls_label(),
                                        (90, 80, 110), (125, 110, 150), font=self.font_md)
         toggle_fog_y = toggle_walls_y + B + self._BTN_GAP
-        self.btn_toggle_fog = Button(pygame.Rect(px, toggle_fog_y, HW, B),
-                                     "Fog: ON" if self.show_fog else "Fog: OFF",
-                                     (70, 90, 105), (100, 125, 145), font=self.font_md)
-        # Re-fog the whole current floor (confirm first). Shares the fog row.
-        self.btn_reset_fog = Button(pygame.Rect(px + HW + 4, toggle_fog_y, HW, B),
-                                    "Reset Fog",
-                                    (70, 90, 105), (100, 125, 145), font=self.font_md)
+        # One FOG button; its menu turns fog on/off, sets the DM-screen opacity and
+        # resets the floor's fog (menus/board.py show_fog_button_menu).
+        self.btn_fog = Button(pygame.Rect(px, toggle_fog_y, W, B), self._fog_label(),
+                              (70, 90, 105), (100, 125, 145), font=self.font_md)
         toggle_anim_y = toggle_fog_y + B + self._BTN_GAP
         self.btn_toggle_animate = Button(pygame.Rect(px, toggle_anim_y, W, B),
                                          "Animate: ON" if self.animate_moves else "Animate: OFF",
@@ -1692,8 +1694,7 @@ class App:
         self.btn_generate_dungeon.rect.update(px, gen_y + off, W, B)
         self.btn_dungeon.rect.update(px, dung_y + off, W, B)
         self.btn_toggle_walls.rect.update(px, toggle_walls_y + off, W, B)
-        self.btn_toggle_fog.rect.update(px, toggle_fog_y + off, SW, B)
-        self.btn_reset_fog.rect.update(px + SW + 4, toggle_fog_y + off, SW, B)
+        self.btn_fog.rect.update(px, toggle_fog_y + off, W, B)
         self.btn_toggle_animate.rect.update(px, toggle_anim_y + off, W, B)
         self.btn_set_grid.rect.update(px, set_grid_y + off, W, B)
         self.btn_quit.rect.update(px, quit_y + off, W, B)
@@ -7213,7 +7214,7 @@ class App:
     def _door_visible(self, door) -> bool:
         """True when ``door`` is drawn: no fog, or the party has seen one of its cells
         (either side of an edge door). Same rule as _draw_doors."""
-        return not self._fog_active() or self._any_explored(
+        return not self._fog_conceals() or self._any_explored(
             [(c.col, c.row) for c in (door.cells or door_touch_cells(door))])
 
     def _edge_door_at_pos(self, pos):
@@ -17366,10 +17367,20 @@ class App:
         """Turn the fog-of-war render toggle on/off, keeping the button label in sync.
 
         Single entry point for anything that flips fog programmatically (Generate
-        Dungeon turns it on) as well as the btn_toggle_fog click handler."""
+        Dungeon turns it on) as well as the FOG button's menu."""
         self.show_fog = on
-        self.btn_toggle_fog.text = "Fog: ON" if on else "Fog: OFF"
+        self.btn_fog.text = self._fog_label()
         self._mark_fog_dirty()   # ensure the mask is current the moment fog turns on
+
+    def _set_fog_opacity(self, pct: int):
+        """Set how opaque the DM's screen draws the fog (percent). Players unaffected."""
+        self.fog_opacity = max(0, min(100, int(pct)))
+        self.btn_fog.text = self._fog_label()
+
+    def _fog_label(self) -> str:
+        if not self.show_fog:
+            return "Fog: OFF"
+        return "Fog: ON" if self.fog_opacity >= 100 else f"Fog: ON ({self.fog_opacity}%)"
 
     def _set_animate_moves(self, on: bool):
         """M4b B-7: switch move slides on/off, keeping the button label in sync. Read by
@@ -17531,12 +17542,18 @@ class App:
 
         Suppressed while a map-authoring modal (lighting / terrain editor) is open so
         the DM can see the whole map they're editing, and off entirely unless the DM
-        has toggled fog on (btn_toggle_fog). DM view (D1, `dm_view`) lifts it too: drawing
+        has toggled fog on (btn_fog). DM view (D1, `dm_view`) lifts it too: drawing
         only, never the reveal, which keys on `show_fog` and the explored mask."""
         return (self.show_fog
                 and not self.dm_view
                 and not self.lighting_editor.active
                 and not self.terrain_editor.active)
+
+    def _fog_conceals(self) -> bool:
+        """True when the DM screen's fog hides what is under it — tokens, doors, chests,
+        ladders, stairs. Translucent fog (FOG → Opacity below 100%) is drawn but conceals
+        nothing, since the DM is looking through it on purpose."""
+        return self._fog_active() and self.fog_opacity >= 100
 
     def _party_fog_active(self) -> bool:
         """True when the party's fog is up — the gate for anything that leaves the process.
@@ -17566,7 +17583,7 @@ class App:
         `party=True` is the net readers' form (D-M7-1): it ignores an open editor, which
         un-fogs only the DM's own screen.
         """
-        if not (self._party_fog_active() if party else self._fog_active()):
+        if not (self._party_fog_active() if party else self._fog_conceals()):
             return False
         agents = self.bm.placed_agents
         if idx < 0 or idx >= len(agents):
@@ -17631,7 +17648,8 @@ class App:
         cols = bm.grid_cols
         rows = bm.grid_rows
         fog_surf = pygame.Surface((self.map_rect.width, self.map_rect.height), pygame.SRCALPHA)
-        FOG_COL  = (0, 0, 0, 255)      # pure black, fully opaque (net/mapimg.py MASK_RGB)
+        # Pure black (net/mapimg.py MASK_RGB); opaque unless the DM turned it down.
+        FOG_COL  = (0, 0, 0, round(255 * self.fog_opacity / 100))
         Cell = rpg.Cell
         seen = []
         for r in range(rows):
@@ -18689,7 +18707,7 @@ class App:
         interactive objects, and a closed door is not part of the painted terrain regions.
         Under fog a door the party has never seen stays hidden: same rule as the player
         view (net/view.py), any door cell explored, or either side of an edge door."""
-        fog = self._fog_active()
+        fog = self._fog_conceals()
         for door in self.bm.doors:
             if fog and not self._any_explored(
                     [(c.col, c.row) for c in (door.cells or door_touch_cells(door))]):
@@ -18716,7 +18734,7 @@ class App:
         """Chests (plans/ITEMS_AND_CHESTS_PLAN.md I5), under the doors' fog rule. The DM
         console marks a live trap nobody has found with an amber ring, and a found one
         with the red "!" players see."""
-        fog = self._fog_active()
+        fog = self._fog_conceals()
         for ch in self.bm.chests:
             if fog and not self._any_explored([(ch.cell.col, ch.cell.row)]):
                 continue
@@ -18737,7 +18755,7 @@ class App:
         Like doors, ladders always draw (they are interactive objects). The arrow
         direction is derived from the target floor vs the active map's z_level."""
         z_here = int(getattr(self.bm, "z_level", 0) or 0)
-        fog = self._fog_active()
+        fog = self._fog_conceals()
         for lad in self._ladders:
             cells = lad["cells"]
             if fog and not self._any_explored((c[0], c[1]) for c in cells):
@@ -18757,7 +18775,7 @@ class App:
     def _staircase_cells_here(self):
         """The active page's staircase ends grouped by cell, fog applied the same way as
         ladders: ``{(col, row): [(staircase, end_index), ...]}``."""
-        fog = self._fog_active()
+        fog = self._fog_conceals()
         out = {}
         for st, i in self._staircase_ends_here():
             c = st.ends[i].cell
@@ -21010,9 +21028,8 @@ class App:
         # ── Toggle Wall Auto-Detection button ──────────────────────────────
         self.btn_toggle_walls.draw(self.screen)
 
-        # ── Toggle Fog of War button ───────────────────────────────────────
-        self.btn_toggle_fog.draw(self.screen)
-        self.btn_reset_fog.draw(self.screen)
+        # ── Fog of War button (menu) ───────────────────────────────────────
+        self.btn_fog.draw(self.screen)
 
         # ── Toggle move animation (M4b B-7) ────────────────────────────────
         self.btn_toggle_animate.draw(self.screen)
@@ -22011,13 +22028,9 @@ class App:
                     self._confirm_overwrite([self._terrain_path], "Toggle walls",
                                             self._toggle_walls, anchor=event.pos)
 
-                # Toggle Fog of War (grey never-seen cells + hide enemy tokens in them)
-                if _hit(self.btn_toggle_fog):
-                    self._set_fog(not self.show_fog)
-
-                # Reset Fog — re-fog the whole current floor (asks to confirm)
-                if _hit(self.btn_reset_fog):
-                    board.confirm_reset_fog(self, event.pos)
+                # FOG menu: on/off, DM-screen opacity, reset (asks to confirm)
+                if _hit(self.btn_fog):
+                    board.show_fog_button_menu(self, event.pos)
 
                 # Toggle move animation: off lands moves at once (M4b B-7)
                 if _hit(self.btn_toggle_animate):
