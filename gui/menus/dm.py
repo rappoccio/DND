@@ -196,6 +196,8 @@ def show_table_menu(app, anchor=None):
             app, anchor=anchor, parent=app.prompts.answering)),
         ("Reset Dungeon", lambda: run_control.ask_reset(
             app, anchor=anchor, parent=app.prompts.answering)),
+        ("Undo Reset", lambda: run_control.ask_undo_reset(
+            app, anchor=anchor, parent=app.prompts.answering)),
         (f"Save limit: {roster.save_limit} ▸", lambda: _save_limit_menu(app, anchor)),
         ("Session log…", lambda: _session_log_menu(app, anchor)),
         ("Load Playback…", lambda: playback.open_browser(app)),
@@ -414,6 +416,9 @@ def show_dungeon_menu(app):
                 app, anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y),
                 parent=app.prompts.answering)),
             ("Reset Dungeon",     lambda: run_control.ask_reset(
+                app, anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y),
+                parent=app.prompts.answering)),
+            ("Undo Reset",        lambda: run_control.ask_undo_reset(
                 app, anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y),
                 parent=app.prompts.answering)),
             ("Open Dungeon…",     app._dungeon_open_browser),

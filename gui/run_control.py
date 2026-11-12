@@ -5,7 +5,8 @@ reset puts back everything the release holds: the run, its effects and the desig
 edits made since the release are reverted too (D3, amended 2026-11-09; the replaced design
 goes to ``design_backups/``). Seats stay, and every seated player gets a fresh view (D4).
 A campaign dungeon opened with no release gets ``V0`` on the spot, so a reset always has
-somewhere to go (D11).
+somewhere to go (D11). Undo Reset puts back the newest reset's design backup and the board
+it saved first.
 """
 
 from __future__ import annotations
@@ -134,12 +135,12 @@ def reset_to(app, release) -> bool:
     # The way back from an accidental reset (D4): play state in a save, the design in a
     # backup folder. No save means no reset.
     try:
-        saves.write(app, saves.BEFORE_RESET)
+        saved = saves.write(app, saves.BEFORE_RESET)
     except (OSError, ValueError) as e:
         app._flash_status(f"Not reset: could not save the board first ({e})")
         return False
     try:
-        backup = releases.restore_design(store.layout, release)
+        backup = releases.restore_design(store.layout, release, save_seq=saved["seq"])
         app.dungeon = Dungeon.load(store.layout.manifest_path)
     except (OSError, ValueError, KeyError, TypeError) as e:
         app._flash_status(f"Not reset: could not restore the maps ({e})")
@@ -160,4 +161,66 @@ def reset_to(app, release) -> bool:
         app._flash_status(f"Reset to {release.name}. Blocked cell, not placed: {names}", 6.0)
     else:
         app._flash_status(f"Reset to {release.name}")
+    return True
+
+
+# ── Undo Reset ───────────────────────────────────────────────────────────────
+def ask_undo_reset(app, anchor=None, parent=None):
+    """Confirm, then undo the newest reset not yet undone."""
+    store = _store(app)
+    if store is None:
+        return
+    backup = releases.last_reset(store.layout)
+    if backup is None:
+        app._flash_status("No reset to undo.")
+        return
+    app._ask_dm("action", undo_warning(backup),
+                [("Undo Reset", lambda: undo_reset(app, backup)),
+                 ("Cancel", lambda: None)], anchor=anchor, parent=parent)
+
+
+def undo_warning(backup) -> str:
+    to = backup.info.get("release") or "a release"
+    return (f"Undo the reset to {to}? The maps and the board go back to how they were "
+            f"before it. Map edits made since are kept in design_backups/.")
+
+
+def undo_reset(app, backup) -> bool:
+    """Put back the design ``backup`` holds and the board its reset saved first. Returns True
+    when it did. The board now showing is saved first, as a reset saves it, and the design
+    now in place goes to a backup of its own, so the undo loses nothing either."""
+    store = _store(app)
+    if store is None:
+        return False
+    why = autosave.restore_blocked(app)
+    if why is not None:
+        app._flash_status(f"Not undone: {why}")
+        return False
+    # Looked up before the save below, which could take a deleted save's number.
+    seq = backup.info.get("save_seq")
+    directory = store.layout.saves_dir(store.run_name)
+    has_save = seq is not None and any(m["seq"] == seq and m.get("kind") == saves.BEFORE_RESET
+                                       for m in saves.list_saves(directory))
+    try:
+        now = saves.write(app, saves.BEFORE_UNDO)
+    except (OSError, ValueError) as e:
+        app._flash_status(f"Not undone: could not save the board first ({e})")
+        return False
+    try:
+        replaced = releases.undo_design(store.layout, backup)
+        app.dungeon = Dungeon.load(store.layout.manifest_path)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        app._flash_status(f"Not undone: could not restore the maps ({e})")
+        return False
+    print(f"Undid the reset from {backup.root}: the replaced design is in {replaced}")
+
+    # The reset's save is gone (deleted by hand): the board stays as it is, on the old maps.
+    if not saves.load(app, seq if has_save else now["seq"], reload_map=True):
+        return False                      # load has flashed why; the maps are back
+
+    app._combat_log_add("[UNDO RESET] maps and board from before the reset")
+    app._flush_combat_log()
+    app.session_log.add("The DM undid the dungeon reset.")
+    app._flash_status("Reset undone" if has_save
+                      else "Reset undone: maps restored (no board saved for it)")
     return True

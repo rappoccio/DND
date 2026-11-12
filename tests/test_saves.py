@@ -444,11 +444,12 @@ def test_panel_buttons():
         app = s.app
         app._reposition_panel()
         rows = (app.btn_table, app.btn_begin_combat, app.btn_terrain, app.btn_restore_autosave)
-        for btn in (app.btn_reset_dungeon, app.btn_load_save):
-            for other in rows:
+        mine = (app.btn_reset_dungeon, app.btn_undo_reset, app.btn_load_save)
+        for btn in mine:
+            for other in rows + tuple(b for b in mine if b is not btn):
                 assert not btn.rect.colliderect(other.rect), f"{btn.text} overlaps {other.text}"
-        assert not app.btn_reset_dungeon.rect.colliderect(app.btn_load_save.rect)
-        assert app.btn_reset_dungeon.rect.top == app.btn_load_save.rect.top
+        assert app.btn_reset_dungeon.rect.top == app.btn_undo_reset.rect.top
+        assert app.btn_load_save.rect.top > app.btn_reset_dungeon.rect.bottom
 
         _place(app, "Aria", 1, 1)
         release = run_control.make_release(app)
@@ -458,9 +459,13 @@ def test_panel_buttons():
         assert app.prompts.choose_label(f"Reset to {release.name}").ok
         assert _names(app) == ["Aria"]
 
+        post_click(app, app.btn_undo_reset.rect.center)
+        assert app.prompts.choose_label("Undo Reset").ok, app._status_msg
+        assert _names(app) == ["Aria", "Gnasher"]
+
         post_click(app, app.btn_load_save.rect.center)
         assert app.prompts.live.title == "Load Save File"
-    print("  ✅ the panel's Reset Dungeon and Load Save File… work")
+    print("  ✅ the panel's Reset Dungeon, Undo Reset and Load Save File… work")
 
 
 def test_table_rows():

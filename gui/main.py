@@ -1591,9 +1591,13 @@ class App:
         rd_y = rs_y + B + self._BTN_GAP
         self.btn_reset_dungeon = Button(pygame.Rect(px, rd_y, HW, B), "Reset Dungeon",
                                         (120, 75, 70), (160, 100, 95), font=self.font_md)
-        self.btn_load_save = Button(pygame.Rect(px + HW + 4, rd_y, HW, B), "Load Save File…",
+        # Undo Reset shares the row: the newest reset's maps and board back.
+        self.btn_undo_reset = Button(pygame.Rect(px + HW + 4, rd_y, HW, B), "Undo Reset",
+                                     (110, 90, 70), (150, 120, 95), font=self.font_md)
+        ls_y = rd_y + B + self._BTN_GAP
+        self.btn_load_save = Button(pygame.Rect(px, ls_y, W, B), "Load Save File…",
                                     (95, 95, 75), (130, 130, 100), font=self.font_md)
-        ter_y = rd_y + B + self._BTN_GAP
+        ter_y = ls_y + B + self._BTN_GAP
         self.btn_terrain = Button(pygame.Rect(px, ter_y, W, B), "Terrain…",
                                   (80, 100, 120), (110, 130, 160), font=self.font_md)
         light_y = ter_y + B + self._BTN_GAP
@@ -1653,7 +1657,8 @@ class App:
         bc_y           = b1            + B + G + 8
         rs_y           = bc_y          + B + G
         rd_y           = rs_y          + B + G
-        ter_y          = rd_y          + B + G
+        ls_y           = rd_y          + B + G
+        ter_y          = ls_y          + B + G
         light_y        = ter_y         + B + G
         gen_y          = light_y       + B + G
         dung_y         = gen_y         + B + G
@@ -1687,7 +1692,8 @@ class App:
         self.btn_restore_autosave.rect.update(px, rs_y + off, SW, B)
         self.btn_table.rect.update(px + SW + 4, rs_y + off, SW, B)
         self.btn_reset_dungeon.rect.update(px, rd_y + off, SW, B)
-        self.btn_load_save.rect.update(px + SW + 4, rd_y + off, SW, B)
+        self.btn_undo_reset.rect.update(px + SW + 4, rd_y + off, SW, B)
+        self.btn_load_save.rect.update(px, ls_y + off, W, B)
         self.btn_terrain.rect.update(px, ter_y + off, W, B)
         self.btn_lighting.rect.update(px, light_y + off, SW, B)
         self.btn_items.rect.update(px + SW + 4, light_y + off, SW, B)
@@ -21025,6 +21031,7 @@ class App:
         self.btn_restore_autosave.draw(self.screen)
         self.btn_table.draw(self.screen)
         self.btn_reset_dungeon.draw(self.screen)
+        self.btn_undo_reset.draw(self.screen)
         self.btn_load_save.draw(self.screen)
 
         # ── Terrain… / Lighting… grouped menus ─────────────────────────────
@@ -22024,6 +22031,10 @@ class App:
                 if _hit(self.btn_reset_dungeon):
                     run_control.ask_reset(self, anchor=(self.btn_reset_dungeon.rect.x,
                                                         self.btn_reset_dungeon.rect.y))
+
+                if _hit(self.btn_undo_reset):
+                    run_control.ask_undo_reset(self, anchor=(self.btn_undo_reset.rect.x,
+                                                             self.btn_undo_reset.rect.y))
 
                 if _hit(self.btn_load_save):
                     dm.show_load_save_menu(self)

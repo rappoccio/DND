@@ -40,6 +40,7 @@ INDEX_FILE = "index.jsonl"
 TURN = "turn"
 MANUAL = "manual"
 BEFORE_RESET = "before reset"
+BEFORE_UNDO = "before undo"           # Undo Reset's way back, as BEFORE_RESET is a reset's
 
 # What a mid-turn Save Game keeps of the turn: the panel's own copy of the action economy.
 # Half-finished picks are dropped. A turn save has these all fresh anyway.
@@ -296,11 +297,12 @@ def _write_effects(effects: dict, folder: str) -> None:
         atomic_write_json(os.path.join(folder, os.path.basename(name)), doc)
 
 
-def load(app, seq: int) -> bool:
+def load(app, seq: int, reload_map: bool = False) -> bool:
     """Load save ``seq`` of the run into ``app``. Returns True when the save's board is up,
     with its fight running if it had one. A refusal flashes its reason and changes nothing,
     short of a fight the engine refuses after the load, which leaves the save's board with
-    no fight (D7)."""
+    no fight (D7). ``reload_map`` re-reads the map from disk even when it is the one showing
+    (Undo Reset has just changed the design under it)."""
     if not isinstance(app.store, CampaignStore):
         app._flash_status("Only a campaign dungeon has save files.")
         return False
@@ -321,7 +323,7 @@ def load(app, seq: int) -> bool:
     with tempfile.TemporaryDirectory(prefix="rpg_save_") as tmp:
         effects = os.path.join(tmp, "effects")
         _write_effects(doc.get("effects") or {}, effects)
-        if not swap_run(app, doc["run"], effects, page):
+        if not swap_run(app, doc["run"], effects, page, reload_map=reload_map):
             return False
         resumed = False
         if combat is not None:
@@ -355,7 +357,8 @@ def label(meta: dict) -> str:
         text = f"Round {meta.get('round', 0) + 1} · {meta['actor']} · {when}"
     else:
         text = f"{meta.get('map', '?')} · {when}"
-    return f"{BEFORE_RESET} · {text}" if meta.get("kind") == BEFORE_RESET else text
+    kind = meta.get("kind")
+    return f"{kind} · {text}" if kind in (BEFORE_RESET, BEFORE_UNDO) else text
 
 
 def turn_label(meta: dict) -> str:

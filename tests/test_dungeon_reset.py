@@ -35,6 +35,7 @@ import releases
 import run_control
 import run_state as rs
 import save_layout as sl
+import saves
 from main import App
 from menus import dm
 from test_campaign_open import _campaign, _names, _open, _place, _run
@@ -181,6 +182,77 @@ def test_reset_reverts_map_edits():
         again = _open(s.dl.root)
         assert sorted(d.cell.col for d in again.bm.doors) == [4]
     print("  ✅ a reset reverts map edits and keeps them in design_backups/")
+
+
+def test_undo_reset():
+    with _Scene() as s:
+        app = s.app
+        r = _released_board(s)
+        path = s.dl.write_path("hall", sl.MAP_FILE)
+        root = os.path.join(s.dl.root, releases.DESIGN_BACKUPS_DIR)
+        # A backup from before Undo Reset existed has no backup.json and is never offered.
+        os.makedirs(os.path.join(root, "20000101-000000", sl.MAPS_DIR))
+        shutil.copyfile(s.dl.manifest_path,
+                        os.path.join(root, "20000101-000000", sl.DUNGEON_FILE))
+        run_control.ask_undo_reset(app)
+        assert app._status_msg == "No reset to undo."
+
+        app.bm.add_door(cells=[rpg.Cell(7, 2)])
+        app._save_terrain()
+        with open(path) as f:
+            edited = f.read()
+        app.dungeon.page_by_id("tower").ladders = [{"cells": [[1, 1]], "target": [0, 0, 0]}]
+        app._dungeon_save_manifest()
+        _place(app, "Gnasher", 8, 1)
+        assert run_control.reset_to(app, r), app._status_msg
+        assert _names(app) == ["Aria"]
+        with open(path) as f:
+            reset_map = f.read()
+
+        # Cancel changes nothing.
+        run_control.ask_undo_reset(app)
+        assert app.prompts.live.title == run_control.undo_warning(releases.last_reset(s.dl))
+        assert "V1" in app.prompts.live.title
+        assert app.prompts.choose_label("Cancel").ok
+        assert _names(app) == ["Aria"]
+
+        run_control.ask_undo_reset(app)
+        assert app.prompts.choose_label("Undo Reset").ok, app._status_msg
+        assert app._status_msg == "Reset undone", app._status_msg
+        assert _names(app) == ["Aria", "Gnasher"], "the board did not come back"
+        assert sorted(d.cell.col for d in app.bm.doors) == [4, 7], "the map edit did not"
+        with open(path) as f:
+            assert f.read() == edited, "map.json is not the edited one"
+        assert app.dungeon.page_by_id("tower").ladders, "dungeon.json is not the edited one"
+
+        # The reset's backup is spent; the design the undo replaced is kept as an undo's.
+        assert releases.last_reset(s.dl) is None
+        run_control.ask_undo_reset(app)
+        assert app._status_msg == "No reset to undo."
+        undos = []
+        for name in os.listdir(root):
+            try:
+                with open(os.path.join(root, name, releases.BACKUP_INFO)) as f:
+                    info = json.load(f)
+            except FileNotFoundError:
+                continue
+            if info["kind"] == releases.BACKUP_UNDO:
+                undos.append(name)
+        [undo] = undos
+        with open(os.path.join(root, undo, sl.MAPS_DIR, "hall", sl.MAP_FILE)) as f:
+            assert f.read() == reset_map, "the design the undo replaced was not kept"
+
+        # A reset whose save is gone undoes the maps and leaves the board.
+        assert run_control.reset_to(app, r), app._status_msg
+        backup = releases.last_reset(s.dl)
+        os.remove(saves._save_path(s.dl.saves_dir(app.store.run_name),
+                                   backup.info["save_seq"]))
+        _place(app, "Bat", 2, 2)
+        assert run_control.undo_reset(app, backup), app._status_msg
+        assert "no board saved" in app._status_msg, app._status_msg
+        assert _names(app) == ["Aria", "Bat"]
+        assert sorted(d.cell.col for d in app.bm.doors) == [4, 7]
+    print("  ✅ Undo Reset puts back the maps and the board, and keeps what it replaced")
 
 
 def test_reset_ends_a_fight_without_xp():
@@ -341,7 +413,7 @@ def test_menu_rows():
 def test_outside_a_campaign():
     app = App(TEST_MAP_PATH, seed=1)
     for act in (run_control.make_release, run_control.ask_reset,
-                run_control.show_releases_menu):
+                run_control.show_releases_menu, run_control.ask_undo_reset):
         app._status_msg = ""
         act(app)
         assert "campaign" in app._status_msg, act
@@ -351,7 +423,8 @@ def test_outside_a_campaign():
 def main():
     pygame.init()
     tests = [test_release_saves_the_board_and_refuses_a_fight, test_reset_restores_play_state,
-             test_reset_clears_fog, test_reset_reverts_map_edits, test_open_makes_v0,
+             test_reset_clears_fog, test_reset_reverts_map_edits, test_undo_reset,
+             test_open_makes_v0,
              test_reset_ends_a_fight_without_xp, test_reset_returns_to_the_released_map,
              test_empty_release_clears_the_board, test_refusals_change_nothing,
              test_blocked_creature_is_named, test_seats_stay_and_players_resync,

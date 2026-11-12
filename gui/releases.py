@@ -11,7 +11,8 @@
       start/effects/
 
 A reset puts a release's design back too (``restore_design``); the design it replaces is
-moved to ``<dungeon>/design_backups/<time>/``.
+moved to ``<dungeon>/design_backups/<time>/``, with a ``backup.json`` saying so. Undo Reset
+puts the newest such backup back (``undo_design``).
 
 **A release appears whole or not at all.** It is built in a hidden folder beside the others
 and renamed into place last, so a crash leaves nothing that lists as a release. Nothing here
@@ -39,6 +40,10 @@ RELEASE_VERSION = 1
 
 # Where a reset puts the design it replaces (``restore_design``).
 DESIGN_BACKUPS_DIR = "design_backups"
+# Each backup's record of what made it: a reset (Undo Reset's target) or an undo.
+BACKUP_INFO = "backup.json"
+BACKUP_RESET = "reset"
+BACKUP_UNDO = "undo"
 
 _NAME = re.compile(r"V(\d+)$")
 
@@ -166,10 +171,60 @@ def image(layout: "sl.DungeonLayout", release: Release, map_name: str) -> str | 
             or sl.find_image(layout.campaign.library_map_dir(map_name), map_name))
 
 
-def restore_design(layout: "sl.DungeonLayout", release: Release) -> str:
+def restore_design(layout: "sl.DungeonLayout", release: Release,
+                   save_seq: int | None = None) -> str:
     """Make ``release``'s design the dungeon's: its ``dungeon.json`` and ``maps/``. The design
     replaced is moved to ``design_backups/<time>/`` first, never deleted, so a reset cannot
-    destroy a map edit. Returns that folder. On failure the dungeon's design is unchanged."""
+    destroy a map edit. Returns that folder. On failure the dungeon's design is unchanged.
+    ``save_seq`` is the reset's before-reset save, recorded so Undo Reset can load it."""
+    return _swap_design(layout, release.manifest_path, release.maps_dir,
+                        {"kind": BACKUP_RESET, "release": release.name,
+                         "save_seq": save_seq, "undone": False})
+
+
+@dataclass(frozen=True)
+class DesignBackup:
+    """A ``design_backups/<time>/`` folder and its ``backup.json``."""
+    root: str
+    info: dict
+
+    @property
+    def name(self) -> str:
+        return os.path.basename(self.root)
+
+
+def last_reset(layout: "sl.DungeonLayout") -> DesignBackup | None:
+    """The newest reset's backup not yet undone, or None. Folders without a ``backup.json``
+    (made before Undo Reset existed) are never offered: nothing says what made them."""
+    root = os.path.join(layout.root, DESIGN_BACKUPS_DIR)
+    names = sorted(os.listdir(root), reverse=True) if os.path.isdir(root) else []
+    for name in names:
+        folder = os.path.join(root, name)
+        try:
+            with open(os.path.join(folder, BACKUP_INFO), encoding="utf-8") as f:
+                info = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if (isinstance(info, dict) and info.get("kind") == BACKUP_RESET
+                and not info.get("undone")
+                and os.path.isfile(os.path.join(folder, sl.DUNGEON_FILE))):
+            return DesignBackup(folder, info)
+    return None
+
+
+def undo_design(layout: "sl.DungeonLayout", backup: DesignBackup) -> str:
+    """Put ``backup``'s design back, the way ``restore_design`` puts a release's: the design
+    replaced goes to a backup of its own, so the undo can be undone by hand. ``backup`` is
+    marked undone. Returns the new backup folder."""
+    out = _swap_design(layout, os.path.join(backup.root, sl.DUNGEON_FILE),
+                       os.path.join(backup.root, sl.MAPS_DIR),
+                       {"kind": BACKUP_UNDO, "undoes": backup.name})
+    atomic_write_json(os.path.join(backup.root, BACKUP_INFO), {**backup.info, "undone": True})
+    return out
+
+
+def _swap_design(layout: "sl.DungeonLayout", manifest_src: str, maps_src: str,
+                 info: dict) -> str:
     root = os.path.join(layout.root, DESIGN_BACKUPS_DIR, time.strftime("%Y%m%d-%H%M%S"))
     backup, n = root, 1
     while os.path.exists(backup):
@@ -183,8 +238,11 @@ def restore_design(layout: "sl.DungeonLayout", release: Release) -> str:
     manifest_tmp = f"{layout.manifest_path}.restore.{os.getpid()}"
     moved = False
     try:
-        shutil.copytree(release.maps_dir, staged)
-        shutil.copyfile(release.manifest_path, manifest_tmp)
+        if os.path.isdir(maps_src):
+            shutil.copytree(maps_src, staged)
+        else:
+            os.makedirs(staged)       # a backup of a dungeon whose maps were all the library's
+        shutil.copyfile(manifest_src, manifest_tmp)
         if os.path.isdir(maps):
             os.rename(maps, old)
             moved = True
@@ -199,6 +257,8 @@ def restore_design(layout: "sl.DungeonLayout", release: Release) -> str:
         except OSError:
             pass
         raise
+    # Written last: a backup an interrupted swap left half-made is never offered to Undo.
+    atomic_write_json(os.path.join(backup, BACKUP_INFO), info)
     return backup
 
 
