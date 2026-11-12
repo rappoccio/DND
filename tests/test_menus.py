@@ -162,7 +162,7 @@ def test_board_menus_build_with_every_submenu():
             or o.label in ("Fiendish Resilience", "Spell Slots…")]
     assert "Fiendish Resilience" in subs, "the Fiend probe did not reach its submenu"
     assert "Spell Slots…" in subs, "the caster probe did not reach Spell Slots…"
-    assert len(subs) == 4, f"expected four submenus, found {subs}"
+    assert len(subs) == 5, f"expected five submenus, found {subs}"
     app.prompts.cancel()
 
     for label in subs:
@@ -448,6 +448,65 @@ def test_remove_downed_mobs_out_of_combat():
     print("✅ test_remove_downed_mobs_out_of_combat passed")
 
 
+def test_conditions_menu_toggles():
+    """Conditions ▸ toggles a 5e condition with a ✓ and reopens itself; Stunned brings
+    Incapacitated with it and takes it away again; Exhaustion sets a level. In combat a
+    right-click on a creature in the fight opens the same menu directly."""
+    app = _app()
+    pos = (100, 100)
+    cond = lambda: app.combat.get_agent_conditions(app.bm, 0)
+
+    board.show_agent_menu(app, 0, pos)
+    assert app.prompts.choose_label("Conditions ▸").ok, "no Conditions ▸ row"
+    menu = app.prompts.live
+    _assert_rows("Conditions ▸", menu)
+    labels = [o.label for o in menu.options]
+    assert labels[:len(board.DM_CONDITIONS)] == [lb for lb, _ in board.DM_CONDITIONS], labels
+    assert labels[-1] == "Exhaustion: 0 ▸", labels
+
+    assert app.prompts.choose_label("Prone").ok
+    assert cond().prone, "Prone did not toggle on"
+    assert "✓ Prone" in [o.label for o in app.prompts.live.options], "menu did not reopen ✓"
+    assert app.prompts.choose_label("✓ Prone").ok
+    assert not cond().prone, "Prone did not toggle off"
+
+    assert app.prompts.choose_label("Stunned").ok
+    assert cond().stunned and cond().incapacitated, "Stunned should bring Incapacitated"
+    assert app.prompts.choose_label("✓ Stunned").ok
+    assert not cond().stunned and not cond().incapacitated, "Incapacitated outlived Stunned"
+
+    assert app.prompts.choose_label("Unconscious").ok
+    assert cond().unconscious and cond().prone and cond().incapacitated
+    assert app.prompts.choose_label("✓ Unconscious").ok
+    assert cond().prone and not cond().incapacitated, "waking should leave it Prone only"
+
+    assert app.prompts.choose_label("Exhaustion: 0 ▸").ok
+    assert app.prompts.choose_label("2").ok
+    assert cond().exhaustion_level == 2, cond().exhaustion_level
+    assert "Exhaustion: 2 ▸" in [o.label for o in app.prompts.live.options]
+    app.prompts.cancel()
+
+    # In combat, a right-click on a live creature opens the conditions menu.
+    app = App(MAP_PATH, seed=SEED)
+    _build_scene(app)
+    app._start_combat()
+    app.combat.stop_recording()
+    _goto(app, "Aria")
+    skarn = _idx(app, "Skarn")
+    app.prompts.cancel()
+    pt = app.bm.placed_agents[skarn]
+    sx, sy = app._cell_to_screen(pt.origin.col, pt.origin.row)
+    half = int(app.bm.cell_pixel_size * app.map_scale) // 2
+    post_click(app, (sx + half, sy + half), button=3)
+    p = app.prompts.live
+    assert p is not None and "Invisible" in [o.label for o in p.options], \
+        "right-clicking Skarn in combat did not open the conditions menu"
+    assert app.prompts.choose_label("Invisible").ok
+    assert app.combat.get_agent_conditions(app.bm, skarn).invisible
+    app.prompts.cancel()
+    print("✅ test_conditions_menu_toggles passed")
+
+
 def test_the_seam_did_not_move():
     """`_ask_actor` and `_ask_dm` stay on `App`: they hold the owner defaulting and the
     anchor, which is where authorization lives. Every relocated builder reaches them
@@ -470,6 +529,7 @@ def main():
              test_every_solo_builder_builds_its_prompt,
              test_board_menus_build_with_every_submenu,
              test_spell_slots_menu_sets_remaining,
+             test_conditions_menu_toggles,
              test_panel_feature_menus_build_choose_and_cancel,
              test_on_deck_row_deploys_its_group_on_click,
              test_clear_mob_frees_a_downed_foes_square,

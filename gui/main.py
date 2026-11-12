@@ -21692,6 +21692,20 @@ class App:
                             and not self.bm.is_agent_removed_from_play(hit):
                         board.show_on_deck_recall_menu(self, hit, event.pos)
 
+            # During combat, right-click a creature in the fight → the DM's condition toggles
+            # (Prone, Invisible, …). The full agent menu is out of combat only; a downed mob
+            # gets Clear mob below instead.
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 3 and on_map \
+                    and self.combat_active and not self.context_menu.visible \
+                    and not self._target_pick_armed():
+                cell = self._screen_to_cell(*event.pos)
+                if cell is not None:
+                    hit = self._agent_at(cell)
+                    if hit >= 0 and not self.bm.is_agent_on_deck(hit) \
+                            and not self.bm.is_agent_removed_from_play(hit) \
+                            and not self._mob_clearable(hit):
+                        board.show_conditions_menu(self, hit, event.pos)
+
             # During combat, right-click a downed mob (0 HP, dying or a corpse) → Clear mob,
             # so a PC can take its square. A corpse is skipped by _agent_at, and a live
             # creature may stand on one, so fall back to the body under the cursor.

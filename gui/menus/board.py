@@ -1,19 +1,20 @@
 """The right-click menus on the board — what the DM gets by right-clicking the map.
 
-Four builders, one per thing a right-click can land on:
+Five builders, one per thing a right-click can land on:
 
   · **a placed agent, out of combat** — the DM menu: edit the token's name, sprite,
     stats, gear and spells, its teams and On Deck state, the Evoker and Fiend extras,
-    and two submenus (NPC automation, and who controls the token).
+    and three submenus (NPC automation, who controls the token, and its conditions).
   · **an On Deck reserve, in combat** — recall just that one mob.
+  · **a creature in the fight, in combat** — toggle its conditions (Prone, Invisible, …).
   · **a downed mob, in combat** — clear it off the board so a PC can take its square.
   · **an empty cell, with fog on** — reveal all fog, or reset it.
 
 The panel's FOG button menu (on/off, DM-screen opacity, reset) lives here too.
 
-A dropped item is the fifth target, and its menu is `dm.show_item_context_menu`.
+A dropped item is the sixth target, and its menu is `dm.show_item_context_menu`.
 
-All four end in `_ask_dm`, for the same reason `dm.py`'s builders do: the owner is
+All five end in `_ask_dm`, for the same reason `dm.py`'s builders do: the owner is
 pinned to the DM, never derived from whoever holds the token, so seating a player on a
 creature cannot hand them its authoring menu.
 
@@ -381,6 +382,9 @@ def show_agent_menu(app, hit, pos):
                      _opts, anchor=pos, actor_idx=h,
                      parent=app.prompts.answering)
     _menu_opts.append(("Controller ▸", _controller_menu))
+    _menu_opts.append(("Conditions ▸",
+                       lambda h=hit, p=pos: show_conditions_menu(
+                           app, h, p, parent=app.prompts.answering)))
     if app._mob_clearable(hit):   # a mob at 0 HP that isn't a corpse yet
         _menu_opts.append((f"Remove '{pt.name}'", lambda h=hit: app._remove_downed_mob(h)))
     app._ask_dm("action", f"{app._agent_name(hit)} — DM menu",
@@ -397,6 +401,81 @@ def show_on_deck_recall_menu(app, hit, pos):
     app._ask_dm("action", f"{nm}: On Deck reserve",
                  [(f"Recall '{nm}' from On Deck", _recall_one)],
                  anchor=pos, actor_idx=hit)
+
+
+# The 5e conditions the DM can toggle by hand, as (label, Conditions flag). Exhaustion is
+# a level, not a flag, and gets its own submenu.
+DM_CONDITIONS = [("Blinded", "blinded"), ("Charmed", "charmed"), ("Deafened", "deafened"),
+                 ("Frightened", "frightened"), ("Grappled", "grappled"),
+                 ("Incapacitated", "incapacitated"), ("Invisible", "invisible"),
+                 ("Paralyzed", "paralyzed"), ("Petrified", "petrified"),
+                 ("Poisoned", "poisoned"), ("Prone", "prone"), ("Restrained", "restrained"),
+                 ("Stunned", "stunned"), ("Unconscious", "unconscious")]
+
+# The conditions that carry Incapacitated with them (PHB 2024). Incapacitated is set with
+# any of them and cleared only once none is left, unless the DM toggles it directly.
+_INCAPACITATING = ("paralyzed", "petrified", "stunned", "unconscious")
+
+
+def toggle_condition(app, idx, flag):
+    """Flip one condition flag on `idx`, with the side effects the rules tie to it, and log
+    it. Returns the new state."""
+    c = app.combat.get_agent_conditions(app.bm, idx)
+    on = not getattr(c, flag)
+    setattr(c, flag, on)
+    if flag in _INCAPACITATING:
+        if on:
+            c.incapacitated = True
+        elif not any(getattr(c, f) for f in _INCAPACITATING):
+            c.incapacitated = False
+    if flag == "unconscious" and on:
+        c.prone = True                  # falls Prone; waking up leaves it Prone
+    if not on:
+        # Clear the bookkeeping that hangs off a condition, so a stale source can't linger.
+        if flag == "grappled":
+            c.grappler_idx = -1
+        elif flag == "charmed":
+            c.charmed_by = -1
+        elif flag == "restrained":
+            c.netted = False
+        elif flag == "invisible":
+            c.invisible_persists_on_action = False
+    app.combat.set_agent_conditions(app.bm, idx, c)
+    label = next(lb for lb, f in DM_CONDITIONS if f == flag)
+    app._combat_log_add(f"DM: {app._agent_name(idx)} is {'now' if on else 'no longer'} "
+                        f"{label}.")
+    return on
+
+
+def show_conditions_menu(app, hit, pos, parent=None):
+    """The DM's condition toggles for agent `hit`: one ✓ row per 5e condition, plus the
+    exhaustion level. Toggling a row reopens the menu, so several can be set in a row;
+    Esc or a click outside closes it."""
+    c = app.combat.get_agent_conditions(app.bm, hit)
+
+    def _toggle(flag, h=hit, p=pos):
+        toggle_condition(app, h, flag)
+        show_conditions_menu(app, h, p)
+
+    def _exhaustion_menu(h=hit, p=pos):
+        cur = app.combat.get_agent_conditions(app.bm, h).exhaustion_level
+
+        def _set(n, hh=h):
+            cc = app.combat.get_agent_conditions(app.bm, hh)
+            cc.exhaustion_level = n
+            app.combat.set_agent_conditions(app.bm, hh, cc)
+            app._combat_log_add(f"DM: {app._agent_name(hh)} exhaustion set to {n}.")
+            show_conditions_menu(app, hh, p)
+        opts = [(("✓ " if n == cur else "") + str(n), (lambda nn=n: _set(nn)))
+                for n in range(7)]
+        app._ask_dm("action", f"{app._agent_name(h)}: exhaustion", opts,
+                     anchor=p, actor_idx=h, parent=app.prompts.answering)
+
+    opts = [(("✓ " if getattr(c, flag) else "") + label, (lambda f=flag: _toggle(f)))
+            for label, flag in DM_CONDITIONS]
+    opts.append((f"Exhaustion: {c.exhaustion_level} ▸", _exhaustion_menu))
+    app._ask_dm("action", f"{app._agent_name(hit)}: conditions", opts,
+                 anchor=pos, actor_idx=hit, parent=parent)
 
 
 def show_clear_mob_menu(app, hit, pos):
