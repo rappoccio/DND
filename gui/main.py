@@ -17927,8 +17927,11 @@ class App:
         if self._agent_fogged(idx, pt):
             return
         # Concealed automated NPC (Hidden/unpierced Invisible): no name tooltip either,
-        # or hovering the empty-looking cell would betray the ambush.
-        if self._npc_concealed_from_party(idx, pt):
+        # or hovering the empty-looking cell would betray the ambush. An Invisible one is
+        # drawn translucent for the DM (see _draw_agents), so it keeps its name there.
+        if (self._npc_concealed_from_party(idx, pt)
+                and (not pt.conditions.invisible
+                     or (self.tracker_mode and not self.dm_view))):
             return
 
         label = self.font_md.render(pt.name, True, (240, 240, 240))
@@ -18181,10 +18184,12 @@ class App:
                 pygame.draw.line(hatch, col, (offset + size_px, 0), (offset, size_px), 2)
             self.screen.blit(hatch, (screen_x, screen_y))
 
-        # HP bar (skip translucent previews, e.g. movement ghosts). Tracker mode's table
-        # view shows party HP only (D1).
-        if alpha == 255 and not (self.tracker_mode and not self.dm_view
-                                 and pt.faction != PC_FACTION):
+        # HP bar (skip translucent previews, e.g. movement ghosts; an Invisible token is
+        # translucent but real, so it keeps its bar). Tracker mode's table view shows
+        # party HP only (D1).
+        if ((alpha == 255 or (agent_idx >= 0 and pt.conditions.invisible))
+                and not (self.tracker_mode and not self.dm_view
+                         and pt.faction != PC_FACTION)):
             self._draw_hp_bar(screen_x, screen_y, size_px, pt.stats, hp_override=hp_override)
 
         # Name is shown on hover (see _draw_agent_hover_name), not painted on the token.
@@ -18329,6 +18334,8 @@ class App:
 
         if pt.conditions.prone:
             cond_labels.append(("Prone", (230, 200, 120)))
+        if pt.conditions.invisible:
+            cond_labels.append(("Invisible", (200, 220, 255)))
         if agent_idx >= 0 and self._is_disarmed(agent_idx, pt):
             cond_labels.append(("Disarmed", (230, 120, 120)))
 
@@ -19204,9 +19211,14 @@ class App:
             # Concealment: an automated enemy that is Hidden or Invisible (and not
             # pierced by any party member's senses) is not drawn at all. It reappears
             # through the usual mechanics — detection/attacking clears Hidden, and
-            # Truesight/Blindsight pierce Invisible.
-            if self._npc_concealed_from_party(i, pt):
+            # Truesight/Blindsight pierce Invisible. The DM still sees an Invisible token,
+            # translucent and labeled — except on tracker mode's table view, which the
+            # players are looking at.
+            table_view = self.tracker_mode and not self.dm_view
+            if (self._npc_concealed_from_party(i, pt)
+                    and (table_view or not pt.conditions.invisible)):
                 continue
+            invisible = pt.conditions.invisible and not table_view
             # NPC turn playback: draw at the animated display position (a token mid-slide,
             # or frozen at its pre-turn cell until its Move event plays).
             apos = self._npc_anim_display_pos(i)
@@ -19217,7 +19229,8 @@ class App:
             # On-deck reserves are still drawn (the DM placed them), but dimmed with an
             # "ON DECK" badge so it's clear they aren't in the initiative yet.
             on_deck = self.bm.is_agent_on_deck(i)
-            self._draw_one_agent(pt, sx, sy, cpx, alpha=110 if on_deck else 255, agent_idx=i)
+            alpha = 110 if on_deck else (128 if invisible else 255)
+            self._draw_one_agent(pt, sx, sy, cpx, alpha=alpha, agent_idx=i)
             if on_deck:
                 size_px = cpx * pt.size
                 badge = self.font_sm.render("ON DECK", True, (255, 235, 150))
