@@ -194,7 +194,7 @@ UseItemResult CombatEngine::useItem(BattleMap& bm, int user_idx, int item_slot, 
             c.save_dc           = 0;
             c.save_repeat_turns = item.applies_condition_turns + 1;
             c.next_save_turn    = item.applies_condition_turns + 1;
-            addAgentCondition(bm, c);
+            (void)addAgentCondition(bm, c);
             log_("{} is {} ({}).", agentName(bm, target_idx), item.applies_condition, item.name);
         }
     } else if (item.type == Item::Thrown) {

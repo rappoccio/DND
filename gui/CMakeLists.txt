@@ -9,7 +9,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(OpenCV 4 REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 
-# pybind11 – fetched automatically so no manual install is needed
+# pybind11 – installed in the rpg_map image (pip "pybind11[global]"); fetched as a
+# fallback when the image predates that. v3 needs CMake ≥ 3.15, which retires the
+# "compatibility with CMake < 3.10" deprecation warning v2.13 triggered.
+find_package(pybind11 3.0 CONFIG QUIET)
 include(FetchContent)
 # Once populated, skip re-checking these deps for updates on every reconfigure. Without
 # this, `cmake -S ...` re-fetches/re-checks-out pybind11 + nlohmann_json on EVERY run
@@ -17,19 +20,22 @@ include(FetchContent)
 # content is unchanged — which makes the build think every header changed and forces a
 # full rebuild every time, regardless of what actually changed in the project.
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
-FetchContent_Declare(
-    pybind11
-    GIT_REPOSITORY https://github.com/pybind/pybind11.git
-    GIT_TAG        v2.13.1
-    GIT_SHALLOW    TRUE
-)
+if(NOT pybind11_FOUND)
+    FetchContent_Declare(
+        pybind11
+        GIT_REPOSITORY https://github.com/pybind/pybind11.git
+        GIT_TAG        v3.0.1
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(pybind11)
+endif()
 FetchContent_Declare(
     nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
     GIT_TAG        v3.11.3
     GIT_SHALLOW    TRUE
 )
-FetchContent_MakeAvailable(pybind11 nlohmann_json)
+FetchContent_MakeAvailable(nlohmann_json)
 
 # ── Python extension module ───────────────────────────────────────────────────
 pybind11_add_module(rpg_battle_map
