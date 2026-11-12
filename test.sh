@@ -10,10 +10,6 @@ CONTAINER_DIR="/home/user${SCRIPT_DIR#$HOME}"
 
 echo "[*] Building extension module and running tests..."
 docker run --rm -v "$HOME":/home/user rpg_map \
-  -c "cd '$CONTAINER_DIR' && \
-           cmake -S ./gui -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && \
-           cmake --build build --parallel && \
-           cmake --install build && \
-           python3 tests/run_all_tests.py"
+  -c "cd '$CONTAINER_DIR' && ./compile.sh && python3 tests/run_all_tests.py"
 
 echo "[+] All tests passed!"

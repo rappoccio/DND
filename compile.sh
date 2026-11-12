@@ -29,5 +29,19 @@ if [ -f "$BUILD_DIR/CMakeCache.txt" ]; then
 fi
 
 cmake -S ./gui -B "$BUILD_DIR" -G "$GENERATOR" -DCMAKE_BUILD_TYPE=Release
-cmake --build "$BUILD_DIR" --parallel
+# Cap parallel jobs by memory, not cores: the pybind11 binding TUs need >1 GB each, and
+# one job per core (18 on the Docker VM, with ~8 GB) gets cc1plus OOM-killed.
+# Override with JOBS=N.
+if [ -z "${JOBS:-}" ]; then
+  cores=$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+  mem_mb=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)
+  JOBS=$cores
+  if [ "$mem_mb" -gt 0 ]; then
+    by_mem=$(( mem_mb / 1536 ))
+    [ "$by_mem" -lt 1 ] && by_mem=1
+    [ "$by_mem" -lt "$JOBS" ] && JOBS=$by_mem
+  fi
+fi
+echo "compile.sh: building with $JOBS parallel jobs"
+cmake --build "$BUILD_DIR" --parallel "$JOBS"
 cmake --install "$BUILD_DIR"

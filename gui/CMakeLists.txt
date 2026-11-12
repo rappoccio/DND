@@ -12,6 +12,7 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
 # pybind11 – installed in the rpg_map image (pip "pybind11[global]"); fetched as a
 # fallback when the image predates that. v3 needs CMake ≥ 3.15, which retires the
 # "compatibility with CMake < 3.10" deprecation warning v2.13 triggered.
+set(PYBIND11_FINDPYTHON ON)   # use FindPython, not the removed FindPythonLibs (CMP0148)
 find_package(pybind11 3.0 CONFIG QUIET)
 include(FetchContent)
 # Once populated, skip re-checking these deps for updates on every reconfigure. Without
