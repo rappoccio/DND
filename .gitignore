@@ -1,8 +1,8 @@
-gui/__pycache__
-gui/net/__pycache__
-tests/__pycache__
+*/__pycache__
+*/*/__pycache__
 build
 build/*
+build_docs
 combat_log.txt
 *~
 *.so
@@ -11,6 +11,8 @@ combat_log.txt
 .claude
 .obsidian
 tools/__pycache__
+replay_log.txt
+.tmp_claude/
 
 # Multiplayer session rosters (MULTIPLAYER_PLAN.md M0): table metadata — who is seated
 # and the join code — not scene data, and never shared with an encounter.
