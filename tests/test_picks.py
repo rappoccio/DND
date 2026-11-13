@@ -1568,6 +1568,31 @@ def test_twinned_from_the_offer_makes_two_picks():
     print("✅ test_twinned_from_the_offer_makes_two_picks")
 
 
+def test_bless_refuses_the_same_creature_twice():
+    """Live play 2026-11-13: three taps on one creature blessed it three times. A
+    multi-target spell takes each creature once; Magic Missile's darts may repeat."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Cleric, 5, ["Bless"])
+    _choose(app, kira, "spell_action")
+    _answer(app, kira, "Bless")                             # the slot level
+    _until_pick(app, kira)
+    _tap(app, kira, _pos(app, aria))
+    _tap(app, kira, _pos(app, aria))
+    assert app.pending_spell_targets == [aria], app.pending_spell_targets
+    assert app.pending_spell_slot != "", "a refused repeat must keep the cast armed"
+    assert _pick(app) is not None, "the pick must be posted again after a refused repeat"
+
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Wizard, 5, ["Magic Missile"])
+    _choose(app, kira, "spell_action")
+    _answer(app, kira, "Magic Missile")
+    _until_pick(app, kira)
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    _tap(app, kira, _pos(app, _idx(app, "Skarn")))
+    assert app.pending_spell_targets == [_idx(app, "Skarn")] * 2, app.pending_spell_targets
+    print("✅ test_bless_refuses_the_same_creature_twice")
+
+
 def test_beguiling_rides_on_a_players_spell():
     """A Glamour Bard's slot-fueled Command offers Beguiling Magic to Kira. Accepting arms
     the rider, and its pick is hers, not the DM's: it is wired because her own spell arms it."""
@@ -1978,6 +2003,7 @@ if __name__ == "__main__":
         test_a_long_jump_picked_over_the_bus()
         test_lay_on_hands_on_a_full_hp_creature_keeps_the_pick()
         test_rally_picked_over_the_bus()
+        test_bless_refuses_the_same_creature_twice()
         test_misty_escape_picked_over_the_bus()
         test_shadow_step_picked_over_the_bus()
         test_elemental_burst_picked_over_the_bus()

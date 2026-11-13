@@ -2434,6 +2434,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
                         cond.save_repeat_turns = -1;
                         cond.next_save_turn    = -1;
                     }
+                    // A Help spell's condition is a buff (Blessed, Aided, …): nobody saves to throw it
+                    // off. The default cadence gave each target a per-turn save that ended Bless one
+                    // creature at a time and then dropped the caster's concentration (live play
+                    // 2026-11-13).
+                    if (sp.type == Spell::Help) {
+                        cond.save_repeat_turns = -1;
+                        cond.next_save_turn    = -1;
+                    }
 
                     if (spell_cond.curse_kind == 3) {
                         // Curse of Affliction: Blinded (choice 0/default), Deafened (1), or Both (2).

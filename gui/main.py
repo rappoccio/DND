@@ -119,6 +119,8 @@ REACTION_TIMEOUT_DEFAULT_S = 60
 # Room flood cap for waking On Deck enemies on drawn maps (matches the DM's Reveal this room).
 _ROOM_FLOOD_CAP = 4000
 REACTION_TIMEOUT_CHOICES_S = (15, 30, 60, 120, None)
+# Multi-target spells whose darts / rays / beams may each pick the same creature again.
+_REPEAT_TARGET_SPELLS = frozenset({"Magic Missile", "Scorching Ray", "Eldritch Blast"})
 
 # S3 (M2b): §4's three rows, as the only place row membership is written down. The
 # ActionMenu builds the Action group in column order; these say where each row breaks.
@@ -13492,6 +13494,14 @@ class App:
 
         status = self.combat.begin_cast(self.bm, action)
         self._flush_combat_log()
+            # Only darts, rays and beams may land on one creature more than once; every other
+            # multi-target spell (Bless, Bane, Hold Person, a Twinned spell, …) needs distinct ones.
+            if (target_idx in self.pending_spell_targets
+                    and sp.name not in _REPEAT_TARGET_SPELLS):
+                self._combat_log_add(
+                    f"{self.bm.placed_agents[target_idx].name} is already a target of "
+                    f"{sp.name} — choose a different creature.")
+                return
         if status == rpg.FlowStatus.AwaitingDecision:
             self._show_pending_reaction_menu()
         else:

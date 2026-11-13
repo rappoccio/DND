@@ -176,8 +176,64 @@ def test_upcast_adds_fourth_target():
     print("✅ test_upcast_adds_fourth_target passed")
 
 
+def test_bless_survives_turn_starts():
+    """Live play 2026-11-13: each Blessed creature rolled a DEX save at the start of its turn,
+    a success ended Bless on it, and once all had saved the caster's concentration dropped. A
+    buff gives no such save: Bless and concentration hold through many turn starts."""
+    bm, engine = setup_battle_map(), setup_combat_engine()
+    caster = _place(engine, bm, "Cleric", 5, 5)
+    targets = [_place(engine, bm, f"Ally{i}", 6 + i, 5) for i in range(3)]
+    _make_caster(engine, bm, caster)
+    engine.set_agent_spells(bm, caster, [_make_bless()])
+
+    action = rpg.SpellAction()
+    action.caster_idx = caster
+    action.spell_idx = 0
+    action.slot_level = 1
+    action.target_indices = targets
+    engine.execute_spell(bm, action)
+
+    for _ in range(8):
+        for idx in targets + [caster]:
+            engine.begin_turn(bm, idx)
+    blessed = [c.agent_idx for c in engine.active_agent_conditions if c.condition_name == "Blessed"]
+    assert sorted(blessed) == sorted(targets), blessed
+    for idx in targets:
+        assert engine.get_agent_stats(bm, idx).blessed, f"target {idx} lost Bless at a turn start"
+    assert engine.get_agent_conditions(bm, caster).concentrating, "caster lost concentration"
+    print("✅ test_bless_survives_turn_starts passed")
+
+
+def test_a_turn_start_save_that_ends_blessed_clears_the_flag():
+    """beginTurn wrote back a Stats copy taken before its condition saves, so a save that
+    ended Blessed (clearing `blessed`) was undone and the +1d4 lingered with no condition."""
+    bm, engine = setup_battle_map(), setup_combat_engine()
+    caster = _place(engine, bm, "Cleric", 5, 5)
+    ally = _place(engine, bm, "Ally", 6, 5)
+    s = engine.get_agent_stats(bm, ally)
+    s.blessed = True
+    engine.set_agent_stats(bm, ally, s)
+
+    cond = rpg.ActiveAgentCondition()
+    cond.agent_idx = ally
+    cond.caster_idx = caster
+    cond.condition_name = "Blessed"
+    cond.turns_remaining = 10
+    cond.save_dc = 1              # any roll saves
+    cond.save_repeat_turns = 1
+    cond.next_save_turn = 0
+    engine.add_agent_condition(bm, cond)
+
+    engine.begin_turn(bm, ally)
+    assert not any(c.condition_name == "Blessed" for c in engine.active_agent_conditions)
+    assert not engine.get_agent_stats(bm, ally).blessed, "the stale Stats copy revived `blessed`"
+    print("✅ test_a_turn_start_save_that_ends_blessed_clears_the_flag passed")
+
+
 def run_all():
     test_three_targets_blessed()
+    test_bless_survives_turn_starts()
+    test_a_turn_start_save_that_ends_blessed_clears_the_flag()
     test_save_gains_1d4()
     test_attack_gains_1d4()
     test_buff_dies_with_concentration()

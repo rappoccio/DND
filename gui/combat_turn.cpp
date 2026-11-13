@@ -894,12 +894,12 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
             cond.concentrating = false;
             cond.concentrating_on = "";
             bm.setAgentConditions(agent_idx, cond);
-            log_("Concentration on {} dropped: no living targets remaining", cond.concentrating_on);
         }
     }
 
     // Check for incapacitating conditions first (Paralyzed, Incapacitated, Stunned)
     // These always cause a turn skip unless the agent succeeds on a save
+            log_("Concentration on {} dropped: no living targets remaining", cond.concentrating_on);
     for (auto& active_cond : conditions_.mutableAll()) {
         if (active_cond.agent_idx != agent_idx) continue;
         if (active_cond.condition_name != "Paralyzed" &&
@@ -1116,8 +1116,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Reset per-turn conditions
     agent.agent->turn();
 
-    // Reset leveled spell cast flag
-    auto new_stats = stats;
+    // Reset leveled spell cast flag. Re-read: `stats` predates the condition saves above, and a
+    // save that ends Blessed clears `blessed` on the map — writing the old copy back revived it.
+    auto new_stats = bm.getAgentStats(agent_idx);
     new_stats.resetLeveledSpellCastFlag();
     // Legendary Actions: a creature regains all of its legendary actions at the start of its turn.
     if (new_stats.has_legendary_actions)
