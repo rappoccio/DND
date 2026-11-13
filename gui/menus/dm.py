@@ -621,7 +621,8 @@ def show_ladder_menu(app, cell, pos):
 def show_staircase_menu(app, cell, pos):
     """Context menu for a staircase end: Ascend / Descend for every staircase ending on
     ``cell`` (a shared landing offers both, D2). Same actor, adjacency and combat rules
-    as show_ladder_menu; an unfinished staircase offers nothing."""
+    as show_ladder_menu; an unfinished staircase offers nothing. Out of combat each
+    staircase also offers a "Party:" row that carries every party token at once."""
     ends = app._staircases_at(cell)
     if not ends:
         return
@@ -638,6 +639,13 @@ def show_staircase_menu(app, cell, pos):
         label = app._staircase_option_label(st, i)
         if label is not None:
             options.append((label, lambda a=actor, s=st.id, e=i: app._use_staircase(s, e, a)))
+    if not app.combat_active:                      # a page change is refused in combat anyway
+        for st, i in ends:
+            label = app._staircase_option_label(st, i)
+            if label is not None:
+                options.append((f"Party: {label}",
+                                lambda a=actor, s=st.id, e=i: app._use_staircase(s, e, a,
+                                                                                 party=True)))
     if not options:
         app._flash_status(", ".join(st.name for st, _ in ends) + " is unfinished.")
         return

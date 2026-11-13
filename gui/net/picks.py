@@ -93,6 +93,11 @@ def cancel_path_to_the_grave(app) -> None:
     app._combat_log_add("Path to the Grave cancelled.")
 
 
+def cancel_move_hunters_mark(app) -> None:
+    app.pending_move_hunters_mark = False
+    app._combat_log_add("Move Hunter's Mark cancelled.")
+
+
 def cancel_inspiring_smite(app) -> None:
     app.pending_inspiring_smite = False
     app._combat_log_add("Inspiring Smite cancelled.")
@@ -411,6 +416,8 @@ ARMS: tuple[Arm, ...] = (
         cancel_vow_of_enmity),
     Arm("pending_path_to_the_grave", False, TARGET, _t("Path to the Grave: choose a creature"),
         cancel_path_to_the_grave),
+    Arm("pending_move_hunters_mark", False, TARGET, _t("Move Hunter's Mark: choose a creature"),
+        cancel_move_hunters_mark),
     Arm("pending_inspiring_smite", False, TARGET, _t("Inspiring Smite: choose a creature"),
         cancel_inspiring_smite),
     Arm("_legendary_target_pick", False, TARGET, _t("Legendary action: choose a target"),
@@ -472,7 +479,7 @@ WIRED = frozenset({
     "pending_hand_of_healing", "pending_use_item", "pending_escape_net",
     "pending_grant_inspiration", "pending_telekinetic", "pending_clairvoyant",
     "pending_vow_of_enmity", "pending_inspiring_smite", "pending_vitality_target",
-    "pending_path_to_the_grave",
+    "pending_path_to_the_grave", "pending_move_hunters_mark",
     # M5d.3 — place picks
     "arcane_charge_pending", "blink_steps_pending", "pending_psychic_teleport",
     "pending_shadow_step", "pending_steps_of_fey", "pending_misty_escape",

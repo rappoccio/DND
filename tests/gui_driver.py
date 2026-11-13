@@ -169,6 +169,7 @@ def screenshot(app, path: str) -> str:
     """
     app.screen.fill(COL_BG)
     app._draw_map()
+    app._draw_map_overlays()
     app._draw_agents()
     app._draw_panel()
     app.context_menu.draw(app.screen)

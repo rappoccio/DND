@@ -99,6 +99,50 @@ def test_translucent_fog_conceals_nothing_on_the_dm_screen():
     print("✅ test_translucent_fog_conceals_nothing_on_the_dm_screen")
 
 
+def test_fog_covers_items_and_terrain():
+    """Floor items and the DM's terrain regions (water, difficult terrain) stay under the
+    fog on a never-seen cell, and show on an explored one."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _app(tmp)
+        v, h = app.bm.v_line_positions, app.bm.h_line_positions
+        b = app.base_map_scale
+
+        def region(kind, c, r):
+            return {"type": kind, "x": v[c] * b, "y": h[r] * b,
+                    "width": (v[c + 1] - v[c]) * b, "height": (h[r + 1] - h[r]) * b}
+
+        def px(c, r, corner=False):
+            s = app.map_scale
+            if corner:                       # just inside the item icon's top-left
+                sx, sy = app._cell_to_screen(c, r)
+                return app.screen.get_at((sx + 3, sy + 3))[:3]
+            x = app.map_rect.x + app.pan_x + int((v[c] + v[c + 1]) / 2 * s)
+            y = app.map_rect.y + app.pan_y + int((h[r] + h[r + 1]) / 2 * s)
+            return app.screen.get_at((x, y))[:3]
+
+        app._terrain_regions = [region("Water", 9, 9), region("Difficult Terrain", 8, 9),
+                                region("Water", 2, 2)]
+        sword = rpg.Weapon()
+        sword.name = "Longsword"
+        app.bm.place_item(C(9, 8), sword, "")
+        app.bm.place_item(C(3, 3), sword, "")
+        app._set_fog(True)
+        app.bm.clear_fog()
+        app.bm.set_explored_cells([C(c, r) for c in range(5) for r in range(5)])
+
+        app.screen.fill((255, 255, 255))     # App.run's order for these layers
+        app._draw_map_overlays()
+        app._draw_fog_overlay()
+        app._draw_agents()
+        assert px(9, 9) == (0, 0, 0), f"water shows through the fog: {px(9, 9)}"
+        assert px(8, 9) == (0, 0, 0), f"difficult terrain shows through the fog: {px(8, 9)}"
+        assert px(9, 8, corner=True) == (0, 0, 0), "an item shows through the fog"
+        assert px(2, 2) != (255, 255, 255), "water on an explored cell is drawn"
+        assert px(3, 3, corner=True) != (255, 255, 255), "an item on an explored cell is drawn"
+    print("✅ test_fog_covers_items_and_terrain")
+
+
 if __name__ == "__main__":
     test_fog_button_menu()
     test_translucent_fog_conceals_nothing_on_the_dm_screen()
+    test_fog_covers_items_and_terrain()

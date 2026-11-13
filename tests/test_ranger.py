@@ -280,6 +280,60 @@ def test_relentless_hunter_requires_level_13():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  Hunter's Mark / Hex — moving the mark when its creature drops to 0 HP
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _marked_ranger(spell_name="Hunter's Mark"):
+    bm, engine, a, t, other = _fresh()
+    _make_concentrator(engine, bm, a, level=5, spell_name=spell_name)
+    _set_mark(engine, bm, a, t)
+    return bm, engine, a, t, other
+
+
+def _kill(engine, bm, idx):
+    s = engine.get_agent_stats(bm, idx)
+    s.hp_cur = 0
+    engine.set_agent_stats(bm, idx, s)
+
+
+def test_mark_moves_only_after_target_drops():
+    bm, engine, a, t, other = _marked_ranger()
+    assert not engine.can_move_hunters_mark(bm, a), "the mark stays put while its creature lives"
+    assert not engine.move_hunters_mark(bm, a, other)
+    _kill(engine, bm, t)
+    assert engine.can_move_hunters_mark(bm, a), "a mark on a creature at 0 HP can move"
+    assert not engine.can_move_hunters_mark_to(bm, a, t), "not onto the creature at 0 HP"
+    assert not engine.can_move_hunters_mark_to(bm, a, a), "not onto the caster"
+    assert engine.move_hunters_mark(bm, a, other)
+    assert engine.get_agent_stats(bm, a).hunters_mark_target == other
+    assert not engine.has_bonus_action(bm, a), "moving the mark spends the Bonus Action"
+    r = _land(engine, bm, a, other)
+    assert _rider_amount(r) is not None, "the moved mark's rider fires on the new creature"
+    print("✅ test_mark_moves_only_after_target_drops")
+
+
+def test_mark_move_needs_bonus_action_and_concentration():
+    bm, engine, a, t, other = _marked_ranger()
+    _kill(engine, bm, t)
+    engine.spend_bonus_action(bm, a)
+    assert not engine.can_move_hunters_mark(bm, a), "no Bonus Action, no move"
+    engine.reset_bonus_actions(bm, a)
+    c = engine.get_agent_conditions(bm, a)
+    c.concentrating_on = "Bless"
+    engine.set_agent_conditions(bm, a, c)
+    assert not engine.can_move_hunters_mark(bm, a), "only while concentrating on the mark spell"
+    print("✅ test_mark_move_needs_bonus_action_and_concentration")
+
+
+def test_hex_moves_too():
+    bm, engine, a, t, other = _marked_ranger("Hex")
+    _kill(engine, bm, t)
+    assert engine.move_hunters_mark(bm, a, other)
+    assert engine.get_agent_stats(bm, a).hunters_mark_target == other
+    print("✅ test_hex_moves_too")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  Phase 2 — Precise Hunter (L17, now testable via r.advantage)
 # ─────────────────────────────────────────────────────────────────────────────
 

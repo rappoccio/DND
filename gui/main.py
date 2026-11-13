@@ -186,6 +186,8 @@ _BON_RUN_BAND      = (
     "telekinetic_psi",
     # Ranger
     "tireless", "natures_veil", "fey_reinforcements", "misty_wanderer",
+    # Hunter's Mark / Hex — move the mark off a creature at 0 HP
+    "move_hunters_mark",
     # Soulknife Rogue
     "psychic_teleport", "psychic_veil",
     # Shadow Monk
@@ -1023,6 +1025,7 @@ class App:
         self.pending_beguiling_bard    = -1    # the Glamour bard who cast the qualifying Enchantment/Illusion spell
         self.pending_clairvoyant       = False # Great Old One Warlock Clairvoyant Combatant: awaiting enemy target click
         self.pending_vow_of_enmity     = False # Paladin Oath of Vengeance Vow of Enmity: awaiting enemy target click
+        self.pending_move_hunters_mark = False # Hunter's Mark / Hex: awaiting the mark's new creature
         self.pending_path_to_the_grave = False # Grave Cleric Path to the Grave: awaiting a creature target click
         self.pending_inspiring_smite   = False # Paladin Oath of Glory Inspiring Smite: awaiting temp-HP recipient click
         self.pending_telekinetic       = False # Psi Warrior Telekinetic Movement: awaiting target click
@@ -1907,6 +1910,9 @@ class App:
         self.btn_cbt_path_to_the_grave = Button(pygame.Rect(px, dummy_y, W, B),
                                           "Path to the Grave",
                                           (110, 110, 120), (150, 150, 165), self.font_md)
+        self.btn_cbt_move_hunters_mark = Button(pygame.Rect(px, dummy_y, W, B),
+                                          "🎯 Move Mark",
+                                          (60, 130, 80), (90, 170, 110), self.font_md)
         self.btn_cbt_war_priest = Button(pygame.Rect(px, dummy_y, W, B),
                                           "War Priest (Bonus Attack)",
                                           (200, 120, 90), (235, 150, 115), self.font_md)
@@ -6032,6 +6038,9 @@ class App:
         elif self.pending_path_to_the_grave and hit >= 0:
             # Path to the Grave: the clicked creature is cursed by the Grave cleric.
             self._resolve_path_to_the_grave(hit)
+        elif self.pending_move_hunters_mark and hit >= 0:
+            # Hunter's Mark / Hex: the clicked creature takes over the mark.
+            self._resolve_move_hunters_mark(hit)
         elif self.pending_inspiring_smite and hit >= 0:
             # Inspiring Smite: the clicked creature (within 30 ft) gains temp HP.
             self._resolve_inspiring_smite(hit)
@@ -6179,6 +6188,7 @@ class App:
         self.pending_clairvoyant         = False
         self.pending_vow_of_enmity       = False
         self.pending_path_to_the_grave   = False
+        self.pending_move_hunters_mark   = False
         self.pending_inspiring_smite     = False
         self.pending_telekinetic         = False
         self.pending_flurry_target       = False
@@ -6237,7 +6247,7 @@ class App:
         ("pending_grant_inspiration", False), ("pending_mantle_active", False),
         ("pending_beguiling", False), ("pending_clairvoyant", False),
         ("pending_vow_of_enmity", False), ("pending_inspiring_smite", False),
-        ("pending_path_to_the_grave", False),
+        ("pending_path_to_the_grave", False), ("pending_move_hunters_mark", False),
         ("pending_telekinetic", False), ("pending_flurry_target", False),
         ("pending_vitality_target", False), ("pending_shadowy_dodge_cell", False), ("_legendary_target_pick", False),
         ("_legendary_spell_pick", ""),
@@ -7170,10 +7180,20 @@ class App:
         label = f" ({st.label})" if st.label else ""
         return f"{verb} {st.name}{label} to {st.other_end(end_index).page}"
 
-    def _use_staircase(self, sid: int, end_index: int, actor_idx: int):
-        """Carry the acting creature from end ``end_index`` of staircase ``sid`` to its
-        other end, through _switch_to_page (which refuses in combat, D3). Refused with a
-        flash when the end is not on this page or the staircase is unfinished or broken."""
+    def _party_carry(self, actor_idx: int) -> list[int]:
+        """The whole party on this page, for a group portal crossing: every party-faction
+        token still in play, plus the acting creature if it is not one of them."""
+        out = [i for i, pt in enumerate(self.bm.placed_agents)
+               if pt.faction == PC_FACTION and not pt.removed_from_play]
+        if actor_idx is not None and actor_idx >= 0 and actor_idx not in out:
+            out.append(actor_idx)
+        return out
+
+    def _use_staircase(self, sid: int, end_index: int, actor_idx: int, party: bool = False):
+        """Carry the acting creature (``party``: the whole party, ``_party_carry``) from end
+        ``end_index`` of staircase ``sid`` to its other end, through _switch_to_page (which
+        refuses in combat, D3). Refused with a flash when the end is not on this page or
+        the staircase is unfinished or broken."""
         if self.dungeon is None or self.dungeon_page is None:
             self._flash_status("Staircases need a dungeon manifest (open a .dungeon.json).")
             return False
@@ -7187,10 +7207,14 @@ class App:
             return False
         other = st.other_end(end_index)
         page = self.dungeon.page_by_id(other.page)
-        carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
+        if party:
+            carry = self._party_carry(actor_idx) or None
+        else:
+            carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
         if self._switch_to_page(page, drop_cell=other.cell, carry=carry):
             verb = "Ascended" if direction == "up" else "Descended"
-            self._flash_status(f"{verb} {st.name} to floor {page.z}: {page.id}")
+            who = "The party " + verb.lower() if party else verb
+            self._flash_status(f"{who} {st.name} to floor {page.z}: {page.id}")
             return True
         return False
 
@@ -7822,6 +7846,17 @@ class App:
         elif slot != self._attack_sequence_slot:
             # Can't start a different slot while attacks are pending
             return
+        elif slot == "action" and self.pending_attack_offhand is True:
+            # Nick's relocated off-hand swing is the one attack owed (only Nick arms an off-hand
+            # swing in the action slot), so "⚔ Attack (1)" resumes THAT swing with the off-hand
+            # weapon. The weapon picker let it become a main-hand attack that kept the off-hand flag
+            # and never spent the off-hand attack, so Nick came back on offer after it.
+            wi = self._nick_offhand_idx(idx)
+            if wi >= 0:
+                self.pending_attack_slot = slot
+                self.pending_weapon_idx  = wi
+                self._combat_log_add("Nick: off-hand attack (part of Attack action) — click a target.")
+                return
 
         def _activate(s, wi_):
             self.pending_attack_slot = s
@@ -10042,6 +10077,19 @@ class App:
         if not ok:
             self._combat_log_add("Path to the Grave unavailable (needs a Channel Divinity use, the "
                                  "Bonus Action, and a creature you can see within 30 ft).")
+
+    def _resolve_move_hunters_mark(self, target_idx: int):
+        """Hunter's Mark / Hex: the marked creature dropped to 0 HP, so move the mark to the clicked
+        creature (seen, within 90 ft). The engine spends the Bonus Action."""
+        self.pending_move_hunters_mark = False
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
+            return
+        ok = self.combat.move_hunters_mark(self.bm, idx, target_idx)
+        self._flush_combat_log()
+        if not ok:
+            self._combat_log_add("Move Hunter's Mark: pick another living creature you can see "
+                                 "within 90 ft.")
 
     def _resolve_inspiring_smite(self, target_idx: int):
         """Paladin Oath of Glory Inspiring Smite: grant the clicked creature (within 30 ft, may be self)
@@ -19127,15 +19175,18 @@ class App:
         self.screen.set_clip(old_clip)
 
     def _draw_items(self, cpx: int):
-        """Draw all weapon items sitting on the map grid."""
+        """Draw all weapon items sitting on the map grid, under the chests' fog rule."""
         items = self.bm.get_all_items()
         if not items:
             return
 
         # Group items by cell: dict[(col, row)] -> list[MapItem]
+        fog = self._fog_conceals()
         by_cell: dict = {}
         for item in items:
             key = (item.cell.col, item.cell.row)
+            if fog and not self._any_explored([key]):
+                continue                                  # never seen: hidden like the floor under it
             by_cell.setdefault(key, []).append(item)
 
         ICON_FRAC = 0.45          # item icon is 45% of cell width
@@ -19291,6 +19342,19 @@ class App:
             self.screen.blit(surf, (left, top))
         self.screen.set_clip(clip)
 
+    def _draw_map_overlays(self):
+        """The painted layers that belong to the map itself: light, temporary terrain,
+        spell areas and the DM's terrain regions (water, difficult terrain, …). Drawn
+        before the fog overlay so the fog covers them; drawn after it, they showed the
+        layout of rooms the party has never seen."""
+        if not self.bm.h_line_positions or not self.bm.v_line_positions:
+            return
+        cpx = int(self.bm.cell_pixel_size * self.map_scale)
+        self._draw_light_effects(cpx)
+        self._draw_temp_terrain_overlays(cpx)
+        self._draw_spell_effects(cpx)
+        self._draw_concentration_terrain(cpx)
+
     def _draw_agents(self):
         bm    = self.bm
         s     = self.map_scale
@@ -19307,18 +19371,6 @@ class App:
 
         # ── Attack range overlays (beneath all agents) ────────────────────
         self._draw_attack_overlays(cpx)
-
-        # ── Light effects overlays (beneath all agents) ───────────────────
-        self._draw_light_effects(cpx)
-
-        # ── Temporary terrain effects overlays (beneath all agents) ────────
-        self._draw_temp_terrain_overlays(cpx)
-
-        # ── Spell effect overlays (beneath all agents) ─────────────────────
-        self._draw_spell_effects(cpx)
-
-        # ── Concentration-based terrain overlays (beneath all agents) ──────
-        self._draw_concentration_terrain(cpx)
 
         # ── Doors (slab + lock glyphs; beneath all agents) ─────────────────
         self._draw_doors(cpx)
@@ -20099,6 +20151,11 @@ class App:
                     self.pending_misty_wanderer = True
                     self._combat_log_add(
                         "Misty Wanderer: click a destination (or click yourself to cancel).")
+            if action_id == "move_hunters_mark":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    self.pending_move_hunters_mark = True
+                    self._combat_log_add("Move Hunter's Mark: click a creature within 90 ft.")
             if action_id == "steps_of_fey":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
@@ -21772,6 +21829,9 @@ class App:
                 if self.pending_path_to_the_grave and event.key == pygame.K_ESCAPE:
                     net_picks.cancel_path_to_the_grave(self)
                     continue
+                if self.pending_move_hunters_mark and event.key == pygame.K_ESCAPE:
+                    net_picks.cancel_move_hunters_mark(self)
+                    continue
                 if self.pending_inspiring_smite and event.key == pygame.K_ESCAPE:
                     net_picks.cancel_inspiring_smite(self)
                     continue
@@ -22442,6 +22502,7 @@ class App:
                 net_link.push_cycle(self)       # M4: publish the party's page image to the net thread
             self.screen.fill(COL_BG)
             self._draw_map()
+            self._draw_map_overlays()           # terrain, spell and light areas (under the fog)
             self._draw_fog_overlay()            # fog of war: grey never-seen cells (above map, below agents)
             self.floor_align.draw(self)         # Align Floor: the other floor's ghost pages
             self._draw_agents()

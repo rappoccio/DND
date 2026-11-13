@@ -153,8 +153,11 @@ def test_neighbouring_and_shared_ends():
 
         labels = _menu_labels(app, 4, 4)
         assert labels == [f"Ascend Staircase {up.id} to U",
-                          f"Descend Staircase {down.id} to B"], labels
-        assert _menu_labels(app, 5, 4) == [f"Ascend Staircase {side.id} to U"]
+                          f"Descend Staircase {down.id} to B",
+                          f"Party: Ascend Staircase {up.id} to U",
+                          f"Party: Descend Staircase {down.id} to B"], labels
+        assert _menu_labels(app, 5, 4) == [f"Ascend Staircase {side.id} to U",
+                                           f"Party: Ascend Staircase {side.id} to U"]
         app._draw_staircases(CELL)                          # the shared glyph draws both arrows
         assert set(app._staircase_cells_here()) == {(4, 4), (5, 4)}
 
@@ -235,6 +238,35 @@ def test_player_submit_validated():
     print("  ✅ only the creature's controller can answer Ascend / Descend")
 
 
+def test_party_crossing():
+    """"Party: Ascend …" carries every party token at once, leaves the rest behind, and
+    is not offered in combat."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon(tmp)
+        st = app.dungeon.new_staircase("M", (2, 2))
+        app.dungeon.finish_staircase(st.id, "U", (6, 5))
+        for name, c, r in (("Aria", 2, 3), ("Bram", 7, 7), ("Cole", 0, 6)):
+            _place(app, name, c, r)
+        _place(app, "Ghoul", 9, 0)                           # not party: stays behind
+        for name in ("Aria", "Bram", "Cole"):                # after: _place re-applies configs
+            app.bm.set_agent_faction(_idx(app, name), PC_FACTION)
+
+        app.combat_active = True
+        assert not any(l.startswith("Party:") for l in _menu_labels(app, 2, 2))
+        app.combat_active = False
+        assert f"Party: Ascend Staircase {st.id} to U" in _menu_labels(app, 2, 2)
+
+        assert app._use_staircase(st.id, 0, -1, party=True)
+        assert app.dungeon_page.id == "U"
+        spots = [_where(app, n)[1] for n in ("Aria", "Bram", "Cole")]
+        assert len(set(spots)) == 3, spots                   # one cell each, near the landing
+        assert all(max(abs(c - 6), abs(r - 5)) <= 1 for c, r in spots), spots
+        assert _idx(app, "Ghoul") < 0
+        assert app._use_staircase(st.id, 1, -1, party=True)
+        assert _idx(app, "Ghoul") >= 0 and _idx(app, "Aria") >= 0 and _idx(app, "Cole") >= 0
+    print("  ✅ Party: carries every party token up and back, and not in combat")
+
+
 def test_zoom_kept_across_floors():
     with tempfile.TemporaryDirectory() as tmp:
         app = _dungeon(tmp)
@@ -260,7 +292,7 @@ def main():
     pygame.init()
     tests = [test_carries_both_ways, test_blocked_landing, test_neighbouring_and_shared_ends,
              test_refused_in_combat_and_unfinished, test_player_view_under_fog,
-             test_player_submit_validated, test_zoom_kept_across_floors]
+             test_player_submit_validated, test_party_crossing, test_zoom_kept_across_floors]
     failed = 0
     for t in tests:
         try:

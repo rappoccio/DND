@@ -52,6 +52,7 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else "/shots"
 def frame(app):
     app.screen.fill(COL_BG)
     app._draw_map()
+    app._draw_map_overlays()
     app._draw_agents()
     app._draw_panel()
     pygame.display.flip()

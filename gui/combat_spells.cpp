@@ -4076,6 +4076,49 @@ void CombatEngine::dispelMagicAtCell(BattleMap& bm, int caster_idx, int col, int
         applyDispelCandidate(bm, caster_idx, c, slot_level);
 }
 
+bool CombatEngine::canMoveHuntersMark(const BattleMap& bm, int caster_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (caster_idx < 0 || caster_idx >= n) return false;
+    const Agent::Stats cs = bm.getAgentStats(caster_idx);
+    const int mark = cs.hunters_mark_target;
+    if (mark < 0 || mark >= n || cs.hp_cur <= 0) return false;
+    const Agent::Conditions cc = bm.getAgentConditions(caster_idx);
+    if (!cc.concentrating ||
+        (cc.concentrating_on != "Hunter's Mark" && cc.concentrating_on != "Hex")) return false;
+    if (cc.incapacitated || cc.unconscious || cc.dead) return false;
+    if (!hasBonusAction(bm, caster_idx)) return false;
+    // The mark moves only once its creature has dropped to 0 HP (or left play).
+    return agents[static_cast<std::size_t>(mark)].removed_from_play ||
+           bm.getAgentStats(mark).hp_cur <= 0;
+}
+
+bool CombatEngine::canMoveHuntersMarkTo(const BattleMap& bm, int caster_idx, int target_idx) const
+{
+    if (!canMoveHuntersMark(bm, caster_idx)) return false;
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (target_idx < 0 || target_idx >= n || target_idx == caster_idx) return false;
+    const PlacedAgent& tp = agents[static_cast<std::size_t>(target_idx)];
+    if (tp.removed_from_play || bm.getAgentStats(target_idx).hp_cur <= 0) return false;
+    if (!canPerceiveTarget(bm, caster_idx, target_idx)) return false;
+    const PlacedAgent& cp = agents[static_cast<std::size_t>(caster_idx)];
+    return footprintDistance(cp.origin, cp.agent->getSize(), tp.origin, tp.agent->getSize()) * 5 <= 90;
+}
+
+bool CombatEngine::moveHuntersMark(BattleMap& bm, int caster_idx, int target_idx)
+{
+    if (!canMoveHuntersMarkTo(bm, caster_idx, target_idx)) return false;
+    (void)spendBonusAction(bm, caster_idx);
+    Agent::Stats cs = bm.getAgentStats(caster_idx);
+    cs.hunters_mark_target = target_idx;
+    bm.setAgentStats(caster_idx, cs);
+    log_("{} moves {} to {}", agentName(bm, caster_idx),
+         bm.getAgentConditions(caster_idx).concentrating_on, agentName(bm, target_idx));
+    return true;
+}
+
 void CombatEngine::clearAllConcentration(BattleMap& bm)
 {
     for (int i = 0; i < static_cast<int>(bm.placedAgents().size()); ++i) {

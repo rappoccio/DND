@@ -156,6 +156,21 @@ void bindCombatSpells(py::class_<CombatEngine>& engine) {
              &CombatEngine::dropConcentration,
              py::arg("battle_map"), py::arg("agent_idx"),
              "Drop concentration for agent: removes terrain, spell effects, conditions. Returns removed IDs.")
+        .def("can_move_hunters_mark",
+             &CombatEngine::canMoveHuntersMark,
+             py::arg("battle_map"), py::arg("caster_idx"),
+             "True iff the caster concentrates on Hunter's Mark / Hex, its marked creature is at 0 HP\n"
+             "(or out of play), and the caster has a Bonus Action to move the mark.")
+        .def("can_move_hunters_mark_to",
+             &CombatEngine::canMoveHuntersMarkTo,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("target_idx"),
+             "can_move_hunters_mark, plus: the target is another living creature the caster can see\n"
+             "within 90 ft.")
+        .def("move_hunters_mark",
+             &CombatEngine::moveHuntersMark,
+             py::arg("battle_map"), py::arg("caster_idx"), py::arg("target_idx"),
+             "Spend the Bonus Action to move the Hunter's Mark / Hex mark to target_idx. Returns True\n"
+             "if the mark moved.")
         .def("dispel_magic",
              &CombatEngine::dispelMagic,
              py::arg("battle_map"), py::arg("caster_idx"), py::arg("target_idx"), py::arg("slot_level"),

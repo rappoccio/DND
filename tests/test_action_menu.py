@@ -239,6 +239,60 @@ def test_the_spent_action_arm_offers_nick_or_nothing():
     print("✅ test_the_spent_action_arm_offers_nick_or_nothing passed")
 
 
+def test_attack_after_nick_resumes_the_nick_swing():
+    """Nick arms one off-hand swing inside the spent Attack action, and the band then shows
+    "⚔ Attack (1)". Clicking it used to open the weapon picker and keep Nick's off-hand
+    flag, so the swing became a main-hand attack that never spent the off-hand attack.
+    It must re-arm the Nick swing with the off-hand Dagger instead."""
+    app = _app()
+    aria = _goto(app, "Aria")
+    _give_nick_offhand(app, aria)
+    app.action_used = True
+    asked = []
+    app._ask_actor = lambda *a, **kw: asked.append(a)
+    app._perform_action("nick", (0, 0))
+    assert (app.pending_attack_slot, app.pending_weapon_idx, app.attacks_remaining) == ("action", 1, 1)
+    app.pending_attack_slot = ""           # a misclick disarms the swing
+    assert "atk_action" in _group(app, aria, GROUP_ACTION)
+    app._perform_action("atk_action", (0, 0))
+    assert not asked, "no weapon picker for the Nick swing"
+    assert app.pending_attack_slot == "action"
+    assert app.pending_weapon_idx == 1, "the Nick swing stays on the off-hand Dagger"
+    assert app.pending_attack_offhand is True
+    assert app.attacks_remaining == 1
+    print("✅ test_attack_after_nick_resumes_the_nick_swing passed")
+
+
+def test_move_hunters_mark_is_offered_once_the_mark_drops():
+    """Hunter's Mark: when the marked creature drops to 0 HP, a Bonus Action moves the mark."""
+    app = _app()
+    aria = _goto(app, "Aria")
+    skarn = _idx(app, "Skarn")
+    _set_conditions(app, aria, concentrating=True, concentrating_on="Hunter's Mark")
+    s = app.combat.get_agent_stats(app.bm, aria)
+    s.hunters_mark_target = skarn
+    app.combat.set_agent_stats(app.bm, aria, s)
+    assert "move_hunters_mark" not in _group(app, aria, GROUP_BONUS), "mark still alive"
+    s = app.combat.get_agent_stats(app.bm, skarn)
+    hp = s.hp_cur
+    s.hp_cur = 0
+    app.combat.set_agent_stats(app.bm, skarn, s)
+    assert "move_hunters_mark" in _group(app, aria, GROUP_BONUS)
+    app.bonus_used = True
+    assert "move_hunters_mark" not in _group(app, aria, GROUP_BONUS), "costs the Bonus Action"
+    app.bonus_used = False
+    app._perform_action("move_hunters_mark", (0, 0))
+    assert app.pending_move_hunters_mark
+    app._resolve_move_hunters_mark(_idx(app, "Brannor"))
+    assert not app.pending_move_hunters_mark
+    assert app.combat.get_agent_stats(app.bm, aria).hunters_mark_target == _idx(app, "Brannor")
+    assert app.bonus_used
+    s = app.combat.get_agent_stats(app.bm, skarn)
+    s.hp_cur = hp
+    app.combat.set_agent_stats(app.bm, skarn, s)
+    print("✅ test_move_hunters_mark_is_offered_once_the_mark_drops passed")
+
+
 def test_frightened_offers_dash_and_nothing_else():
     """Arm 3. Not "Dash is highlighted" — Dash is the entire band."""
     app = _app()
@@ -1965,6 +2019,8 @@ if __name__ == "__main__":
         test_a_click_on_an_unoffered_action_does_nothing()
         test_the_band_collapses_when_the_creature_cannot_act()
         test_the_spent_action_arm_offers_nick_or_nothing()
+        test_attack_after_nick_resumes_the_nick_swing()
+        test_move_hunters_mark_is_offered_once_the_mark_drops()
         test_frightened_offers_dash_and_nothing_else()
         test_the_open_band_is_built_in_column_order()
         test_prone_swaps_stand_up_into_the_last_column()

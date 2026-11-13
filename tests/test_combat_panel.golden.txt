@@ -105,6 +105,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -252,6 +253,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -400,6 +402,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -547,6 +550,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -699,6 +703,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -849,6 +854,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -997,6 +1003,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -1145,6 +1152,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -1290,6 +1298,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -1445,6 +1454,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -1594,6 +1604,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -1745,6 +1756,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -1897,6 +1909,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -2046,6 +2059,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -2195,6 +2209,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -2347,6 +2362,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -2493,6 +2509,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -2642,6 +2659,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
 btn  | -           | btn_cbt_path_to_the_grave | - | - | no
@@ -2796,6 +2814,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -2952,6 +2971,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -3103,6 +3123,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -3254,6 +3275,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -3405,6 +3427,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -3556,6 +3579,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -3704,6 +3728,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -3851,6 +3876,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -4000,6 +4026,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -4148,6 +4175,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -4298,6 +4326,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -4449,6 +4478,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_path_to_the_grave | - | - | no
@@ -4605,6 +4635,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -4764,6 +4795,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -4915,6 +4947,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -5070,6 +5103,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -5226,6 +5260,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -5386,6 +5421,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -5533,6 +5569,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -5681,6 +5718,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -5830,6 +5868,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -5979,6 +6018,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -6135,6 +6175,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -6290,6 +6331,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -6446,6 +6488,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -6597,6 +6640,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -6749,6 +6793,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -6898,6 +6943,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -7053,6 +7099,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
 btn  | -           | btn_cbt_path_to_the_grave | - | - | no
@@ -7201,6 +7248,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -7352,6 +7400,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -7501,6 +7550,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -7654,6 +7704,7 @@ btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
 btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -7805,6 +7856,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -7961,6 +8013,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -8118,6 +8171,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -8268,6 +8322,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -8418,6 +8473,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -8565,6 +8621,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -8714,6 +8771,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -8863,6 +8921,7 @@ btn  | -           | btn_cbt_metamagic_transmuted | - | - | no
 btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -9013,6 +9072,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -9161,6 +9221,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -9309,6 +9370,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -9457,6 +9519,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -9607,6 +9670,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -9755,6 +9819,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -9900,6 +9965,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -10053,6 +10119,7 @@ btn  | -           | btn_cbt_merge_shadows | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -10206,6 +10273,7 @@ btn  | -           | btn_cbt_merge_shadows | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -10360,6 +10428,7 @@ btn  | -           | btn_cbt_merge_shadows | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -10514,6 +10583,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -10651,6 +10721,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no
@@ -10807,6 +10878,7 @@ btn  | -           | btn_cbt_metamagic_twinned | - | - | no
 btn  | -           | btn_cbt_misty_escape | - | - | no
 btn  | -           | btn_cbt_misty_wanderer | - | - | no
 btn  | -           | btn_cbt_move_duplicity | - | - | no
+btn  | -           | btn_cbt_move_hunters_mark | - | - | no
 btn  | -           | btn_cbt_natures_veil | - | - | no
 btn  | -           | btn_cbt_nick | - | - | no
 btn  | -           | btn_cbt_one_with_shadows | - | - | no

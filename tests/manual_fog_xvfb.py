@@ -69,6 +69,7 @@ def frame(app):
     """`App.run`'s composition order, for the layers the fog gate reaches."""
     app.screen.fill(COL_BG)
     app._draw_map()
+    app._draw_map_overlays()
     app._draw_fog_overlay()
     app._draw_agents()
     app._draw_npc_announcement()

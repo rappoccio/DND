@@ -61,7 +61,7 @@ WIRED = frozenset({
     "gwm_hew", "horde_breaker", "sudden_strike", "beasts_strike", "war_priest", "shove_push", "shove_prone", "telekinetic_feat", "bm_maneuver",
     # M5d.2 — single-creature picks
     "escape_net", "hand_of_healing", "clairvoyant_combatant", "vow_of_enmity",
-    "path_to_the_grave",
+    "path_to_the_grave", "move_hunters_mark",
     "inspiring_smite", "healing_light", "lay_on_hands", "grant_inspiration",
     "telekinetic_psi", "use_item", "bastion_of_law",
     # M5d.3 — place picks
@@ -167,6 +167,7 @@ CLASS: dict[str, str] = {
     "natures_veil": I,
     "fey_reinforcements": S,
     "misty_wanderer": X,
+    "move_hunters_mark": A,
     "psychic_veil": I,
     "psychic_teleport": X,
     "shadow_step": X,

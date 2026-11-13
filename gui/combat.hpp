@@ -1980,6 +1980,15 @@ public:
     // Drop concentration for the given agent: removes terrain, spell effects, conditions.
     [[nodiscard]] DropConcentrationResult dropConcentration(BattleMap& bm, int agent_idx);
 
+    // Hunter's Mark / Hex — moving the mark: if the marked creature drops to 0 HP while the caster
+    // still concentrates on the spell, the caster can take a Bonus Action to move the mark to a new
+    // creature it can see within 90 ft. canMoveHuntersMark is the gate for offering the option (no
+    // target yet); canMoveHuntersMarkTo adds the target test; moveHuntersMark spends the Bonus
+    // Action and retargets the rider.
+    [[nodiscard]] bool canMoveHuntersMark(const BattleMap& bm, int caster_idx) const;
+    [[nodiscard]] bool canMoveHuntersMarkTo(const BattleMap& bm, int caster_idx, int target_idx) const;
+    bool moveHuntersMark(BattleMap& bm, int caster_idx, int target_idx);
+
     // Dispel Magic (Phase 4): end ongoing magical effects on target_idx. Each attached
     // ActiveAgentCondition / ActiveSpellEffect (and terrain at the target's cell) is ended
     // automatically if its cast level <= slot_level; otherwise the caster rolls d20 +

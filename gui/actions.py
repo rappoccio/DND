@@ -1025,6 +1025,12 @@ class ActionMenu:
                 if lvl >= 15 and mw > 0:
                     out.append(Action("misty_wanderer", f"Misty Wanderer ({mw})", GROUP_BONUS))
 
+        # ── Hunter's Mark / Hex: move the mark off a creature that dropped to 0 HP ──
+        # Not class-gated (a Warlock's Hex moves the same way); the engine's gate reads the
+        # concentration, the dead mark and the Bonus Action.
+        if app.combat.can_move_hunters_mark(app.bm, agent_idx):
+            out.append(Action("move_hunters_mark", "🎯 Move Mark", GROUP_BONUS))
+
         # ── Soulknife Rogue (M2d) ──
         # Both labels carry the Psionic Energy count, and both features can be paid for
         # with either their own use or a die — which is why the Veil is offered while
