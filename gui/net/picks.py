@@ -514,7 +514,7 @@ def wanted(app) -> tuple[Arm, int, str] | None:
     actor = arm.actor(app)
     if not 0 <= actor < len(app.bm.placed_agents):
         return None
-    owner = app.roster.controller_of(actor)
+    owner = app._prompt_owner(actor)
     if owner == DM_PRINCIPAL_ID:
         return None
     return arm, actor, owner

@@ -893,6 +893,9 @@ class App:
         # menus.dm.set_tracker_mode, which refuses mid-combat.
         self.tracker_mode         = False
         self._tracker_stopped_net = False  # the toggle stopped the player server
+        # "Players see: map only" (menus.dm.set_players_map_only): player screens get the page,
+        # fog and terrain only, and every prompt goes to the DM (a table with miniatures).
+        self.players_map_only     = False
         self.tracker              = Tracker()  # the typed-in turn order; _mirror_tracker
         self._tracker_hits        = []    # this frame's sheet click targets: (rect, kind, arg)
         self._tracker_edit        = None  # the row (tuple of agent idxs) being typed into
@@ -2489,6 +2492,13 @@ class App:
         Call after anything that changes the agent list or a controller assignment."""
         self.roster.sync_tokens(tokens_from_battle_map(self.bm))
 
+    def _prompt_owner(self, agent_idx: int) -> str:
+        """Who answers a prompt for this token: its controller, or the DM while players see
+        the map only (their screens carry no prompts then)."""
+        if self.players_map_only:
+            return DM_PRINCIPAL_ID
+        return self.roster.controller_of(agent_idx)
+
     def _save_session(self):
         """Persist the session roster beside the encounter. Principals must survive a
         restart or every saved `controller` would load orphaned; credentials must not,
@@ -3593,6 +3603,7 @@ class App:
             return False
         run_control.ensure_first_release(self)    # Reset Dungeon always has a V0
         dm.set_tracker_mode(self, bool(store.run.get("tracker_mode", False)))   # T6
+        dm.set_players_map_only(self, bool(store.run.get("players_map_only", False)))
         for w in filter(None, (layout.calibration_warning(p.id) for p in dungeon.pages)):
             print(f"Warning: {w}")
         self._flash_status(f"{camp.name} / {layout.name} — {page.id}")
@@ -11989,7 +12000,7 @@ class App:
         # The first prompt on the bus (M1 Step 2). The owner is the REACTOR's controller,
         # not the actor's: an opportunity attack belongs to the creature taking it, which
         # is why `owner` is load-bearing from the very first conversion (Step 0.2).
-        owner = self.roster.controller_of(ctx.reactor_idx)
+        owner = self._prompt_owner(ctx.reactor_idx)
         self.prompts.ask(
             actor_idx=ctx.reactor_idx,
             owner=owner,
@@ -12168,7 +12179,7 @@ class App:
         ``cancellable`` is Envelope 4's display hint, passed through: False tells a
         remote client not to draw Cancel. The DM console ignores it.
         """
-        owner = self.roster.controller_of(actor_idx) if owner is None else owner
+        owner = self._prompt_owner(actor_idx) if owner is None else owner
         return self.prompts.ask(
             actor_idx=actor_idx,
             owner=owner,

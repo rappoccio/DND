@@ -102,12 +102,15 @@ def build_view(app, viewer: Principal, seq: int = 0) -> dict:
     explored = {(c.col, c.row) for c in bm.explored_cells()}
 
     agents, shown = _agents(app, roster, viewer, is_dm)
+    # The DM's "Players see: map only" switch, for a table playing with miniatures: a
+    # player's screen is the page, the fog and the terrain, and nothing that moves.
+    bare = map_only(app, is_dm)
 
-    return {
+    view = {
         "v":       PROTOCOL_VERSION,
         "t":       "view",
         "seq":     int(seq),
-        "you":     _you(app, roster, viewer, shown),
+        "you":     _you(app, roster, viewer, shown, bare),
         "map":     _map(app, _published_page(app, explored, fog_on), is_dm),
         "fog":     {"active": fog_on,
                     "explored_runs": explored_runs(explored)},
@@ -115,12 +118,21 @@ def build_view(app, viewer: Principal, seq: int = 0) -> dict:
         "agents":  agents,
         "terrain": _terrain(app, is_dm, hide_map, explored),
         "lighting": _lighting(app, is_dm, hide_map, explored),
-        "effects": _effects(app, is_dm, hide_map, explored),
-        "log":     list(app.combat_log_wire),
+        "effects": _effects(app, is_dm, hide_map, explored, bare),
+        "log":     [] if bare else list(app.combat_log_wire),
         # D-M7-4: the table's log, the same for every seat but the DM's lines, which are
         # omitted for anyone without the DM channel rather than sent and hidden.
-        "session": _session(app, is_dm),
+        "session": [] if bare else _session(app, is_dm),
     }
+    if bare:
+        view["map_only"] = True
+    return view
+
+
+def map_only(app, is_dm: bool) -> bool:
+    """True when this viewer gets the bare map: the DM's switch is on and they are not the
+    DM. Tokens, initiative, spell areas, logs and prompts are omitted, never sent and hidden."""
+    return not is_dm and bool(getattr(app, "players_map_only", False))
 
 
 def _session(app, is_dm: bool) -> list[dict]:
@@ -164,6 +176,8 @@ def _agents(app, roster, viewer, is_dm: bool) -> tuple[list[dict], set[int]]:
 def _drawn(app, idx: int, pt, is_dm: bool) -> bool:
     """The three gates above, in one place, because ``sight`` must apply exactly these."""
     if pt.removed_from_play:
+        return False
+    if map_only(app, is_dm):
         return False
     return is_dm or not (app._agent_fogged(idx, pt, party=True)
                       or app._npc_concealed_from_party(idx, pt))
@@ -354,7 +368,7 @@ def _conditions(cond, visible_only: bool = False) -> list[str]:
 
 # ── You, map, combat ────────────────────────────────────────────────────────
 
-def _you(app, roster, viewer, shown: set[int]) -> dict:
+def _you(app, roster, viewer, shown: set[int], bare: bool = False) -> dict:
     """The viewer's own handle on the session.
 
     ``controls`` is intersected with the tokens actually in this view: a player whose
@@ -370,7 +384,7 @@ def _you(app, roster, viewer, shown: set[int]) -> dict:
     """
     live = app.prompts.live
     prompt_id = None
-    if live is not None and roster.authorize(viewer, Action.ANSWER_PROMPT,
+    if live is not None and not bare and roster.authorize(viewer, Action.ANSWER_PROMPT,
                                              PromptTarget(live.id)):
         prompt_id = live.id
     you = {"principal_id": viewer.id,
@@ -672,7 +686,7 @@ def _lighting(app, is_dm: bool, hide_map: bool, explored) -> dict:
     return {"cells": cells, "effects": effects}
 
 
-def _effects(app, is_dm: bool, hide_map: bool, explored) -> dict:
+def _effects(app, is_dm: bool, hide_map: bool, explored, bare: bool = False) -> dict:
     """The temporary overlays: spell areas and terrain effects.
 
     Both are clipped to visible cells and dropped when nothing of them is visible. The
@@ -681,7 +695,7 @@ def _effects(app, is_dm: bool, hide_map: bool, explored) -> dict:
     the map.
     """
     spells = []
-    for eff in app.bm.active_spell_effects:
+    for eff in ([] if bare else app.bm.active_spell_effects):   # map only: terrain stays
         ec = [[c.col, c.row] for c in eff.cells
               if _visible(explored, hide_map, c.col, c.row)]
         if not ec:

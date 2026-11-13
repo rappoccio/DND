@@ -37,6 +37,7 @@ Covered here:
   · a spectator gets a view and controls nothing             (test_spectator_gets_a_view)
   · an unseated principal is refused outright                (test_unseated_principal_refused)
   · a burst of log lines reaches a player whole, oldest first (test_log_burst_reaches_a_player_whole)
+  · "Players see: map only" leaves the map, fog and terrain    (test_map_only_sends_the_map_and_nothing_else)
 """
 
 import os
@@ -586,6 +587,45 @@ def test_log_burst_reaches_a_player_whole():
     print("✅ test_log_burst_reaches_a_player_whole")
 
 
+def test_map_only_sends_the_map_and_nothing_else():
+    """The DM's switch for a table playing with miniatures: a player's view is the page, the
+    fog and the terrain. No token, initiative row, log line or prompt crosses, and the
+    prompt a player would have answered is the DM's. The DM's own view is untouched."""
+    def check(app, kira, _spectator):
+        from menus import dm
+        from net import events as net_events
+        aria = _idx(app, "Aria")
+        app._combat_log_add("Gnasher swings at Aria")
+        dm.set_players_map_only(app, True)
+        p = app.prompts.ask(actor_idx=aria, owner=app._prompt_owner(aria),
+                            kind="action", title="Aria's move", options=[], expects="none")
+        assert p.owner == DM_PRINCIPAL_ID, "a player's prompt still went to the player"
+
+        view = build_view(app, kira)
+        blob = _blob(view)
+        assert view["map_only"] is True
+        assert view["agents"] == [] and view["combat"]["initiative"] == []
+        assert view["you"]["controls"] == [] and view["you"]["prompt_id"] is None
+        assert view["log"] == [] and view["session"] == []
+        for name in ("Aria", "Brannor", "Gnasher", "Skarn"):
+            assert name not in blob, f"{name} reached a map-only screen"
+        assert view["fog"]["active"] is True and view["fog"]["explored_runs"]
+        assert (1, 1) in {(c, r) for c, r, *_ in view["terrain"]["cells"]}
+        assert [[3, 1]] in [d["cells"] for d in view["terrain"]["doors"]]
+        assert not sight(app, kira).shown, "the event filter still shows tokens"
+        assert net_events.visible({"kind": "move", "agent": aria, "path": [(2, 3)]},
+                                  sight(app, kira)) is None
+
+        dm_view = build_view(app, app.roster.get(DM_PRINCIPAL_ID))
+        assert "map_only" not in dm_view and len(dm_view["agents"]) == 4
+
+        dm.set_players_map_only(app, False)
+        assert app._prompt_owner(aria) == kira.id
+        assert "Aria" in _agent_names(build_view(app, kira))
+    _run(check)
+    print("✅ test_map_only_sends_the_map_and_nothing_else")
+
+
 def test_view_envelope_shape():
     """Ground rules 1 and 5: every frame carries a `v` and a `t`, and `seq` is the
     caller's (D-M3-1) rather than something this module invents."""
@@ -620,5 +660,6 @@ if __name__ == "__main__":
     test_row_runs_split_on_a_gap()
     test_map_names_an_image_keyed_per_viewer()
     test_log_burst_reaches_a_player_whole()
+    test_map_only_sends_the_map_and_nothing_else()
     test_view_envelope_shape()
     print("\nAll GameView tests passed! 🎉")

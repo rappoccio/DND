@@ -383,6 +383,8 @@ function render(next) {
   view = next;
   seq = next.seq;      // a view sets the client's seq (B-3); an events frame continues it
   el("who").textContent = recall(NAME_KEY) || "at the table";
+  // The DM's "map only" switch (a table with miniatures): the board is the whole screen.
+  el("session").dataset.mapOnly = next.map_only ? "yes" : "no";
   // A timed-out submit is resolved by this view either way: the prompt is gone, or it is
   // still live and the player may answer it again.
   if (awaiting && awaiting !== view.you.prompt_id) { awaiting = ""; ackNote = ""; }

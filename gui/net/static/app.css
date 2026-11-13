@@ -237,6 +237,17 @@ canvas:active { cursor: grabbing; }
   .board canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 }
 
+/* The DM's "Players see: map only" switch, for a table playing with miniatures. The view
+   carries no tokens, logs or prompts then, so their panels go and the board fills the
+   screen under the header. */
+#session[data-map-only="yes"] > .panels, #session[data-map-only="yes"] > .prompt { display: none; }
+@media (min-width: 56rem) {
+  #session[data-map-only="yes"]:not([hidden]) { grid-template-columns: minmax(0, 1fr);
+                                          grid-template-rows: auto minmax(0, 1fr); }
+  #session[data-map-only="yes"] > header { grid-column: 1; }
+  #session[data-map-only="yes"] > .board { grid-column: 1; grid-row: 2; border-right: 0; }
+}
+
 .panel {
   padding: 12px;
   background: var(--panel);

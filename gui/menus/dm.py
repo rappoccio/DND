@@ -203,6 +203,8 @@ def show_table_menu(app, anchor=None):
         ("Load Playback…", lambda: playback.open_browser(app)),
         (f"Tracker mode: {'ON' if app.tracker_mode else 'OFF'}",
          lambda: set_tracker_mode(app, not app.tracker_mode)),
+        (f"Players see: {'map only' if app.players_map_only else 'everything'}",
+         lambda: set_players_map_only(app, not app.players_map_only)),
     ]
     app._ask_dm("action", "Table", items, anchor=anchor)
 
@@ -240,6 +242,25 @@ def set_tracker_mode(app, on: bool) -> bool:
     app._flash_status("Tracker mode ON: the table rolls, no player screens" if on
                       else "Tracker mode OFF")
     return True
+
+
+def set_players_map_only(app, on: bool) -> None:
+    """Player screens show the page, the fog and the terrain, and nothing else: no tokens,
+    no initiative, no spell areas, no logs, no prompts. For a table playing with physical
+    miniatures. Every prompt a player would have answered goes to the DM instead
+    (``App._prompt_owner``): ``net.offer.ensure`` withdraws a player's live turn offer on
+    the next frame, and the DM runs the turn. A campaign run keeps the setting, as it
+    keeps tracker mode."""
+    on = bool(on)
+    if app.players_map_only == on:
+        return
+    app.players_map_only = on
+    run = getattr(app.store, "run", None)
+    if isinstance(run, dict) and bool(run.get("players_map_only", False)) != on:
+        run["players_map_only"] = on
+        app.store.save_run()
+    app.session_log.add("Player screens: map only." if on else "Player screens: everything.")
+    app._flash_status("Players see the map only" if on else "Players see everything")
 
 
 SAVE_LIMIT_CHOICES = (10, 25, 50, 100, 500, 1000)
