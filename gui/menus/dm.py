@@ -538,8 +538,9 @@ def show_door_menu(app, cell, pos):
     """Context menu for a door cell: Open/Close (object interaction) and Pick Lock
     (an action). Knock is cast as a normal spell at the cell, not from here.
 
-    During combat the acting creature must be adjacent; out of combat the DM acts
-    freely (pick-lock uses the currently selected agent)."""
+    During combat the acting creature must be adjacent; out of combat, and in tracker
+    mode (the table plays the turns), the DM acts freely (pick-lock uses the currently
+    selected agent)."""
     di = app._door_index_at(cell, pos)
     if di < 0:
         return
@@ -548,9 +549,10 @@ def show_door_menu(app, cell, pos):
         # A secret door nobody has found: only the DM knows it is there.
         app._ask_dm("action", "Secret door", secret_door_options(app, door), anchor=pos)
         return
-    actor = app._current_agent_idx() if app.combat_active else app.selected_idx
+    gated = app.combat_active and not app.tracker_mode
+    actor = app._current_agent_idx() if gated else app.selected_idx
 
-    if app.combat_active:
+    if gated:
         if actor < 0:
             return
         if not door_is_near(app, actor, door):

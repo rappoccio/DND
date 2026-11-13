@@ -25,6 +25,7 @@ import shutil
 import tempfile
 
 import pygame
+import rpg_battle_map as rpg
 
 import autosave
 from constants import PC_FACTION
@@ -509,6 +510,29 @@ def test_row_click_moves_turn():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_door_far_from_turn():
+    """Tracker mode: the DM opens a door nobody on the ▶ stands beside (the table plays
+    the turns, so no adjacency gate). Outside tracker mode the gate still holds."""
+    tmp = tempfile.mkdtemp()
+    try:
+        for tracker in (True, False):
+            app = _board(tmp, tracker=tracker)
+            cell = rpg.Cell(5, 6)                       # adjacent to no token
+            did = app.bm.add_door(cell, False, False, 15, False)
+            dm.show_door_menu(app, cell, None)
+            live = app.prompts.live
+            if not tracker:
+                check(live is None, "the adjacency gate fell outside tracker mode")
+                continue
+            check(live is not None and live.title == "Door", "tracker mode opened no door menu")
+            if live is not None:
+                check(app.prompts.choose_label("Open door").ok, "no Open door row")
+                check(app.bm.doors[app.bm.door_at(cell)].open, f"door {did} did not open")
+        print("✅ test_door_far_from_turn")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_hp_zero():
     """T4/D4: a monster at 0 leaves the board and the order (the acting one hands the turn
     on); a PC at 0 stays in the order and keeps its turn. A token click opens the box."""
@@ -750,6 +774,7 @@ if __name__ == "__main__":
     test_drag_wakes_on_deck()
     test_hp_box()
     test_row_click_moves_turn()
+    test_door_far_from_turn()
     test_hp_zero()
     test_hp_display_d1()
     test_dm_view_toggle()
