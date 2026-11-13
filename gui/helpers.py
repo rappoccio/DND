@@ -439,7 +439,8 @@ def _weapon_to_dict(w) -> dict:
 
 
 # Body parts rather than carried weapons, on any creature: they can't be dropped or disarmed.
-_NATURAL_WEAPON_NAMES = frozenset({"Bite", "Claw"})
+# "Unnamed" is the placeholder a nameless stat-block attack loads as — never a real item.
+_NATURAL_WEAPON_NAMES = frozenset({"Bite", "Claw", "Unnamed"})
 
 
 def _dict_to_weapon(d: dict):
@@ -480,7 +481,7 @@ def _dict_to_weapon(d: dict):
     # By name too: saved creatures store their own copy of the flag, False on every Bite and Claw
     # written before this rule, and a catalog edit would not reach them.
     w.permanently_armed = (bool(d.get("permanently_armed", False))
-                           or d.get("name") in _NATURAL_WEAPON_NAMES)
+                           or w.name in _NATURAL_WEAPON_NAMES)
     w.mastery         = _parse_mastery(d.get("mastery", ""))
     w.bonus_hit       = int(d.get("bonus_hit",       0))
     w.bonus_damage    = int(d.get("bonus_damage",    0))
