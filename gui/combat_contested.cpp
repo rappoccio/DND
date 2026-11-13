@@ -85,7 +85,8 @@ ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
     auto attacker_stats = getAgentStats(bm, action.attacker_idx);
     int attacker_prof = attacker_stats.prof_bonus;
     int attacker_d20 = roll(20);
-    int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof;
+    int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof
+                       + consumeStrengthenBonus(bm, action.attacker_idx);
 
     // Roll defender: max(Athletics, Acrobatics) = max(STR, DEX) + d20
     int target_str_mod = (target.agent->getStats().str - 10) / 2;
@@ -168,7 +169,7 @@ PickLockResult CombatEngine::attemptPickLock(BattleMap& bm, int agent_idx, int d
 
     result.valid   = true;
     result.roll    = d20;
-    result.total   = d20 + bonus;
+    result.total   = d20 + bonus + consumeStrengthenBonus(bm, agent_idx);
     result.dc      = door->lock_dc;
     result.success = result.total >= result.dc;
 
@@ -231,7 +232,7 @@ BreakDoorResult CombatEngine::attemptBreakDoor(BattleMap& bm, int agent_idx, int
 
     result.valid   = true;
     result.roll    = d20;
-    result.total   = d20 + bonus;
+    result.total   = d20 + bonus + consumeStrengthenBonus(bm, agent_idx);
     result.dc      = dc;
     result.success = result.total >= result.dc;
 
@@ -377,7 +378,7 @@ ChestCheckResult CombatEngine::attemptPickChestLock(BattleMap& bm, int agent_idx
     const Agent::Stats st = getAgentStats(bm, agent_idx);
     r.valid   = true;
     r.roll    = roll(20);
-    r.total   = r.roll + st.sleightOfHand();
+    r.total   = r.roll + st.sleightOfHand() + consumeStrengthenBonus(bm, agent_idx);
     r.success = r.total >= r.dc;
     if (r.success) {
         bm.unlockChest(chest_id);
@@ -405,7 +406,7 @@ ChestCheckResult CombatEngine::attemptBreakChest(BattleMap& bm, int agent_idx, i
     const Agent::Stats st = getAgentStats(bm, agent_idx);
     r.valid   = true;
     r.roll    = roll(20);
-    r.total   = r.roll + st.athletics();
+    r.total   = r.roll + st.athletics() + consumeStrengthenBonus(bm, agent_idx);
     r.success = r.total >= r.dc;
     if (r.success) {
         bm.breakChest(chest_id);
@@ -431,7 +432,7 @@ ChestCheckResult CombatEngine::attemptFindChestTrap(BattleMap& bm, int agent_idx
     if (st.intel < 10 && (st.intel - 10) % 2 != 0) --investigation;
     r.valid = true;
     r.roll  = roll(20);
-    r.total = r.roll + std::max(perception, investigation);
+    r.total = r.roll + std::max(perception, investigation) + consumeStrengthenBonus(bm, agent_idx);
     r.dc    = trap.detect_dc;
     if (chestTrapLive(trap) && !trap.found && r.total >= r.dc) {
         ChestTrap t = trap;
@@ -466,7 +467,7 @@ ChestCheckResult CombatEngine::attemptDisarmChestTrap(BattleMap& bm, int agent_i
     const Agent::Stats st = getAgentStats(bm, agent_idx);
     r.valid   = true;
     r.roll    = roll(20);
-    r.total   = r.roll + st.sleightOfHand();
+    r.total   = r.roll + st.sleightOfHand() + consumeStrengthenBonus(bm, agent_idx);
     r.dc      = trap.disarm_dc;
     r.success = r.total >= r.dc;
     if (r.success) {
@@ -516,7 +517,8 @@ GrappleResult CombatEngine::resolveGrapple(BattleMap& bm, int attacker_idx, int 
     result.valid = true;
     if (contested) {
         int attacker_d20 = roll(20);
-        int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof;
+        int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof
+                           + consumeStrengthenBonus(bm, attacker_idx);
         // Defender: max(Athletics, Acrobatics) = max(STR, DEX) + the same d20.
         int target_str_mod = (target.agent->getStats().str - 10) / 2;
         int target_dex_mod = (target.agent->getStats().dex - 10) / 2;
@@ -620,7 +622,7 @@ GrappleEscapeResult CombatEngine::executeGrappleEscape(BattleMap& bm, int agent_
     int dex_d20 = roll(20);
     int str_roll = str_d20 + str_mod;
     int dex_roll = dex_d20 + dex_mod;
-    result.escape_roll = std::max(str_roll, dex_roll);
+    result.escape_roll = std::max(str_roll, dex_roll) + consumeStrengthenBonus(bm, agent_idx);
 
     // Check success
     if (result.escape_roll >= result.escape_dc) {

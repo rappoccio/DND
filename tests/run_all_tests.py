@@ -278,6 +278,7 @@ test_scripts = [
     "test_npc_flag_roundtrip.py",
     "test_origins.py",
     "test_feats.py",
+    "test_dhampir.py",
     "test_general_feats.py",
     "test_general_feats_g4.py",
     "test_general_feats_g5.py",

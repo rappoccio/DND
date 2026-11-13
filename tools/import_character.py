@@ -503,6 +503,11 @@ def build_agent(data, catalogs, faction=0):
         "temp_hp": int(data.get("temporaryHitPoints") or 0),
         "feats": feats,
     }
+    # Species with engine effects. D&D Beyond's race already carries the speed and the damage
+    # adjustments; the loader re-derives Darkvision from the species.
+    race = data.get("race") or {}
+    if "Dhampir" in (race.get("baseRaceName") or race.get("fullName") or ""):
+        stats["species"] = "Dhampir"
     stats["hp_cur"] = stats["hp_max"]
     stats.update(saves)
     stats.update(damage_adjustments(mods))

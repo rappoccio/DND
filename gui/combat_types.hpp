@@ -109,6 +109,10 @@ struct Attack {
     // an attack that would otherwise be illegal, so a normal melee swing is never turned into a
     // throw by accident. NPC automation leaves this false, so no monster throws its weapon away.
     bool thrown = false;
+    // Dhampir Vampiric Bite: how a bite that deals damage empowers the biter — 0 = not at all,
+    // 1 = Drain (regain HP = the Piercing dealt), 2 = Strengthen (that much on the next attack
+    // roll or ability check). Read only when the weapon is the "Vampiric Bite"; spends one use.
+    int bite_empower = 0;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

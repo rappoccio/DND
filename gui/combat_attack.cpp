@@ -2444,6 +2444,8 @@ void CombatEngine::rollInFlightAttack(BattleMap& bm, InFlightAttack& s)
     auto agents = bm.placedAgents();
     const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(s.action.attacker_idx)];
     const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(s.action.target_idx)];
+    // Vampiric Bite Strengthen: the held bonus rides the shared one-shot d20 bonus into this roll.
+    ctx_.pending_roll_bonus_ += consumeStrengthenBonus(bm, s.action.attacker_idx);
     s.r = resolveAttack(s.w, *atk_pt.agent, *tgt_pt.agent, s.adv, s.dis, s.action.no_ability_damage,
                         &bm, s.action.target_idx);
     forceAutoHit(bm, s);   // vampire Bite vs a creature it has Grappled: a missed roll still hits
@@ -4846,6 +4848,44 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                     }
                 }
                 break;  // only one forced-move condition per attack
+            }
+        }
+    }
+
+    // Dhampir Vampiric Bite — empowerment. The bite's own damage is the "weapon" piece of the
+    // breakdown (1d4 + CON Piercing after the target's multiplier; riders are separate pieces).
+    // Biting a Construct or Undead, dealing no damage, or having no use left: no empowerment.
+    if (r.hit && action.bite_empower != 0 && w.name == "Vampiric Bite") {
+        Agent::Stats bs = bm.getAgentStats(action.attacker_idx);
+        const Agent::Stats ts = bm.getAgentStats(action.target_idx);
+        int bite_dmg = 0;
+        for (const auto& [src, amt] : r.damage_breakdown)
+            if (src == "weapon") bite_dmg = amt;
+        const std::string biter = agentName(bm, action.attacker_idx);
+        if (!bs.isDhampir()) {
+            // Not a Dhampir: the weapon is just a bite.
+        } else if (ts.is_construct || ts.is_undead) {
+            log_("{}'s Vampiric Bite can't empower off a Construct or Undead", biter);
+        } else if (bite_dmg <= 0) {
+            log_("{}'s Vampiric Bite dealt no damage — nothing to empower", biter);
+        } else if (bs.vampiricBiteRemaining() <= 0) {
+            log_("{} has no Vampiric Bite uses left (regained on a Long Rest)", biter);
+        } else {
+            ++bs.vampiric_bite_used;
+            const int left = bs.vampiricBiteRemaining();
+            if (action.bite_empower == 1) {
+                bm.setAgentStats(action.attacker_idx, bs);
+                const int before = bs.hp_cur;
+                const int after  = healAgent(bm, action.attacker_idx, bite_dmg);
+                log_("{} drains {} — regains {} HP (Vampiric Bite, {} use{} left)",
+                     biter, agentName(bm, action.target_idx), std::max(0, after - before),
+                     left, left == 1 ? "" : "s");
+            } else {
+                bs.vampiric_strengthen_bonus = bite_dmg;
+                bs.vampiric_strengthen_turns = 10;       // within the next minute
+                bm.setAgentStats(action.attacker_idx, bs);
+                log_("{} is Strengthened: +{} to the next attack roll or ability check "
+                     "(Vampiric Bite, {} use{} left)", biter, bite_dmg, left, left == 1 ? "" : "s");
             }
         }
     }

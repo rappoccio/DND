@@ -150,6 +150,10 @@ inline int attackModifier(const Weapon& w, const Agent::Stats& s) noexcept
 
 inline int damageAbilityMod(const Weapon& w, const Agent::Stats& s) noexcept
 {
+    // Dhampir Vampiric Bite: 1d4 + Constitution modifier, in place of an Unarmed Strike's damage.
+    if (w.name == "Vampiric Bite")
+        return abilityMod(s.con);
+
     int base;
     if (w.finesse)
         base = std::max(abilityMod(s.str), abilityMod(s.dex));

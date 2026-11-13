@@ -714,6 +714,8 @@ void bindTypes(py::module_& m) {
              "Creature type is Aberration (a Hallow / Glyph of Warding warded type).")
         .def_readwrite("is_vampire", &Agent::Stats::is_vampire,
              "Creature type is Vampire (takes 20 radiant damage at turn start in Sunlight).")
+        .def_readwrite("is_construct", &Agent::Stats::is_construct,
+             "Creature type is Construct (a Dhampir's Vampiric Bite can't empower off one).")
         .def_readwrite("magic_resistance", &Agent::Stats::magic_resistance,
              "Magic Resistance trait: Advantage on saving throws against spells and other magical effects.")
         .def_readwrite("cant_heal", &Agent::Stats::cant_heal,
@@ -788,6 +790,21 @@ void bindTypes(py::module_& m) {
         .def_readwrite("boon_of_fate_used", &Agent::Stats::boon_of_fate_used,
              "Boon of Fate (epic boon): whether the 1/rest Improve Fate use is spent "
              "(reset on short/long rest and at initiative). Available == has feat and not used.")
+        .def_readwrite("species", &Agent::Stats::species,
+             "Species name (\"\" = none). Set it with set_species() so the one-time traits apply; "
+             "assign directly only when restoring a save (traits already folded in).")
+        .def("set_species", &Agent::Stats::setSpecies, py::arg("name"),
+             "Swap species: strip the old one's traits, apply the new one's (Dhampir: Speed 35, "
+             "Darkvision 60, Necrotic Resistance). No-op when unchanged.")
+        .def("is_dhampir", &Agent::Stats::isDhampir)
+        .def_readwrite("vampiric_bite_used", &Agent::Stats::vampiric_bite_used,
+             "Dhampir Vampiric Bite: empowerments spent since the last Long Rest (pool = PB).")
+        .def("vampiric_bite_remaining", &Agent::Stats::vampiricBiteRemaining,
+             "Dhampir Vampiric Bite: empowerments left (PB - used; 0 for a non-Dhampir).")
+        .def_readwrite("vampiric_strengthen_bonus", &Agent::Stats::vampiric_strengthen_bonus,
+             "Vampiric Bite Strengthen: bonus to the next attack roll or ability check (0 = none).")
+        .def_readwrite("vampiric_strengthen_turns", &Agent::Stats::vampiric_strengthen_turns,
+             "Vampiric Bite Strengthen: rounds left before the unspent bonus lapses (1 minute = 10).")
         .def_readwrite("fiendish_resilience_type", &Agent::Stats::fiendish_resilience_type,
              "Fiend Warlock L10: chosen magic damage type for resistance (0-9, ≠3 Force; -1 = none)")
         .def_readwrite("portent_dice", &Agent::Stats::portent_dice,
@@ -2619,6 +2636,9 @@ void bindTypes(py::module_& m) {
         .def_readwrite("thrown",       &Attack::thrown,
                        "THROW this weapon (needs Weapon.thrown): the attack reaches long_range_ft, "
                        "and the weapon leaves the thrower's hand to land on the ground as a MapItem.")
+        .def_readwrite("bite_empower", &Attack::bite_empower,
+                       "Dhampir Vampiric Bite empowerment: 0 none, 1 Drain, 2 Strengthen. Read only "
+                       "for the \"Vampiric Bite\" weapon; spends one of the Dhampir's PB uses.")
         .def("__repr__", [](const Attack& a){
             std::string s = "<Attack atk=" + std::to_string(a.attacker_idx)
                  + " tgt=" + std::to_string(a.target_idx)

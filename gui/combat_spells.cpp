@@ -4605,6 +4605,19 @@ int CombatEngine::applyBoonOfFate(BattleMap& bm, int idx, bool boost) noexcept
     return value;
 }
 
+int CombatEngine::consumeStrengthenBonus(BattleMap& bm, int idx) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return 0;
+    Agent::Stats stats = bm.getAgentStats(idx);
+    const int bonus = stats.vampiric_strengthen_bonus;
+    if (bonus <= 0) return 0;
+    stats.vampiric_strengthen_bonus = 0;
+    stats.vampiric_strengthen_turns = 0;
+    bm.setAgentStats(idx, stats);
+    log_("{} spends Vampiric Bite Strengthen: +{} to this roll", agentName(bm, idx), bonus);
+    return bonus;
+}
+
 std::string CombatEngine::wildMagicSurgeDescription(int effect) noexcept
 {
     // Curated d100 surge table (bands of 10 → effect 1-10). Applying each effect is the

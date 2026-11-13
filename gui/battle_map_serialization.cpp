@@ -116,7 +116,7 @@ namespace {
     X(starry_constellation) X(land_type) X(wrath_of_sea_active) \
     X(lunar_radiance_available) X(improved_lunar_radiance_available) \
     X(primal_strike_active) X(primal_strike_damage_type) X(is_undead) X(is_fiend) \
-    X(is_celestial) X(is_elemental) X(is_fey) X(is_aberration) X(is_vampire) \
+    X(is_celestial) X(is_elemental) X(is_fey) X(is_aberration) X(is_vampire) X(is_construct) \
     X(magic_resistance) X(cant_heal) X(death_burst_spell) X(regeneration_amount) \
     X(regen_interrupt_damage_types) X(regen_suppressed) X(legendary_resistance_max) \
     X(legendary_resistance_current) X(legendary_actions_max) \
@@ -141,7 +141,8 @@ namespace {
     X(fiendish_resilience_type) X(portent_dice) X(eldritch_invocations) \
     X(fiendish_vigor_applied) X(feats) X(stolen_spell_names) X(elemental_adept_types) \
     X(irresistible_offense_ability) X(luck_points) X(luck_points_max) \
-    X(boon_of_fate_used)
+    X(boon_of_fate_used) X(species) X(vampiric_bite_used) X(vampiric_strengthen_bonus) \
+    X(vampiric_strengthen_turns)
 
 // ── Agent::Conditions — every member, one X() each ───────────────────────────
 #define RPG_CONDITIONS_FIELDS(X) \

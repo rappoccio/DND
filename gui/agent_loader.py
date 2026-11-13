@@ -49,6 +49,7 @@ def dict_to_stats(stats_dict):
         if hasattr(stats, _ct):
             setattr(stats, _ct, bool(stats_dict.get(_ct, False)))
     stats.is_vampire = bool(stats_dict.get("is_vampire", False))
+    stats.is_construct = bool(stats_dict.get("is_construct", False))
     stats.magic_resistance = bool(stats_dict.get("magic_resistance", False))
     stats.death_burst_spell = str(stats_dict.get("death_burst_spell", ""))
     stats.regeneration_amount = int(stats_dict.get("regeneration_amount", 0))
@@ -126,6 +127,15 @@ def dict_to_stats(stats_dict):
     stats.luck_points = int(stats_dict.get("luck_points", 0))
     stats.luck_points_max = int(stats_dict.get("luck_points_max", 0))
     stats.boon_of_fate_used = bool(stats_dict.get("boon_of_fate_used", False))
+    # Species: set directly (NOT set_species) — speed/darkvision/resistance are already saved
+    # with the species' traits folded in, like the feats above.
+    stats.species = str(stats_dict.get("species", ""))
+    if stats.is_dhampir():
+        # Darkvision is not in the saved dict, so re-derive it from the species.
+        stats.darkvision_range = max(stats.darkvision_range, 60)
+    stats.vampiric_bite_used = int(stats_dict.get("vampiric_bite_used", 0))
+    stats.vampiric_strengthen_bonus = int(stats_dict.get("vampiric_strengthen_bonus", 0))
+    stats.vampiric_strengthen_turns = int(stats_dict.get("vampiric_strengthen_turns", 0))
     # Barbarian L20 Primal Champion and L11 Relentless Rage
     stats.primal_champion_applied = bool(stats_dict.get("primal_champion_applied", False))
     stats.relentless_rage_dc = int(stats_dict.get("relentless_rage_dc", 10))

@@ -191,6 +191,29 @@ def show_unarmed_menu(app, mouse_pos):
                     anchor=(px, py))
 
 
+def show_vampiric_bite_menu(app, anchor=None):
+    """Dhampir Vampiric Bite: pick the empowerment, then click a creature to bite. With no use
+    left the bite still lands (1d4 + CON Piercing), just without Drain or Strengthen."""
+    idx = app._current_agent_idx()
+    if idx < 0:
+        return
+    stats = app.combat.get_agent_stats(app.bm, idx)
+    if not stats.is_dhampir():
+        app._combat_log_add("Only a Dhampir has a Vampiric Bite.")
+        return
+    left = stats.vampiric_bite_remaining()
+    uses = f"{left}/{stats.prof_bonus} left"
+    items = [(f"🩸 Drain — regain HP ({uses})",       lambda: app._start_vampiric_bite(1)),
+             (f"💪 Strengthen — bonus to next roll ({uses})", lambda: app._start_vampiric_bite(2))]
+    if left <= 0:
+        app._combat_log_add("Vampiric Bite: no uses left — the bite deals damage but won't empower.")
+    px, py = anchor if anchor else pygame.mouse.get_pos()
+    if px >= app._panel_x():
+        px = max(8, app._panel_x() - app.context_menu.MIN_W - 8)
+    app._ask_actor(idx, "action", f"{app._agent_name(idx)}: Vampiric Bite", items,
+                   anchor=(px, py))
+
+
 def show_use_item_menu(app, pos):
     """Pop the current actor's inventory: pick which carried item to use, then click a target.
     Items the actor can no longer pay for this turn (the Bonus Action is gone, or there is no

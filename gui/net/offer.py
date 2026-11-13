@@ -57,7 +57,7 @@ DOOR_PREFIX = "door_"
 # this is what makes them playable. A row goes in only with every arm it can reach.
 WIRED = frozenset({
     # M5d.1 — weapon attacks and the picks that follow them
-    "atk_action", "atk_bonus", "unarmed", "nick", "flurry_of_blows", "martial_arts",
+    "atk_action", "atk_bonus", "unarmed", "vampiric_bite", "nick", "flurry_of_blows", "martial_arts",
     "gwm_hew", "horde_breaker", "sudden_strike", "beasts_strike", "war_priest", "shove_push", "shove_prone", "telekinetic_feat", "bm_maneuver",
     # M5d.2 — single-creature picks
     "escape_net", "hand_of_healing", "clairvoyant_combatant", "vow_of_enmity",
@@ -94,6 +94,7 @@ CLASS: dict[str, str] = {
     "atk_action": C_A,
     "nick": A,
     "unarmed": C_A,
+    "vampiric_bite": C_A,
     "dash": I,
     "dodge": I,
     "disengage": I,

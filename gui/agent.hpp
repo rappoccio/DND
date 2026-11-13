@@ -744,6 +744,7 @@ namespace rpg {
       bool is_fey{false};                                        // creature type Fey
       bool is_aberration{false};                                 // creature type Aberration
       bool is_vampire{false};                                    // creature type Vampire (Sunlight vulnerability)
+      bool is_construct{false};                                  // creature type Construct (no ward bit; Dhampir Vampiric Bite can't empower off one)
 
       // OR of the six Magic Circle / Hallow creature-type flags into a CreatureTypeBit mask.
       // Used by BattleMap::movementWardBlocks to test a mover against a ward's warded-type set.
@@ -931,6 +932,48 @@ namespace rpg {
       // Available == hasFeat("Boon of Fate") && !boon_of_fate_used.
       bool boon_of_fate_used{false};
 
+      // ── Species (2024 PHB / Ravenloft) ──────────────────────────────────
+      // "" = none. Only "Dhampir" carries engine effects today. setSpecies() applies the
+      // one-time traits (Speed 35, Darkvision 60, Necrotic Resistance) and strips the previous
+      // species' on a swap; a save restores `species` directly with those already folded in.
+      // Dhampir's Spider Climb is not modeled.
+      std::string species{};
+      [[nodiscard]] bool isDhampir() const noexcept { return species == "Dhampir"; }
+
+      // Dhampir Vampiric Bite: empowerments (Drain / Strengthen) spent since the last Long
+      // Rest; the pool is the Proficiency Bonus.
+      int vampiric_bite_used{0};
+      [[nodiscard]] int vampiricBiteRemaining() const noexcept {
+          return isDhampir() ? std::max(0, prof_bonus - vampiric_bite_used) : 0;
+      }
+      // Strengthen: + this bonus to the next attack roll or ability check, for 10 rounds.
+      int vampiric_strengthen_bonus{0};
+      int vampiric_strengthen_turns{0};
+
+      // Necrotic multiplier the species grants with nothing else in play (Trace of Undeath).
+      // Effects that grant and later drop Necrotic Resistance restore to this, not to 1.0.
+      [[nodiscard]] float speciesNecroticMult() const noexcept { return isDhampir() ? 0.5f : 1.0f; }
+
+      void setSpecies(const std::string& name) {
+          if (name == species) return;
+          if (isDhampir()) {                       // strip the old species' traits
+              if (speed_walk == 35) speed_walk = 30;
+              if (darkvision_range == 60) darkvision_range = 0;
+              auto& nec = magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Necrotic)];
+              if (nec == 0.5f) nec = 1.0f;
+              vampiric_bite_used = 0;
+              vampiric_strengthen_bonus = 0;
+              vampiric_strengthen_turns = 0;
+          }
+          species = name;
+          if (isDhampir()) {
+              speed_walk       = std::max(speed_walk, 35);
+              darkvision_range = std::max(darkvision_range, 60);
+              auto& nec = magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Necrotic)];
+              nec = std::min(nec, 0.5f);
+          }
+      }
+
       // Grant a feat and apply its one-time stat-derived effects. Call AFTER ability
       // scores, level, and prof_bonus are set (the GUI assigns feats at the end of
       // configuration). Restoring from a save sets the `feats` list directly instead —
@@ -986,6 +1029,7 @@ namespace rpg {
         }
         luck_points = luck_points_max;   // Lucky feat: Luck Points regained on a Long Rest
         boon_of_fate_used = false;        // Boon of Fate: the once-per-rest use refreshes
+        vampiric_bite_used = 0;           // Dhampir Vampiric Bite: all uses regained on a Long Rest
       }
 
       // Short rest: restore some resources (e.g., Focus Points for Monk)

@@ -2049,6 +2049,9 @@ class StatsDialog:
     ORIGIN_FEATS = ["NONE", "Alert", "Crafter", "Healer", "Lucky", "Magic Initiate",
                     "Musician", "Savage Attacker", "Skilled", "Tavern Brawler", "Tough"]
 
+    # Species with engine effects. "NONE" = no species (stats.species == "").
+    SPECIES = ["NONE", "Dhampir"]
+
     # Ordered ability-score fields
     ABILITIES = [
         ("STR", "str"),  ("DEX", "dex"), ("CON", "con"),
@@ -2106,6 +2109,8 @@ class StatsDialog:
         self._invocation_btn_rect = None # "Invocations..." launch button
         self._origin_feat        = "NONE"  # one origin feat per PC (cycle picker)
         self._origin_feat_rects: dict = {}
+        self._species            = "NONE"  # species (cycle picker, PCs only)
+        self._species_rects: dict = {}
         self._feat_dialog        = None    # General Feats multi-select picker (PCs)
         self._feat_btn_rect      = None    # "Feats..." launch button
         self._general_feats      = set()   # selected general feat names
@@ -2152,6 +2157,7 @@ class StatsDialog:
         # Origin feat: show the one currently on the agent (first that's an origin feat), else NONE.
         cur_feats = list(stats.feats) if hasattr(stats, 'feats') else []
         self._origin_feat = next((f for f in cur_feats if f in self.ORIGIN_FEATS), "NONE")
+        self._species = getattr(stats, "species", "") or "NONE"
         # Epic boons ride the same picker/set as general feats (both live in stats.feats).
         self._general_feats = {f for f in cur_feats
                                if f in GENERAL_FEAT_NAMES or f in EPIC_BOON_FEAT_NAMES}
@@ -2480,6 +2486,16 @@ class StatsDialog:
                     setattr(self, attr, available[(idx + 1) % len(available)])
                     return True
 
+            # Species cycle buttons (PCs only)
+            if self._species_rects:
+                available = self._species_rects["available"]
+                step = (-1 if self._species_rects["left"].collidepoint(event.pos) else
+                        1 if self._species_rects["right"].collidepoint(event.pos) else 0)
+                if step:
+                    idx = available.index(self._species) if self._species in available else 0
+                    self._species = available[(idx + step) % len(available)]
+                    return True
+
             # Origin feat cycle buttons (PCs only)
             if self._origin_feat_rects:
                 available = self._origin_feat_rects.get("available", [])
@@ -2617,7 +2633,7 @@ class StatsDialog:
             primary = min(class_levels, key=lambda c: order.index(c) if c in order else 99)
             total_level = sum(class_levels.values())
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, primary, total_level, npc_data, self._subclasses.get(primary, "NONE"), self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type, list(self._metamagic_options), self._irresistible_offense_ability, dict(class_levels), dict(self._subclasses))
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, primary, total_level, npc_data, self._subclasses.get(primary, "NONE"), self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type, list(self._metamagic_options), self._irresistible_offense_ability, dict(class_levels), dict(self._subclasses), species=self._species)
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -2997,6 +3013,23 @@ class StatsDialog:
             _rt = self.font_sm.render(">", True, (220, 210, 240)); screen.blit(_rt, _rt.get_rect(center=right_f_r.center))
             self._origin_feat_rects = {"left": left_f_r, "right": right_f_r, "available": self.ORIGIN_FEATS}
             npc_checkbox_y = feat_y + 24
+
+        # ── Species (PCs only) ─────────────────────────────────────────────
+        self._species_rects = {}
+        if self._char_level_stepper and not self._is_npc:
+            sp_y = npc_checkbox_y
+            screen.blit(self.font_sm.render("Species:", True, self.C_LABEL), (dlg.x + self.PAD, sp_y))
+            left_s_r  = pygame.Rect(dlg.x + self.PAD + 75, sp_y, 20, 16)
+            right_s_r = pygame.Rect(dlg.right - self.PAD - 20, sp_y, 20, 16)
+            sp_txt_r  = pygame.Rect(left_s_r.right + 4, sp_y, right_s_r.left - left_s_r.right - 8, 16)
+            for _r in (left_s_r, sp_txt_r, right_s_r):
+                pygame.draw.rect(screen, (60, 55, 80), _r, border_radius=2)
+                pygame.draw.rect(screen, (120, 100, 150), _r, 1, border_radius=2)
+            for _r, _s in ((left_s_r, "<"), (sp_txt_r, "None" if self._species == "NONE" else self._species),
+                           (right_s_r, ">")):
+                _t = self.font_sm.render(_s, True, (220, 210, 240)); screen.blit(_t, _t.get_rect(center=_r.center))
+            self._species_rects = {"left": left_s_r, "right": right_s_r, "available": self.SPECIES}
+            npc_checkbox_y = sp_y + 24
 
         # ── General Feats button (PCs only): launch the multi-select picker ──
         self._feat_btn_rect = None

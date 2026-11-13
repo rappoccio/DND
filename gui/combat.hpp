@@ -262,6 +262,11 @@ public:
     // or 0 on failure (no Boon of Fate feat, or the use is already spent this rest).
     int applyBoonOfFate(BattleMap& bm, int idx, bool boost) noexcept;
 
+    // Dhampir Vampiric Bite — Strengthen: return and clear `idx`'s held bonus (0 if none). Called
+    // by each roll it may land on: the next attack roll (rollInFlightAttack) or ability check
+    // (lock picking, door/chest forcing, chest traps, grapple escape).
+    int consumeStrengthenBonus(BattleMap& bm, int idx) noexcept;
+
     // Wild Magic Surge (Sorcerer L3+, College of Wild Magic): roll d100 on the curated surge
     // table and return the classified effect band (1-10) + description. The effect itself is
     // applied by the caller (see known_limitations.md). effect == 0 if the agent is not a

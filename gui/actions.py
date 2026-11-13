@@ -406,6 +406,13 @@ class ActionMenu:
                               GROUP_ACTION, economy=ECONOMY_ACTION))
         out.append(Action("unarmed", "👊 Unarmed", GROUP_ACTION,
                           economy=ECONOMY_ACTION))
+        # Dhampir Vampiric Bite: an Unarmed Strike, so it rides the Attack action like the
+        # punch. The label carries the Drain/Strengthen uses left (PB per Long Rest).
+        _st = app.combat.get_agent_stats(app.bm, agent_idx)
+        if _st.is_dhampir():
+            out.append(Action("vampiric_bite",
+                              f"🧛 Vampiric Bite ({_st.vampiric_bite_remaining()}/{_st.prof_bonus})",
+                              GROUP_ACTION, economy=ECONOMY_ACTION))
 
         out += [Action("dash",      "Dash",      GROUP_ACTION, economy=ECONOMY_ACTION),
                 Action("dodge",     "Dodge",     GROUP_ACTION, economy=ECONOMY_ACTION),

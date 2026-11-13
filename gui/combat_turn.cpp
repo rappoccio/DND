@@ -456,6 +456,15 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, stats);
     }
 
+    // Dhampir Vampiric Bite — Strengthen: an unspent bonus lapses after 1 minute (10 rounds).
+    if (stats.vampiric_strengthen_turns > 0) {
+        if (--stats.vampiric_strengthen_turns == 0 && stats.vampiric_strengthen_bonus > 0) {
+            stats.vampiric_strengthen_bonus = 0;
+            log_("{}'s Vampiric Bite Strengthen fades unused", agent_name);
+        }
+        bm.setAgentStats(agent_idx, stats);
+    }
+
     // Sorcerer Innate Sorcery: tick down its 1-minute (10-round) duration.
     if (stats.innate_sorcery_turns > 0) {
         --stats.innate_sorcery_turns;
@@ -891,6 +900,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                 if (le.source_agent_idx == agent_idx) { has_living_targets = true; break; }
         }
         if (!has_living_targets) {
+            log_("Concentration on {} dropped: no living targets remaining", cond.concentrating_on);
             cond.concentrating = false;
             cond.concentrating_on = "";
             bm.setAgentConditions(agent_idx, cond);
@@ -899,7 +909,6 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     // Check for incapacitating conditions first (Paralyzed, Incapacitated, Stunned)
     // These always cause a turn skip unless the agent succeeds on a save
-            log_("Concentration on {} dropped: no living targets remaining", cond.concentrating_on);
     for (auto& active_cond : conditions_.mutableAll()) {
         if (active_cond.agent_idx != agent_idx) continue;
         if (active_cond.condition_name != "Paralyzed" &&

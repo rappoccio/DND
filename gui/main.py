@@ -126,6 +126,7 @@ _REPEAT_TARGET_SPELLS = frozenset({"Magic Missile", "Scorching Ray", "Eldritch B
 # ActionMenu builds the Action group in column order; these say where each row breaks.
 # An arm that offers none of a tuple's ids draws no row and consumes no height.
 _ACT_ROW_ATTACK = ("atk_action", "unarmed")
+_ACT_ROW_BITE   = ("vampiric_bite",)
 _ACT_ROW_MOVE   = ("dash", "dodge", "disengage", "hide", "standup", "prone")
 _ACT_ROW_SPELL  = ("spell_action",)
 
@@ -1039,6 +1040,7 @@ class App:
         self.pending_flurry_atk_idx    = -1    # attacker index for Flurry
         self.pending_flurry_rider_option = -1  # Open Hand rider option (0=Knockdown, 1=Push, 2=DenyReaction, -1=None)
         self._unarmed_strike_original_weapons = None  # (idx, weapons) to restore after attack
+        self.pending_bite_empower      = 0     # Dhampir Vampiric Bite: 1 Drain / 2 Strengthen for the armed bite
         # Reaction system: OA detection/resolution lives in the C++ engine
         # (begin_move/pending_decision/submit_decision). These just track the parked mover for the
         # post-commit GUI refresh while a reaction checkpoint is open.
@@ -1738,6 +1740,10 @@ class App:
         self.btn_cbt_unarmed     = Button(pygame.Rect(px,       dummy_y, HW, B),
                                           "👊 Unarmed",
                                           COL_BTN_ATK, COL_BTN_ATK_HOV, self.font_md)
+        # Dhampir Vampiric Bite: opens the Drain / Strengthen pick, then a bite target.
+        self.btn_cbt_vampiric_bite = Button(pygame.Rect(px,     dummy_y, W, B),
+                                          "🧛 Vampiric Bite",
+                                          (120, 30, 45), (160, 50, 65), self.font_md)
         self.btn_cbt_dash        = Button(pygame.Rect(px,               dummy_y, HW, B),
                                           "Dash",
                                           COL_BTN_DASH, COL_BTN_DASH_HOV, self.font_md)
@@ -2322,7 +2328,8 @@ class App:
         mtype = str(meta.get("type") or "").lower()
         for _needle, _flag in (("aberration", "is_aberration"), ("celestial", "is_celestial"),
                                ("elemental", "is_elemental"), ("fey", "is_fey"),
-                               ("fiend", "is_fiend"), ("undead", "is_undead")):
+                               ("fiend", "is_fiend"), ("undead", "is_undead"),
+                               ("construct", "is_construct")):
             if _needle in mtype and hasattr(stats, _flag):
                 setattr(stats, _flag, True)
         # Monsters whose bonus action grants Dash/Disengage (e.g. the Vampire
@@ -4667,7 +4674,7 @@ class App:
         if not self.combat_active and self._mob_clearable(idx):
             self._delete_placed_agent(idx)
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0, class_levels: dict = None, subclasses: dict = None):
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0, class_levels: dict = None, subclasses: dict = None, species: str = None):
         """Called by StatsDialog when the user clicks OK.
 
         Multiclassing (MULTICLASSING_PLAN.md Phase 5): `class_levels` ({class:level})
@@ -4793,6 +4800,11 @@ class App:
         self._set_origin_feat(stats, origin_feat, char_level)
         # General feats (multi-select). Disjoint from origin feats; no ASI auto-apply.
         self._set_general_feats(stats, general_feats)
+        # Species (None = a legacy caller that doesn't pass one: leave it as it is). set_species
+        # strips the old species' traits and applies the new one's; unchanged is a no-op, so a
+        # hand-edited speed survives a re-confirm.
+        if species is not None:
+            stats.set_species("" if species == "NONE" else species)
         # Elemental Adept's chosen element(s) (set via the element picker). Kept only while the feat
         # is selected; cleared otherwise so a deselect doesn't leave stale types.
         stats.elemental_adept_types = list(elemental_adept_types or []) if stats.has_feat("Elemental Adept") else []
@@ -8114,6 +8126,7 @@ class App:
         action.is_offhand = (slot == "bonus") if self.pending_attack_offhand is None else self.pending_attack_offhand
         action.attack_slot = slot  # Pass the slot type to C++ ("action" or "bonus")
         action.thrown = self._attack_is_a_throw(atk_idx, target_idx, self.pending_weapon_idx)
+        action.bite_empower = self.pending_bite_empower   # read only for the "Vampiric Bite" weapon
 
         # Stash what _finish_attack needs (the self.pending_* attrs stay set across the suspend) and
         # arm it as the reaction continuation, then begin the attack.
@@ -8534,6 +8547,7 @@ class App:
                     idx_to_restore, orig_weapons = self._unarmed_strike_original_weapons
                     self.combat.set_agent_weapons(self.bm, idx_to_restore, orig_weapons)
                     self._unarmed_strike_original_weapons = None
+                self.pending_bite_empower = 0
 
                 # FLAG: Move to C++
                 if slot == "action":
@@ -9269,15 +9283,56 @@ class App:
             self._combat_log_add(f"Error activating Wild Shape: {e}")
 
 
-    def _start_unarmed_punch(self):
-        """Damage option of an Unarmed Strike (1 + STR Bludgeoning). Resolved as a normal attack
-        with a synthetic unarmed weapon in slot 0, so it counts against the Attack action's attacks
-        and the real weapons are restored afterward by _finish_attack."""
+    def _start_vampiric_bite(self, empower: int):
+        """Dhampir Vampiric Bite: an Unarmed Strike dealing 1d4 + CON Piercing, armed like the
+        punch. `empower` (1 Drain, 2 Strengthen) rides the Attack to the engine, which spends a
+        use only if the bite deals damage to a creature that isn't a Construct or Undead."""
         idx = self._current_agent_idx()
         if idx < 0:
             return
-        unarmed = self._create_unarmed_punch_weapon()
-        orig_weapons = self.combat.get_agent_weapons(self.bm, idx)
+        stats = self.combat.get_agent_stats(self.bm, idx)
+        self._start_unarmed_punch(self._create_vampiric_bite_weapon(stats))
+        self.pending_bite_empower = int(empower)
+        self._combat_log_add("Click a creature to bite (Vampiric Bite — "
+                             f"{'Drain' if empower == 1 else 'Strengthen'}).")
+
+    def _create_vampiric_bite_weapon(self, stats):
+        """The Dhampir's bite: 1d4 Piercing; the engine adds CON (rules::damageAbilityMod).
+        The attack roll is an Unarmed Strike's: STR, or DEX for a Monk."""
+        bite = rpg.Weapon()
+        bite.name = "Vampiric Bite"
+        bite.type = rpg.WeaponType.Melee
+        bite.proficient = True
+        bite.finesse = stats.has_class(rpg.CharacterClass.Monk)
+        bite.reach_ft = 5
+        bite.bonus_hit = 0
+        dmg_roll = rpg.PhysicalDamageRoll()
+        dmg_roll.type = rpg.PhysicalDamage.Piercing
+        dmg_roll.num_dice = 1
+        dmg_roll.die_size = 4
+        dmg_roll.bonus = 0
+        bite.physical_damage_types = [dmg_roll]
+        return bite
+
+    def _start_unarmed_punch(self, unarmed=None):
+        """Damage option of an Unarmed Strike (1 + STR Bludgeoning). Resolved as a normal attack
+        with a synthetic unarmed weapon in slot 0, so it counts against the Attack action's attacks
+        and the real weapons are restored afterward by _finish_attack. `unarmed` swaps in another
+        Unarmed Strike weapon (the Dhampir's bite)."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            return
+        self.pending_bite_empower = 0
+        is_punch = unarmed is None
+        if is_punch:
+            unarmed = self._create_unarmed_punch_weapon()
+        # Re-arming before the swing (punch, then bite): slot 0 is already the synthetic weapon,
+        # so restore from the real loadout saved the first time, not from it.
+        saved = self._unarmed_strike_original_weapons
+        if saved and saved[0] == idx:
+            orig_weapons = saved[1]
+        else:
+            orig_weapons = self.combat.get_agent_weapons(self.bm, idx)
         new_weapons = [unarmed] + list(orig_weapons[1:])
         self.combat.set_agent_weapons(self.bm, idx, new_weapons)
         self._unarmed_strike_original_weapons = (idx, orig_weapons)
@@ -9293,7 +9348,8 @@ class App:
         self.pending_attack_offhand  = None
         self.pending_attack_resource = None
         self.pending_unarmed_type    = ""   # routed through the normal attack path, not _resolve_unarmed_option
-        self._combat_log_add("Click a target to strike (Unarmed Strike — Damage).")
+        if is_punch:
+            self._combat_log_add("Click a target to strike (Unarmed Strike — Damage).")
 
     def _start_unarmed_grapple(self):
         """Grapple option of an Unarmed Strike (requires target selection)."""
@@ -14305,6 +14361,7 @@ class App:
                     "is_fey":        getattr(s, "is_fey", False),
                     "is_aberration": getattr(s, "is_aberration", False),
                     "is_vampire": s.is_vampire,
+                    "is_construct": s.is_construct,
                     # Magic Resistance trait (Advantage on saves vs spells/magical effects). Must
                     # round-trip or a reloaded Pit Fiend/Balor loses it (dict_to_stats reads it back).
                     "magic_resistance": s.magic_resistance,
@@ -14344,6 +14401,10 @@ class App:
                     "luck_points": s.luck_points,
                     "luck_points_max": s.luck_points_max,
                     "boon_of_fate_used": s.boon_of_fate_used,
+                    "species": s.species,
+                    "vampiric_bite_used": s.vampiric_bite_used,
+                    "vampiric_strengthen_bonus": s.vampiric_strengthen_bonus,
+                    "vampiric_strengthen_turns": s.vampiric_strengthen_turns,
                     "primal_champion_applied": s.primal_champion_applied,
                     "relentless_rage_dc": s.relentless_rage_dc,
                     # Legendary Actions & Resistance — written in the bestiary meta.legendary shape so
@@ -16275,6 +16336,9 @@ class App:
                 if vuln in magic_damage_names:
                     idx = magic_damage_names.index(vuln)
                     s.set_magic_damage_multiplier(idx, 2.0)
+            # Dhampir Trace of Undeath: Necrotic Resistance, even if the file only names the species.
+            if s.is_dhampir() and s.magic_damage_multipliers[5] > 0.5:
+                s.set_magic_damage_multiplier(5, 0.5)
 
             # Load physical damage multipliers
             physical_damage_names = ["Bludgeoning", "Piercing", "Slashing"]
@@ -19647,6 +19711,8 @@ class App:
         # resumes mid-sequence (Extra Attack: grapple, then strike, or vice versa).
         if action_id == "unarmed":
             features.show_unarmed_menu(self, anchor)
+        if action_id == "vampiric_bite":
+            features.show_vampiric_bite_menu(self, anchor)
         # D-M2-4: these five are DRAWN mid-sequence (the band stays open for
         # the swings still owed) and refused here, exactly as End Turn is
         # refused while paused. The gate is a handler rule, not availability —
@@ -20753,6 +20819,8 @@ class App:
             y = panel.draw_action_row(self, panel.menu_group(self, "action"), lx, y, W, gap)
         else:
             y = panel.draw_action_row(self, panel.menu_group(self, "action", only=_ACT_ROW_ATTACK),
+                                      lx, y, W, gap)
+            y = panel.draw_action_row(self, panel.menu_group(self, "action", only=_ACT_ROW_BITE),
                                       lx, y, W, gap)
             y = panel.draw_action_row(self, panel.menu_group(self, "action", only=_ACT_ROW_MOVE),
                                       lx, y, W, gap, font=self.font_sm)
