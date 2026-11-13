@@ -213,10 +213,9 @@ def set_tracker_mode(app, on: bool) -> bool:
     """Switch initiative tracker mode (plans/INITIATIVE_TRACKER_PLAN.md D2, T1). Refused
     mid-combat. Returns True when the mode is now ``on``.
 
-    The table rolls real dice and only the DM console is used, so the player server goes
-    down while the mode is on (no joins, every open screen closes) and comes back when it
-    goes off. It comes back only if this stopped it: a headless app never had one, and
-    must not bind 6081 here."""
+    The table rolls real dice and the DM enters everything, but the player server stays
+    up: its screens are how the board is broadcast to the table. Every prompt goes to the
+    DM (``App._prompt_owner``), so no player is offered a turn or a reaction."""
     on = bool(on)
     if app.tracker_mode == on:
         return True
@@ -228,18 +227,8 @@ def set_tracker_mode(app, on: bool) -> bool:
     if isinstance(run, dict) and bool(run.get("tracker_mode", False)) != on:
         run["tracker_mode"] = on
         app.store.save_run()
-    if on:
-        if app._net is not None:
-            app._net.stop()
-            app._net = None
-            app._tracker_stopped_net = True
-            print("[net] player server stopped for tracker mode")
-    elif app._tracker_stopped_net:
-        app._tracker_stopped_net = False
-        from net import link as net_link
-        net_link.start_player_server(app)
     app.session_log.add(f"Tracker mode {'on' if on else 'off'}.")
-    app._flash_status("Tracker mode ON: the table rolls, no player screens" if on
+    app._flash_status("Tracker mode ON: the table rolls, the DM answers every prompt" if on
                       else "Tracker mode OFF")
     return True
 

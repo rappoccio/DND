@@ -894,10 +894,9 @@ class App:
         # ── Combat widget state ───────────────────────────────────────────
         self.combat_active        = False
         # Initiative tracker mode (plans/INITIATIVE_TRACKER_PLAN.md): the table rolls real
-        # dice; no player server, no NPC automation, no action rows. Set via
-        # menus.dm.set_tracker_mode, which refuses mid-combat.
+        # dice; player screens only broadcast the board, no NPC automation, no action rows.
+        # Set via menus.dm.set_tracker_mode, which refuses mid-combat.
         self.tracker_mode         = False
-        self._tracker_stopped_net = False  # the toggle stopped the player server
         # "Players see: map only" (menus.dm.set_players_map_only): player screens get the page,
         # fog and terrain only, and every prompt goes to the DM (a table with miniatures).
         self.players_map_only     = False
@@ -2509,8 +2508,9 @@ class App:
 
     def _prompt_owner(self, agent_idx: int) -> str:
         """Who answers a prompt for this token: its controller, or the DM while players see
-        the map only (their screens carry no prompts then)."""
-        if self.players_map_only:
+        the map only (their screens carry no prompts then) or in tracker mode (the DM enters
+        everything; player screens only broadcast the board)."""
+        if self.players_map_only or self.tracker_mode:
             return DM_PRINCIPAL_ID
         return self.roster.controller_of(agent_idx)
 
@@ -22550,8 +22550,7 @@ class App:
         # Startup, in the sense the frozen user procedure means it: the join code and the
         # URL are printed before the first frame, by the one entry point that is a running
         # app rather than a constructed one.
-        if not self.tracker_mode:               # tracker mode has no player screens
-            net_link.start_player_server(self)
+        net_link.start_player_server(self)
         self.confirm_overwrites = True
         running = True
         while running:

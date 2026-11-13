@@ -30,6 +30,7 @@ import autosave
 from constants import PC_FACTION
 from gui_driver import cell_center
 from main import App
+from net.roster import DM_PRINCIPAL_ID
 from menus import dm
 from net import link as net_link
 from widgets import Button
@@ -703,8 +704,9 @@ class _FakeServer:
 
 
 def test_player_server_gate():
-    """No joins in tracker mode: the server stops. It restarts on the way out only if the
-    toggle stopped it, so a headless App never binds 6081 here."""
+    """Tracker mode keeps the player server: its screens broadcast the board to the table.
+    The toggle neither stops a running server nor starts one, and every prompt goes to the
+    DM, so no player is offered a turn."""
     app = App(MAP_PATH, seed=SEED)
     started = []
     real_start = net_link.start_player_server
@@ -712,14 +714,22 @@ def test_player_server_gate():
     try:
         dm.set_tracker_mode(app, True)
         dm.set_tracker_mode(app, False)
-        check(not started, "a never-running server was started")
+        check(not started, "the toggle started a server")
 
         fake = _FakeServer()
         app._net = fake
         dm.set_tracker_mode(app, True)
-        check(fake.stopped and app._net is None, "the server kept running in tracker mode")
-        dm.set_tracker_mode(app, False)
-        check(started == [app], "the server did not come back")
+        check(not fake.stopped and app._net is fake, "tracker mode stopped the player server")
+        real_ctl = app.roster.controller_of
+        app.roster.controller_of = lambda idx: "player-1"
+        try:
+            check(app._prompt_owner(0) == DM_PRINCIPAL_ID,
+                  "a player owns a prompt in tracker mode")
+            dm.set_tracker_mode(app, False)
+            check(app._prompt_owner(0) == "player-1", "tracker off kept prompts with the DM")
+        finally:
+            app.roster.controller_of = real_ctl
+        check(not fake.stopped and not started, "leaving tracker mode touched the server")
         print("✅ test_player_server_gate")
     finally:
         net_link.start_player_server = real_start
