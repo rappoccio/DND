@@ -3079,11 +3079,45 @@ class App:
         cols, rows = self.bm.grid_cols, self.bm.grid_rows
         start_c, start_r = (drop_cell if drop_cell is not None else (0, 0))
 
+        # The landing's room, in flood order (nearest first): the engine's room flood
+        # stops at wall cells, edge walls and doors, so the party lands together on the
+        # staircase's side of every wall. A landing drawn on dark stair art is often a
+        # wall cell itself, which the flood does not pass; seed it from the first open
+        # neighbour instead (orthogonal before diagonal, across no edge wall).
+        def _room_floor():
+            if drop_cell is None:
+                return []
+            seed = rpg.Cell(start_c, start_r)
+            if self.bm.is_blocked(seed, 1):
+                seed = None
+                for dc, dr in ((0, 1), (1, 0), (0, -1), (-1, 0),
+                               (1, 1), (-1, 1), (1, -1), (-1, -1)):
+                    c, r = start_c + dc, start_r + dr
+                    if 0 <= c < cols and 0 <= r < rows and not self.bm.is_blocked(rpg.Cell(c, r), 1):
+                        seed = rpg.Cell(c, r)
+                        break
+                if seed is None:
+                    return []
+            return [(c.col, c.row) for c in self.bm.room_cells(seed, _ROOM_FLOOD_CAP)
+                    if self.bm.door_at(c) < 0 and not self.bm.is_blocked(c, 1)]
+
+        room = _room_floor()
+        room_set = set(room)
+
         def _free_spot(size):
-            # Spiral-ish scan outward from the drop cell for the first cell the engine
-            # will actually place on: a landing drawn on dark stair art is often a wall
-            # cell, and _load_agents silently skips a blocked agent — which, since the
-            # source page was already saved without it, would lose the creature.
+            for c, r in room:
+                fp = _footprint(c, r, size)
+                if (fp <= room_set and not (fp & occupied)
+                        and not self.bm.is_blocked(rpg.Cell(c, r), size)):
+                    return c, r
+            return _any_spot(size)
+
+        def _any_spot(size):
+            # Last resort, when the landing's room is full (or there is no landing):
+            # spiral-ish scan outward from the drop cell for the first cell the engine
+            # will actually place on. _load_agents silently skips a blocked agent —
+            # which, since the source page was already saved without it, would lose the
+            # creature — so a spot past a wall beats no spot at all.
             for radius in range(0, max(cols, rows) + 1):
                 for r in range(max(0, start_r - radius), min(rows - size + 1, start_r + radius + 1)):
                     for c in range(max(0, start_c - radius), min(cols - size + 1, start_c + radius + 1)):

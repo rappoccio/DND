@@ -267,6 +267,33 @@ def test_party_crossing():
     print("  ✅ Party: carries every party token up and back, and not in combat")
 
 
+def test_party_lands_in_the_staircase_room():
+    """The party fills the landing's room, nearest first, and never spills past a wall
+    while the room has space. On U the landing (2, 7) sits in a three-cell nook (row 7,
+    cols 0–2) walled off by row 6 and the cell (3, 7); a square scan outward from the
+    landing reaches row 5, the other side of the wall, before it reaches (0, 7)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon(tmp)
+        walls = [(0, 6 * CELL, 4 * CELL, CELL), (3 * CELL, 7 * CELL, CELL, CELL)]
+        regions = ", ".join('{"type": "Wall", "x": %d, "y": %d, "width": %d, "height": %d, '
+                            '"multiplier": 0.0}' % w for w in walls)
+        with open(os.path.join(tmp, "U_terrain.json"), "w") as f:
+            f.write('{"regions": [%s], "walls_enabled": false, "manual_grid": %s}'
+                    % (regions, str(GRID).replace("'", '"')))
+        st = app.dungeon.new_staircase("M", (2, 2))
+        app.dungeon.finish_staircase(st.id, "U", (2, 7))
+        for name, c, r in (("Aria", 2, 3), ("Bram", 7, 7), ("Cole", 0, 6)):
+            _place(app, name, c, r)
+        for name in ("Aria", "Bram", "Cole"):
+            app.bm.set_agent_faction(_idx(app, name), PC_FACTION)
+
+        assert app._use_staircase(st.id, 0, -1, party=True)
+        assert app.dungeon_page.id == "U"
+        spots = sorted(_where(app, n)[1] for n in ("Aria", "Bram", "Cole"))
+        assert spots == [(0, 7), (1, 7), (2, 7)], spots
+    print("  ✅ the party lands together in the staircase's room, not past its walls")
+
+
 def test_zoom_kept_across_floors():
     with tempfile.TemporaryDirectory() as tmp:
         app = _dungeon(tmp)
@@ -292,7 +319,8 @@ def main():
     pygame.init()
     tests = [test_carries_both_ways, test_blocked_landing, test_neighbouring_and_shared_ends,
              test_refused_in_combat_and_unfinished, test_player_view_under_fog,
-             test_player_submit_validated, test_party_crossing, test_zoom_kept_across_floors]
+             test_player_submit_validated, test_party_crossing,
+             test_party_lands_in_the_staircase_room, test_zoom_kept_across_floors]
     failed = 0
     for t in tests:
         try:
