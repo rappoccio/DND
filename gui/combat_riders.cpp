@@ -699,7 +699,7 @@ int CombatEngine::applyEldritchSmiteEffect(BattleMap& bm, int attacker_idx, int 
     if (!result.target_down) {
         Agent::Conditions tgt_cond = bm.getAgentConditions(target_idx);
         const int tgt_sz = agents[static_cast<std::size_t>(target_idx)].agent->getSize();
-        if (tgt_sz <= 3 && !tgt_cond.prone) {
+        if (tgt_sz <= 3 && !tgt_cond.prone && !conditionImmune(bm, target_idx, "Prone")) {
             tgt_cond.prone = true;
             bm.setAgentConditions(target_idx, tgt_cond);
             log_("{} is knocked Prone (Eldritch Smite)", agentName(bm, target_idx));
@@ -1222,6 +1222,7 @@ void CombatEngine::applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int
             log_("Cunning Strike: {} resisted {} (DC {})", agentName(bm, target_idx), name, dc);
             continue;
         }
+        if (conditionImmune(bm, target_idx, name)) continue;
 
         // Set the flag immediately, and register an ActiveAgentCondition for duration / repeat saves.
         Agent::Conditions tc = bm.getAgentConditions(target_idx);
@@ -1377,6 +1378,7 @@ bool CombatEngine::applyRendMind(BattleMap& bm, int attacker_idx, int target_idx
         log_("Rend Mind: {} resists (WIS {} vs DC {})", agentName(bm, target_idx), total, dc);
         return false;
     }
+    if (conditionImmune(bm, target_idx, "Stunned")) return false;
 
     Agent::Conditions tc = bm.getAgentConditions(target_idx);
     tc.stunned = true;
@@ -1433,7 +1435,9 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
         int save_total = roll(20, saveModFor(bm, target_idx, SaveStr));
         save_total = applyIndomitableMight(bm, target_idx, SaveStr, save_total);
         res.save_roll = save_total;
-        if (res.save_roll < dc) {
+        if (res.save_roll < dc && conditionImmune(bm, target_idx, "Prone")) {
+            // Condition Immunity: the trip lands no condition.
+        } else if (res.save_roll < dc) {
             Agent::Conditions tc = bm.getAgentConditions(target_idx);
             tc.prone = true;
             bm.setAgentConditions(target_idx, tc);
@@ -1459,6 +1463,8 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
             // Aura of Courage: the target can't be Frightened — the maneuver lands no condition.
             log_("{} can't be Frightened (Aura of Courage) — Menacing Attack has no effect",
                  agentName(bm, target_idx));
+        } else if (res.save_roll < dc && conditionImmune(bm, target_idx, "Frightened")) {
+            // Condition Immunity: the maneuver lands no condition.
         } else if (res.save_roll < dc) {
             Agent::Conditions tc = bm.getAgentConditions(target_idx);
             tc.frightened = true;
@@ -2078,10 +2084,10 @@ StunningStrikeResult CombatEngine::applyStunningStrike(BattleMap& bm, int attack
         cond.caster_idx = attacker_idx;
         cond.condition_name = "Stunned";
         cond.turns_remaining = 1;
-        [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
-        res.stunned = true;
-        log_("{} is Stunned (Stunning Strike — save {} vs DC {})",
-             agentName(bm, target_idx), res.save_roll, dc);
+        res.stunned = addAgentCondition(bm, cond) >= 0;   // -1: immune to Stunned
+        if (res.stunned)
+            log_("{} is Stunned (Stunning Strike — save {} vs DC {})",
+                 agentName(bm, target_idx), res.save_roll, dc);
     } else {
         log_("{} resists Stunning Strike (save {} vs DC {})",
              agentName(bm, target_idx), res.save_roll, dc);
@@ -2132,10 +2138,10 @@ OpenHandRiderResult CombatEngine::applyOpenHandRider(BattleMap& bm, int attacker
             cond.caster_idx = attacker_idx;
             cond.condition_name = "Prone";
             cond.turns_remaining = 1;
-            [[maybe_unused]] int cond_id = addAgentCondition(bm, cond);
-            res.target_knocked_prone = true;
-            log_("{} is knocked Prone (Open Hand Knockdown — save {} vs DC {})",
-                 agentName(bm, target_idx), res.knockdown_save_roll, dc);
+            res.target_knocked_prone = addAgentCondition(bm, cond) >= 0;   // -1: immune to Prone
+            if (res.target_knocked_prone)
+                log_("{} is knocked Prone (Open Hand Knockdown — save {} vs DC {})",
+                     agentName(bm, target_idx), res.knockdown_save_roll, dc);
         } else {
             log_("{} resists Open Hand Knockdown (save {} vs DC {})",
                  agentName(bm, target_idx), res.knockdown_save_roll, dc);

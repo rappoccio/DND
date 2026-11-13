@@ -291,7 +291,9 @@ def show_legendary_action_menu(app, idx: int, st):
     app._combat_log_add(
         f"{name}: {remaining} legendary action(s) available — choose one or pass.")
     app._flush_combat_log()
-    options = [(a, (lambda a=a: app._choose_legendary_action(a)))
+    costs = dict(st.legendary_action_costs)
+    options = [(a if costs.get(a, 1) <= 1 else f"{a} (costs {costs[a]})",
+                (lambda a=a: app._choose_legendary_action(a)))
                for a in app._legendary_action_names_for(idx, st)]
     options.append((f"Pass ({remaining} left)", app._pass_legendary))
     app._ask_actor(idx, "action", f"{name}: legendary action ({remaining} left)", options)

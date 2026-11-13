@@ -2372,6 +2372,9 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
                          agentName(bm, tgt_idx), tgt_stats.hp_cur,
                          sp.condition_hp_threshold, spell_cond.condition_name);
                 }
+                // Stat-block Condition Immunity: the save/damage still resolve; the condition doesn't land.
+                if (condition_applies && conditionImmune(bm, tgt_idx, spell_cond.condition_name))
+                    condition_applies = false;
 
                 if (condition_applies) {
                     log_("[APPLY] Applying condition '{}' to {}, requires_save={}, push_ft={}",
@@ -2878,7 +2881,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
                         if (stats.dex < 10 && (stats.dex - 10) % 2 != 0) --dex_mod;  // floor for odd negative scores
                         if (stats.save_prof_dex) dex_mod += stats.prof_bonus;        // DEX save proficiency
                         int d20 = roll(20);
-                        if (d20 + dex_mod < sp.slip_save_dc) {
+                        if (d20 + dex_mod < sp.slip_save_dc && !conditionImmune(bm, i, "Prone")) {
                             Agent::Conditions cond_i = bm.getAgentConditions(i);
                             cond_i.prone = true;
                             bm.setAgentConditions(i, cond_i);

@@ -309,7 +309,7 @@ void CombatEngine::resolveThrownItem(BattleMap& bm, int user_idx, int target_idx
     if (item.condition_applied == "Burning") {
         applyBurning(bm, target_idx);
         res.condition_applied = "Burning";
-    } else if (item.condition_applied == "Restrained") {
+    } else if (item.condition_applied == "Restrained" && !conditionImmune(bm, target_idx, "Restrained")) {
         Agent::Conditions nc = bm.getAgentConditions(target_idx);
         nc.restrained    = true;
         nc.netted        = true;

@@ -231,6 +231,7 @@ void CombatEngine::applyParalyzed(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+    if (conditionImmune(bm, idx, "Paralyzed")) return;
 
     // Paralyzed IS Incapacitated: route the shared side-effects (movement→0, grapples released,
     // and — critically — concentration broken) through applyIncapacitated so a paralyzed caster
@@ -249,6 +250,7 @@ void CombatEngine::applyBlinded(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+    if (conditionImmune(bm, idx, "Blinded")) return;
 
     // Set blinded condition
     Agent::Conditions cond = bm.getAgentConditions(idx);
@@ -363,6 +365,7 @@ void CombatEngine::applyStunned(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+    if (conditionImmune(bm, idx, "Stunned")) return;
 
     // Stunned IS Incapacitated: route the shared side-effects (movement→0, grapples released,
     // concentration broken) through applyIncapacitated so a stunned caster drops its concentration
@@ -380,6 +383,7 @@ void CombatEngine::applyCharmed(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+    if (conditionImmune(bm, idx, "Charmed")) return;
 
     // Beguiling Defenses (Archfey Warlock L10+): immune to the Charmed condition.
     {
@@ -422,6 +426,7 @@ void CombatEngine::dropAgentWeapons(BattleMap& bm, int idx) noexcept
 
 void CombatEngine::applyFrightened(BattleMap& bm, int idx) noexcept
 {
+    if (conditionImmune(bm, idx, "Frightened")) return;
     // Aura of Courage (allied Paladin L10+ in range): immune to the Frightened condition.
     if (hasAuraOfCourage(bm, idx)) {
         log_("{} can't be Frightened (Aura of Courage)", agentName(bm, idx));
@@ -438,6 +443,7 @@ void CombatEngine::applyProne(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+    if (conditionImmune(bm, idx, "Prone")) return;
 
     // Set prone condition (movement restricted to crawling, disadvantage on attacks)
     Agent::Conditions cond = bm.getAgentConditions(idx);
@@ -740,6 +746,7 @@ void CombatEngine::applyPoisoned(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+    if (conditionImmune(bm, idx, "Poisoned")) return;
 
     Agent::Conditions cond = bm.getAgentConditions(idx);
     // Petrified agents are immune to poison
@@ -758,6 +765,7 @@ void CombatEngine::applyDeafened(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+    if (conditionImmune(bm, idx, "Deafened")) return;
 
     Agent::Conditions cond = bm.getAgentConditions(idx);
     cond.deafened = true;
@@ -770,6 +778,7 @@ void CombatEngine::applyPetrified(BattleMap& bm, int idx) noexcept
 {
     auto agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+    if (conditionImmune(bm, idx, "Petrified")) return;
 
     // Set condition flags
     Agent::Conditions cond = bm.getAgentConditions(idx);
@@ -1073,6 +1082,9 @@ void CombatEngine::applyCommandEffect(BattleMap& bm, int bard_idx, int target_id
 
 int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) noexcept
 {
+    // Stat-block Condition Immunity: the condition never lands and is not tracked (-1 = no id).
+    if (conditionImmune(bm, cond.agent_idx, cond.condition_name)) return -1;
+
     cond.condition_id = conditions_.nextId();
 
     // Apply the condition to the agent

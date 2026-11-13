@@ -110,6 +110,15 @@ bool CombatEngine::hasAuraOfCourage(const BattleMap& bm, int agent_idx) const no
     return rules::hasAuraOfCourage(bm, agent_idx);
 }
 
+bool CombatEngine::conditionImmune(const BattleMap& bm, int agent_idx,
+                                   std::string_view condition_name) const noexcept
+{
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    if (!bm.getAgentStats(agent_idx).immuneToCondition(condition_name)) return false;
+    log_("{} is immune to the {} condition", agentName(bm, agent_idx), condition_name);
+    return true;
+}
+
 bool CombatEngine::hasAuraOfWarding(const BattleMap& bm, int agent_idx) const noexcept
 {
     return rules::hasAuraOfWarding(bm, agent_idx);

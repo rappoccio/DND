@@ -495,15 +495,16 @@ def test_every_wired_arm_projects_and_cancels():
 
 
 def test_an_unwired_arm_holds_the_offer():
-    """Since M5e.1 the one unwired arm is the legendary pick, which is NPC-only. While an
-    unwired arm is armed the offer is held back, as in M5b, and no target prompt is
-    posted: the DM resolves it."""
+    """Since M5e.1 the unwired arms are the legendary picks (attack and spell), which are
+    NPC-only. While an unwired arm is armed the offer is held back, as in M5b, and no
+    target prompt is posted: the DM resolves it."""
     unwired = [a.name for a in net_picks.ARMS if a.name not in net_picks.WIRED]
-    assert unwired == ["_legendary_target_pick"], unwired
-    app, kira, _ = _aria_turn()
-    app._legendary_target_pick = True
-    _frame(app)
-    assert _offer(app) is None and _pick(app) is None, app.prompts.live
+    assert unwired == ["_legendary_target_pick", "_legendary_spell_pick"], unwired
+    for name, armed in (("_legendary_target_pick", True), ("_legendary_spell_pick", "cell")):
+        app, kira, _ = _aria_turn()
+        setattr(app, name, armed)
+        _frame(app)
+        assert _offer(app) is None and _pick(app) is None, (name, app.prompts.live)
     print("✅ test_an_unwired_arm_holds_the_offer")
 
 
@@ -1670,7 +1671,7 @@ def test_wish_is_one_choice_prompt_over_the_bus():
     assert (browser.kind, browser.expects, browser.render) == \
         ("action", "choice", SPELL_BROWSER_RENDER), browser
     assert [o.label for o in browser.options] == expected, len(browser.options)
-    assert len(expected) == 398 and "Wish" not in expected, len(expected)
+    assert len(expected) == 402 and "Wish" not in expected, len(expected)
     assert browser.to_wire()["options"][0].keys() == {"id", "label", "enabled"}
     nine, three = _slots(app, aria, 9), _slots(app, aria, 3)
     _choose_label(app, kira, browser, "Fireball")
@@ -1755,7 +1756,7 @@ def test_greater_divine_intervention_offers_wish():
     _choose_label(app, kira, di, "Wish")
     assert app.action_used and not app.combat.can_use_divine_intervention(app.bm, aria)
     wish = _until_title(app, kira, "Wish — duplicate a spell")
-    assert len(wish.options) == 398, len(wish.options)
+    assert len(wish.options) == 402, len(wish.options)
     _choose_label(app, kira, wish, "Fireball")
     _until_pick(app, kira)
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))

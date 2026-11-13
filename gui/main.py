@@ -1054,6 +1054,10 @@ class App:
         self._legendary_queue        = []    # creature indices still owed a legendary-action offer
         self._legendary_actor        = -1    # creature currently being offered / resolving an action
         self._legendary_target_pick  = False # armed: next map click picks the legendary attack target
+        self._legendary_spell_pick   = ""    # armed legendary spell: "creature" / "cell" pick, "" = none
+        self._legendary_spell_idx    = -1
+        self._legendary_spell_label  = ""
+        self._legendary_cost_pending = 1     # legendary actions the chosen option will spend
         self._legendary_attack_name  = ""    # the chosen attack option (for the target-pick prompt)
         self._legendary_attack_widx  = -1    # weapon index the chosen attack resolves through
         self._legendary_move_active  = False # armed: a legendary Dash/DashHalf move is in progress
@@ -2296,6 +2300,9 @@ class App:
         meta = mob_record.get("meta", {})
         if "legendary" in meta:
             sd["legendary"] = meta["legendary"]
+        # Condition Immunities live in meta (stat-block display list); the engine enforces them.
+        if "immunities_conditions" in meta:
+            sd["condition_immunities"] = list(meta.get("immunities_conditions") or [])
         stats = dict_to_stats(sd)
         apply_damage_multipliers(stats, sd)
         # Creature type from the stat block's meta.type (e.g. "Fiend (Devil)", "Undead", "Fey").
@@ -6019,6 +6026,8 @@ class App:
             self._resolve_inspiring_smite(hit)
         elif self._legendary_target_pick and hit >= 0:
             self._resolve_legendary_attack(hit)
+        elif self._legendary_spell_pick:
+            self._resolve_legendary_spell(hit, cell)
         elif self.pending_attack_slot and hit >= 0:
             features.confirm_friendly_harm(self, hit, lambda h=hit: self._resolve_combat_attack(h))
         elif self.pending_summon_slot:
@@ -6164,6 +6173,7 @@ class App:
         self.pending_flurry_target       = False
         self.pending_vitality_target     = False
         self._legendary_target_pick      = False
+        self._legendary_spell_pick       = ""
         # None / -1 idle sentinels and their companion state.
         self.pending_cleave              = None
         self.pending_sweep               = None
@@ -6219,6 +6229,7 @@ class App:
         ("pending_path_to_the_grave", False),
         ("pending_telekinetic", False), ("pending_flurry_target", False),
         ("pending_vitality_target", False), ("pending_shadowy_dodge_cell", False), ("_legendary_target_pick", False),
+        ("_legendary_spell_pick", ""),
         ("pending_cleave", None), ("pending_sweep", None),
         ("pending_rally", None), ("pending_feint", None),
         ("pending_use_item", -1), ("pending_elemental_burst", -1),
@@ -6359,6 +6370,7 @@ class App:
         self._legendary_queue = []
         self._legendary_actor = -1
         self._legendary_target_pick = False
+        self._legendary_spell_pick = ""
         self._legendary_move_active = False
         if self.combat_active and prev_idx >= 0:
             for i in range(len(self.bm.placed_agents)):
@@ -6391,10 +6403,15 @@ class App:
         self._legendary_actor = -1
         self._offer_next_legendary()
 
-    def _spend_legendary_action(self, idx: int) -> int:
-        """Decrement the creature's per-round legendary-action budget; return the remaining count."""
+    def _legendary_cost(self, idx: int, action_name: str) -> int:
+        """Legendary actions the named option costs creature idx (bestiary action_costs; default 1)."""
         st = self.combat.get_agent_stats(self.bm, idx)
-        st.legendary_actions_current = max(0, st.legendary_actions_current - 1)
+        return max(1, int(dict(st.legendary_action_costs).get(action_name, 1)))
+
+    def _spend_legendary_action(self, idx: int, cost: int = 1) -> int:
+        """Decrement the creature's per-round legendary-action budget by cost; return what's left."""
+        st = self.combat.get_agent_stats(self.bm, idx)
+        st.legendary_actions_current = max(0, st.legendary_actions_current - cost)
         self.combat.set_agent_stats(self.bm, idx, st)
         return st.legendary_actions_current
 
@@ -6414,6 +6431,20 @@ class App:
         idx = self._legendary_actor
         if idx < 0 or idx >= len(self.bm.placed_agents):
             self._offer_next_legendary(); return
+        cost = self._legendary_cost(idx, action_name)
+        st = self.combat.get_agent_stats(self.bm, idx)
+        if cost > st.legendary_actions_current:
+            self._combat_log_add(
+                f"{self.bm.placed_agents[idx].name}: {action_name} costs {cost} legendary actions "
+                f"({st.legendary_actions_current} left) — pick another or pass.")
+            self._flush_combat_log()
+            self._offer_next_legendary()   # re-show the menu; nothing is spent
+            return
+        self._legendary_cost_pending = cost
+        spell_name = dict(st.legendary_action_spells).get(action_name)
+        if spell_name:
+            self._begin_legendary_spell(idx, action_name, spell_name)
+            return
         key = action_name.strip().lower()
         if key in ("dash", "dashhalf", "dash half"):
             self._begin_legendary_dash(idx, half=(key != "dash"))
@@ -6463,8 +6494,8 @@ class App:
         widx = self._legendary_attack_widx
         action = rpg.Attack(idx, target_idx, widx)
         action.attack_slot = "legendary"   # resolves like a normal attack; no turn-economy cost
-        # The attempt costs one legendary action regardless of hit/miss.
-        self._spend_legendary_action(idx)
+        # The attempt costs its legendary actions regardless of hit/miss.
+        self._spend_legendary_action(idx, self._legendary_cost_pending)
         self._reaction_finish = lambda i=idx: self._finish_legendary_attack(i)
         status = self.combat.begin_attack(self.bm, action)
         self._flush_combat_log()
@@ -6479,6 +6510,109 @@ class App:
         self._flush_combat_log()
         self._sync_spell_effect_cache()
         self._update_attack_overlay()
+        self._after_legendary_action(idx)
+
+    def _begin_legendary_spell(self, idx: int, action_name: str, spell_name: str):
+        """A legendary action that casts a spell from the creature's own list (bestiary
+        action_spells: Zariel's Immolating Gaze / Teleport). Arms a pick: a creature for a
+        Single-target spell, otherwise a cell (teleport destination or area centre). Cast for
+        free — no slot, no turn economy — as the legendary creature, not the turn's actor."""
+        spells = self.combat.get_agent_spells(self.bm, idx)
+        si = next((i for i, sp in enumerate(spells) if sp.name == spell_name), -1)
+        name = self.bm.placed_agents[idx].name
+        if si < 0:
+            self._combat_log_add(f"{name}: legendary {action_name} needs the spell '{spell_name}', "
+                                 "which it doesn't know — pick another or pass.")
+            self._flush_combat_log()
+            self._offer_next_legendary()
+            return
+        sp = spells[si]
+        if getattr(sp, "expended", False):
+            self._combat_log_add(f"{name}: {action_name} is recharging — pick another or pass.")
+            self._flush_combat_log()
+            self._offer_next_legendary()
+            return
+        self._legendary_spell_idx = si
+        self._legendary_spell_label = action_name
+        if getattr(sp, "teleportation_spell", False):
+            self._legendary_spell_pick = "cell"
+            hint = f"click a destination within {sp.teleport_range_ft} ft"
+        elif sp.geometry == rpg.SpellGeometry.Single:
+            self._legendary_spell_pick = "creature"
+            hint = f"click a target within {sp.range} ft"
+        else:
+            self._legendary_spell_pick = "cell"
+            hint = "click where to centre it"
+        self._combat_log_add(f"{name}: legendary {action_name} — {hint}.")
+        self._flush_combat_log()
+
+    def _resolve_legendary_spell(self, hit: int, cell):
+        """Resolve the armed legendary spell at the clicked creature / cell, spend its cost and
+        move on. An invalid click (out of range, no creature) keeps the pick armed."""
+        idx = self._legendary_actor
+        mode = self._legendary_spell_pick
+        agents = self.bm.placed_agents
+        if idx < 0 or idx >= len(agents):
+            self._legendary_spell_pick = ""
+            self._offer_next_legendary(); return
+        spells = self.combat.get_agent_spells(self.bm, idx)
+        si = self._legendary_spell_idx
+        sp = spells[si]
+        name, label = agents[idx].name, self._legendary_spell_label
+
+        if getattr(sp, "teleportation_spell", False):
+            if cell is None:
+                return
+            o = agents[idx].origin
+            dist_ft = max(abs(cell.col - o.col), abs(cell.row - o.row)) * 5
+            if dist_ft > sp.teleport_range_ft or not self.combat.is_valid_teleport_destination(
+                    self.bm, cell.col, cell.row):
+                self._combat_log_add(f"{name}: can't teleport there — blocked or beyond "
+                                     f"{sp.teleport_range_ft} ft.")
+                self._flush_combat_log()
+                return
+            if self.combat.place_teleported_agents(self.bm, [idx], cell.col, cell.row) == 0:
+                self._combat_log_add(f"{name}: failed to teleport — no valid destination.")
+                self._flush_combat_log()
+                return
+            self._legendary_spell_pick = ""
+            self._spend_legendary_action(idx, self._legendary_cost_pending)
+            self._combat_log_add(f"{name} uses legendary {label} and teleports to "
+                                 f"({cell.col}, {cell.row}).")
+            self._finish_legendary_spell(idx)
+            return
+
+        action = rpg.SpellAction()
+        action.caster_idx = idx
+        action.spell_idx  = si
+        action.slot_level = sp.level
+        action.free_cast  = True
+        if mode == "creature":
+            if not (0 <= hit < len(agents)) or hit == idx:
+                self._combat_log_add("Pick a valid target."); self._flush_combat_log()
+                return
+            dist_ft = self._footprint_dist_ft(idx, hit)
+            if dist_ft < 0 or dist_ft > sp.range:
+                self._combat_log_add(f"{agents[hit].name} is out of range ({sp.range} ft).")
+                self._flush_combat_log()
+                return
+            action.target_indices = [hit]
+        else:
+            if cell is None:
+                return
+            action.target_indices = []
+            action.aoe_col, action.aoe_row = cell.col, cell.row
+        self._legendary_spell_pick = ""
+        self._spend_legendary_action(idx, self._legendary_cost_pending)
+        self._combat_log_add(f"{name} uses legendary {label}.")
+        self.combat.execute_spell(self.bm, action)
+        self._finish_legendary_spell(idx)
+
+    def _finish_legendary_spell(self, idx: int):
+        self._flush_combat_log()
+        self._sync_spell_effect_cache()
+        self._update_attack_overlay()
+        self._update_reach()
         self._after_legendary_action(idx)
 
     def _begin_legendary_dash(self, idx: int, half: bool):
@@ -6506,7 +6640,7 @@ class App:
                           rpg.MovementType.Swim if swim > 0 else
                           rpg.MovementType.Burrow)
         self._legendary_move_active = True
-        self._spend_legendary_action(idx)   # the Dash costs one legendary action
+        self._spend_legendary_action(idx, self._legendary_cost_pending)   # the Dash's cost (1 unless authored)
         label = "DashHalf (move up to half Speed)" if half else "Dash (move up to full Speed)"
         self._combat_log_add(f"{self.bm.placed_agents[idx].name}: {label} — drag it to move.")
         self._flush_combat_log()
@@ -14114,6 +14248,7 @@ class App:
                     # transient combat state and is intentionally NOT saved.)
                     "regeneration_amount":          s.regeneration_amount,
                     "regen_interrupt_damage_types": list(s.regen_interrupt_damage_types),
+                    "condition_immunities":         list(s.condition_immunities),
                     "has_cunning_action": s.has_cunning_action,
                     "has_offhand_attack": s.has_offhand_attack,
                     "has_sentinel":             s.has_sentinel,
@@ -14153,6 +14288,8 @@ class App:
                         "actions_in_lair": s.legendary_actions_max,
                         "has_lair": s.is_in_lair,
                         "action_names": list(s.legendary_action_names),
+                        "action_costs": dict(s.legendary_action_costs),
+                        "action_spells": dict(s.legendary_action_spells),
                     },
                     "magic_resistances": [
                         name for idx, name in enumerate(["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"])

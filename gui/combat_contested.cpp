@@ -322,7 +322,7 @@ ChestTrapResult CombatEngine::triggerChestTrap(BattleMap& bm, int agent_idx, int
     if (bm.getAgentStats(agent_idx).hp_cur <= 0) {
         const Agent::Conditions dc = bm.getAgentConditions(agent_idx);
         if (!dc.unconscious && !dc.dead) applyUnconscious(bm, agent_idx);
-    } else if (!res.saved && trap.poisons) {
+    } else if (!res.saved && trap.poisons && !conditionImmune(bm, agent_idx, "Poisoned")) {
         Agent::Conditions nc = bm.getAgentConditions(agent_idx);
         nc.poisoned = true;
         bm.setAgentConditions(agent_idx, nc);
@@ -499,6 +499,14 @@ GrappleResult CombatEngine::resolveGrapple(BattleMap& bm, int attacker_idx, int 
 
     auto& attacker = agents[attacker_idx];
     auto& target   = agents[target_idx];
+
+    // Condition Immunity (Grappled): the grapple simply fails — no contest is rolled.
+    if (conditionImmune(bm, target_idx, "Grappled")) {
+        result.valid = true;
+        result.log_message = std::string("\"") + std::string(target.agent->name()) +
+                             "\" is immune to being Grappled";
+        return result;
+    }
 
     // Attacker Athletics: d20 + STR mod + proficiency (grapple assumed proficient).
     int attacker_str_mod = (attacker.agent->getStats().str - 10) / 2;

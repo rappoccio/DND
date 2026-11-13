@@ -3668,7 +3668,7 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         atk_stats.classLevel(CharacterClass::Barbarian) >= 14 && atk_stats.wild_heart_power == RamPower &&
         atk_cond.raging && tgt_sz <= 2) {
         Agent::Conditions tgt_prone = bm.getAgentConditions(action.target_idx);
-        if (!tgt_prone.prone) {
+        if (!tgt_prone.prone && !conditionImmune(bm, action.target_idx, "Prone")) {
             tgt_prone.prone = true;
             bm.setAgentConditions(action.target_idx, tgt_prone);
             log_("{} is knocked Prone (Ram)", agentName(bm, action.target_idx));
@@ -4576,7 +4576,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                     break;
                 }
                 case WeaponMastery::Poison: {
-                    if (!atk_cond.poison_used_this_turn) {
+                    if (!atk_cond.poison_used_this_turn &&
+                        !conditionImmune(bm, action.target_idx, "Poisoned")) {
                         Agent::Conditions tc = bm.getAgentConditions(action.target_idx);
                         tc.poisoned = true;
                         bm.setAgentConditions(action.target_idx, tc);
@@ -4791,6 +4792,9 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                          weapon_cond.condition_name, save_dc);
                 }
             }
+            // Stat-block Condition Immunity: the hit still lands; the rider doesn't.
+            if (condition_applies && conditionImmune(bm, action.target_idx, weapon_cond.condition_name))
+                condition_applies = false;
 
             if (condition_applies) {
                 // Apply condition

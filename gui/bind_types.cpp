@@ -744,6 +744,16 @@ void bindTypes(py::module_& m) {
              "Creature is in its lair (uses the in-lair legendary counts).")
         .def_readwrite("legendary_action_names", &Agent::Stats::legendary_action_names,
              "Available Legendary Action option names (e.g. ['Bite','Claw','Dash','DashHalf']).")
+        .def_readwrite("legendary_action_costs", &Agent::Stats::legendary_action_costs,
+             "Legendary Action name → actions it costs (absent = 1), e.g. {'Immolating Gaze': 2}.")
+        .def_readwrite("legendary_action_spells", &Agent::Stats::legendary_action_spells,
+             "Legendary Action name → the spell in this creature's list it casts, e.g. "
+             "{'Teleport': 'ZarielTeleport'}.")
+        .def_readwrite("condition_immunities", &Agent::Stats::condition_immunities,
+             "Stat-block Condition Immunities (canonical names, e.g. ['Charmed','Poisoned']). "
+             "The engine refuses to apply these; manual set_agent_conditions bypasses the check.")
+        .def("immune_to_condition", &Agent::Stats::immuneToCondition, py::arg("name"),
+             "True if this creature is immune to the named condition.")
         .def_readwrite("weapon_mastery", &Agent::Stats::weapon_mastery,
              "Number of Weapon Mastery properties known (>0 = the feature is active).")
         .def_readwrite("eldritch_invocations", &Agent::Stats::eldritch_invocations,

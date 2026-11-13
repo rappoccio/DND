@@ -940,6 +940,10 @@ public:
     [[nodiscard]] int auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept;
     // Aura of Courage (L10+): agent_idx can't be Frightened while in an allied Paladin's aura.
     [[nodiscard]] bool hasAuraOfCourage(const BattleMap& bm, int agent_idx) const noexcept;
+    // Stat-block Condition Immunity: true (and logged) if agent_idx is immune to the named
+    // condition, in which case the caller must not apply it.
+    [[nodiscard]] bool conditionImmune(const BattleMap& bm, int agent_idx,
+                                       std::string_view condition_name) const noexcept;
     // Aura of Warding (Oath of the Ancients L7+): agent_idx has Resistance to Necrotic, Psychic, and
     // Radiant damage while in an allied Ancients Paladin's Aura of Protection.
     [[nodiscard]] bool hasAuraOfWarding(const BattleMap& bm, int agent_idx) const noexcept;

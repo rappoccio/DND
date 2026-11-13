@@ -787,6 +787,18 @@ namespace rpg {
       bool has_legendary_actions{false};                         // gate for legendary action offer window
       bool is_in_lair{false};                                    // affects legendary_resistance/actions counts if different
       std::vector<std::string> legendary_action_names{};         // available actions: ["Bite", "Claw", "Dash", "DashHalf", ...]
+      std::map<std::string, int> legendary_action_costs{};       // action name → legendary actions spent (absent = 1)
+      std::map<std::string, std::string> legendary_action_spells{}; // action name → spell (in this creature's list) it casts
+
+      // ── Condition Immunities (stat block) ───────────────────────────────
+      // Canonical 5e condition names ("Charmed", "Poisoned", "Exhaustion", …). Enforced by
+      // CombatEngine::conditionImmune at every engine path that applies a condition; the DM's
+      // manual condition toggles (set_agent_conditions) bypass it on purpose.
+      std::vector<std::string> condition_immunities{};
+      [[nodiscard]] bool immuneToCondition(std::string_view name) const noexcept {
+          return std::find(condition_immunities.begin(), condition_immunities.end(), name)
+                 != condition_immunities.end();
+      }
 
       int  weapon_mastery{0};                                    // # of Weapon Mastery properties known (>0 = feature active)
       int  crit_threshold{20};                                   // d20 roll >= this is a critical hit (default 20, Champion lowers it)

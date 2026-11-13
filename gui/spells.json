@@ -10599,5 +10599,142 @@
         "save_dc_ability": "SaveSpellcasterMod"
       }
     ]
+  },
+  {
+    "name": "ZarielHorridTouch",
+    "description": "Horrid Touch (Recharge 5-6). Zariel touches one creature within 10 feet of her. The target must succeed on a DC 26 Constitution saving throw or take 8d10 Necrotic damage and be Poisoned for 1 minute. While Poisoned in this way, the target is also Blinded and Deafened. The target repeats the save at the end of each of its turns, ending the effect on a success. Zariel can substitute Horrid Touch for Matalotok in her Multiattack.",
+    "type": "Harm",
+    "geometry": "Single",
+    "attack_type": "Save",
+    "save_ability": "SaveCon",
+    "casting_time": "Action",
+    "range": 10,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 10,
+    "magic_damage_types": [
+      {
+        "type": "Necrotic",
+        "num_dice": 8,
+        "die_size": 10
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 1,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "no_damage_on_save": true,
+    "recharge_min": 5,
+    "conditions": [
+      {
+        "condition_name": "Poisoned",
+        "condition_duration": 10,
+        "save_repeat_turns": 1,
+        "save_at_end_of_turn": true,
+        "save_dc_ability": "SaveSpellcasterMod"
+      },
+      {
+        "condition_name": "Blinded",
+        "condition_duration": 10,
+        "save_repeat_turns": 1,
+        "save_at_end_of_turn": true,
+        "save_dc_ability": "SaveSpellcasterMod"
+      },
+      {
+        "condition_name": "Deafened",
+        "condition_duration": 10,
+        "save_repeat_turns": 1,
+        "save_at_end_of_turn": true,
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ],
+    "school": "necromancy"
+  },
+  {
+    "name": "ZarielImmolatingGaze",
+    "description": "Immolating Gaze (Legendary, costs 2 actions). Zariel turns her magical gaze toward one creature she can see within 120 feet of her and commands it to combust. The target must succeed on a DC 26 Wisdom saving throw or take 4d10 Fire damage.",
+    "type": "Harm",
+    "geometry": "Single",
+    "attack_type": "Save",
+    "save_ability": "SaveWis",
+    "casting_time": "Special",
+    "range": 120,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 1,
+    "magic_damage_types": [
+      {
+        "type": "Fire",
+        "num_dice": 4,
+        "die_size": 10
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": true,
+    "check_los_on_center": true,
+    "no_damage_on_save": true,
+    "school": "evocation"
+  },
+  {
+    "name": "ZarielTeleport",
+    "description": "Zariel magically teleports, along with any equipment she is wearing or carrying, up to 120 feet to an unoccupied space she can see. Also usable as a legendary action.",
+    "type": "Transport",
+    "geometry": "Single",
+    "attack_type": "Automatic",
+    "save_ability": "SaveDex",
+    "casting_time": "Action",
+    "range": 0,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 1,
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": true,
+    "check_los_on_center": true,
+    "school": "conjuration",
+    "teleportation_spell": true,
+    "max_teleport_targets": 1,
+    "teleport_range_ft": 120
+  },
+  {
+    "name": "MatalotokColdBurst",
+    "description": "When Zariel attacks with Matalotok, the warhammer emits a burst of cold that deals 3d6 Cold damage to each creature within 30 feet of it.",
+    "type": "Harm",
+    "geometry": "Sphere",
+    "attack_type": "Automatic",
+    "save_ability": "SaveCon",
+    "casting_time": "Special",
+    "range": 0,
+    "radius": 30,
+    "width": 0,
+    "length": 0,
+    "duration": 0,
+    "magic_damage_types": [
+      {
+        "type": "Cold",
+        "num_dice": 3,
+        "die_size": 6
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "evocation",
+    "moves_with_caster": false,
+    "selective_targeting": false
   }
 ]

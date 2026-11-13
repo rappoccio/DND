@@ -54,6 +54,8 @@ def dict_to_stats(stats_dict):
     stats.regeneration_amount = int(stats_dict.get("regeneration_amount", 0))
     # Assign a whole list (pybind returns a copy on read, so in-place append wouldn't stick).
     stats.regen_interrupt_damage_types = [int(t) for t in stats_dict.get("regen_interrupt_damage_types", [])]
+    # Stat-block Condition Immunities (canonical names); the engine refuses to apply these.
+    stats.condition_immunities = [str(c) for c in stats_dict.get("condition_immunities", [])]
     stats.has_cunning_action = bool(stats_dict.get("has_cunning_action", False))
     stats.has_sentinel = bool(stats_dict.get("has_sentinel", False))
     stats.has_branches_of_the_tree = bool(stats_dict.get("has_branches_of_the_tree", False))
@@ -145,6 +147,11 @@ def dict_to_stats(stats_dict):
         stats.has_legendary_actions = stats.legendary_actions_max > 0
         # Legendary action names from the legendary block
         stats.legendary_action_names = list(legendary_data.get("action_names", []))
+        # Per-action cost (absent = 1) and the spell an action casts (e.g. Zariel's Teleport).
+        stats.legendary_action_costs = {str(k): int(v) for k, v in
+                                        (legendary_data.get("action_costs") or {}).items()}
+        stats.legendary_action_spells = {str(k): str(v) for k, v in
+                                         (legendary_data.get("action_spells") or {}).items()}
     else:
         # Also check for legendary_action_names at top level (for saved agents)
         stats.legendary_action_names = list(stats_dict.get("legendary_action_names", []))
