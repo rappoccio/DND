@@ -4172,9 +4172,8 @@ class App:
             return
         pt = self.bm.placed_agents[idx]
         # A still-concealed actor's announcement bubble would float over an undrawn
-        # token and give away its position — suppress it. (An attacker's Hidden clears
-        # during the turn, so revealed actors announce normally at playback time.)
-        if self._npc_concealed_from_party(idx, pt):
+        # token and give away its position — suppress it where the token is undrawn.
+        if self._concealed_on_screen(idx, pt):
             return
         now   = pygame.time.get_ticks()
         el    = (now - a["t0"]) * self._npc_anim_speed
@@ -4520,9 +4519,9 @@ class App:
         if idx < 0 or idx >= len(self.bm.placed_agents):
             return
         pt    = self.bm.placed_agents[idx]
-        # A concealed automated NPC (Hidden/unpierced Invisible) must not paint its
-        # movement range — the overlay would betray the position of an undrawn token.
-        if self._npc_concealed_from_party(idx, pt):
+        # A concealed token must not paint its movement range where it is undrawn —
+        # the overlay would betray its position.
+        if self._concealed_on_screen(idx, pt):
             return
         self._reach_walk   = self.reachable_for(idx, rpg.MovementType.Walk)
         self._reach_fly    = self.reachable_for(idx, rpg.MovementType.Fly)
@@ -4915,7 +4914,7 @@ class App:
             return
         pt = self.bm.placed_agents[idx]
         # Same leak-guard as _update_reach: no attack-range paint for a concealed token.
-        if self._npc_concealed_from_party(idx, pt):
+        if self._concealed_on_screen(idx, pt):
             return
         melee_cells:  set[tuple[int, int]] = set()
         rnorm_cells:  set[tuple[int, int]] = set()
@@ -13438,6 +13437,14 @@ class App:
                         self._enhanced_necromancy_armed_for(sp, caster_idx,
                                                             self.pending_spell_slot_level))
         if multi_target:
+            # Only darts, rays and beams may land on one creature more than once; every other
+            # multi-target spell (Bless, Bane, Hold Person, a Twinned spell, …) needs distinct ones.
+            if (target_idx in self.pending_spell_targets
+                    and sp.name not in _REPEAT_TARGET_SPELLS):
+                self._combat_log_add(
+                    f"{self.bm.placed_agents[target_idx].name} is already a target of "
+                    f"{sp.name} — choose a different creature.")
+                return
             self.pending_spell_targets.append(target_idx)
 
             targets_collected = len(self.pending_spell_targets)
@@ -13494,14 +13501,6 @@ class App:
 
         status = self.combat.begin_cast(self.bm, action)
         self._flush_combat_log()
-            # Only darts, rays and beams may land on one creature more than once; every other
-            # multi-target spell (Bless, Bane, Hold Person, a Twinned spell, …) needs distinct ones.
-            if (target_idx in self.pending_spell_targets
-                    and sp.name not in _REPEAT_TARGET_SPELLS):
-                self._combat_log_add(
-                    f"{self.bm.placed_agents[target_idx].name} is already a target of "
-                    f"{sp.name} — choose a different creature.")
-                return
         if status == rpg.FlowStatus.AwaitingDecision:
             self._show_pending_reaction_menu()
         else:
@@ -17809,18 +17808,18 @@ class App:
         return bool(fp) and all(not self.bm.is_explored(c) for c in fp)
 
     def _npc_concealed_from_party(self, idx: int, pt) -> bool:
-        """True when an automated enemy token should not be drawn because the party
-        can't perceive it (Hidden, or Invisible with no sense that pierces it).
+        """True when a non-party token is one the party can't perceive (Hidden, or
+        Invisible with no sense that pierces it), so player screens must not show it.
 
-        Scope: automated non-party NPCs only. Manually-driven NPCs stay drawn — the
-        DM has to see them to run them; an automated NPC drives itself, so its token
-        can genuinely vanish until discovered via the usual mechanics:
+        Scope: every non-party creature, automated or manually driven. The DM console
+        still draws it, translucent and labeled (see _concealed_on_screen); only
+        player-facing views drop it. It reappears through the usual mechanics:
           · Hidden clears through check_hidden_agent_detection / attacking, so the
             flag itself is authoritative — hidden ⇒ concealed.
           · Invisible is per-viewer: concealed unless some living party member
             pierces it (Truesight/Blindsight/Blind Fighting/Skulker, via the C++
             can_perceive_target — the same gate targeting uses)."""
-        if pt.faction == PC_FACTION or not self.bm.is_agent_npc_automated(idx):
+        if pt.faction == PC_FACTION:
             return False
         cond = pt.conditions
         if cond.hidden:
@@ -17836,6 +17835,13 @@ class App:
             if self.combat.can_perceive_target(self.bm, j, idx):
                 return False
         return True
+
+    def _concealed_on_screen(self, idx: int, pt) -> bool:
+        """True when this pygame screen must not show a concealed token. The DM
+        console always shows Hidden/Invisible creatures (dimmed, labeled); only
+        tracker mode's table view — which the players look at — drops them."""
+        return (self.tracker_mode and not self.dm_view
+                and self._npc_concealed_from_party(idx, pt))
 
     def _draw_fog_overlay(self):
         """Grey out every cell the PC party has never seen (fog of war).
@@ -18138,12 +18144,9 @@ class App:
         # Fog of war: don't reveal a hidden non-party token's name.
         if self._agent_fogged(idx, pt):
             return
-        # Concealed automated NPC (Hidden/unpierced Invisible): no name tooltip either,
-        # or hovering the empty-looking cell would betray the ambush. An Invisible one is
-        # drawn translucent for the DM (see _draw_agents), so it keeps its name there.
-        if (self._npc_concealed_from_party(idx, pt)
-                and (not pt.conditions.invisible
-                     or (self.tracker_mode and not self.dm_view))):
+        # Concealed token on the players' table view: no name tooltip either, or hovering
+        # the empty-looking cell would betray the ambush. The DM console keeps it.
+        if self._concealed_on_screen(idx, pt):
             return
 
         label = self.font_md.render(pt.name, True, (240, 240, 240))
@@ -18397,9 +18400,10 @@ class App:
             self.screen.blit(hatch, (screen_x, screen_y))
 
         # HP bar (skip translucent previews, e.g. movement ghosts; an Invisible token is
-        # translucent but real, so it keeps its bar). Tracker mode's table view shows
-        # party HP only (D1).
-        if ((alpha == 255 or (agent_idx >= 0 and pt.conditions.invisible))
+        # translucent but real, so it keeps its bar; so is a Hidden one). Tracker mode's
+        # table view shows party HP only (D1).
+        if ((alpha == 255 or (agent_idx >= 0 and (pt.conditions.invisible
+                                                  or pt.conditions.hidden)))
                 and not (self.tracker_mode and not self.dm_view
                          and pt.faction != PC_FACTION)):
             self._draw_hp_bar(screen_x, screen_y, size_px, pt.stats, hp_override=hp_override)
@@ -18548,17 +18552,10 @@ class App:
             cond_labels.append(("Prone", (230, 200, 120)))
         if pt.conditions.invisible:
             cond_labels.append(("Invisible", (200, 220, 255)))
+        if pt.conditions.hidden:
+            cond_labels.append(("Hidden", (200, 200, 200)))
         if agent_idx >= 0 and self._is_disarmed(agent_idx, pt):
             cond_labels.append(("Disarmed", (230, 120, 120)))
-
-        # Hidden indicator (eye-slash symbol)
-        if pt.conditions.hidden:
-            # Draw an eye-slash symbol in the top-right corner
-            icon_font = self.font_md
-            hidden_icon = icon_font.render("🚫", True, (200, 200, 200))
-            icon_x = int(screen_x + size_px - 16)
-            icon_y = int(screen_y - 8)
-            self.screen.blit(hidden_icon, (icon_x, icon_y))
 
         # Death save bubbles (for unconscious agents)
         if pt.conditions.unconscious and pt.stats.hp_cur <= 0:
@@ -19424,17 +19421,14 @@ class App:
             # same explored mask as _draw_fog_overlay, so a sprite can never sit on fog.
             if self._agent_fogged(i, pt):
                 continue
-            # Concealment: an automated enemy that is Hidden or Invisible (and not
-            # pierced by any party member's senses) is not drawn at all. It reappears
-            # through the usual mechanics — detection/attacking clears Hidden, and
-            # Truesight/Blindsight pierce Invisible. The DM still sees an Invisible token,
-            # translucent and labeled — except on tracker mode's table view, which the
-            # players are looking at.
-            table_view = self.tracker_mode and not self.dm_view
-            if (self._npc_concealed_from_party(i, pt)
-                    and (table_view or not pt.conditions.invisible)):
+            # Concealment: the DM always sees a Hidden or Invisible creature, translucent
+            # and labeled. Player-facing views (net/view.py, and tracker mode's table
+            # view here) drop an enemy the party can't perceive.
+            if self._concealed_on_screen(i, pt):
                 continue
-            invisible = pt.conditions.invisible and not table_view
+            table_view = self.tracker_mode and not self.dm_view
+            invisible = ((pt.conditions.invisible or pt.conditions.hidden)
+                         and not table_view)
             # NPC turn playback: draw at the animated display position (a token mid-slide,
             # or frozen at its pre-turn cell until its Move event plays).
             apos = self._npc_anim_display_pos(i)

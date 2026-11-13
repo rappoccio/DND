@@ -361,6 +361,31 @@ def test_concealed_automated_enemy_omitted():
     print("✅ test_concealed_automated_enemy_omitted")
 
 
+def test_concealed_manual_enemy_omitted():
+    """A manually driven Hidden enemy is concealed from players too: the DM console always
+    draws it (dimmed, labeled), so it no longer has to leak onto player screens."""
+    def check(app, kira, _spectator):
+        g = _idx(app, "Gnasher")
+        app.bm.set_agent_npc_automated(g, False)
+        cond = app.combat.get_agent_conditions(app.bm, g)
+        cond.hidden = True
+        app.combat.set_agent_conditions(app.bm, g, cond)
+        pt = app.bm.placed_agents[g]
+        assert app._npc_concealed_from_party(g, pt)
+
+        assert "Gnasher" not in _agent_names(build_view(app, kira))
+        assert "Gnasher" in _agent_names(build_view(app, app.roster.get(DM_PRINCIPAL_ID)))
+        # The DM console draws it; only tracker mode's table view drops it.
+        app.tracker_mode, app.dm_view = False, False
+        assert not app._concealed_on_screen(g, pt)
+        app.tracker_mode = True
+        assert app._concealed_on_screen(g, pt)
+        app.dm_view = True
+        assert not app._concealed_on_screen(g, pt)
+    _run(check)
+    print("✅ test_concealed_manual_enemy_omitted")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  D-M3-5 — map structure
 # ─────────────────────────────────────────────────────────────────────────────
@@ -649,6 +674,7 @@ if __name__ == "__main__":
     test_vitals_and_sheet_tiers()
     test_a_sheet_lists_the_creatures_class_resources()
     test_concealed_automated_enemy_omitted()
+    test_concealed_manual_enemy_omitted()
     test_unexplored_map_structure_omitted()
     test_dm_only_fields_never_reach_a_player()
     test_fog_down_matches_the_dm_screen()

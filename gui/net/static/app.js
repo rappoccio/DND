@@ -1529,6 +1529,14 @@ function drawToken(agent, cell) {
   const { corpse, unconscious } = downState(agent);
   const team = factionColour(agent.faction);
 
+  // Hidden / Invisible: `_draw_agents`' translucent token (alpha 128) and its label. The
+  // server only sends such a token to someone entitled to see it (the DM, or a party
+  // member's own side), so the flag itself decides the look.
+  const conds = agent.conditions || [];
+  const veiled = ["hidden", "invisible"].filter((c) => conds.includes(c));
+  ctx.save();
+  if (veiled.length) ctx.globalAlpha = 128 / 255;
+
   // The team-coloured square, with a border 50 lighter; both grey when unconscious.
   const fill = unconscious ? GREY_TINT : team;
   const border = unconscious ? GREY_TINT : team.map((c) => Math.min(c + 50, 255));
@@ -1583,6 +1591,25 @@ function drawToken(agent, cell) {
     ctx.strokeStyle = "rgb(10, 10, 10)";
     ctx.lineWidth = 1;
     ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
+  }
+  ctx.restore();
+
+  // "Invisible" / "Hidden" under the token, in `_draw_one_agent`'s condition-label colours.
+  if (veiled.length) {
+    ctx.font = `${Math.max(9, Math.round(cell * 0.28))}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.85)";
+    let ly = y + span + 2;
+    for (const c of ["invisible", "hidden"].filter((n) => veiled.includes(n))) {
+      const text = c === "invisible" ? "Invisible" : "Hidden";
+      ctx.strokeText(text, x + span / 2, ly);
+      ctx.fillStyle = c === "invisible" ? "rgb(200, 220, 255)" : "rgb(200, 200, 200)";
+      ctx.fillText(text, x + span / 2, ly);
+      ly += Math.max(9, Math.round(cell * 0.28)) + 1;
+    }
+    ctx.textBaseline = "alphabetic";
   }
 
   const kind = classOf(agent);
