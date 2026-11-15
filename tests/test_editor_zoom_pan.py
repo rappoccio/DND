@@ -315,9 +315,32 @@ def test_applying_terrain_while_zoomed_blocks_the_right_cells():
     print("✅ test_applying_terrain_while_zoomed_blocks_the_right_cells passed")
 
 
+def test_rounded_regions_block_only_their_own_cells():
+    """Saved regions are whole fit-scale px. On a map shown below 1:1 (Blank.png, 70 px
+    cells at ~0.72) an edge on a grid line came back just short of it, and every wall
+    blocked an invisible extra row above and column to its left."""
+    app = App(os.path.join(_ROOT, "maps", "Blank.png"), seed=SEED)
+    assert app.base_map_scale < 1.0, "Blank.png no longer fits below 1:1"
+    want = set()
+    regions = []
+    for col, row, w, h in ((4, 6, 1, 1), (23, 2, 5, 5), (11, 14, 2, 2), (7, 16, 2, 1)):
+        r = _wall_region_on(app, col, row)
+        r["width"] *= w
+        r["height"] *= h
+        regions.append({k: (int(v) if isinstance(v, float) else v) for k, v in r.items()})
+        want |= {(c, rr) for c in range(col, col + w) for rr in range(row, row + h)}
+    app._terrain_regions = regions
+    app._apply_terrain_to_battle_map()
+    walls = {(c, r) for c in range(app.bm.grid_cols) for r in range(app.bm.grid_rows)
+             if app.bm.get_terrain_type(rpg.Cell(c, r)) == rpg.TerrainType.Wall}
+    assert walls == want, f"extra {sorted(walls - want)}, missing {sorted(want - walls)}"
+    print("✅ test_rounded_regions_block_only_their_own_cells passed")
+
+
 def main():
     tests = [test_painted_terrain_follows_the_main_map_zoom,
              test_applying_terrain_while_zoomed_blocks_the_right_cells,
+             test_rounded_regions_block_only_their_own_cells,
              test_zoom_keeps_the_point_under_the_cursor,
              test_a_zoomed_drag_stores_the_same_region_as_a_fit_drag,
              test_a_zoomed_door_click_lands_on_the_cell_under_the_pointer,

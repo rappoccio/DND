@@ -18138,10 +18138,15 @@ class App:
         # bottom/right edge falls *exactly* on a grid line does NOT pull in the next cell
         # (which only starts at that line). Regions built from cell rects have their far
         # edge exactly on a grid line — bisect_right there over-included one extra row/col.
-        c_start = max(0, bisect.bisect_right(raw_v, ix) - 1)
-        r_start = max(0, bisect.bisect_right(raw_h, iy) - 1)
-        c_end = min(self.bm.grid_cols - 1, bisect.bisect_left(raw_v, ix + iw) - 1)
-        r_end = min(self.bm.grid_rows - 1, bisect.bisect_left(raw_h, iy + ih) - 1)
+        # Saved regions are whole fit-scale px, so on a map shown below 1:1 an edge drawn on
+        # a grid line comes back up to one fit px short of it (Blank.png: x=202 → 279.1,
+        # the line is 280). Nudge each edge inward by one fit px so that rounding cannot
+        # pull in an invisible extra row/col of wall.
+        tol = 1.0 / s
+        c_start = max(0, bisect.bisect_right(raw_v, ix + tol) - 1)
+        r_start = max(0, bisect.bisect_right(raw_h, iy + tol) - 1)
+        c_end = min(self.bm.grid_cols - 1, bisect.bisect_left(raw_v, ix + iw - tol) - 1)
+        r_end = min(self.bm.grid_rows - 1, bisect.bisect_left(raw_h, iy + ih - tol) - 1)
         c_end = max(c_start, c_end)
         r_end = max(r_start, r_end)
         return c_start, r_start, c_end, r_end
