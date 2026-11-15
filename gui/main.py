@@ -22827,10 +22827,10 @@ if __name__ == "__main__":
         else:
             positional.append(a); i += 1
     if not positional:
-        # Default to the bundled simplemap.png (sibling encounters/ dir) so the app
-        # launches with a map for the multi-floor dungeon generator to build onto.
+        # Default to the bundled blank map (maps/Blank.png: a plain 30×20 grid, no
+        # walls) so the app launches with a map to build onto.
         default_map = os.path.normpath(os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "..", "encounters", "simplemap.png"))
+            os.path.dirname(os.path.abspath(__file__)), "..", "maps", "Blank.png"))
         if not os.path.exists(default_map):
             sys.exit("Usage: python main.py <map_image.png | dungeon.json> [--seed N]")
         positional.append(default_map)

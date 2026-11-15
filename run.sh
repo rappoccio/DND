@@ -2,30 +2,22 @@
 
 # Run script for RPG Battle Map GUI
 # Launches the battle map viewer with a map image or a dungeon manifest
-# Usage: ./run.sh /path/to/map.png
+# Usage: ./run.sh                              (the blank default map, maps/Blank.png)
+#        ./run.sh /path/to/map.png
 #        ./run.sh /path/to/name.dungeon.json   (opens the manifest's entry page)
 #        ./run.sh "encounters/Curse of Strahd/castle-ravenloft"   (a campaign's dungeon)
 #        ./run.sh encounters/Sithicus          (a campaign with one dungeon)
 
-if [ $# -eq 0 ]; then
-    echo "Usage: $0 <map_image.png | name.dungeon.json | campaign or dungeon folder>"
-    echo ""
-    echo "Examples:"
-    echo "  $0 maps/TestDNDMap.png"
-    echo "  $0 /absolute/path/to/map.png"
-    echo "  $0 \"encounters/Curse of Strahd/castle-ravenloft\""
-    exit 1
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-MAP_PATH="$1"
+MAP_PATH="${1:-$SCRIPT_DIR/maps/Blank.png}"
 
 # Verify the map file exists
 if [ ! -e "$MAP_PATH" ]; then
     echo "Error: Map, dungeon or campaign not found: $MAP_PATH"
+    echo "Usage: $0 [map_image.png | name.dungeon.json | campaign or dungeon folder]"
     exit 1
 fi
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Convert relative path to absolute path
 if [[ ! "$MAP_PATH" = /* ]]; then
