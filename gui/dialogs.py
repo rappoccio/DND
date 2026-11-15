@@ -25,6 +25,11 @@ class FileBrowser:
         Shows folders and files matching `extensions`.
         Clicking a file copies its name into the filename input.
         A "Save" button confirms; callback(path) receives the full path.
+
+    multi_select=True (load mode only):
+        Clicking a file toggles a check mark instead of closing; the selection
+        survives folder changes. A "Load (N)" button (or Enter) confirms, and
+        callback receives the list of full paths in the order they were picked.
     """
 
     DLG_W   = 580
@@ -71,6 +76,8 @@ class FileBrowser:
         self._filename  = ""     # editable in save mode
         self._fn_active = False  # filename input focused
         self._fn_caret  = None   # caret index into _filename; None = end
+        self.multi_select = False
+        self._selected: list[str] = []   # full paths, pick order (multi_select)
 
     # ── public API ───────────────────────────────────────────────────────────
     def open(self, start_dir: str, callback, *,
@@ -78,7 +85,8 @@ class FileBrowser:
              extensions=None,
              default_filename: str = "",
              name_pattern: str = "",
-             title: str = ""):
+             title: str = "",
+             multi_select: bool = False):
         """`title` names the job the browser is doing ("Load Terrain", "Select Sprite", …).
         The browser serves seven different callers, so leaving it blank — which falls back
         to the generic heading — makes the heading lie about what is being picked."""
@@ -91,6 +99,8 @@ class FileBrowser:
         self.extensions = extensions if extensions is not None else (
             JSON_EXTS if save_mode else IMAGE_EXTS)
         self.name_pattern = name_pattern
+        self.multi_select = multi_select and not save_mode
+        self._selected  = []
         self._title     = title or (
             "Save Layout As" if save_mode else "Open Layout / Select Sprite")
         self._filename  = default_filename
@@ -195,7 +205,9 @@ class FileBrowser:
                     self._filename, self._fn_caret, _ = edit_line(
                         self._filename, self._fn_caret, event)
             else:
-                if event.key == pygame.K_UP:
+                if event.key == pygame.K_RETURN and self.multi_select:
+                    self._confirm_multi()
+                elif event.key == pygame.K_UP:
                     self.scroll = max(0, self.scroll - 1)
                 elif event.key == pygame.K_DOWN:
                     self.scroll = min(max_s, self.scroll + 1)
@@ -229,6 +241,11 @@ class FileBrowser:
                 self._confirm_save()
                 return True
 
+            # Load button (multi-select)
+            if self.multi_select and self._save_rect(dlg).collidepoint(mx, my):
+                self._confirm_multi()
+                return True
+
             # Filename input focus (save mode)
             if self.save_mode:
                 fn_r = self._fn_rect(dlg)
@@ -248,6 +265,12 @@ class FileBrowser:
                         self._filename  = name
                         self._fn_caret  = None
                         self._fn_active = True
+                    elif self.multi_select:
+                        full = os.path.join(self.cwd, name)
+                        if full in self._selected:
+                            self._selected.remove(full)
+                        else:
+                            self._selected.append(full)
                     else:
                         # Load mode: selecting a file is the final action
                         if self._cb:
@@ -266,6 +289,13 @@ class FileBrowser:
             fn += next(iter(self.extensions))   # append the first allowed ext
         if self._cb:
             self._cb(os.path.join(self.cwd, fn))
+        self.active = False
+
+    def _confirm_multi(self):
+        if not self._selected:
+            return
+        if self._cb:
+            self._cb(list(self._selected))
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -320,7 +350,11 @@ class FileBrowser:
                 pygame.draw.rect(screen, self.C_HOVER,
                                  pygame.Rect(lrect.x, iy, lrect.w, self.ITEM_H))
             col = self.C_DIR if is_dir else self.C_FILE
-            t   = self.font_sm.render(self.entries[idx], True, col)
+            label = self.entries[idx]
+            if self.multi_select and not is_dir:
+                picked = os.path.join(self.cwd, self._raw[idx][0]) in self._selected
+                label = ("[x] " if picked else "[ ] ") + label.lstrip()
+            t   = self.font_sm.render(label, True, col)
             screen.blit(t, (lrect.x + 4, iy + (self.ITEM_H - t.get_height()) // 2))
         screen.set_clip(old_clip)
 
@@ -388,6 +422,17 @@ class FileBrowser:
             pygame.draw.rect(screen, self.C_BORDER, save_r, 1, border_radius=4)
             t = self.font_md.render("Save", True, (220, 220, 220))
             screen.blit(t, t.get_rect(center=save_r.center))
+
+        if self.multi_select:
+            load_r = self._save_rect(dlg)
+            n      = len(self._selected)
+            hov    = n and load_r.collidepoint(mouse)
+            pygame.draw.rect(screen, self.C_SAVE_H if hov else self.C_SAVE,
+                             load_r, border_radius=4)
+            pygame.draw.rect(screen, self.C_BORDER, load_r, 1, border_radius=4)
+            t = self.font_md.render(f"Load ({n})", True,
+                                    (220, 220, 220) if n else (130, 130, 140))
+            screen.blit(t, t.get_rect(center=load_r.center))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

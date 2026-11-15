@@ -3230,15 +3230,19 @@ class App:
         )
 
     def _open_load_pcs_browser(self):
-        """Load a party (*_pc_agents.json) ADDITIVELY onto the current scene, so
-        the PCs drop onto an already-loaded dungeon without wiping its monsters."""
+        """Load PCs ADDITIVELY onto the current scene, so they drop onto an
+        already-loaded dungeon without wiping its monsters. Multi-select: tick any
+        mix of party files (*_pc_agents.json) and single-PC files (a campaign's
+        pcs/<name>.json). In a campaign the browser opens on its pcs/ folder."""
         start = os.path.dirname(self._save_path) or self._map_dir
+        if isinstance(self.store, CampaignStore) and os.path.isdir(self.store.campaign.pcs_dir):
+            start = self.store.campaign.pcs_dir
         self.file_browser.open(
             start, self._on_load_pcs_chosen,
             save_mode=False,
             extensions=JSON_EXTS,
-            name_pattern="_pc_agents.json",
             title="Load PCs",
+            multi_select=True,
         )
 
 
@@ -4325,8 +4329,8 @@ class App:
                 return c
         return None
 
-    def _on_load_pcs_chosen(self, path: str):
-        """Load a party (*_pc_agents.json) ADDITIVELY onto the current scene, so the
+    def _on_load_pcs_chosen(self, paths):
+        """Load PCs from one or more files ADDITIVELY onto the current scene, so the
         PCs drop onto an already-loaded dungeon without the destructive full-scene
         reload wiping the placed monsters. Mirrors the D&D Beyond import merge:
         persist the current agents, append each PC (relocated off any occupied or
@@ -4334,16 +4338,27 @@ class App:
         blue team (PC_FACTION) so the whole party fights the red encounter mobs as
         one side, regardless of what faction the party file stored. Each PC keeps its
         loadout from the party file. In a generated dungeon the PCs start in room 0 on
-        floor 0 (the generator leaves that room empty for them)."""
-        try:
-            with open(path) as f:
-                pc_doc = json.load(f)
-        except Exception as e:                       # noqa: BLE001 — surface read/parse errors
-            self._flash_status(f"Could not read {os.path.basename(path)}: {e}")
-            return
-        pcs = pc_doc.get("agents")
-        if not isinstance(pcs, list) or not pcs:
-            self._flash_status(f"No PCs in {os.path.basename(path)}")
+        floor 0 (the generator leaves that room empty for them).
+
+        Each file is either a party ({"agents": [...]}) or one bare PC, the shape a
+        campaign's pcs/<name>.json holds."""
+        if isinstance(paths, str):
+            paths = [paths]
+        pcs = []
+        for path in paths:
+            try:
+                with open(path) as f:
+                    pc_doc = json.load(f)
+            except Exception as e:                   # noqa: BLE001 — surface read/parse errors
+                self._flash_status(f"Could not read {os.path.basename(path)}: {e}")
+                return
+            if isinstance(pc_doc, dict) and isinstance(pc_doc.get("agents"), list):
+                pcs.extend(a for a in pc_doc["agents"] if isinstance(a, dict))
+            elif isinstance(pc_doc, dict) and "stats" in pc_doc:
+                pcs.append(pc_doc)
+        if not pcs:
+            names = ", ".join(os.path.basename(p) for p in paths)
+            self._flash_status(f"No PCs in {names}")
             return
         if self.combat_active:
             self._flash_status("Finish combat before loading PCs")
@@ -4411,7 +4426,9 @@ class App:
         self.store.write_creatures(doc)
         self._load_agents()
 
-        msg = f"Loaded {added} PC(s) from {os.path.basename(path)}"
+        src = (os.path.basename(paths[0]) if len(paths) == 1
+               else f"{len(paths)} files")
+        msg = f"Loaded {added} PC(s) from {src}"
         if dropped:
             msg += f" ({dropped} didn't fit)"
         if room0_cells:
