@@ -32,7 +32,7 @@ from constants import PC_FACTION
 from gui_driver import cell_center
 from main import App
 from net.roster import DM_PRINCIPAL_ID
-from menus import dm
+from menus import dm, panel
 from net import link as net_link
 from widgets import Button
 from test_restore_oracle import MAP_PATH, SEED, FOE_FACTION, _place, _idx
@@ -576,6 +576,7 @@ def test_hp_display_d1():
         skarn, aria = _idx(app, "Skarn"), _idx(app, "Aria")
         check(app._tracker_hp_shown(aria), "party HP hidden in the table view")
         check(not app._tracker_hp_shown(skarn), "monster HP shown in the table view")
+        check("/" in panel._hp_label(app, skarn), "the tracker hides monster HP from the DM")
         _click(app, "row", skarn)
         _hp(app, "dmg", 1)
         check("/" not in app.combat_log[0], f"monster HP in the log: {app.combat_log[0]}")

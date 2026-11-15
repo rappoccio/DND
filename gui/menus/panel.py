@@ -224,15 +224,14 @@ def draw_tracker_section(app, lx, W, y):
 
 
 def _hp_label(app, idx) -> str:
-    """ "12/30" (+ "+5" temp) for a token whose HP D1 shows, else "". """
-    if not app._tracker_hp_shown(idx):
-        return ""
+    """ "12/30" (+ "+5" temp). The tracker sits on the DM's console, so it shows every
+    token's HP whatever D1's view; D1 still governs the map's HP bars and the log. """
     s = app.combat.get_agent_stats(app.bm, idx)
     return f"{s.hp_cur}/{s.hp_max}" + (f" +{s.temp_hp}" if s.temp_hp else "")
 
 
 def _draw_hp_box(app, lx, W, y, text, button):
-    """The HP box (T4) on `app._tracker_hp`: its HP (when D1 shows it), the amount typed so
+    """The HP box (T4) on `app._tracker_hp`: its HP, the amount typed so
     far, and −N / +N / Temp / Max. Closed if its token has left the board."""
     idx = app._tracker_hp
     agents = app.bm.placed_agents
@@ -240,7 +239,7 @@ def _draw_hp_box(app, lx, W, y, text, button):
         app._tracker_hp = -1
         return y
     B = app._BTN_H
-    hp = _hp_label(app, idx) or "HP hidden"
+    hp = _hp_label(app, idx)
     text(f"{agents[idx].name}: {hp}", lx, y, COL_INITIATIVE_CUR)
     y += 18
     field = pygame.Rect(lx, y, W - 30, 20)

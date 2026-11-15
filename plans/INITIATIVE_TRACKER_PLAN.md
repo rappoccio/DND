@@ -44,6 +44,8 @@ types them in. The app is a board plus a score sheet.
   **DM view** toggle ("muting the display") shows everything: fog lifted, every mob, every
   number. While DM view is on, a banner on the map says so, so it isn't left on by
   accident. A view toggle only: it never changes the explored mask.
+  *Amended 2026-11-15 (user):* the tracker panel always shows every token's HP to the
+  DM, whatever the view; D1 still governs the map's HP bars and the log's HP tails.
 - **D2. A Tracker mode button** in the DM's session menu. Switchable only out of combat;
   saved with the run.
 - **D3. Roll for monsters: yes.** It fills every blank monster entry; same-name mobs share
