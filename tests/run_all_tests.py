@@ -450,6 +450,8 @@ test_scripts = [
     "test_pit_fiend.py",
     "test_condition_immunities.py",
     "test_legendary_spells.py",
+    "test_strahd_lair.py",
+    "test_send_to_floor.py",
     "test_death_burst.py",
     "test_deny_reactions.py",
     "test_doors.py",

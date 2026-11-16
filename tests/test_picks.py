@@ -499,7 +499,7 @@ def test_an_unwired_arm_holds_the_offer():
     NPC-only. While an unwired arm is armed the offer is held back, as in M5b, and no
     target prompt is posted: the DM resolves it."""
     unwired = [a.name for a in net_picks.ARMS if a.name not in net_picks.WIRED]
-    assert unwired == ["_legendary_target_pick", "_legendary_spell_pick"], unwired
+    assert unwired == ["_legendary_target_pick", "_legendary_spell_pick", "_lair_pick"], unwired
     for name, armed in (("_legendary_target_pick", True), ("_legendary_spell_pick", "cell")):
         app, kira, _ = _aria_turn()
         setattr(app, name, armed)

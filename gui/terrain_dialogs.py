@@ -100,8 +100,9 @@ def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None, link
         kx = slab.x + slab.w - knob_r * 3 if slab.w >= knob_r * 6 else slab.centerx
         pygame.draw.circle(screen, (210, 180, 60), (kx, slab.y + slab.h // 2), knob_r)
 
-    if door.locked or door.arcane_lock:
-        lock_col = (180, 80, 220) if door.arcane_lock else (230, 200, 60)
+    if door.locked or door.arcane_lock or door.lair_lock:
+        lock_col = ((200, 30, 40) if door.lair_lock else
+                    (180, 80, 220) if door.arcane_lock else (230, 200, 60))
         cx = x + w // 2
         cy = y + h // 2
         body_w = max(6, short // 4)

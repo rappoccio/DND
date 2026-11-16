@@ -50418,7 +50418,9 @@
             "die_size": 6
           }
         ],
-        "conditions": [],
+        "conditions": [
+          "reduceStr1d4"
+        ],
         "mastery": "None"
       },
       "off_hand": "",
@@ -53682,6 +53684,235 @@
       }
     }
   },
+  "Strahd Specter": {
+    "name": "Strahd Specter",
+    "size": "Medium",
+    "stats": {
+      "str": 0,
+      "dex": 14,
+      "con": 10,
+      "intel": 10,
+      "wis": 10,
+      "cha": 10,
+      "hp_max": 30,
+      "hp_cur": 30,
+      "ac": 12,
+      "speed_walk": 30,
+      "speed_fly": 50,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 3,
+      "num_attacks": 1,
+      "save_prof_str": false,
+      "save_prof_dex": false,
+      "save_prof_con": false,
+      "save_prof_intel": false,
+      "save_prof_wis": false,
+      "save_prof_cha": false,
+      "temp_hp": 0,
+      "is_npc": true,
+      "is_undead": true,
+      "magic_resistances": [
+        "Acid",
+        "Cold",
+        "Fire",
+        "Lightning",
+        "Thunder"
+      ],
+      "physical_resistances": [
+        "Bludgeoning",
+        "Piercing",
+        "Slashing"
+      ],
+      "magic_immunities": [
+        "Necrotic",
+        "Poison"
+      ],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [],
+      "physical_vulnerabilities": []
+    },
+    "weapons": {
+      "main_hand": {
+        "name": "Melee (Necrotic)",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "bonus_damage": 7,
+        "physical_damage_types": [],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 1,
+            "die_size": 10
+          }
+        ],
+        "conditions": [
+          "reduceHPMax"
+        ],
+        "mastery": "None",
+        "bonus_hit": 9
+      },
+      "off_hand": "",
+      "ranged": ""
+    },
+    "meta": {
+      "type": "Undead",
+      "cr": "5",
+      "alignment": "Chaotic Evil",
+      "source": "Curse of Strahd (Castle Ravenloft lair action)",
+      "traits": [
+        "Incorporeal Movement",
+        "Sunlight Sensitivity"
+      ],
+      "languages": [
+        "Understands Common",
+        "Another language"
+      ],
+      "senses": {
+        "darkvision": 60
+      },
+      "passive_perception": 10,
+      "immunities_conditions": [
+        "Charmed",
+        "Exhaustion",
+        "Grappled",
+        "Paralyzed",
+        "Petrified",
+        "Poisoned",
+        "Prone",
+        "Restrained",
+        "Unconscious"
+      ],
+      "save_dc": null,
+      "saving_throws": [],
+      "action_notes": "On hit HP max decreased by damage taken",
+      "bonus_action": null,
+      "reaction": null,
+      "legendary": {
+        "resistance": null,
+        "resistance_in_lair": null,
+        "actions": null,
+        "actions_in_lair": null,
+        "has_lair": false
+      }
+    }
+  },
+  "Strahd Shadow": {
+    "name": "Strahd Shadow",
+    "size": "Medium",
+    "stats": {
+      "str": 6,
+      "dex": 14,
+      "con": 12,
+      "intel": 6,
+      "wis": 10,
+      "cha": 8,
+      "hp_max": 30,
+      "hp_cur": 30,
+      "ac": 12,
+      "speed_walk": 40,
+      "speed_fly": 0,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 3,
+      "num_attacks": 1,
+      "save_prof_str": false,
+      "save_prof_dex": false,
+      "save_prof_con": false,
+      "save_prof_intel": false,
+      "save_prof_wis": false,
+      "save_prof_cha": false,
+      "temp_hp": 0,
+      "is_npc": true,
+      "is_undead": true,
+      "magic_resistances": [
+        "Acid",
+        "Cold",
+        "Fire",
+        "Lightning",
+        "Thunder"
+      ],
+      "physical_resistances": [],
+      "magic_immunities": [
+        "Necrotic",
+        "Poison"
+      ],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [
+        "Radiant"
+      ],
+      "physical_vulnerabilities": []
+    },
+    "weapons": {
+      "main_hand": {
+        "name": "Melee (Necrotic)",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "bonus_damage": 4,
+        "physical_damage_types": [],
+        "magic_damage_types": [
+          {
+            "type": "Necrotic",
+            "num_dice": 1,
+            "die_size": 6
+          }
+        ],
+        "conditions": [
+          "reduceStr1d4"
+        ],
+        "mastery": "None",
+        "bonus_hit": 6
+      },
+      "off_hand": "",
+      "ranged": ""
+    },
+    "meta": {
+      "type": "Undead",
+      "cr": "5",
+      "alignment": "Chaotic Evil",
+      "source": "Curse of Strahd (Castle Ravenloft lair action)",
+      "traits": [
+        "Amorphous",
+        "Sunlight Weakness"
+      ],
+      "languages": [
+        "None"
+      ],
+      "senses": {
+        "darkvision": 60
+      },
+      "passive_perception": 10,
+      "immunities_conditions": [
+        "Exhaustion",
+        "Frightened",
+        "Grappled",
+        "Paralyzed",
+        "Petrified",
+        "Poisoned",
+        "Prone",
+        "Restrained",
+        "Unconscious"
+      ],
+      "save_dc": null,
+      "saving_throws": [],
+      "action_notes": "On a hit -1d4 to strength score if strength is reduced to 0 then dead",
+      "bonus_action": "Shadow Stealth Hide in dim light or darkness",
+      "reaction": null,
+      "legendary": {
+        "resistance": null,
+        "resistance_in_lair": null,
+        "actions": null,
+        "actions_in_lair": null,
+        "has_lair": false
+      }
+    }
+  },
   "Strahd von Zarovich": {
     "name": "Strahd von Zarovich",
     "size": "Medium",
@@ -53836,6 +54067,12 @@
           "Melee (Slashing)",
           "Bite",
           "Dash"
+        ],
+        "lair_actions": [
+          "Phase",
+          "Doors",
+          "Apparition",
+          "Shadow Theft"
         ]
       }
     },

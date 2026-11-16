@@ -119,6 +119,8 @@ void bindTypes(py::module_& m) {
              "A secret door by design (BattleMap.set_door_secret); see hidden.")
         .def_readonly("hidden",      &Door::hidden,
              "Secret door not yet revealed: a wall to everyone (BattleMap.set_door_hidden).")
+        .def_readonly("lair_lock",   &Door::lair_lock,
+             "Held shut by Strahd's Doors lair action (BattleMap.set_door_lair_lock).")
         .def("__repr__", [](const Door& d){
             Cell a = d.anchor();
             return "<Door #" + std::to_string(d.id) + " ("
@@ -127,6 +129,7 @@ void bindTypes(py::module_& m) {
                  + (d.broken ? "broken" : (d.open ? "open" : "closed"))
                  + (d.locked ? " locked" : "")
                  + (d.arcane_lock ? " arcane" : "")
+                 + (d.lair_lock ? " lair-locked" : "")
                  + (d.hidden ? " hidden" : "") + ">"; });
 
     // ── Chest / ChestTrap (plans/ITEMS_AND_CHESTS_PLAN.md) ──────────────────
@@ -751,6 +754,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("legendary_action_spells", &Agent::Stats::legendary_action_spells,
              "Legendary Action name → the spell in this creature's list it casts, e.g. "
              "{'Teleport': 'ZarielTeleport'}.")
+        .def_readwrite("lair_action_names", &Agent::Stats::lair_action_names,
+             "Lair actions offered on the initiative count-20 Lair turn, e.g. ['Phase','Doors'].")
         .def_readwrite("condition_immunities", &Agent::Stats::condition_immunities,
              "Stat-block Condition Immunities (canonical names, e.g. ['Charmed','Poisoned']). "
              "The engine refuses to apply these; manual set_agent_conditions bypasses the check.")

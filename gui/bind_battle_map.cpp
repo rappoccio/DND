@@ -144,6 +144,11 @@ void bindBattleMap(py::module_& m) {
              py::arg("id"), py::arg("arcane_suppress_turns") = 100,
              "Knock spell: removes a mundane lock, suppresses an Arcane Lock for\n"
              "arcane_suppress_turns, then opens the door. Returns true if opened.")
+        .def("set_door_lair_lock", &BattleMap::setDoorLairLock, py::arg("id"), py::arg("locked"),
+             "Strahd's lair lock: lock (shuts the door; refused on a broken or hidden door) or\n"
+             "lift it. Returns true if the door now has that state.")
+        .def("clear_lair_locks", &BattleMap::clearLairLocks,
+             "End every lair lock on the map. Returns how many were ended.")
         .def("set_door_hidden", &BattleMap::setDoorHidden, py::arg("id"), py::arg("hidden"),
              "Secret door: hide (shuts it; refused on a broken door) or reveal it.\n"
              "Returns true if the door now has that state.")
@@ -243,6 +248,13 @@ void bindBattleMap(py::module_& m) {
         .def("set_agent_on_deck", &BattleMap::setAgentOnDeck,
              py::arg("idx"), py::arg("on_deck"),
              "Flag/unflag agent[idx] as an on-deck reserve (phased-battle reinforcement).")
+        .def("is_agent_phasing", &BattleMap::isAgentPhasing,
+             py::arg("idx"),
+             "True if agent[idx] passes through walls and closed doors (Strahd's Phase lair action).")
+        .def("set_agent_phasing", &BattleMap::setAgentPhasing,
+             py::arg("idx"), py::arg("phasing"),
+             "Let agent[idx]'s walk/fly paths pass through walls, wall edges and closed doors.\n"
+             "A move still can't end in a blocked cell.")
         .def("is_agent_npc_automated", &BattleMap::isAgentNpcAutomated,
              py::arg("idx"),
              "True if agent[idx] is driven by an automated NPC decision algorithm.")

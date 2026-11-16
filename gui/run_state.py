@@ -106,6 +106,9 @@ def split_terrain(terrain: dict, design: dict | None = None) -> tuple[dict, dict
         if d.get("secret"):
             doors[-1]["secret"] = True
             door_state[-1]["hidden"] = bool(d.get("hidden", True))
+        # Strahd's lair lock is play state, written only when set (STRAHD_LAIR_PLAN D4).
+        if d.get("lair_lock"):
+            door_state[-1]["lair_lock"] = True
         lt = d.get("link_target")
         if lt and "cells" in geom:
             door_links.append({"cells": geom["cells"], "target": [int(v) for v in lt[:3]]})
@@ -146,6 +149,8 @@ def merge_terrain(map_doc: dict | None, extras: dict | None = None,
             rec.update({f: now.get(f, rec[f]) for f in DOOR_STATE})
             if secret:
                 rec["hidden"] = bool(now.get("hidden", True))
+            if now.get("lair_lock"):
+                rec["lair_lock"] = True
         rec["link_target"] = (list(links[door_key(d)])
                               if "cells" in geom and door_key(d) in links else None)
         doors.append(rec)

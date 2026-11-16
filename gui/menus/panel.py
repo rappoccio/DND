@@ -13,6 +13,7 @@ action: each row deploys a group of reserves, and the click that does it is hand
 `App._handle_events` against the rects this leaves in `app.on_deck_item_rects`.
 """
 
+import lair
 import pygame
 
 from constants import (COL_INITIATIVE_CUR, COL_INPUT_ACTIVE, COL_INPUT_BG, COL_LABEL,
@@ -207,10 +208,10 @@ def draw_tracker_section(app, lx, W, y):
             waiting = e.joins_round > t.round
             col = COL_INITIATIVE_CUR if cur else ((120, 120, 120) if waiting else COL_TEXT)
             tot = " —" if e.total is None else f"{e.total:2d}"
-            name = agents[e.agent_idx].name if e.agent_idx < len(agents) else "?"
+            name = lair.tracker_name(app, e.agent_idx)
             text(f"{'▶ ' if cur else '  '}{tot}  {name}{'  (next round)' if waiting else ''}",
                  lx, y + 2, col)
-            hp = _hp_label(app, e.agent_idx)
+            hp = _hp_label(app, e.agent_idx) if e.agent_idx >= 0 else ""
             if hp:
                 s = font.render(hp, True, col)
                 app.screen.blit(s, (lx + W - 2 * aw - 8 - s.get_width(), y + 2))

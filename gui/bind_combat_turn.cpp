@@ -508,6 +508,11 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "break_dc (+10 while an Arcane Lock is active). On success the door is smashed off its\n"
              "frame (permanently open; no lock survives). Works on a locked/arcane-locked door.\n"
              "door_id is the Door.id. Returns a BreakDoorResult.")
+        .def("roll_fixed_dc_save", &CombatEngine::rollFixedDcSave,
+             py::arg("battle_map"), py::arg("saver_idx"), py::arg("ability"), py::arg("dc"),
+             py::arg("source"),
+             "A non-spell save against a fixed DC (Advantage/Disadvantage, Bless/auras,\n"
+             "Indomitable Might, auto-fail, Legendary Resistance). Logs; True on a success.")
         .def("attempt_pick_chest_lock", &CombatEngine::attemptPickChestLock,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("chest_id"),
              "Sleight of Hand vs the chest's lock_dc; a failure by 5+ sets off a live trap.")

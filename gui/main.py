@@ -81,6 +81,7 @@ from run_state import keep_current_design
 from scene_store import CampaignStore, LegacyStore
 import save_layout
 import autosave
+import lair
 import run_control
 import sim_trace
 import playback
@@ -1064,6 +1065,11 @@ class App:
         self._legendary_actor        = -1    # creature currently being offered / resolving an action
         self._legendary_target_pick  = False # armed: next map click picks the legendary attack target
         self._legendary_spell_pick   = ""    # armed legendary spell: "creature" / "cell" pick, "" = none
+        # Lair actions on initiative 20 (lair.py, STRAHD_LAIR_PLAN.md): the lair's owner while its
+        # turn runs, the armed map pick ("doors" / "apparition" / "shadow"), and the Doors choices.
+        self._lair_actor             = -1
+        self._lair_pick              = ""
+        self._lair_doors             = {}
         self._legendary_spell_idx    = -1
         self._legendary_spell_label  = ""
         self._legendary_cost_pending = 1     # legendary actions the chosen option will spend
@@ -5298,7 +5304,7 @@ class App:
         rows, by_name = [], {}
         agents = self.bm.placed_agents
         for e in self.tracker.entries:
-            if e.removed:
+            if e.removed or e.agent_idx < 0:     # the Lair reminder row has no total to type
                 continue
             pt = agents[e.agent_idx]
             if pt.faction == PC_FACTION:
@@ -5337,9 +5343,11 @@ class App:
             return
         self._tracker_edit = None
         first = t.start()
+        lair.ensure_tracker_entry(self)   # the "Lair" reminder row at 20 (does nothing)
+        first = t.current()
         self._mirror_tracker()
         if first is not None:
-            self._combat_log_add(f"Round 1: {self.bm.placed_agents[first].name} acts first.")
+            self._combat_log_add(f"Round 1: {lair.tracker_name(self, first)} acts first.")
         self._tracker_save_turn()
 
     def _tracker_save_turn(self):
@@ -5357,7 +5365,8 @@ class App:
         if t.phase != "running":
             return
         for e in t.entries:
-            if not e.removed and self.bm.is_agent_removed_from_play(e.agent_idx):
+            if not e.removed and e.agent_idx >= 0 \
+                    and self.bm.is_agent_removed_from_play(e.agent_idx):
                 t.remove(e.agent_idx)
         rnd = t.round
         idx = t.next() if delta > 0 else t.prev()
@@ -5366,7 +5375,7 @@ class App:
         self._mirror_tracker()
         self._mark_fog_dirty()
         if t.round > rnd:
-            self._combat_log_add(f"Round {t.round}: {self.bm.placed_agents[idx].name} is up.")
+            self._combat_log_add(f"Round {t.round}: {lair.tracker_name(self, idx)} is up.")
         self._tracker_save_turn()
 
     def _tracker_move(self, agent_idx: int, delta: int):
@@ -5384,6 +5393,7 @@ class App:
         if t.phase == "running":
             total = self._tracker_roll(idxs[0])
             t.add(idxs, total, joins_round=t.round)
+            lair.ensure_tracker_entry(self)   # a lair creature joining brings its Lair row
             self._mirror_tracker()
             self._combat_log_add(f"{who} at {total}.")
         else:
@@ -5463,7 +5473,7 @@ class App:
             self._mirror_tracker()
             self._mark_fog_dirty()
             self._tracker_save_turn()
-        if self._tracker_hp != agent_idx:
+        if self._tracker_hp != agent_idx and agent_idx >= 0:
             self._tracker_hp_open(agent_idx)
 
     def _tracker_hp_open(self, agent_idx: int):
@@ -5670,8 +5680,10 @@ class App:
                 cond.has_taken_turn_this_combat = False
                 cond.elemental_attunement_active = False
                 self.combat.set_agent_conditions(self.bm, i, cond)
+        # A lair creature's Lair entry at count 20 (lair.py): turn_idx stays 0, so it can act first.
+        lair.ensure_entry(self, shift=False)
         first = self._current_agent_idx()
-        print(f"[COMBAT START] Initiative order: {[(e.total, self.bm.placed_agents[e.agent_idx].name) for e in order]}")
+        print(f"[COMBAT START] Initiative order: {[(e.total, self.bm.placed_agents[e.agent_idx].name if e.agent_idx >= 0 else 'Lair') for e in order]}")
         print(f"[COMBAT START] First turn: agent_idx={first}, name={self.bm.placed_agents[first].name if 0 <= first < len(self.bm.placed_agents) else '?'}")
         # Begin the first combatant's turn through the SAME path as every later turn
         # (_proceed_to_new_turn → begin_turn_flow → _finish_turn_start). This runs C++ beginTurn
@@ -5801,6 +5813,8 @@ class App:
         self.move_remaining_burrow = 0
         self.move_type             = rpg.MovementType.Walk
         self.combat_active         = False
+        lair.end_phase(self)                 # Phase never outlasts the fight
+        lair.reset(self)
         self._fight_started        = None
         self._seen_armed           = set()
         self.combat_paused         = False
@@ -5912,6 +5926,7 @@ class App:
                                   if e.agent_idx == cur_aidx), self.turn_idx)
             self._combat_log_add(
                 f"⚔ Reinforcements deploy: {name} ×{len(idxs)} (Initiative {total}).")
+            lair.ensure_entry(self)    # a deployed lair creature brings its Lair entry with it
         else:
             self._combat_log_add(
                 f"{name} ×{len(idxs)} removed from On Deck — will roll Initiative at combat start.")
@@ -6025,6 +6040,11 @@ class App:
         for _ in range(n):
             self.turn_idx = (self.turn_idx + 1) % n
             idx = self._current_agent_idx()
+            # The Lair entry (count 20) takes a turn while its owner is fighting (lair.py).
+            if lair.is_lair_entry(self.initiative_order[self.turn_idx]):
+                if lair.owner(self) >= 0:
+                    break
+                continue
             if 0 <= idx < len(self.bm.placed_agents):
                 # Tombstoned summons (dismissed on concentration loss) never take a turn.
                 if self.bm.is_agent_removed_from_play(idx):
@@ -6147,6 +6167,8 @@ class App:
             self._resolve_legendary_attack(hit)
         elif self._legendary_spell_pick:
             self._resolve_legendary_spell(hit, cell)
+        elif self._lair_pick:
+            lair.resolve_click(self, hit, cell, anchor)
         elif self.pending_attack_slot and hit >= 0:
             features.confirm_friendly_harm(self, hit, lambda h=hit: self._resolve_combat_attack(h))
         elif self.pending_summon_slot:
@@ -6294,6 +6316,7 @@ class App:
         self.pending_vitality_target     = False
         self._legendary_target_pick      = False
         self._legendary_spell_pick       = ""
+        self._lair_pick                  = ""
         # None / -1 idle sentinels and their companion state.
         self.pending_cleave              = None
         self.pending_sweep               = None
@@ -6349,7 +6372,7 @@ class App:
         ("pending_path_to_the_grave", False), ("pending_move_hunters_mark", False),
         ("pending_telekinetic", False), ("pending_flurry_target", False),
         ("pending_vitality_target", False), ("pending_shadowy_dodge_cell", False), ("_legendary_target_pick", False),
-        ("_legendary_spell_pick", ""),
+        ("_legendary_spell_pick", ""), ("_lair_pick", ""),
         ("pending_cleave", None), ("pending_sweep", None),
         ("pending_rally", None), ("pending_feint", None),
         ("pending_use_item", -1), ("pending_elemental_burst", -1),
@@ -6414,6 +6437,10 @@ class App:
                   f"(pending={self.pending_vitality_target}, opt={self._vitality_option_index})")
         # One defensive clear of every armed target-pick flag so none leaks into this new turn.
         self._clear_pending_target_picks()
+        # Initiative count 20: the lair acts (lair.py), and no creature's turn begins.
+        if lair.on_lair_turn(self):
+            lair.begin_turn(self)
+            return
 
         # Begin new agent's turn (conditions reset + movement seed now happen in C++). The turn start
         # opens the OnTurnStartNearby reaction window (Branches of the Tree) via the
@@ -7561,6 +7588,76 @@ class App:
         carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
         if self._switch_to_page(page, drop_cell=local, carry=carry):
             self._flash_status(f"Stepped through to {page.id} (floor {Z}).")
+
+    def _send_pages(self) -> list:
+        """The dungeon pages a creature can be sent to: every page but the one showing."""
+        if self.dungeon is None or self.dungeon_page is None:
+            return []
+        return [p for p in self.dungeon.pages if p.id != self.dungeon_page.id]
+
+    def _send_to_page(self, idx: int, page) -> bool:
+        """The DM's "Send to floor…": move creature idx to another page of the dungeon
+        without following it. It lands at the same global (X, Y) on that page when the page
+        covers it (else the page's top-left), off other creatures; a wall there is resolved
+        when the page loads (the record's land_near flag → _open_cell_near). Out of combat it leaves this page outright; in
+        combat it is tombstoned here, like a cleared mob, and its turn passes if it was acting.
+        Phasing through ceilings and floors (Strahd's lair) is this plus the DM's call."""
+        if not (0 <= idx < len(self.bm.placed_agents)) or self.dungeon_page is None:
+            return False
+        pt = self.bm.placed_agents[idx]
+        name, size = pt.name, pt.size
+        X, Y, _ = self.dungeon_page.local_to_global(pt.origin.col, pt.origin.row)
+        land = page.global_to_local(X, Y, page.z) or (0, 0)
+        recs = self._read_agent_records([idx])
+        if not recs:
+            self._flash_status(f"Could not send {name}: it could not be saved.")
+            return False
+        try:
+            doc = self.store.creatures(page) or {"agents": [], "map_items": []}
+        except (ValueError, OSError):
+            doc = {"agents": [], "map_items": []}
+        agents = doc.setdefault("agents", [])
+        taken = set()
+        for a in agents:
+            n = int(a.get("size", 1) or 1)
+            taken |= {(int(a["col"]) + dc, int(a["row"]) + dr) for dc in range(n) for dr in range(n)}
+        cols = page.cols or (land[0] + size)
+        rows = page.rows or (land[1] + size)
+        spot = land
+        for ring in range(0, max(cols, rows) + 1):
+            cands = [(c, r) for r in range(land[1] - ring, land[1] + ring + 1)
+                     for c in range(land[0] - ring, land[0] + ring + 1)
+                     if max(abs(c - land[0]), abs(r - land[1])) == ring
+                     and 0 <= c <= cols - size and 0 <= r <= rows - size
+                     and not any((c + dc, r + dr) in taken
+                                 for dc in range(size) for dr in range(size))]
+            if cands:
+                spot = cands[0]
+                break
+        rec = recs[0]
+        rec["col"], rec["row"] = int(spot[0]), int(spot[1])
+        rec["land_near"] = True          # _load_agents moves it off a wall on that page
+        agents.append(rec)
+        self.store.write_creatures(doc, page)
+
+        if self.combat_active:
+            is_cur = idx == self._current_agent_idx()
+            self._drop_concentration_for_agent(idx)
+            self.bm.set_agent_removed_from_play(idx, True)
+            if self.tracker_mode and self.tracker.remove(idx):
+                self._mirror_tracker()
+            if self.selected_idx == idx:
+                self.selected_idx = -1
+            self._combat_log_add(f"{name} leaves for floor {page.z} ({page.id}).")
+            self._mark_fog_dirty()
+            if is_cur and not self.tracker_mode:
+                self._advance_turn()
+            self._flush_combat_log()
+        else:
+            self._delete_placed_agent(idx)
+            self._save_agents()
+        self._flash_status(f"{name} sent to floor {page.z} ({page.id}).")
+        return True
 
     def _after_door_change(self):
         """Refresh movement/attack overlays after a door's open state (and thus LOS and
@@ -14505,6 +14602,7 @@ class App:
                         "action_names": list(s.legendary_action_names),
                         "action_costs": dict(s.legendary_action_costs),
                         "action_spells": dict(s.legendary_action_spells),
+                        "lair_actions": list(s.lair_action_names),
                     },
                     "magic_resistances": [
                         name for idx, name in enumerate(["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic", "Poison", "Psychic", "Radiant", "Thunder"])
@@ -14691,6 +14789,23 @@ class App:
             # The roster travels with the encounter: the `controller` ids just written
             # are meaningless without the principals they name (M0 / A1).
             self._save_session()
+
+    def _open_cell_near(self, col: int, row: int, size: int) -> tuple[int, int]:
+        """(col, row) itself when a size×size token fits there terrain-wise, else the nearest
+        cell (Chebyshev rings) that does; the original cell when the map has none."""
+        cols, rows = self.bm.grid_cols, self.bm.grid_rows
+
+        def ok(c, r):
+            return (0 <= c <= cols - size and 0 <= r <= rows - size
+                    and not self.bm.is_blocked(rpg.Cell(c, r), size))
+        if ok(col, row):
+            return col, row
+        for ring in range(1, max(cols, rows) + 1):
+            for r in range(row - ring, row + ring + 1):
+                for c in range(col - ring, col + ring + 1):
+                    if max(abs(c - col), abs(r - row)) == ring and ok(c, r):
+                        return c, r
+        return col, row
 
     def _placeable_cell(self, size: int) -> tuple[int, int]:
         """The first cell (row-major) an agent of `size` could be placed on, for a raw save
@@ -16370,6 +16485,11 @@ class App:
             cfg.size        = t["size"]
             cfg.start_col   = t["col"]
             cfg.start_row   = t["row"]
+            # Sent here by the DM's "Send to floor…" (_send_to_page), which can't see this
+            # page's walls: land on the nearest open cell rather than be skipped as blocked.
+            if t.get("land_near"):
+                cfg.start_col, cfg.start_row = self._open_cell_near(
+                    int(t["col"]), int(t["row"]), int(t["size"]))
             self.combat.add_agent_config(self.bm, cfg)
             self.pending_configs.append(cfg)
         self.combat.apply_agent_configs(self.bm)
@@ -16889,6 +17009,8 @@ class App:
                     if bool(d.get("broken", False)):
                         self.bm.break_door(did)
                     self._restore_secret_door(did, d)
+                    if d.get("lair_lock"):
+                        self.bm.set_door_lair_lock(did, True)
                     continue
                 if raw:
                     cells = [rpg.Cell(int(c[0]), int(c[1])) for c in raw]
@@ -16905,6 +17027,8 @@ class App:
                 if bool(d.get("broken", False)):
                     self.bm.break_door(did)
                 self._restore_secret_door(did, d)
+                if d.get("lair_lock"):
+                    self.bm.set_door_lair_lock(did, True)
                 # Re-associate a cross-map staple target (null/absent on ordinary doors).
                 lt = d.get("link_target")
                 if lt:
@@ -16990,7 +17114,9 @@ class App:
                  # Cross-map staple target in GLOBAL (X,Y,Z); null for an ordinary in-map door.
                  link_target=self._door_link_at(d),
                  # Only a secret door carries these, so other doors' records are unchanged.
-                 **({"secret": True, "hidden": d.hidden} if d.secret else {}))
+                 **({"secret": True, "hidden": d.hidden} if d.secret else {}),
+                 # Strahd's lair lock (STRAHD_LAIR_PLAN D4) likewise rides only when set.
+                 **({"lair_lock": True} if d.lair_lock else {}))
             for d in self.bm.doors
         ]
         # Placed items and chests: the design (map data) and what play did to them. Only
@@ -20742,6 +20868,11 @@ class App:
             aidx   = entry.agent_idx
             is_cur = (i == self.turn_idx)
             col    = COL_INITIATIVE_CUR if is_cur else COL_TEXT
+            if lair.is_lair_entry(entry):
+                txt(f"{'▶ ' if is_cur else '  '}{entry.total:2d}  {lair.entry_label(self)}",
+                    lx, y, col if lair.owner(self) >= 0 else (90, 90, 90))
+                y += 16
+                continue
             name   = agents[aidx].name if aidx < len(agents) else "?"
             alive  = True
             dismissed = (aidx < len(agents) and agents[aidx].removed_from_play)
@@ -21974,6 +22105,14 @@ class App:
                 if self.pending_mantle_active \
                         and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     self._finalize_mantle()
+                    continue
+                # Lair Doors: Enter applies the chosen doors; Esc backs out of any lair pick.
+                if self._lair_pick == "doors" \
+                        and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    lair.apply_doors(self)
+                    continue
+                if self._lair_pick and event.key == pygame.K_ESCAPE:
+                    lair.cancel_pick(self)
                     continue
                 if self.pending_mantle_active and event.key == pygame.K_ESCAPE:
                     self._cancel_mantle()

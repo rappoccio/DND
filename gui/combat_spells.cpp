@@ -723,7 +723,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
             const Door& d = bm.doors()[static_cast<std::size_t>(didx)];
             bool was_arcane = d.arcane_lock;
             int door_id = d.id;
-            if (bm.knockDoor(door_id)) {
+            if (d.lair_lock) {
+                log_("{} casts {} — Strahd's magic holds the door shut; nothing happens",
+                     agentName(bm, action.caster_idx), sp.name);
+            } else if (bm.knockDoor(door_id)) {
                 if (was_arcane)
                     log_("{} casts {} — the Arcane Lock is suppressed and the door swings open",
                          agentName(bm, action.caster_idx), sp.name);

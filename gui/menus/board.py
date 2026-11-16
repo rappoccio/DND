@@ -387,6 +387,9 @@ def show_agent_menu(app, hit, pos):
                            app, h, p, parent=app.prompts.answering)))
     if app._mob_clearable(hit):   # a mob at 0 HP that isn't a corpse yet
         _menu_opts.append((f"Remove '{pt.name}'", lambda h=hit: app._remove_downed_mob(h)))
+    if app._send_pages():
+        _menu_opts.append(("Send to floor ▸", lambda h=hit, p=pos: show_send_to_floor_menu(
+            app, h, p, parent=app.prompts.answering)))
     app._ask_dm("action", f"{app._agent_name(hit)} — DM menu",
                  _menu_opts, anchor=pos, actor_idx=hit)
 
@@ -474,6 +477,11 @@ def show_conditions_menu(app, hit, pos, parent=None):
     opts = [(("✓ " if getattr(c, flag) else "") + label, (lambda f=flag: _toggle(f)))
             for label, flag in DM_CONDITIONS]
     opts.append((f"Exhaustion: {c.exhaustion_level} ▸", _exhaustion_menu))
+    # In combat this is the creature's whole right-click menu, so it carries Send to floor too
+    # (out of combat the DM menu that opened it has its own row).
+    if app.combat_active and app._send_pages():
+        opts.append(("Send to floor ▸", lambda h=hit, p=pos: show_send_to_floor_menu(
+            app, h, p, parent=app.prompts.answering)))
     app._ask_dm("action", f"{app._agent_name(hit)}: conditions", opts,
                  anchor=pos, actor_idx=hit, parent=parent)
 
@@ -570,3 +578,13 @@ def set_room_fog(app, cell, revealed: bool) -> int:
     app.session_log.add("The DM revealed part of the map." if revealed
                         else "The DM fogged part of the map.")
     return len(cells)
+
+
+def show_send_to_floor_menu(app, hit, pos, parent=None):
+    """Move creature `hit` to another page of the dungeon (App._send_to_page), one row per
+    page, by floor. The DM's view stays on this page."""
+    pages = sorted(app._send_pages(), key=lambda p: (p.z, p.id))
+    opts = [(f"Floor {p.z}: {p.id}", (lambda pg=p, h=hit: app._send_to_page(h, pg)))
+            for p in pages]
+    app._ask_dm("action", f"{app._agent_name(hit)}: send to floor", opts,
+                 anchor=pos, actor_idx=hit, parent=parent)

@@ -4765,6 +4765,30 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                 continue;
             }
 
+            // Shadow's Strength Drain rider: the target's Strength score drops by 1d4 (until the DM
+            // restores it — a long rest, RAW). A creature whose Strength reaches 0 dies outright.
+            if (weapon_cond.condition_name == "reduceStr1d4") {
+                Agent::Stats vt = bm.getAgentStats(action.target_idx);
+                int drain = roll(4);
+                vt.str = std::max(0, vt.str - drain);
+                if (vt.str == 0) vt.hp_cur = 0;
+                bm.setAgentStats(action.target_idx, vt);
+                log_("{} drains {} Strength from {} (Strength now {})",
+                     agentName(bm, action.attacker_idx), drain,
+                     agentName(bm, action.target_idx), vt.str);
+                if (vt.str == 0) {
+                    Agent::Conditions dc = bm.getAgentConditions(action.target_idx);
+                    if (!dc.unconscious && !dc.dead) applyUnconscious(bm, action.target_idx);
+                    dc = bm.getAgentConditions(action.target_idx);
+                    dc.dead = true;
+                    bm.setAgentConditions(action.target_idx, dc);
+                    r.hp_after = 0;
+                    r.target_down = true;
+                    log_("{}'s Strength is reduced to 0 — it dies", agentName(bm, action.target_idx));
+                }
+                continue;
+            }
+
             bool condition_applies = false;
 
             if (!weapon_cond.requires_save) {

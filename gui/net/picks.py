@@ -428,6 +428,12 @@ ARMS: tuple[Arm, ...] = (
                     + ("choose a target" if app._legendary_spell_pick == "creature"
                        else "choose a cell"),
         None, actor=lambda app: app._legendary_actor),
+    Arm("_lair_pick", "",
+        lambda app: CELL if app._lair_pick == "doors" else TARGET,
+        lambda app: {"doors": "Lair Doors: choose doors",
+                     "apparition": "Lair Apparition: choose a hostile creature",
+                     "shadow": "Lair Shadow Theft: choose a creature"}.get(app._lair_pick, "Lair"),
+        None, actor=lambda app: app._lair_actor),
     Arm("pending_attack_slot", "", TARGET, _attack_title, cancel_attack),
     Arm("pending_summon_slot", "", CELL, _summon_title, cancel_summon),
     Arm("pending_chromatic_active", False, TARGET, _chromatic_title,
@@ -469,7 +475,7 @@ ARMS: tuple[Arm, ...] = (
 BY_NAME = {a.name: a for a in ARMS}
 
 # Projected to the player. The rest hold the offer back, as in M5b, and the DM resolves
-# them on the map. `_legendary_target_pick` and `_legendary_spell_pick` are NPC-only.
+# them on the map. `_legendary_target_pick`, `_legendary_spell_pick` and `_lair_pick` are NPC-only.
 WIRED = frozenset({
     # M5d.1 — weapon attacks and the picks that follow them
     "pending_attack_slot", "pending_cleave", "pending_sweep", "pending_rally",

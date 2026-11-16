@@ -92,6 +92,10 @@ struct Door {
     // ordinary door; a reset of the map hides it again.
     bool secret{false};
     bool hidden{false};
+    // Strahd's lair lock (plans/STRAHD_LAIR_PLAN.md D4): magically held shut until Strahd ends
+    // it or uses the Doors lair action again. Opening, picking and Knock all fail; forcing it is
+    // a DC 20 Strength (Athletics) check that opens the door and ends the lock (not broken).
+    bool lair_lock{false};
     // Anchor cell (first occupied cell): the glyph/label anchor and the value the
     // single-cell convenience API reports. Empty door → {-1,-1}.
     [[nodiscard]] Cell anchor() const noexcept {
@@ -396,6 +400,10 @@ struct PlacedAgent {
     // EXCLUDED from initiative (rollInitiative skips it) until the DM deploys
     // it. Deploying clears this flag and inserts the agent into the live order.
     bool        on_deck           = false;
+    // ── Phasing (Strahd's Castle Ravenloft lair action, plans/STRAHD_LAIR_PLAN.md) ──
+    // true = walls, wall edges and closed doors don't block this creature's paths (walk or
+    // fly). A move still may not END in a blocked cell. The GUI clears it at the next Lair turn.
+    bool        phasing           = false;
     // ── NPC automation ─────────────────────────────────────────────────────
     // When is_npc_automated is true, the GUI may drive this agent's turn with an
     // automated decision algorithm instead of requiring manual control. The
@@ -621,6 +629,9 @@ public:
     // skipped by rollInitiative until the DM deploys it (clears the flag).
     [[nodiscard]] bool isAgentOnDeck(int idx) const noexcept;
     void setAgentOnDeck(int idx, bool on_deck) noexcept;
+    // Phasing accessors. See PlacedAgent::phasing.
+    [[nodiscard]] bool isAgentPhasing(int idx) const noexcept;
+    void setAgentPhasing(int idx, bool phasing) noexcept;
 
     // NPC automation accessors. See PlacedAgent's is_npc_automated /
     // npc_automation_difficulty_level / npc_automation_strategy.
@@ -773,6 +784,11 @@ public:
     // Secret doors: hiding a door shuts it (a broken door can't be hidden: returns false);
     // revealing it leaves an ordinary closed door. Returns true if the door now has that state.
     bool setDoorHidden(int id, bool hidden) noexcept;
+    // Strahd's lair lock: locking shuts the door (refused on a broken or hidden door, returns
+    // false); unlocking only lifts the lock. Returns true if the door now has that state.
+    bool setDoorLairLock(int id, bool locked) noexcept;
+    // End every lair lock on the map (Strahd reuses Doors, or ends the effect). Returns how many.
+    int clearLairLocks() noexcept;
     // Design: make a door secret (and hidden) or ordinary (and revealed). Same refusal.
     bool setDoorSecret(int id, bool secret) noexcept;
 

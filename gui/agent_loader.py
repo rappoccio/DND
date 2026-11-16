@@ -162,6 +162,7 @@ def dict_to_stats(stats_dict):
                                         (legendary_data.get("action_costs") or {}).items()}
         stats.legendary_action_spells = {str(k): str(v) for k, v in
                                          (legendary_data.get("action_spells") or {}).items()}
+        stats.lair_action_names = [str(n) for n in (legendary_data.get("lair_actions") or [])]
     else:
         # Also check for legendary_action_names at top level (for saved agents)
         stats.legendary_action_names = list(stats_dict.get("legendary_action_names", []))

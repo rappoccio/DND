@@ -121,7 +121,7 @@ namespace {
     X(regen_interrupt_damage_types) X(regen_suppressed) X(legendary_resistance_max) \
     X(legendary_resistance_current) X(legendary_actions_max) \
     X(legendary_actions_current) X(has_legendary_actions) X(is_in_lair) \
-    X(legendary_action_names) X(legendary_action_costs) X(legendary_action_spells) \
+    X(legendary_action_names) X(legendary_action_costs) X(legendary_action_spells) X(lair_action_names) \
     X(condition_immunities) X(weapon_mastery) X(crit_threshold) \
     X(superiority_die_size) X(psionic_die_size) X(bardic_inspiration_die) \
     X(bardic_inspiration_die_size) X(primal_champion_applied) \
@@ -202,7 +202,7 @@ namespace {
 //    z / stats / conditions / movement keys of the same record ─────────────────────
 #define RPG_PLACED_AGENT_FIELDS(X) \
     X(origin) X(weapons) X(spells) X(items) X(armor) X(summoner_idx) \
-    X(removed_from_play) X(summon_spell) X(summon_rounds_left) X(faction) X(controller) X(on_deck) \
+    X(removed_from_play) X(summon_spell) X(summon_rounds_left) X(faction) X(controller) X(on_deck) X(phasing) \
     X(is_npc_automated) X(npc_automation_difficulty_level) X(npc_automation_strategy)
 
 template <typename T>

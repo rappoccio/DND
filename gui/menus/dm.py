@@ -520,7 +520,11 @@ def door_options(app, actor, door) -> list:
     elif door.open:
         options.append(("Close door", lambda d=door_id: app._door_close(d)))
     else:
-        if door.arcane_lock:
+        if door.lair_lock:
+            options.append(("Held shut by Strahd's magic",
+                            lambda: app._combat_log_add(
+                                "Strahd's magic holds the door shut; only a DC 20 Strength check forces it.")))
+        elif door.arcane_lock:
             options.append(("Locked (Arcane Lock — needs Knock/Dispel)",
                             lambda: app._combat_log_add(
                                 "The door is held by an Arcane Lock; only Knock or Dispel Magic opens it.")))
@@ -538,7 +542,9 @@ def door_options(app, actor, door) -> list:
         # active Arcane Lock stiffens the door by +10 to the break DC.
         break_dc = door.break_dc + (10 if (door.arcane_lock and
                                            door.arcane_suppressed_turns <= 0) else 0)
-        options.append((f"Break Down (DC {break_dc})",
+        if door.lair_lock:   # Strahd's lock: DC 20 forces it open (CombatEngine.attemptBreakDoor)
+            break_dc = max(break_dc, 20)
+        options.append((f"{'Force Open' if door.lair_lock else 'Break Down'} (DC {break_dc})",
                         lambda a=actor, d=door_id: app._door_break_down(a, d)))
 
     # Cross-map staple (Floors Phase 5): an open, linked door offers passage to the

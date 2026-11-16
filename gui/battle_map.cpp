@@ -700,6 +700,10 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
     // which excludes every occupied cell from its result set.
     if (agentOccupancy(newOrigin, pa.agent->getSize(), idx) == 2)
         return false;
+    // A phasing creature may path through walls and closed doors, but not stop inside one.
+    const bool phasing = pa.phasing;
+    if (phasing && isBlocked(newOrigin, pa.agent->getSize(), type))
+        return false;
 
     // For walk/swim/burrow, calculate actual path cost using Dijkstra
     // Find the cheapest path cost from origin to newOrigin
@@ -730,8 +734,8 @@ bool BattleMap::moveAgent(int idx, Cell newOrigin, MovementType type) noexcept
                 Cell next{cell.col + dc, cell.row + dr};
 
                 if (!inBounds(next, pa.agent->getSize())) continue;
-                if (isBlocked(next, pa.agent->getSize(), type)) continue;
-                if (edgesActive_ && type != MovementType::Burrow && stepCrossesWall(cell, next, pa.agent->getSize())) continue;
+                if (!phasing && isBlocked(next, pa.agent->getSize(), type)) continue;
+                if (!phasing && edgesActive_ && type != MovementType::Burrow && stepCrossesWall(cell, next, pa.agent->getSize())) continue;
                 // Enemy footprints block the path; allies may be passed through (but not stopped on,
                 // which is enforced by the destination check below).
                 if (agentOccupancy(next, pa.agent->getSize(), idx) == 2) continue;
@@ -1119,6 +1123,7 @@ CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
     std::priority_queue<PQItem, std::vector<PQItem>, decltype(cmp)> pq(cmp);
     std::unordered_map<Cell, int, CellHash> dist;
 
+    const bool phasing = isAgentPhasing(mover_idx);
     dist[origin] = 0;
     pq.push({0, origin});
 
@@ -1131,7 +1136,8 @@ CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
         // A cell occupied by another agent is reachable to PASS THROUGH (allies only —
         // enemy cells are never enqueued below) but is not a valid place to STOP, so it
         // is expanded for neighbours yet kept out of the returned destination set.
-        if (agentOccupancy(cell, tokenSize, mover_idx) == 0)
+        if (agentOccupancy(cell, tokenSize, mover_idx) == 0 &&
+            !(phasing && isBlocked(cell, tokenSize, type)))
             result.insert(cell);
 
         for (int dr = -1; dr <= 1; ++dr) {
@@ -1140,8 +1146,9 @@ CellSet BattleMap::pathfindMovement(Cell origin, int tokenSize,
                 Cell next{cell.col + dc, cell.row + dr};
 
                 if (!inBounds(next, tokenSize))  continue;
-                if (isBlocked(next, tokenSize, type))  continue;
-                if (edgesActive_ && type != MovementType::Burrow && stepCrossesWall(cell, next, tokenSize))  continue;
+                // A phasing creature paths through walls and closed doors (but never stops in one).
+                if (!phasing && isBlocked(next, tokenSize, type))  continue;
+                if (!phasing && edgesActive_ && type != MovementType::Burrow && stepCrossesWall(cell, next, tokenSize))  continue;
                 // Enemy footprints block the path entirely; allies may be passed through.
                 if (agentOccupancy(next, tokenSize, mover_idx) == 2)  continue;
                 // Magic Circle / Hallow ward boundary (same rule as moveAgent) so the reachable
@@ -1268,6 +1275,18 @@ void BattleMap::setAgentOnDeck(int idx, bool on_deck) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
     placedAgents_[static_cast<std::size_t>(idx)].on_deck = on_deck;
+}
+
+bool BattleMap::isAgentPhasing(int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return false;
+    return placedAgents_[static_cast<std::size_t>(idx)].phasing;
+}
+
+void BattleMap::setAgentPhasing(int idx, bool phasing) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
+    placedAgents_[static_cast<std::size_t>(idx)].phasing = phasing;
 }
 
 bool BattleMap::isAgentNpcAutomated(int idx) const noexcept
@@ -2020,7 +2039,7 @@ bool BattleMap::openDoor(int id) noexcept {
         if (doors_[i].id == id) {
             // A locked or (un-suppressed) arcane-locked door cannot simply be opened,
             // nor can a secret door nobody has found.
-            if (doors_[i].locked || doors_[i].hidden) return false;
+            if (doors_[i].locked || doors_[i].hidden || doors_[i].lair_lock) return false;
             if (doors_[i].arcane_lock && doors_[i].arcane_suppressed_turns <= 0)
                 return false;
             doors_[i].open = true;
@@ -2066,6 +2085,7 @@ bool BattleMap::knockDoor(int id, int arcane_suppress_turns) noexcept {
     for (std::size_t i = 0; i < doors_.size(); ++i) {
         if (doors_[i].id != id) continue;
         if (doors_[i].hidden) return false;               // a secret door is just wall
+        if (doors_[i].lair_lock) return false;            // Strahd's magic holds against Knock
         doors_[i].locked = false;                         // mundane lock removed
         if (doors_[i].arcane_lock)                        // Arcane Lock suppressed, not removed
             doors_[i].arcane_suppressed_turns = arcane_suppress_turns;
@@ -2084,12 +2104,34 @@ bool BattleMap::breakDoor(int id) noexcept {
         doors_[i].locked                 = false;
         doors_[i].arcane_lock            = false;
         doors_[i].arcane_suppressed_turns = 0;
+        doors_[i].lair_lock              = false;
         doors_[i].broken                 = true;
         doors_[i].open                   = true;
         syncDoorTerrain(static_cast<int>(i));
         return true;
     }
     return false;
+}
+
+bool BattleMap::setDoorLairLock(int id, bool locked) noexcept {
+    for (std::size_t i = 0; i < doors_.size(); ++i) {
+        if (doors_[i].id != id) continue;
+        if (locked && (doors_[i].broken || doors_[i].hidden)) return false;
+        doors_[i].lair_lock = locked;
+        if (locked) {
+            doors_[i].open = false;
+            syncDoorTerrain(static_cast<int>(i));
+        }
+        return true;
+    }
+    return false;
+}
+
+int BattleMap::clearLairLocks() noexcept {
+    int n = 0;
+    for (auto& d : doors_)
+        if (d.lair_lock) { d.lair_lock = false; ++n; }
+    return n;
 }
 
 bool BattleMap::setDoorHidden(int id, bool hidden) noexcept {

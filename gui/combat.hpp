@@ -2179,6 +2179,13 @@ public:
     // Unlike picking, this works on a locked or arcane-locked door. door_id is the Door::id.
     [[nodiscard]] BreakDoorResult attemptBreakDoor(BattleMap& bm, int agent_idx, int door_id);
 
+    // A saving throw against a fixed DC that isn't a spell (Strahd's Shadow Theft lair action,
+    // DC 17 Cha): d20 (Advantage / curse Disadvantage) + saveModFor (Bless, auras) + Indomitable
+    // Might; Paralyzed/Stunned auto-fail Str/Dex. A failed save is turned into a success with
+    // Legendary Resistance when the saver has a use left. Logs the roll; returns true on a success.
+    [[nodiscard]] bool rollFixedDcSave(BattleMap& bm, int saver_idx, SaveAbility_t ab, int dc,
+                                       const std::string& source);
+
     // ── Chests (plans/ITEMS_AND_CHESTS_PLAN.md) ─────────────────────────────
     // Pick a chest's lock: Sleight of Hand vs lock_dc, as attemptPickLock. An Arcane Lock
     // can't be picked. A failure by 5 or more sets off an armed trap on the picker.

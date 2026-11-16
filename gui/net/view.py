@@ -590,7 +590,7 @@ def _terrain(app, is_dm: bool, hide_map: bool, explored) -> dict:
         if not any(_visible(explored, hide_map, c, r) for c, r in seen):
             continue
         rec = {"id": d.id, "cells": dc, "open": bool(d.open),
-               "locked": bool(d.locked), "broken": bool(d.broken)}
+               "locked": bool(d.locked or d.lair_lock), "broken": bool(d.broken)}
         if d.edges:
             rec["edges"] = [list(edge_key(e)) for e in d.edges]
         if is_dm:

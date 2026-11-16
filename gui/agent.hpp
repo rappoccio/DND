@@ -790,6 +790,9 @@ namespace rpg {
       std::vector<std::string> legendary_action_names{};         // available actions: ["Bite", "Claw", "Dash", "DashHalf", ...]
       std::map<std::string, int> legendary_action_costs{};       // action name → legendary actions spent (absent = 1)
       std::map<std::string, std::string> legendary_action_spells{}; // action name → spell (in this creature's list) it casts
+      // Lair actions offered on the initiative count-20 Lair turn (plans/STRAHD_LAIR_PLAN.md):
+      // named handlers in the GUI, e.g. ["Phase", "Doors", "Apparition", "Shadow Theft"].
+      std::vector<std::string> lair_action_names{};
 
       // ── Condition Immunities (stat block) ───────────────────────────────
       // Canonical 5e condition names ("Charmed", "Poisoned", "Exhaustion", …). Enforced by

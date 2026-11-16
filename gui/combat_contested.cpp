@@ -150,6 +150,12 @@ PickLockResult CombatEngine::attemptPickLock(BattleMap& bm, int agent_idx, int d
     const auto& picker = agents[agent_idx];
     const std::string name = std::string(picker.agent->name());
 
+    if (door->lair_lock) {
+        result.valid = true;
+        result.dc = 20;
+        result.log_message = "\"" + name + "\" cannot pick a lock held by Strahd's magic.";
+        return result;
+    }
     if (!door->locked) {
         result.valid = true;
         result.dc = door->lock_dc;
@@ -225,6 +231,9 @@ BreakDoorResult CombatEngine::attemptBreakDoor(BattleMap& bm, int agent_idx, int
     // Arcane Lock (Knock) imposes no penalty.
     int dc = door->break_dc;
     if (door->arcane_lock && door->arcane_suppressed_turns <= 0) dc += 10;
+    // Strahd's lair lock: a DC 20 Strength check forces the door OPEN (not off its frame).
+    const bool lair_locked = door->lair_lock;
+    if (lair_locked) dc = std::max(dc, 20);
 
     const Agent::Stats st = getAgentStats(bm, agent_idx);
     int bonus = st.athletics();
@@ -236,7 +245,14 @@ BreakDoorResult CombatEngine::attemptBreakDoor(BattleMap& bm, int agent_idx, int
     result.dc      = dc;
     result.success = result.total >= result.dc;
 
-    if (result.success) {
+    if (result.success && lair_locked) {
+        bm.setDoorLairLock(door_id, false);
+        bm.unlockDoor(door_id);
+        bm.openDoor(door_id);
+        result.log_message = "\"" + name + "\" forces open the door Strahd's magic held shut (Athletics " +
+                             std::to_string(result.total) + " vs DC " +
+                             std::to_string(result.dc) + ").";
+    } else if (result.success) {
         bm.breakDoor(door_id);
         result.log_message = "\"" + name + "\" breaks the door down (Athletics " +
                              std::to_string(result.total) + " vs DC " +
@@ -248,6 +264,42 @@ BreakDoorResult CombatEngine::attemptBreakDoor(BattleMap& bm, int agent_idx, int
     }
     log_("{}", result.log_message);
     return result;
+}
+
+bool CombatEngine::rollFixedDcSave(BattleMap& bm, int saver_idx, SaveAbility_t ab, int dc,
+                                   const std::string& source)
+{
+    if (saver_idx < 0 || saver_idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    static constexpr const char* kNames[] = {"Str", "Dex", "Con", "Int", "Wis", "Cha"};
+    const char* ab_name = (ab >= 0 && ab < 6) ? kNames[ab] : "?";
+    const Agent::Conditions c = bm.getAgentConditions(saver_idx);
+    if ((c.paralyzed || c.stunned) && (ab == SaveStr || ab == SaveDex)) {
+        log_("{}: {} automatically fails the {} save (DC {})", source,
+             agentName(bm, saver_idx), ab_name, dc);
+        return false;
+    }
+    const bool adv = saveAdvantageFor(bm, saver_idx, ab);
+    const bool dis = curseSaveDisadvantage(bm, saver_idx, ab);
+    int d20 = roll(20);
+    if (adv != dis) {
+        const int second = roll(20);
+        d20 = adv ? std::max(d20, second) : std::min(d20, second);
+    }
+    int total = d20 + saveModFor(bm, saver_idx, ab);
+    total = applyIndomitableMight(bm, saver_idx, ab, total);
+    bool saved = total >= dc;
+    log_("{}: {} makes a {} save — {} vs DC {} → {}", source, agentName(bm, saver_idx),
+         ab_name, total, dc, saved ? "SUCCEEDS" : "FAILS");
+    if (!saved) {
+        Agent::Stats s = bm.getAgentStats(saver_idx);
+        if (s.hp_cur > 0 && s.legendary_resistance_current >= 1) {
+            s.legendary_resistance_current -= 1;
+            bm.setAgentStats(saver_idx, s);
+            log_("{} uses Legendary Resistance: the save succeeds", agentName(bm, saver_idx));
+            saved = true;
+        }
+    }
+    return saved;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

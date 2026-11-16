@@ -265,7 +265,8 @@ def door_rows(app, actor: int) -> list[Option]:
     rows = []
     for n, door in enumerate(doors, 1):
         state = ("broken" if door.broken else "open" if door.open
-                 else "locked" if (door.locked or door.arcane_lock) else "closed")
+                 else "locked" if (door.locked or door.arcane_lock or door.lair_lock)
+                 else "closed")
         label = f"Door ({state})" if len(doors) == 1 else f"Door {n} ({state})"
         rows.append(Option(f"{DOOR_PREFIX}{door.id}", label, group=GROUP_MOVEMENT,
                            on_choose=lambda d=door.id: _door_menu(app, actor, d)))

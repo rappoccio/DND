@@ -171,6 +171,8 @@ def restore_blocked(app) -> str | None:
         return "a reaction is waiting for an answer"
     if app._legendary_queue or app._legendary_actor >= 0 or app._legendary_move_active:
         return "the legendary-action phase is running"
+    if app._lair_actor >= 0:
+        return "a lair action is being chosen"
     return None
 
 
