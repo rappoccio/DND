@@ -1,7 +1,8 @@
 # New Dungeon → campaign dungeons
 
 **Status 2026-11-16: Step 0 frozen (D1–D7; U5 reversed, version 1 kept). Step 1 done
-(`gui/campaign_import.py`, `tests/test_campaign_import.py`, 258/0, uncommitted). Step 2 next.** Came out of the request that New Dungeon
+(`gui/campaign_import.py`, `tests/test_campaign_import.py`, 258/0, committed bc4dd64). Step 2 done
+(`campaign_import.new_dungeon` / `Scene` / `pc_conflicts`, 258/0). Step 3 next.** Came out of the request that New Dungeon
 create `encounters/<campaign>/<dungeon>/` and bring in the map, terrain and PCs, instead of
 writing an old-style `<map>.dungeon.json` next to the map.
 
@@ -93,7 +94,9 @@ may want less state than a campaign run.
 1. Move the D6 helpers into `gui/`; the migration tool imports them. No behavior change;
    tests for the split / merge round trip.
 2. `campaign_import.new_dungeon(campaign_root, name, scene…)`: the D2 / D5 writers,
-   headless and tested on temp dirs.
+   headless and tested on temp dirs. *Done:* PCs stay in the run as well as `pcs/` until
+   step 3. A reused library map whose `map.json` / `lighting.json` differs gets the
+   dungeon's own copy. A scene with no lighting on a reused map reads the library's.
 3. PCs from the party (D3): sheet + play state, party list, staging placement, Save PC
    and items picked up write the sheet. Migrate the three campaigns' runs to
    play-state-only PCs (on copies first, the way the layout migration was done).
