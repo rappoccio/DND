@@ -396,6 +396,7 @@ function render(next) {
     ? (view.combat.paused ? "(paused)" : "") : "(out of combat)";
 
   resumeChain();
+  drawSheets();
   drawRoster();
   drawLog();
   drawSession();
@@ -479,6 +480,78 @@ function rosterRow(agent, idx, total) {
     row.append(cell("conds", agent.conditions.join(", ")));
   }
   return row;
+}
+
+/* The Character panel: what each of this seat's own creatures has left. `sheet` rides only
+   on tokens the viewer may read the sheet of (view._agent), and `yours` narrows that to the
+   seat's own, so the DM's view of a player screen lists nothing it doesn't own.
+   `slots.max[i]` is spell level i + 1; a Warlock's pact slots are already folded in. */
+const ORDINAL = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th"];
+
+function drawSheets() {
+  const box = el("sheets");
+  box.textContent = "";
+  const mine = view.agents.filter((a) => a.yours && a.sheet)
+                          .sort((a, b) => a.name.localeCompare(b.name));
+  el("sheet-panel").hidden = mine.length === 0;
+  for (const agent of mine) box.append(sheetCard(agent));
+}
+
+function sheetCard(agent) {
+  const s = agent.sheet;
+  const card = document.createElement("div");
+  card.className = "sheet";
+  const line = (cls, text) => {
+    const div = document.createElement("div");
+    div.className = cls;
+    if (text !== undefined) div.textContent = text;
+    return div;
+  };
+
+  const head = line("sheet-head");
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = agent.name;
+  const speeds = Object.entries(s.speed || {}).filter(([k, v]) => v > 0)
+    .map(([k, v]) => (k === "walk" ? `${v} ft` : `${k} ${v}`));
+  const stats = document.createElement("span");
+  stats.className = "hint";
+  stats.textContent = [`HP ${hpText(agent)}`, `AC ${s.ac}`, speeds.join(", ")]
+    .filter(Boolean).join(" · ");
+  head.append(name, stats);
+  card.append(head);
+
+  const slots = s.slots || { max: [], remaining: [] };
+  const rows = [];
+  slots.max.forEach((max, i) => {
+    if (max <= 0) return;
+    const left = Math.max(0, Math.min(max, slots.remaining[i] || 0));
+    rows.push([ORDINAL[i], "●".repeat(left) + "○".repeat(max - left), `${left}/${max}`]);
+  });
+  for (const r of (s.resources || []).filter((r) => r.max > 0)
+                                     .sort((a, b) => a.name.localeCompare(b.name))) {
+    rows.push([r.name, "", `${r.current}/${r.max}`]);
+  }
+  if (rows.length) {
+    const table = line("sheet-rows");
+    for (const [label, pips, count] of rows) {
+      const row = line("sheet-row");
+      row.append(line("label", label), line("pips", pips), line("count", count));
+      table.append(row);
+    }
+    card.append(table);
+  }
+
+  for (const item of s.item_spells || []) {
+    if (!item.spells.length && item.attuned === null) continue;
+    let tag = "";
+    if (item.attuned === false) tag = " (not attuned)";
+    if (item.readable === false) tag = " (can't read)";
+    card.append(line("sheet-item", item.item + tag));
+    for (const spell of item.spells) card.append(line("sheet-item-line", spell));
+  }
+  if (card.childElementCount === 1) card.append(line("hint", "no spell slots or resources"));
+  return card;
 }
 
 /* `view.log` arrives oldest first. Stick to the bottom only if the player was already

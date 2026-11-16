@@ -78,6 +78,13 @@
     </div>
 
     <div class="panels">
+      <!-- The seat's own creatures from their `sheet` (VIEW_TOKEN_SHEET): spell slots,
+           class resources and item charges left. Hidden when the view carries none. -->
+      <section id="sheet-panel" class="panel" hidden>
+        <h2>Character</h2>
+        <div id="sheets"></div>
+      </section>
+
       <!-- QOL Q3: initiative and health in one table, the DM's ▶ on the creature on turn.
            Creatures on the board but not in the order go below a divider. -->
       <section class="panel">
