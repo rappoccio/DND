@@ -3233,8 +3233,12 @@ class App:
         """Load PCs ADDITIVELY onto the current scene, so they drop onto an
         already-loaded dungeon without wiping its monsters. Multi-select: tick any
         mix of party files (*_pc_agents.json) and single-PC files (a campaign's
-        pcs/<name>.json). In a campaign the browser opens on its pcs/ folder."""
+        pcs/<name>.json). It opens on the encounters/ folder beside maps/; in a
+        campaign, on its pcs/ folder."""
         start = os.path.dirname(self._save_path) or self._map_dir
+        encounters = os.path.join(os.path.dirname(self._map_dir), save_layout.ENCOUNTERS_DIR)
+        if os.path.isdir(encounters):
+            start = encounters
         if isinstance(self.store, CampaignStore) and os.path.isdir(self.store.campaign.pcs_dir):
             start = self.store.campaign.pcs_dir
         self.file_browser.open(
