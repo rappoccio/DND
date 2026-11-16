@@ -3229,20 +3229,51 @@ class App:
             title="Save Encounter As",
         )
 
-    def _open_load_pcs_browser(self):
-        """Load PCs ADDITIVELY onto the current scene, so they drop onto an
-        already-loaded dungeon without wiping its monsters. Multi-select: tick any
-        mix of party files (*_pc_agents.json) and single-PC files (a campaign's
-        pcs/<name>.json). It opens on the encounters/ folder beside maps/; in a
-        campaign, on its pcs/ folder."""
+    def _pcs_dir(self) -> str:
+        """Where Load PCs / Save PC open: a campaign's pcs/ folder, else the encounters/
+        folder beside maps/, else the encounter's own folder."""
         start = os.path.dirname(self._save_path) or self._map_dir
         encounters = os.path.join(os.path.dirname(self._map_dir), save_layout.ENCOUNTERS_DIR)
         if os.path.isdir(encounters):
             start = encounters
         if isinstance(self.store, CampaignStore) and os.path.isdir(self.store.campaign.pcs_dir):
             start = self.store.campaign.pcs_dir
+        return start
+
+    def _open_save_pc_browser(self, idx: int):
+        """Save one agent as a single-PC file (the bare-record shape Load PCs reads), so
+        a PC's sheet can be updated on its own. Defaults to pcs/<slug>.json."""
+        name = self.bm.placed_agents[idx].name
         self.file_browser.open(
-            start, self._on_load_pcs_chosen,
+            self._pcs_dir(), lambda path: self._confirm_overwrite(
+                [path], "Save PC", lambda: self._save_pc(idx, path)),
+            save_mode=True,
+            extensions=JSON_EXTS,
+            default_filename=save_layout.slugify(name) + ".json",
+            title=f"Save PC: {name}",
+        )
+
+    def _save_pc(self, idx: int, path: str):
+        records = self._read_agent_records([idx])
+        if not records:
+            self._flash_status("Could not save PC")
+            return
+        try:
+            with open(path, "w") as f:
+                json.dump(records[0], f, indent=2)
+        except OSError as e:
+            self._flash_status(f"Could not save {os.path.basename(path)}: {e}")
+            return
+        self._flash_status(f"Saved {records[0].get('name', 'PC')} to {os.path.basename(path)}")
+
+    def _open_load_pcs_browser(self):
+        """Load PCs ADDITIVELY onto the current scene, so they drop onto an
+        already-loaded dungeon without wiping its monsters. Multi-select: tick any
+        mix of party files (*_pc_agents.json) and single-PC files (a campaign's
+        pcs/<name>.json). It opens on the encounters/ folder beside maps/; in a
+        campaign, on its pcs/ folder."""
+        self.file_browser.open(
+            self._pcs_dir(), self._on_load_pcs_chosen,
             save_mode=False,
             extensions=JSON_EXTS,
             title="Load PCs",

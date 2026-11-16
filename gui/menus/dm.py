@@ -21,6 +21,7 @@ import playback
 import run_control
 import saves
 import items_play
+from constants import PC_FACTION
 from helpers import door_touch_cells
 from net.roster import DM_PRINCIPAL_ID
 from scene_store import CampaignStore
@@ -39,6 +40,7 @@ def show_agents_menu(app):
         ("Import DDB…", app._import_ddb_character),
         ("Save…",       app._open_save_agents_browser),
         ("Load PCs…",   app._open_load_pcs_browser),
+        ("Save PC…",    lambda: show_save_pc_menu(app)),
         ("Create Mob…", lambda: app.mob_dialog.show(
                             lambda mob: app._on_mob_selected(mob))),
         # A bare method reference, not a call: it has to become a bound lambda here,
@@ -49,6 +51,21 @@ def show_agents_menu(app):
     ]
     app._ask_dm("action", "Agents", items,
                  anchor=(app.btn_agents.rect.x, app.btn_agents.rect.y))
+
+
+def show_save_pc_menu(app):
+    """Save PC…: pick one blue-team creature (no summons, nothing out of play) and save
+    it on its own as pcs/<name>.json, so a single PC's sheet can be updated."""
+    pcs = [i for i, pt in enumerate(app.bm.placed_agents)
+           if pt.faction == PC_FACTION and pt.summoner_idx < 0 and not pt.removed_from_play]
+    if not pcs:
+        app._flash_status("No PCs on the map to save")
+        return
+    items = [(app.bm.placed_agents[i].name, lambda i=i: app._open_save_pc_browser(i))
+             for i in pcs]
+    app._ask_dm("action", "Save PC", items,
+                 anchor=(app.btn_agents.rect.x, app.btn_agents.rect.y),
+                 parent=app.prompts.answering)
 
 
 # ─────────────────────────────────────────────────────────────────────

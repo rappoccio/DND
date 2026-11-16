@@ -137,10 +137,49 @@ def test_load_pcs_from_campaign_folder():
     print("  ✅ Load PCs opens on pcs/ and loads single-PC and party files together")
 
 
+def test_save_pc_round_trip():
+    """Agents… ▸ Save PC… lists the blue PCs; picking one opens a save browser on pcs/
+    named <slug>.json, and the file written is a bare agent that Load PCs reads back."""
+    import menus.dm as dm
+    tmp = tempfile.mkdtemp(prefix="save_pc_")
+    try:
+        camp = make_fixture_campaign(os.path.join(tmp, "Test Campaign"))
+        png, manifest = app_main.resolve_start_path(camp.root)
+        app = App(png, seed=1)
+        app._on_open_dungeon_chosen(manifest)
+        os.makedirs(camp.pcs_dir, exist_ok=True)
+        _place(app, "Aodhan", 1, 1)
+        _place(app, "Goblin", 3, 1)
+        app.bm.set_agent_faction(0, PC_FACTION)
+        app.bm.set_agent_faction(1, 1)
+
+        dm.show_agents_menu(app)
+        assert app.prompts.choose_label("Save PC…").ok
+        assert [o.label for o in app.prompts.live.options] == ["Aodhan"]
+        assert app.prompts.choose_label("Aodhan").ok
+        fb = app.file_browser
+        assert fb.active and fb.save_mode and fb.cwd == os.path.abspath(camp.pcs_dir)
+        fb.active = False
+        fb._cb(camp.pc_path("Aodhan"))
+
+        with open(camp.pc_path("Aodhan")) as f:
+            rec = json.load(f)
+        assert rec["name"] == "Aodhan" and "stats" in rec and "agents" not in rec
+
+        app._clear_agents()
+        app._save_agents()
+        app._on_load_pcs_chosen([camp.pc_path("Aodhan")])
+        assert [pt.name for pt in app.bm.placed_agents] == ["Aodhan"]
+    finally:
+        shutil.rmtree(tmp)
+    print("  ✅ Save PC writes one bare PC to pcs/ that Load PCs reads back")
+
+
 def main():
     tests = [
         test_browser_multi_select,
         test_load_pcs_from_campaign_folder,
+        test_save_pc_round_trip,
     ]
     print("Running Load PCs multi-select tests…")
     for t in tests:
