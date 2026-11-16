@@ -212,6 +212,7 @@ test_scripts = [
     "test_save_layout.py",
     "test_dungeon_layout.py",
     "test_run_state.py",
+    "test_campaign_import.py",
     "test_campaign_open.py",
     "test_load_pcs_multi.py",
     "test_releases.py",

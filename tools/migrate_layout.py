@@ -20,7 +20,6 @@ Quit the game first: it saves on quit and on a floor switch.
 
 import argparse
 import copy
-import json
 import os
 import re
 import shutil
@@ -29,25 +28,17 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "gui"))
 
+import campaign_import as ci  # noqa: E402
 import run_state as rs  # noqa: E402
 import save_layout as sl  # noqa: E402
 from dungeon import Dungeon  # noqa: E402
 
 ENCOUNTERS = os.path.join(_ROOT, "encounters")
 ARCHIVE = "_archive"
-# Top-level keys of an agents file that are creatures, not encounter metadata.
-_CREATURE_KEYS = ("agents", "map_items", "active_conditions")
-# Keys an agent record picks up from where it was saved, not who it is.
-_PLACEMENT_KEYS = ("encounter", "page", "z")
-
-
-def _read(path):
-    with open(path) as f:
-        return json.load(f)
-
-
-def _mtime(path):
-    return os.path.getmtime(path)
+_read = ci.read_json
+_split = ci.split_terrain_file
+encounter_doc = ci.encounter_doc
+run_section_from = ci.run_section_from
 
 
 class Plan:
@@ -121,25 +112,9 @@ class Plan:
 
 
 # ── Shared pieces ────────────────────────────────────────────────────────────
-def _split(terrain_path):
-    return rs.split_terrain(_read(terrain_path))
-
-
-def _norm_terrain(t):
-    """A terrain doc with door defaults filled, for comparing old against rebuilt."""
-    m, x, s = rs.split_terrain(t)
-    out = rs.merge_terrain(m, x, s)
-    for k in ("ladders", "staging_cells"):
-        if not out.get(k):
-            out.pop(k, None)
-    return out
-
-
 def check_rebuild(plan, label, old_terrain_path, map_doc, extras, state):
     """Does the new layout rebuild the old terrain exactly? Records the keys that differ."""
-    old = _norm_terrain(_read(old_terrain_path))
-    new = _norm_terrain(rs.merge_terrain(map_doc, extras, state))
-    diff = sorted(k for k in set(old) | set(new) if old.get(k) != new.get(k))
+    diff = ci.rebuild_diff(_read(old_terrain_path), map_doc, extras, state)
     plan.checks.append((label, not diff, ", ".join(diff)))
 
 
@@ -158,23 +133,8 @@ def compare_map_facts(plan, label, chosen, others):
                               f"{os.path.basename(chosen)} in {', '.join(diff)}")
 
 
-def pc_records(paths, pc_names):
-    """{name: agent record}, each from the newest file that has that PC (first match
-    within a file)."""
-    found = {}
-    for p in sorted(paths, key=_mtime, reverse=True):
-        for a in _read(p).get("agents", []) or []:
-            n = a.get("name")
-            if n in pc_names and n not in found:
-                rec = copy.deepcopy(a)
-                for k in _PLACEMENT_KEYS:
-                    rec.pop(k, None)
-                found[n] = (rec, p)
-    return found
-
-
 def add_pcs(plan, paths, pc_names):
-    found = pc_records(paths, pc_names)
+    found = ci.pc_records(paths, pc_names)
     for n in pc_names:
         if n not in found:
             plan.notes.append(f"PC {n!r} not found in any roster")
@@ -184,49 +144,9 @@ def add_pcs(plan, paths, pc_names):
                    f"from {os.path.basename(src)}")
 
 
-def encounter_doc(agents_doc, pc_names):
-    """An encounter definition from a roster: its non-PC creatures and its generator
-    metadata. Map items and conditions are play state; they stay in the run."""
-    doc = {k: copy.deepcopy(v) for k, v in agents_doc.items() if k not in _CREATURE_KEYS}
-    doc["agents"] = [copy.deepcopy(a) for a in agents_doc.get("agents", []) or []
-                     if a.get("name") not in pc_names]
-    doc["map_items"], doc["active_conditions"] = [], []
-    return doc
-
-
-def run_section_from(run, map_name, agents_doc, state, pc_names, encounter=None):
-    """A run's section for a map from an old roster + terrain state. Non-PC creatures
-    are tagged with ``encounter`` when the map got one from this roster."""
-    doc = {k: copy.deepcopy(agents_doc.get(k, []) or []) for k in _CREATURE_KEYS}
-    if encounter:
-        for a in doc["agents"]:
-            if a.get("name") not in pc_names:
-                a["encounter"] = encounter
-    rs.set_creatures(run, map_name, doc)
-    rs.map_section(run, map_name)["state"] = state
-
-
-def merged_session(paths):
-    """One campaign session from every old per-encounter one (D9): the newest file's join
-    code and settings, and every principal any of them seated (by id, newest first), so
-    the creatures' controllers all still name a seat."""
-    paths = sorted((p for p in paths if os.path.isfile(p)), key=_mtime, reverse=True)
-    doc = copy.deepcopy(_read(paths[0]))
-    seen, principals, revoked = set(), [], []
-    for p in paths:
-        d = _read(p)
-        for pr in d.get("principals", []) or []:
-            if pr.get("id") not in seen:
-                seen.add(pr.get("id"))
-                principals.append(pr)
-        revoked += [r for r in d.get("revoked", []) or [] if r not in revoked]
-    doc["principals"], doc["revoked"] = principals, revoked
-    return doc
-
-
 def add_session(plan, paths):
     paths = [p for p in paths if p.endswith("_session.json")]
-    doc = merged_session(paths)
+    doc = ci.merged_session(paths)
     names = [pr.get("display_name") for pr in doc["principals"]]
     plan.write(sl.SESSION_FILE, doc, f"union of {len(paths)}: join code {doc.get('join_code')}, "
                                      f"seats {', '.join(map(str, names))}")
@@ -238,7 +158,7 @@ def campaign_doc(name):
 
 def newest(paths):
     paths = [p for p in paths if os.path.isfile(p)]
-    return max(paths, key=_mtime) if paths else None
+    return max(paths, key=os.path.getmtime) if paths else None
 
 
 def ext_of(path):
