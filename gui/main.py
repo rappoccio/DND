@@ -14041,11 +14041,11 @@ class App:
         pygame.draw.rect(border_s, (200, 130, 255, 160), border_s.get_rect(), 1)
 
         # Only render cells that fall within the map viewport
-        map_w, map_h = self.map_rect.width, self.map_rect.height
+        map_w, map_h = self._panel_x(), self.screen.get_height()   # on-screen map viewport
         cell_set = {(c.col, c.row) for c in cells}
         for c in cells:
             sx, sy = self._cell_to_screen(c.col, c.row)
-            # Skip cells whose rendered area extends beyond the map
+            # Skip cells drawn wholly outside the map viewport (sx/sy include the pan)
             if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
                 continue
             self.screen.blit(fill_s,   (sx, sy))
@@ -14177,7 +14177,7 @@ class App:
 
     def _draw_attack_overlays(self, cpx: int):
         """Draw melee / ranged-normal / ranged-long attack-range overlays."""
-        map_w, map_h = self.map_rect.width, self.map_rect.height
+        map_w, map_h = self._panel_x(), self.screen.get_height()   # on-screen map viewport
         def _draw_zone(cells, fill_rgba, border_rgba):
             if not cells:
                 return
@@ -14187,7 +14187,7 @@ class App:
             pygame.draw.rect(border_s, border_rgba, border_s.get_rect(), 1)
             for cell in cells:
                 sx, sy = self._cell_to_screen(cell.col, cell.row)
-                # Skip cells whose rendered area extends beyond the map
+                # Skip cells drawn wholly outside the map viewport (sx/sy include the pan)
                 if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
                     continue
                 self.screen.blit(fill_s,   (sx, sy))
@@ -18753,7 +18753,7 @@ class App:
             border_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
             pygame.draw.rect(border_surf, (80, 150, 255, 120),
                              border_surf.get_rect(), 1)
-            map_w, map_h = self.map_rect.width, self.map_rect.height
+            map_w, map_h = self._panel_x(), self.screen.get_height()   # on-screen map viewport
             for cell in self._reach_walk:
                 sx, sy = self._cell_to_screen(cell.col, cell.row)
                 if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
@@ -18769,7 +18769,7 @@ class App:
             border_surf = pygame.Surface((cpx, cpx), pygame.SRCALPHA)
             pygame.draw.rect(border_surf, (255, 210, 0, 110),
                              border_surf.get_rect(), 1)
-            map_w, map_h = self.map_rect.width, self.map_rect.height
+            map_w, map_h = self._panel_x(), self.screen.get_height()   # on-screen map viewport
             for cell in self._reach_fly:
                 sx, sy = self._cell_to_screen(cell.col, cell.row)
                 if sx + cpx <= 0 or sx >= map_w or sy + cpx <= 0 or sy >= map_h:
@@ -18827,7 +18827,7 @@ class App:
             pygame.draw.rect(border_surf, border_color, border_surf.get_rect(), 1)
 
             # Render each cell of the light effect
-            map_w, map_h = self.map_rect.width, self.map_rect.height
+            map_w, map_h = self._panel_x(), self.screen.get_height()   # on-screen map viewport
             for cell_idx in effect.cell_indices:
                 # Convert flat index back to (col, row)
                 col = cell_idx % self.bm.grid_cols
@@ -18890,7 +18890,7 @@ class App:
             pygame.draw.rect(border_surf, border_color, border_surf.get_rect(), 1)
 
             # Render each cell of the effect
-            map_w, map_h = self.map_rect.width, self.map_rect.height
+            map_w, map_h = self._panel_x(), self.screen.get_height()   # on-screen map viewport
             for cell_idx in effect.cell_indices:
                 # Convert flat index back to (col, row)
                 col = cell_idx % self.bm.grid_cols
@@ -18964,7 +18964,7 @@ class App:
             pygame.draw.rect(border_surf, border_color, border_surf.get_rect(), 1)
 
             # Render each cell of the effect
-            map_w, map_h = self.map_rect.width, self.map_rect.height
+            map_w, map_h = self._panel_x(), self.screen.get_height()   # on-screen map viewport
             for cell in effect.cells:
                 col = cell.col
                 row = cell.row
