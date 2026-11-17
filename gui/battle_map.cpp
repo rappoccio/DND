@@ -415,6 +415,11 @@ bool BattleMap::isBlocked(Cell origin, int size, MovementType mt) const noexcept
         for (int dr=0;dr<size;++dr) {
             Cell c{origin.col+dc, origin.row+dr};
 
+            // An off-grid cell has no terrain entry: don't index terrainType_ past its end
+            // (a stale save's cells from an older, larger grid did). Passability there is
+            // left as it was; the GUI moves off-grid creatures back on when it loads them.
+            if (c.col < 0 || c.row < 0 || c.col >= cols_ || c.row >= rows_) continue;
+
             // Check if cell is in disallowed_ (auto-detected walls)
             if (disallowed_.contains(c)) {
                 // Walls are passable only to burrowers

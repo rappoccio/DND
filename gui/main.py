@@ -3007,12 +3007,9 @@ class App:
         self._load_agents()
 
         self.dungeon_page = page
-        # A map the dungeon has never measured (a migrated one-map dungeon) learns its
-        # size from the grid it just loaded with.
-        if isinstance(self.store, CampaignStore) and not (page.cols and page.rows):
-            page.cols = int(getattr(self.bm, "grid_cols", 0) or 0)
-            page.rows = int(getattr(self.bm, "grid_rows", 0) or 0)
-            self.dungeon.save(self._dungeon_manifest_path)
+        # A map the dungeon has never measured (a migrated one-map dungeon), or measured
+        # under an older grid, learns its size from the grid it just loaded with.
+        self._sync_page_size()
 
         # ── 4. Inject carried agents onto the target (incremental) ─────────────
         if carried_records:
@@ -3922,7 +3919,7 @@ class App:
         if not page.staging_cells:
             page = self.dungeon.entry_page() or page
         if page is self.dungeon_page:
-            added, _ = self._merge_pcs_here(self.store.arrivals(missing, page),
+            added, _, _ = self._merge_pcs_here(self.store.arrivals(missing, page),
                                             page.staging_cells, on_deck=True)
         else:
             doc = self.store.creatures(page) or {"agents": [], "map_items": []}
@@ -4605,7 +4602,8 @@ class App:
     def _merge_pcs_here(self, pcs, room_cells=None, on_deck: bool = False):
         """Add PC records to the current scene and reload it: each on a free footprint
         in ``room_cells`` when given, else at the nearest free cell to its own. With
-        ``on_deck`` and no room, they arrive in reserve. Returns ``(added, dropped)``."""
+        ``on_deck`` and no room, they arrive in reserve. Returns ``(added, dropped,
+        skipped)``: a PC already in the scene is named in ``skipped``, not added twice."""
         # Persist current placements, then merge the PCs into that saved doc and reload.
         self._save_agents()
         try:
@@ -4616,7 +4614,16 @@ class App:
 
         reserved: set[tuple[int, int]] = set()
         added = dropped = 0
+        # A PC already in this scene keeps its record (and its tracked HP, slots, …):
+        # loading it again used to add a second copy beside the first.
+        here = {a.get("name") for a in agents
+                if isinstance(a, dict) and not self._saved_is_npc(a)}
+        skipped: list[str] = []
         for src in pcs:
+            if src.get("name") in here:
+                skipped.append(src.get("name"))
+                continue
+            here.add(src.get("name"))
             pc = dict(src)                           # don't mutate the source file's dict
             pc["faction"] = PC_FACTION               # whole party fights as the blue team
             size = int(pc.get("size", 1))
@@ -4643,7 +4650,7 @@ class App:
         doc.setdefault("map_items", [])
         self.store.write_creatures(doc)
         self._load_agents()
-        return added, dropped
+        return added, dropped, skipped
 
     def _on_load_pcs_chosen(self, paths):
         """Load PCs from one or more files ADDITIVELY onto the current scene, so the
@@ -4707,7 +4714,7 @@ class App:
                 entrance = min(dict_rooms, key=lambda m: m.get("path_index", 0))
                 room0_cells = entrance.get("cells")
 
-        added, dropped = self._merge_pcs_here(pcs, room0_cells)
+        added, dropped, skipped = self._merge_pcs_here(pcs, room0_cells)
 
         src = (os.path.basename(paths[0]) if len(paths) == 1
                else f"{len(paths)} files")
@@ -4716,6 +4723,8 @@ class App:
             msg += f" ({dropped} didn't fit)"
         if room0_cells:
             msg += " in room 0"
+        if skipped:
+            msg += f"; already here: {', '.join(skipped)}"
         self._flash_status(msg)
 
     # ─────────────────────────────────────────────────────────────────────
@@ -15032,14 +15041,37 @@ class App:
             # are meaningless without the principals they name (M0 / A1).
             self._save_session()
 
-    def _open_cell_near(self, col: int, row: int, size: int) -> tuple[int, int]:
+    def _sync_page_size(self):
+        """Write the live grid's size onto the showing dungeon page (and the manifest)
+        when they differ, so a re-gridded map's footprint isn't the old grid's."""
+        page = self.dungeon_page
+        if not (isinstance(self.store, CampaignStore) and page is not None
+                and self._dungeon_manifest_path):
+            return
+        cols = int(getattr(self.bm, "grid_cols", 0) or 0)
+        rows = int(getattr(self.bm, "grid_rows", 0) or 0)
+        if cols and rows and (page.cols, page.rows) != (cols, rows):
+            page.cols, page.rows = cols, rows
+            self.dungeon.save(self._dungeon_manifest_path)
+
+    def _open_cell_near(self, col: int, row: int, size: int,
+                        taken: set[tuple[int, int]] | None = None) -> tuple[int, int]:
         """(col, row) itself when a size×size token fits there terrain-wise, else the nearest
-        cell (Chebyshev rings) that does; the original cell when the map has none."""
+        cell (Chebyshev rings) that does; the original cell when the map has none. A cell
+        off the grid searches from the nearest edge cell, so a far-off save still lands.
+        ``taken`` cells (other creatures' footprints) are avoided too."""
         cols, rows = self.bm.grid_cols, self.bm.grid_rows
+        taken = taken or set()
 
         def ok(c, r):
             return (0 <= c <= cols - size and 0 <= r <= rows - size
-                    and not self.bm.is_blocked(rpg.Cell(c, r), size))
+                    and not self.bm.is_blocked(rpg.Cell(c, r), size)
+                    and all((c + dc, r + dr) not in taken
+                            for dc in range(size) for dr in range(size)))
+        if ok(col, row):
+            return col, row
+        col = min(max(col, 0), max(0, cols - size))
+        row = min(max(row, 0), max(0, rows - size))
         if ok(col, row):
             return col, row
         for ring in range(1, max(cols, rows) + 1):
@@ -16718,6 +16750,22 @@ class App:
         # next combat's XP tally starts clean (cumulative party_xp_total persists).
         self._xp_awarded_agents.clear()
         agent_data = data.get("agents", [])
+        # A record off this grid (saved under an older, larger grid — Set Grid used to
+        # leave creatures behind) lands on the nearest open cell instead. The engine
+        # skips a blocked placement, which would shift every later record's stats onto
+        # the wrong creature, so nothing may reach apply_agent_configs off the grid.
+        cols, rows = self.bm.grid_cols, self.bm.grid_rows
+
+        def _on_grid(t):
+            sz = int(t["size"])
+            return 0 <= int(t["col"]) <= cols - sz and 0 <= int(t["row"]) <= rows - sz
+        taken: set[tuple[int, int]] = set()
+        for t in agent_data:
+            if _on_grid(t) and not t.get("land_near"):
+                for dc in range(int(t["size"])):
+                    for dr in range(int(t["size"])):
+                        taken.add((int(t["col"]) + dc, int(t["row"]) + dr))
+        moved = []
         for t in agent_data:
             cfg = rpg.AgentConfig()
             cfg.name        = t["name"]
@@ -16729,12 +16777,20 @@ class App:
             cfg.start_row   = t["row"]
             # Sent here by the DM's "Send to floor…" (_send_to_page), which can't see this
             # page's walls: land on the nearest open cell rather than be skipped as blocked.
-            if t.get("land_near"):
+            if t.get("land_near") or not _on_grid(t):
+                if not _on_grid(t):
+                    moved.append(cfg.name)
                 cfg.start_col, cfg.start_row = self._open_cell_near(
-                    int(t["col"]), int(t["row"]), int(t["size"]))
+                    int(t["col"]), int(t["row"]), int(t["size"]), taken)
+                for dc in range(cfg.size):
+                    for dr in range(cfg.size):
+                        taken.add((cfg.start_col + dc, cfg.start_row + dr))
             self.combat.add_agent_config(self.bm, cfg)
             self.pending_configs.append(cfg)
         self.combat.apply_agent_configs(self.bm)
+        if moved:
+            self._combat_log_add(f"Off the {cols}×{rows} grid, moved onto it: "
+                                 f"{', '.join(moved)}.")
         self._mark_fog_dirty()   # roster (re)built — party placed, so re-run reveal
         self.sprites.clear()
         # Restore stats for each placed agent
@@ -17410,6 +17466,9 @@ class App:
         While active, the next left-drag on the map outlines a single tile; on
         release the grid is rebuilt from that tile's size (square) and corner.
         """
+        if self.combat_active and not self._grid_sample_mode:
+            self._flash_status("Finish combat before setting a new grid.")
+            return
         self._grid_sample_mode = not self._grid_sample_mode
         self._grid_sample_start = None
         self._grid_sample_cur   = None
@@ -17464,15 +17523,20 @@ class App:
         if cell_px <= 0:
             self._combat_log_add("Grid sample too small — cancelled.")
             return
-        # A new grid drops every terrain region and rewrites the terrain file.
+        # A new grid drops every terrain region and rewrites the terrain file; the
+        # creatures are saved too, to bring any the new grid leaves off it back on.
         self._confirm_overwrite(
-            [self._terrain_path], "Set grid",
+            [self._save_path, self._terrain_path], "Set grid",
             lambda: self._apply_grid_span(cell_px, anchor_x, anchor_y, square_ft, square_px,
                                           per_side),
             on_cancel=lambda: self._combat_log_add("Grid sample cancelled."))
 
     def _apply_grid_span(self, cell_px, anchor_x, anchor_y, square_ft, square_px, per_side):
         """_on_grid_span once any overwrite is confirmed."""
+        # Persist the creatures before the grid changes: the reload below puts any the
+        # new grid no longer covers back on it (see _load_agents) instead of leaving
+        # them stranded off the map.
+        self._save_agents()
         try:
             self.bm.set_uniform_grid(cell_px, anchor_x, anchor_y)
         except Exception as e:
@@ -17493,6 +17557,9 @@ class App:
         self._edges_carried_from = None   # the cells were renumbered: carry again next time
         self._build_overlay()
         self._save_terrain()
+        self._sync_page_size()
+        self._load_agents()
+        self._save_agents()
         if dropped:
             self._flash_status("New grid: outside seeds and edge overrides cleared.")
         scale = f" (1 square = {square_ft} ft → {per_side}×{per_side} cells)" if per_side > 1 else ""
