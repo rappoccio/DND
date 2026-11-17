@@ -2738,7 +2738,7 @@ public:
     bool applyBendLuckToAttack    (BattleMap& bm, int reactor, AttackResult& r);
     bool applyCuttingWordsToAttack(BattleMap& bm, int reactor, AttackResult& r);
     bool applySilveryBarbsToAttack(BattleMap& bm, int reactor, AttackResult& r);
-    bool applyWardingFlareToAttack(BattleMap& bm, int reactor, int target, AttackResult& r); // Disadvantage = reroll, take lower; L6+ also grants target 2d6+WIS temp HP (Improved Warding Flare)
+    bool applyWardingFlareToAttack(BattleMap& bm, int reactor, int target, AttackResult& r); // Disadvantage: plain → reroll, take lower; vs Advantage → cancel to r.d20_primary; L6+ also grants target 2d6+WIS temp HP (Improved Warding Flare)
     bool applyRestoreBalanceToAttack(BattleMap& bm, int reactor, AttackResult& r); // cancel advantage: r.d20 ← r.d20_primary
 
     // Clockwork Restore Balance — the OnMiss (raising) counterpart of the OnD20Seen advantage-cancel.

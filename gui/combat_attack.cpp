@@ -2152,15 +2152,28 @@ bool CombatEngine::applyWardingFlareToAttack(BattleMap& bm, int reactor, int tar
 
     wf->current -= 1;
     cond.reaction_used = true;
+    // Disadvantage stacks with what the roll already had: plain → roll a second d20 and take the lower;
+    // Advantage → the two cancel, so the roll is a straight one (revert to the first die, as Restore
+    // Balance does); already at Disadvantage (or adv+dis) → no change to the roll.
     const int old_d20 = r.d20;
-    const int rr      = roll(20);                          // Disadvantage = take the lower of the two d20s
-    r.d20        = std::min(old_d20, rr);
+    std::string how;
+    if (r.disadvantage) {
+        how = std::format("roll already at Disadvantage, d20 stays {}", old_d20);
+    } else if (r.advantage) {
+        r.d20 = r.d20_primary;
+        how = std::format("cancels Advantage, d20 {}→{}", old_d20, r.d20);
+    } else {
+        const int rr = roll(20);
+        r.d20 = std::min(old_d20, rr);
+        how = std::format("Disadvantage, d20 {}/{}→{}", old_d20, rr, r.d20);
+    }
+    r.disadvantage = true;
     r.total_roll = r.d20 + r.attack_mod;                   // carries any earlier penalty (invariant)
     reevaluateAttackHit(r);
     bm.setAgentStats(reactor, s);
     bm.setAgentConditions(reactor, cond);
-    log_("{} uses Warding Flare: Disadvantage, d20 {}/{}→{} (now {} vs AC {}) → {}", agentName(bm, reactor),
-         old_d20, rr, r.d20, r.total_roll, r.target_ac, r.hit ? "still hits" : "the attack MISSES");
+    log_("{} uses Warding Flare: {} (now {} vs AC {}) → {}", agentName(bm, reactor),
+         how, r.total_roll, r.target_ac, r.hit ? "still hits" : "the attack MISSES");
 
     // Improved Warding Flare (Light Domain L6+): whenever you use Warding Flare, the target of the
     // triggering attack gains 2d6 + WIS-mod temporary HP — granted regardless of the reroll's outcome.

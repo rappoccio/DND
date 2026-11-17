@@ -307,8 +307,9 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              "new roll). Mutates `result`. Returns True if applied.")
         .def("apply_warding_flare_to_attack", &CombatEngine::applyWardingFlareToAttack,
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("target_idx"), py::arg("result"),
-             "Spend 1 Warding Flare use + reaction; impose Disadvantage (reroll the d20, take the lower)\n"
-             "and re-evaluate hit/crit. If the reactor is a Light Domain Cleric of level 6+ (Improved\n"
+             "Spend 1 Warding Flare use + reaction; impose Disadvantage and re-evaluate hit/crit: a plain\n"
+             "roll rerolls the d20 and takes the lower, an Advantage roll cancels to a straight roll (the\n"
+             "first die), a roll already at Disadvantage is unchanged. If the reactor is a Light Domain Cleric of level 6+ (Improved\n"
              "Warding Flare), the target also gains 2d6+WIS temporary HP (max() semantics), regardless of\n"
              "the reroll's outcome. Mutates `result`. Returns True if applied.")
         .def("can_intercept",

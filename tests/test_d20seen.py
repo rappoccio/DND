@@ -292,6 +292,34 @@ def test_warding_flare_no_temp_hp_below_l6():
     print("✅ test_warding_flare_no_temp_hp_below_l6 passed")
 
 
+def test_warding_flare_vs_advantage_and_disadvantage():
+    """Warding Flare's Disadvantage combines with the roll's existing state: vs an Advantage roll the
+    two cancel (d20 reverts to the first die, no third die); vs a roll already at Disadvantage the d20
+    is unchanged; vs a plain roll it never raises the d20."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk, tgt, rea = _setup(engine, bm, _make_light_cleric)
+    a = engine.get_agent_stats(bm, atk)
+    w = _greataxe()
+    saw_lowered = False
+    for _ in range(200):
+        for adv, dis in ((True, False), (False, True), (False, False)):
+            _reset(engine, bm, tgt, rea, _make_light_cleric)
+            r = engine.roll_to_hit(w, a, 13, adv, dis)
+            old, primary = r.d20, r.d20_primary
+            assert engine.apply_warding_flare_to_attack(bm, rea, tgt, r)
+            assert r.disadvantage, "Warding Flare marks the roll as at Disadvantage"
+            if adv:
+                assert r.d20 == primary, f"adv cancelled → straight roll (first die {primary}), got {r.d20}"
+                saw_lowered |= primary < old
+            elif dis:
+                assert r.d20 == old, "already at Disadvantage → d20 unchanged"
+            else:
+                assert r.d20 <= old, "plain roll → take the lower of two"
+            assert r.total_roll == r.d20 + r.attack_mod
+    assert saw_lowered, "never saw an Advantage roll whose first die was the lower one"
+    print("✅ test_warding_flare_vs_advantage_and_disadvantage passed")
+
+
 def test_warding_flare_gate():
     """Deterministic eligibility checks for can_warding_flare (30 ft, subclass, resource, reaction)."""
     bm = setup_battle_map(); engine = setup_combat_engine()
@@ -506,6 +534,7 @@ def run_all():
     test_warding_flare_disadvantage_can_miss()
     test_improved_warding_flare_grants_temp_hp()
     test_warding_flare_no_temp_hp_below_l6()
+    test_warding_flare_vs_advantage_and_disadvantage()
     test_warding_flare_gate()
     test_warding_flare_team_gate()
     test_lowering_to_miss_suppresses_shield()
