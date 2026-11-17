@@ -215,6 +215,7 @@ test_scripts = [
     "test_campaign_import.py",
     "test_campaign_open.py",
     "test_pc_sheets.py",
+    "test_new_dungeon_dialog.py",
     "test_load_pcs_multi.py",
     "test_releases.py",
     "test_dungeon_reset.py",

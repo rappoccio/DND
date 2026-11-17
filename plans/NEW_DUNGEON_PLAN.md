@@ -4,7 +4,8 @@
 (`gui/campaign_import.py`, `tests/test_campaign_import.py`, 258/0, committed bc4dd64). Step 2 done
 (`campaign_import.new_dungeon` / `Scene` / `pc_conflicts`, 258/0). Step 3 done
 (`gui/pc_sheets.py`, `tools/migrate_pc_play_state.py`, 259/0; the three campaigns
-migrated 2026-11-16). Step 4 next.** Came out of the request that New Dungeon
+migrated 2026-11-16). Step 4 done (the dialog, `tests/test_new_dungeon_dialog.py`, 260/0).
+Step 5 (live check) next.** Came out of the request that New Dungeon
 create `encounters/<campaign>/<dungeon>/` and bring in the map, terrain and PCs, instead of
 writing an old-style `<map>.dungeon.json` next to the map.
 
@@ -129,5 +130,16 @@ may want less state than a campaign run.
      castle-ravenloft pinned to its four PCs (no Seungho). Backups beside each file as
      `*.pre-pc-sheets`.
 4. The New Dungeon dialog (D1, D4) and opening the result.
+   *Done* (`App._dungeon_new` and its `_new_dungeon_*` steps in `gui/main.py`):
+   - Dungeon menu "New Dungeon…": with no dungeon open, and also inside a campaign
+     dungeon (U4). A version-1 dungeon must be closed first.
+   - Loose map: campaign list (every `encounters/*/campaign.json` by name), "New
+     campaign…" (typed name, folder is its slug) and "No campaign (loose)" (the old
+     version-1 writer, unchanged). Then the dungeon name. The scene is read through the
+     canonical serializers into temp files, so the map's own sidecars are not written.
+   - D4: PCs with a sheet already → one "Update sheets from the map: …?" Update / Keep.
+   - Inside a campaign: name, then the start map from the library, the showing map first
+     (no menu for a one-map library). The showing scene is saved first so the sheets are
+     current; the new dungeon opens and the party arrives (D3).
 5. Live check with `run.sh`: TestDNDMap → new campaign; a second dungeon in Sithicus;
    PCs follow between dungeons.

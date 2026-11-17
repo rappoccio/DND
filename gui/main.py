@@ -80,6 +80,7 @@ from atomic_io import atomic_write_json
 from run_state import keep_current_design
 from scene_store import CampaignStore, LegacyStore
 import save_layout
+import campaign_import
 import autosave
 import lair
 import run_control
@@ -3529,19 +3530,162 @@ class App:
             cand, n = f"{seed}_{n}", n + 1
         return cand
 
-    def _dungeon_new(self):
-        """Start a manifest with the CURRENT map + encounter as its (entry) first page,
-        at global origin (0, 0, 0). Further pages come from Add Page…."""
+    def _campaigns_root(self) -> str:
+        """Where New Dungeon lists and makes campaigns: the encounters/ folder beside maps/."""
+        return os.path.join(os.path.dirname(self._map_dir), save_layout.ENCOUNTERS_DIR)
+
+    def _grid_size(self) -> tuple[int, int]:
+        return (int(getattr(self.bm, "grid_cols", 0) or 0),
+                int(getattr(self.bm, "grid_rows", 0) or 0))
+
+    def _dungeon_new(self, anchor=None):
+        """New Dungeon (plans/NEW_DUNGEON_PLAN.md D1): campaign, then dungeon name, then
+        start map. Inside a campaign the campaign is fixed (U4) and the start map comes
+        from its library (D5). Otherwise the list is every campaign under encounters/,
+        "New campaign…", and "No campaign (loose)" for a version-1 dungeon (D7)."""
         if self.combat_active:
             self._flash_status("Finish combat before starting a dungeon.")
             return
-        cols = int(getattr(self.bm, "grid_cols", 0) or 0)
-        rows = int(getattr(self.bm, "grid_rows", 0) or 0)
+        anchor = anchor or pygame.mouse.get_pos()
+        if isinstance(self.store, CampaignStore):
+            self._new_dungeon_named(self.store.campaign.root, None, anchor)
+            return
+        if self.dungeon is not None:
+            self._flash_status("Close the dungeon first.")
+            return
+        cols, rows = self._grid_size()
         if not cols or not rows:
             self._modal_message(["New Dungeon",
                                  "This map has no grid — Set Grid… first, so the page",
                                  "has a footprint on the global (X, Y, Z) grid."])
             return
+        root = self._campaigns_root()
+        camps = [os.path.join(root, d) for d in sorted(os.listdir(root) if os.path.isdir(root) else ())
+                 if os.path.isfile(os.path.join(root, d, save_layout.CAMPAIGN_FILE))]
+        items = [(save_layout.Campaign(p).name,
+                  lambda p=p: self._new_dungeon_named(p, None, anchor)) for p in camps]
+        items += [("New campaign…", lambda: self._new_dungeon_new_campaign(anchor)),
+                  ("No campaign (loose)", self._dungeon_new_loose)]
+        self._ask_dm("action", "New Dungeon: campaign", items, anchor=anchor)
+
+    def _new_dungeon_new_campaign(self, anchor):
+        """"New campaign…": a typed name; the folder is its slug, -2, -3 when taken."""
+        name = self._modal_text_prompt("New campaign", "Campaign name:", ok_label="Next")
+        if not name:
+            return
+        root = self._campaigns_root()
+        try:
+            slug = save_layout.unique_slug(name, os.listdir(root) if os.path.isdir(root) else ())
+        except ValueError as e:
+            self._flash_status(f"New campaign: {e}")
+            return
+        self._new_dungeon_named(os.path.join(root, slug), name, anchor)
+
+    def _new_dungeon_named(self, camp_root, camp_name, anchor):
+        """Ask the dungeon's name, then where its map comes from."""
+        name = self._modal_text_prompt("New Dungeon", "Dungeon name:", ok_label="Next")
+        if not name:
+            return
+        try:
+            save_layout.slugify(name)
+        except ValueError as e:
+            self._flash_status(f"New Dungeon: {e}")
+            return
+        if isinstance(self.store, CampaignStore):
+            self._new_dungeon_pick_map(name, anchor)
+        else:
+            self._new_dungeon_from_scene(camp_root, camp_name, name, anchor)
+
+    def _new_dungeon_pick_map(self, name, anchor):
+        """D1 / D5: the start map, from the open campaign's library; the map showing comes
+        first. A library of one map asks nothing."""
+        camp = self.store.campaign
+        maps = camp.list_library_maps()
+        cur = self.dungeon_page.id if self.dungeon_page is not None else None
+        if cur in maps:
+            maps.remove(cur)
+            maps.insert(0, cur)
+        if not maps:
+            self._flash_status(f"{camp.name} has no maps in its library.")
+            return
+
+        def write(m):
+            cols, rows = self._grid_size() if m == cur else (0, 0)
+            self._new_dungeon_write(camp.root, None, name, library_map=m, cols=cols, rows=rows)
+        if len(maps) == 1:
+            write(maps[0])
+            return
+        items = [(f"{m} (this map)" if m == cur else m, lambda m=m: write(m)) for m in maps]
+        self._ask_dm("action", f"New Dungeon '{name}': start map", items, anchor=anchor)
+
+    def _new_dungeon_scene(self) -> campaign_import.Scene:
+        """The loose map as it stands, for ``campaign_import.new_dungeon``: roster and
+        terrain round-tripped through the canonical serializers into temp files, so the
+        map's own sidecars are only read (U1)."""
+        tmp = os.path.join(self._map_dir, f".new_dungeon_{os.getpid()}")
+        docs = {}
+        try:
+            for key, save in (("agents", self._save_agents), ("terrain", self._save_terrain)):
+                save(f"{tmp}_{key}.json")
+                with open(f"{tmp}_{key}.json") as f:
+                    docs[key] = json.load(f)
+        finally:
+            for key in ("agents", "terrain"):
+                try:
+                    os.remove(f"{tmp}_{key}.json")
+                except OSError:
+                    pass
+        cols, rows = self._grid_size()
+        session = getattr(self, "_session_path", None)
+        return campaign_import.Scene(
+            image=self._map_path, terrain=docs["terrain"], agents=docs["agents"],
+            cols=cols, rows=rows,
+            lighting=self._lighting_path if os.path.isfile(self._lighting_path) else None,
+            session=session if session and os.path.isfile(session) else None)
+
+    def _new_dungeon_from_scene(self, camp_root, camp_name, name, anchor):
+        """D2 / D4: the loose map into the campaign. PCs that already have a sheet there
+        keep it unless the DM says to update them, asked once."""
+        try:
+            scene = self._new_dungeon_scene()
+        except (OSError, ValueError) as e:
+            self._flash_status(f"New Dungeon: could not read the map: {e}")
+            return
+        conflicts = campaign_import.pc_conflicts(camp_root, scene.agents)
+
+        def write(update):
+            return lambda: self._new_dungeon_write(camp_root, camp_name, name, scene=scene,
+                                                   update_pcs=update)
+        if not conflicts:
+            write(())()
+            return
+        self._ask_dm("action", f"Update sheets from the map: {', '.join(conflicts)}?",
+                     [("Update", write(conflicts)), ("Keep", write(()))], anchor=anchor)
+
+    def _new_dungeon_write(self, camp_root, camp_name, name, *, scene=None,
+                           library_map=None, cols=0, rows=0, update_pcs=()):
+        """Write the dungeon (``campaign_import.new_dungeon``) and open it. Inside a
+        campaign the scene showing is saved first, so the sheets the new dungeon's party
+        is built from are current."""
+        if isinstance(self.store, CampaignStore):
+            self._save_agents()
+            self._save_terrain()
+        try:
+            made = campaign_import.new_dungeon(
+                camp_root, name, scene, library_map=library_map, cols=cols, rows=rows,
+                campaign_name=camp_name, update_pcs=update_pcs)
+        except (OSError, ValueError) as e:            # noqa: BLE001 — report, keep the scene
+            self._flash_status(f"New Dungeon: {e}")
+            return
+        if made.pcs_kept:
+            print(f"New Dungeon: kept the campaign's sheets for {', '.join(made.pcs_kept)}")
+        self._open_campaign_dungeon(made.manifest_path)
+
+    def _dungeon_new_loose(self):
+        """"No campaign (loose)" (D7): a version-1 manifest beside the map, with the
+        CURRENT map + encounter as its (entry) first page at global origin (0, 0, 0).
+        Further pages come from Add Page…."""
+        cols, rows = self._grid_size()
         self._confirm_overwrite([dungeon_path_for(self._save_path)], "New Dungeon",
                                 lambda: self._dungeon_new_write(cols, rows))
 
@@ -15101,14 +15245,14 @@ class App:
         self.store.write_creatures(doc)
         self._load_agents()
 
-    def _modal_text_prompt(self, title: str, prompt: str) -> str | None:
+    def _modal_text_prompt(self, title: str, prompt: str, ok_label: str = "Import") -> str | None:
         """Blocking single-line text prompt. Returns the entered text, or None on cancel."""
         sw, sh = self.screen.get_size()
         W, H = min(560, sw - 80), 180
         box = pygame.Rect((sw - W) // 2, (sh - H) // 2, W, H)
         inp = TextInput(pygame.Rect(box.x + 20, box.y + 86, W - 40, 32), font=self.font_md)
         inp.active = True
-        ok = Button(pygame.Rect(box.right - 210, box.bottom - 46, 90, 32), "Import",
+        ok = Button(pygame.Rect(box.right - 210, box.bottom - 46, 90, 32), ok_label,
                     (60, 110, 70), (80, 140, 90), font=self.font_md)
         cancel = Button(pygame.Rect(box.right - 110, box.bottom - 46, 90, 32), "Cancel",
                         (110, 60, 60), (150, 80, 80), font=self.font_md)

@@ -425,7 +425,7 @@ def show_dungeon_menu(app):
     on whether a manifest is currently open."""
     if app.dungeon is None:
         items = [
-            ("New Dungeon (this map)", app._dungeon_new),
+            ("New Dungeon…",           app._dungeon_new),
             ("Open Dungeon…",          app._dungeon_open_browser),
         ]
     else:
@@ -451,6 +451,8 @@ def show_dungeon_menu(app):
             ("Open Dungeon…",     app._dungeon_open_browser),
             ("Close Dungeon",     app._dungeon_close),
         ]
+        if isinstance(app.store, CampaignStore):     # U4: another dungeon of this campaign
+            items.insert(-2, ("New Dungeon…", app._dungeon_new))
     app._ask_dm("action", "Dungeon configuration", items,
                  anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y))
 
