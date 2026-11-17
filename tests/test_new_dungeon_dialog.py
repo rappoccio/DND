@@ -67,7 +67,7 @@ def _read(path):
 def _loose_map(tmp, pc_hp=20):
     """tmp/maps/room.png with its roster (one PC, one monster) and terrain."""
     maps = os.path.join(tmp, "maps")
-    os.makedirs(maps)
+    os.makedirs(maps, exist_ok=True)
     png = os.path.join(maps, "room.png")
     surf = pygame.Surface((COLS * CELL, ROWS * CELL))
     surf.fill((200, 195, 185))
@@ -209,10 +209,12 @@ def test_open_campaign():
 
         # From a loose map, no dungeon open: Open Campaign → New Dungeon… on its library.
         app = _app(png)
-        script = Script(app, picks=["My Campaign", "New Dungeon…"], names=["Annex"])
+        script = Script(app, picks=["My Campaign", "New Dungeon…", "room"], names=["Annex"])
         app._open_campaign(anchor=(10, 10))
         assert script.menus[0] == ("Open Campaign", ["My Campaign"]), script.menus
         assert script.menus[1] == ("My Campaign", ["the-crypt", "New Dungeon…"]), script.menus
+        assert script.menus[2] == ("New Dungeon 'Annex': start map",
+                                   ["room.png (this map)", "room"]), script.menus
         assert camp.list_dungeons() == ["annex", "the-crypt"]
         assert isinstance(app.store, CampaignStore)
         assert app._dungeon_manifest_path == camp.dungeon("annex").manifest_path
@@ -227,10 +229,41 @@ def test_open_campaign():
     print("  ✅ Open Campaign lists its dungeons and makes a new one from its library")
 
 
+def test_map_inside_a_campaign():
+    """A loose image sitting in encounters/<campaign>/maps/ finds the campaigns beside
+    its own, not an encounters/ folder inside the campaign."""
+    tmp = tempfile.mkdtemp(prefix="new_dungeon_dialog_")
+    try:
+        camp = sl.Campaign.create(os.path.join(tmp, "encounters", "Camp"), "Camp")
+        png = _loose_map(camp.root)                  # encounters/Camp/maps/room.png
+        app = _app(png)
+        script = Script(app, picks=["Camp"], names=["Hut"])
+        app._dungeon_new(anchor=(10, 10))
+        assert script.menus[0][1] == ["Camp", "New campaign…", "No campaign (loose)"], script.menus
+        assert camp.list_dungeons() == ["hut"]
+        assert isinstance(app.store, CampaignStore)
+
+        app = _app(png)
+        script = Script(app, picks=["Camp", "hut"])
+        app._open_campaign(anchor=(10, 10))
+        assert script.menus[0] == ("Open Campaign", ["Camp"]), script.menus
+
+        # Open Campaign → New Dungeon… → the loose map showing, brought into the campaign.
+        app = _app(png)
+        Script(app, picks=["Camp", "New Dungeon…", "room.png (this map)", "Keep"], names=["Hut Two"])
+        app._open_campaign(anchor=(10, 10))
+        assert camp.list_dungeons() == ["hut", "hut-two"]
+        assert isinstance(app.store, CampaignStore)
+        assert app._dungeon_manifest_path == camp.dungeon("hut-two").manifest_path
+    finally:
+        shutil.rmtree(tmp)
+    print("  ✅ A map inside a campaign's maps/ folder lists the campaigns beside it")
+
+
 def main():
     pygame.init()
     tests = [test_new_campaign_then_second_dungeon, test_existing_sheet_keep_or_update,
-             test_loose_and_refusals, test_open_campaign]
+             test_loose_and_refusals, test_open_campaign, test_map_inside_a_campaign]
     print("Running New Dungeon dialog tests…")
     for t in tests:
         t()

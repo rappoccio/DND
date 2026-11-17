@@ -3531,7 +3531,11 @@ class App:
         return cand
 
     def _campaigns_root(self) -> str:
-        """Where New Dungeon lists and makes campaigns: the encounters/ folder beside maps/."""
+        """Where New Dungeon lists and makes campaigns: the folder holding the campaign the
+        map lives in (encounters/<campaign>/maps/…), else the encounters/ folder beside maps/."""
+        camp = save_layout.find_campaign(self._map_dir)
+        if camp is not None:
+            return os.path.dirname(camp)
         return os.path.join(os.path.dirname(self._map_dir), save_layout.ENCOUNTERS_DIR)
 
     def _grid_size(self) -> tuple[int, int]:
@@ -3580,7 +3584,7 @@ class App:
         anchor = anchor or pygame.mouse.get_pos()
         camps = self._list_campaigns()
         if not camps:
-            self._flash_status("No campaigns under encounters/ — New Dungeon… makes one.")
+            self._flash_status("No campaigns found.")
             return
         items = [(save_layout.Campaign(p).name,
                   lambda p=p: self._open_campaign_menu(p, anchor)) for p in camps]
@@ -3607,7 +3611,22 @@ class App:
         except ValueError as e:
             self._flash_status(f"New Dungeon: {e}")
             return
-        self._new_dungeon_pick_map(name, anchor, camp=camp)
+        if self.dungeon is not None:
+            self._new_dungeon_pick_map(name, anchor, camp=camp)
+            return
+        # A loose map showing: it comes first (brought in as New Dungeon's D2 does),
+        # then the campaign's library maps.
+        def this_map():
+            if not all(self._grid_size()):
+                self._modal_message(["New Dungeon",
+                                     "This map has no grid — Set Grid… first, so the page",
+                                     "has a footprint on the global (X, Y, Z) grid."])
+                return
+            self._new_dungeon_from_scene(camp.root, None, name, anchor)
+        items = [(f"{os.path.basename(self._map_path)} (this map)", this_map)]
+        items += [(m, lambda m=m: self._new_dungeon_write(camp.root, None, name, library_map=m))
+                  for m in camp.list_library_maps()]
+        self._ask_dm("action", f"New Dungeon '{name}': start map", items, anchor=anchor)
 
     def _new_dungeon_new_campaign(self, anchor):
         """"New campaign…": a typed name; the folder is its slug, -2, -3 when taken."""
