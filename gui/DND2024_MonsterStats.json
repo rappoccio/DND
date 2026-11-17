@@ -66888,5 +66888,151 @@
         "has_lair": false
       }
     }
+  },
+  "Baba Lysaga": {
+    "name": "Baba Lysaga",
+    "size": "Medium",
+    "stats": {
+      "str": 18,
+      "dex": 10,
+      "con": 16,
+      "intel": 20,
+      "wis": 17,
+      "cha": 13,
+      "hp_max": 120,
+      "hp_cur": 120,
+      "ac": 15,
+      "speed_walk": 30,
+      "speed_fly": 0,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 4,
+      "num_attacks": 3,
+      "save_prof_str": false,
+      "save_prof_dex": false,
+      "save_prof_con": false,
+      "save_prof_intel": false,
+      "save_prof_wis": true,
+      "save_prof_cha": false,
+      "temp_hp": 0,
+      "is_npc": true,
+      "magic_resistances": [],
+      "physical_resistances": [],
+      "magic_immunities": [],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [],
+      "physical_vulnerabilities": [],
+      "spellcasting_ability": "intel"
+    },
+    "weapons": {
+      "main_hand": {
+        "name": "Quarterstaff",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "bonus_damage": 4,
+        "physical_damage_types": [
+          {
+            "type": "Bludgeoning",
+            "num_dice": 1,
+            "die_size": 8
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None"
+      },
+      "off_hand": "",
+      "ranged": ""
+    },
+    "meta": {
+      "type": "Humanoid (Wizard)",
+      "cr": "11",
+      "alignment": "Chaotic Evil",
+      "source": "Curse of Strahd",
+      "traits": [],
+      "languages": [
+        "Abyssal",
+        "Common",
+        "Draconic",
+        "Dwarvish",
+        "Giant"
+      ],
+      "senses": {},
+      "passive_perception": 13,
+      "immunities_conditions": [],
+      "save_dc": 17,
+      "saving_throws": [
+        "Wisdom"
+      ],
+      "action_notes": "Multiattack: three Quarterstaff attacks (1d8+4 two-handed). 16th-level wizard, spell save DC 17, +9 spell attack. Skills: Arcana +13, Religion +13. Witch Bolt and Crown of Madness are not in the spell catalog.",
+      "bonus_action": null,
+      "reaction": null,
+      "legendary": {
+        "resistance": null,
+        "resistance_in_lair": null,
+        "actions": null,
+        "actions_in_lair": null,
+        "has_lair": false
+      }
+    },
+    "spell_indices": [
+      "Acid Splash",
+      "Fire Bolt",
+      "Detect Magic",
+      "Light",
+      "Mage Hand",
+      "Prestidigitation",
+      "Magic Missile",
+      "Sleep",
+      "Enlarge/Reduce",
+      "Misty Step",
+      "Dispel Magic",
+      "Fireball",
+      "Lightning Bolt",
+      "Blight",
+      "Black Tentacles",
+      "Polymorph",
+      "Cloudkill",
+      "Geas",
+      "Scrying",
+      "Programmed Illusion",
+      "True Seeing",
+      "Finger of Death",
+      "Mirage Arcane",
+      "Power Word Stun"
+    ],
+    "npc_spell_groups": {
+      "99": [
+        "Detect Magic",
+        "Light",
+        "Mage Hand",
+        "Prestidigitation"
+      ],
+      "2": [
+        "Magic Missile"
+      ],
+      "1": [
+        "Sleep",
+        "Enlarge/Reduce",
+        "Misty Step",
+        "Dispel Magic",
+        "Fireball",
+        "Lightning Bolt",
+        "Blight",
+        "Black Tentacles",
+        "Polymorph",
+        "Cloudkill",
+        "Geas",
+        "Scrying",
+        "Programmed Illusion",
+        "True Seeing",
+        "Finger of Death",
+        "Mirage Arcane",
+        "Power Word Stun"
+      ]
+    }
   }
 }
