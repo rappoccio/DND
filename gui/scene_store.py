@@ -27,6 +27,7 @@ import json
 import os
 import shutil
 
+import pc_sheets
 import run_state as rs
 import save_layout as sl
 from atomic_io import atomic_write_json
@@ -101,6 +102,8 @@ class CampaignStore:
         self.run_name = run_name
         path = layout.run_path(run_name)
         self.run = rs.load_run(path) if os.path.exists(path) else rs.new_run()
+        # PCs with a sheet in pcs/ are stored in the run as play state (pc_sheets).
+        self.sheets = pc_sheets.Sheets(layout.campaign)
         # The map the app's scene paths point at (``point_at``). It changes before the
         # app's ``dungeon_page`` does: a page switch loads the new scene first.
         self.page = None
@@ -185,14 +188,41 @@ class CampaignStore:
         return self._page(page).id in (self.run.get("maps") or {})
 
     def creatures(self, page=None):
+        """The map's creatures, each sheet-backed PC rebuilt from its sheet (D3)."""
         p = self._page(page)
         if p.id not in (self.run.get("maps") or {}):
             return None
-        return rs.creatures(self.run, p.id)
+        return pc_sheets.expand(rs.creatures(self.run, p.id), self.sheets)
 
     def write_creatures(self, doc, page=None) -> None:
-        rs.set_creatures(self.run, self._page(page).id, doc)
+        """Store the map's creatures: sheet-backed PCs as play state, their sheets written
+        when they changed (a level-up, an item picked up)."""
+        section, _ = pc_sheets.collapse(doc, self.sheets)
+        rs.set_creatures(self.run, self._page(page).id, section)
         self.save_run()
+
+    # ── Party (plans/NEW_DUNGEON_PLAN.md D3) ──────────────────────────────
+    def party(self, dungeon=None) -> list[str]:
+        """The party's sheet slugs: the run's list, else the dungeon's, else the
+        campaign's, else every sheet in pcs/."""
+        try:
+            with open(self.campaign.manifest_path) as f:
+                camp_party = json.load(f).get("party")
+        except (OSError, ValueError):
+            camp_party = None
+        self.sheets = pc_sheets.Sheets(self.campaign)       # pick up edited sheets
+        return pc_sheets.party_slugs(self.sheets, self.run.get("party"),
+                                     getattr(dungeon, "party", None), camp_party)
+
+    def missing_party(self, dungeon=None) -> list[str]:
+        """Party PCs this run has on none of its maps yet."""
+        present = pc_sheets.present_slugs(self.run)
+        return [s for s in self.party(dungeon) if s not in present]
+
+    def arrivals(self, slugs, page, occupied=()) -> list[dict]:
+        """Full records for ``slugs`` arriving on ``page``: its staging cells, else on
+        deck (see ``pc_sheets.arrivals``)."""
+        return pc_sheets.arrivals(self.sheets, slugs, page.staging_cells, occupied)
 
     # ── Art and other per-map files ───────────────────────────────────────
     def image(self, page) -> str:

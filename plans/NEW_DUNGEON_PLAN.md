@@ -2,7 +2,9 @@
 
 **Status 2026-11-16: Step 0 frozen (D1–D7; U5 reversed, version 1 kept). Step 1 done
 (`gui/campaign_import.py`, `tests/test_campaign_import.py`, 258/0, committed bc4dd64). Step 2 done
-(`campaign_import.new_dungeon` / `Scene` / `pc_conflicts`, 258/0). Step 3 next.** Came out of the request that New Dungeon
+(`campaign_import.new_dungeon` / `Scene` / `pc_conflicts`, 258/0). Step 3 done
+(`gui/pc_sheets.py`, `tools/migrate_pc_play_state.py`, 259/0; the three campaigns
+migrated 2026-11-16). Step 4 next.** Came out of the request that New Dungeon
 create `encounters/<campaign>/<dungeon>/` and bring in the map, terrain and PCs, instead of
 writing an old-style `<map>.dungeon.json` next to the map.
 
@@ -100,6 +102,32 @@ may want less state than a campaign run.
 3. PCs from the party (D3): sheet + play state, party list, staging placement, Save PC
    and items picked up write the sheet. Migrate the three campaigns' runs to
    play-state-only PCs (on copies first, the way the layout migration was done).
+   *Done* (`gui/pc_sheets.py`, through `CampaignStore.creatures` / `write_creatures`):
+   - A PC is sheet-backed when `pcs/<slug>.json` exists. The run keeps its play keys
+     (cell, on deck, HP, temp HP, slots left, buff bookkeeping, one-shot uses) tagged
+     `pc_sheet`; every save writes the rest to the sheet when it changed. So Save PC,
+     level-ups, pickups and loadout changes all reach the sheet with no special case.
+   - **Items are on the sheet**, weapons and armor too: a potion drunk in one dungeon is
+     gone in all of them. "Carried consumables" in D3's play-state list was read as
+     this, since a pickup has to reach every dungeon.
+   - **Unsettled PCs are held whole.** Aid, Haste, Longstrider, Wild Shape and the like
+     rewrite base numbers (max HP, AC, speed) while they last, so a PC under one, or
+     the target of any active condition, is stored whole (`pc_whole`) and its sheet is
+     not written until a save after it settles.
+   - An old run's untagged PC record reads as play state over its sheet (sheet wins).
+   - Party: run `"party"` > `dungeon.json` `"party"` (new `Dungeon.party`) >
+     `campaign.json` `"party"` > every sheet. Missing party PCs join on open
+     (`App._party_arrives`): the showing page's staging cells, else the entry page's,
+     else on deck. Load PCs and arrivals share `App._merge_pcs_here`.
+   - `new_dungeon` stores the scene's PCs as play state; a kept sheet (D4) is not
+     overwritten.
+   - Migration: `tools/migrate_pc_play_state.py` reports where a run's record differs
+     from the sheet, `--prefer-run NAME@dungeon` takes the sheet from that run, and a
+     dungeon whose runs hold only part of the party gets a `"party"` pin. Applied with
+     Keef Girgo@castle-ravenloft (level 8 there, sheet was 6), Tiza@boneyard (player
+     seat), Sabalath and Java of the Indies@nedragaard-keep (run newer than sheets);
+     castle-ravenloft pinned to its four PCs (no Seungho). Backups beside each file as
+     `*.pre-pc-sheets`.
 4. The New Dungeon dialog (D1, D4) and opening the result.
 5. Live check with `run.sh`: TestDNDMap → new campaign; a second dungeon in Sithicus;
    PCs follow between dungeons.

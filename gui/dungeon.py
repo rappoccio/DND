@@ -301,6 +301,9 @@ class Dungeon:
     staircases: list[Staircase] = field(default_factory=list)
     next_staircase_id: int = 1
     version: int = DUNGEON_SCHEMA_VERSION
+    # Campaign dungeons only: the PCs who join this dungeon's runs, overriding the
+    # campaign's party (plans/NEW_DUNGEON_PLAN.md D3). None ⇒ the campaign's.
+    party: Optional[list[str]] = None
 
     @classmethod
     def single_map(cls, map_name: str, cols: int = 0, rows: int = 0) -> "Dungeon":
@@ -520,6 +523,8 @@ class Dungeon:
             if self.staircases or self.next_staircase_id > 1:
                 d["staircases"] = [st.to_dict() for st in self.staircases]
                 d["next_staircase_id"] = int(self.next_staircase_id)
+            if self.party is not None:
+                d["party"] = [str(n) for n in self.party]
             return d
         d = {
             "version": DUNGEON_SCHEMA_VERSION,
@@ -550,9 +555,11 @@ class Dungeon:
         # The stored counter wins, but never below max(id) + 1, so a hand-edited or
         # truncated manifest still can't hand out a live id twice.
         nxt = max([int(d.get("next_staircase_id", 1))] + [st.id + 1 for st in stairs])
+        party = d.get("party") if version >= DUNGEON_LAYOUT_VERSION else None
         dung = cls(pages=pages, entry_page_id=entry, staircases=stairs,
                    next_staircase_id=nxt,
-                   version=min(version, DUNGEON_LAYOUT_VERSION))
+                   version=min(version, DUNGEON_LAYOUT_VERSION),
+                   party=[str(n) for n in party] if isinstance(party, list) else None)
         # Repair a dangling/missing entry pointer so entry_page() is always valid.
         if dung.page_by_id(entry) is None:
             dung.entry_page_id = pages[0].id if pages else None

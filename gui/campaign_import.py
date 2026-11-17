@@ -23,6 +23,7 @@ import os
 import shutil
 from dataclasses import dataclass, field
 
+import pc_sheets
 import run_state as rs
 import save_layout as sl
 from atomic_io import atomic_write_json
@@ -225,8 +226,9 @@ def new_dungeon(campaign_root: str, name: str, scene: Scene | None = None, *,
     * ``scene`` (D2): a loose map. Its art goes to the library (reused when the library
       has the same bytes), its map facts to ``map.json``, its staircases / door links /
       staging cells to the page, its fog and doors and every creature to ``runs/main``,
-      its non-PC creatures also to ``encounters/initial.json``, and its PCs to ``pcs/``.
-      A PC that already has a sheet keeps it unless named in ``update_pcs`` (D4).
+      its non-PC creatures also to ``encounters/initial.json``, and its PCs to ``pcs/``
+      (the run keeps their play state, ``pc_sheets``). A PC that already has a sheet
+      keeps it unless named in ``update_pcs`` (D4).
     * ``library_map`` (D5): a map already in the library; the dungeon gets only its
       ``dungeon.json`` and an empty run. ``cols`` / ``rows`` size the page (0: filled in
       when the app first opens the map).
@@ -280,6 +282,10 @@ def new_dungeon(campaign_root: str, name: str, scene: Scene | None = None, *,
                 continue
             atomic_write_json(path, pc_record(agents[n]))
             out.pcs_written.append(n)
+        # The run keeps only the PCs' play state; who they are is the sheet (D3).
+        section, _ = pc_sheets.collapse(rs.creatures(run, map_name),
+                                        pc_sheets.Sheets(camp), write=False)
+        rs.set_creatures(run, map_name, section)
         cols, rows = scene.cols, scene.rows
 
     if not os.path.isfile(camp.session_path):

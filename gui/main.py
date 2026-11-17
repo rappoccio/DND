@@ -3695,6 +3695,7 @@ class App:
         if not self._switch_to_page(page, force=True):
             self.store, self.dungeon, self.dungeon_page, self._dungeon_manifest_path = old
             return False
+        self._party_arrives()
         run_control.ensure_first_release(self)    # Reset Dungeon always has a V0
         dm.set_tracker_mode(self, bool(store.run.get("tracker_mode", False)))   # T6
         dm.set_players_map_only(self, bool(store.run.get("players_map_only", False)))
@@ -3702,6 +3703,30 @@ class App:
             print(f"Warning: {w}")
         self._flash_status(f"{camp.name} / {layout.name} — {page.id}")
         return True
+
+    def _party_arrives(self):
+        """Party PCs the run has on no map yet join it (plans/NEW_DUNGEON_PLAN.md D3): on
+        the showing page's staging cells, else the entry page's, else on deck. A PC
+        already somewhere in the run stays where it is."""
+        missing = self.store.missing_party(self.dungeon)
+        if not missing:
+            return
+        page = self.dungeon_page
+        if not page.staging_cells:
+            page = self.dungeon.entry_page() or page
+        if page is self.dungeon_page:
+            added, _ = self._merge_pcs_here(self.store.arrivals(missing, page),
+                                            page.staging_cells, on_deck=True)
+        else:
+            doc = self.store.creatures(page) or {"agents": [], "map_items": []}
+            occupied = [(a.get("col"), a.get("row")) for a in doc.get("agents", [])]
+            recs = self.store.arrivals(missing, page, occupied)
+            doc.setdefault("agents", []).extend(recs)
+            doc.setdefault("map_items", [])
+            self.store.write_creatures(doc, page)
+            added = len(recs)
+        if added:
+            print(f"Party: {added} PC(s) joined on {page.id}")
 
     def _leave_campaign(self):
         """Back to per-encounter sidecars (opening a loose map or a version 1 dungeon)."""
@@ -4370,6 +4395,49 @@ class App:
                 return c
         return None
 
+    def _merge_pcs_here(self, pcs, room_cells=None, on_deck: bool = False):
+        """Add PC records to the current scene and reload it: each on a free footprint
+        in ``room_cells`` when given, else at the nearest free cell to its own. With
+        ``on_deck`` and no room, they arrive in reserve. Returns ``(added, dropped)``."""
+        # Persist current placements, then merge the PCs into that saved doc and reload.
+        self._save_agents()
+        try:
+            doc = self.store.creatures() or {"agents": [], "map_items": []}
+        except ValueError:
+            doc = {"agents": [], "map_items": []}
+        agents = doc.setdefault("agents", [])
+
+        reserved: set[tuple[int, int]] = set()
+        added = dropped = 0
+        for src in pcs:
+            pc = dict(src)                           # don't mutate the source file's dict
+            pc["faction"] = PC_FACTION               # whole party fights as the blue team
+            size = int(pc.get("size", 1))
+
+            # If we have room 0's cells, try to place the PC there; else default placement
+            if room_cells:
+                spot = self._place_in_room(size, room_cells, reserved)
+            else:
+                spot = self._merge_free_cell(int(pc.get("col", 0)), int(pc.get("row", 0)),
+                                             size, reserved)
+
+            if spot is None:
+                dropped += 1                         # no free footprint
+                continue
+            pc["col"], pc["row"] = spot.col, spot.row
+            pc.pop("land_near", None)
+            if on_deck and not room_cells:
+                pc["on_deck"] = True
+            for dc in range(size):
+                for dr in range(size):
+                    reserved.add((spot.col + dc, spot.row + dr))
+            agents.append(pc)
+            added += 1
+        doc.setdefault("map_items", [])
+        self.store.write_creatures(doc)
+        self._load_agents()
+        return added, dropped
+
     def _on_load_pcs_chosen(self, paths):
         """Load PCs from one or more files ADDITIVELY onto the current scene, so the
         PCs drop onto an already-loaded dungeon without the destructive full-scene
@@ -4415,14 +4483,6 @@ class App:
                     self._flash_status("Could not switch to floor 0 to place PCs.")
                     return
 
-        # Persist current placements, then merge the PCs into that saved doc and reload.
-        self._save_agents()
-        try:
-            doc = self.store.creatures() or {"agents": [], "map_items": []}
-        except ValueError:
-            doc = {"agents": [], "map_items": []}
-        agents = doc.setdefault("agents", [])
-
         # Drop the PCs into the room the generator left empty. The authoritative source is
         # `_staging_cells` — the exact (post-filter) cells of results[0] recorded by Generate
         # Dungeon. It comes from the terrain sidecar; the current page's terrain (incl. floor
@@ -4440,32 +4500,7 @@ class App:
                 entrance = min(dict_rooms, key=lambda m: m.get("path_index", 0))
                 room0_cells = entrance.get("cells")
 
-        reserved: set[tuple[int, int]] = set()
-        added = dropped = 0
-        for src in pcs:
-            pc = dict(src)                           # don't mutate the source file's dict
-            pc["faction"] = PC_FACTION               # whole party fights as the blue team
-            size = int(pc.get("size", 1))
-
-            # If we have room 0's cells, try to place the PC there; else default placement
-            if room0_cells:
-                spot = self._place_in_room(size, room0_cells, reserved)
-            else:
-                spot = self._merge_free_cell(int(pc.get("col", 0)), int(pc.get("row", 0)),
-                                             size, reserved)
-
-            if spot is None:
-                dropped += 1                         # no free footprint
-                continue
-            pc["col"], pc["row"] = spot.col, spot.row
-            for dc in range(size):
-                for dr in range(size):
-                    reserved.add((spot.col + dc, spot.row + dr))
-            agents.append(pc)
-            added += 1
-        doc.setdefault("map_items", [])
-        self.store.write_creatures(doc)
-        self._load_agents()
+        added, dropped = self._merge_pcs_here(pcs, room0_cells)
 
         src = (os.path.basename(paths[0]) if len(paths) == 1
                else f"{len(paths)} files")
