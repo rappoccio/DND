@@ -426,6 +426,7 @@ def show_dungeon_menu(app):
     if app.dungeon is None:
         items = [
             ("New Dungeon…",           app._dungeon_new),
+            ("Open Campaign…",         app._open_campaign),
             ("Open Dungeon…",          app._dungeon_open_browser),
         ]
     else:
@@ -448,11 +449,12 @@ def show_dungeon_menu(app):
             ("Undo Reset",        lambda: run_control.ask_undo_reset(
                 app, anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y),
                 parent=app.prompts.answering)),
+            ("Open Campaign…",    app._open_campaign),
             ("Open Dungeon…",     app._dungeon_open_browser),
             ("Close Dungeon",     app._dungeon_close),
         ]
         if isinstance(app.store, CampaignStore):     # U4: another dungeon of this campaign
-            items.insert(-2, ("New Dungeon…", app._dungeon_new))
+            items.insert(-3, ("New Dungeon…", app._dungeon_new))
     app._ask_dm("action", "Dungeon configuration", items,
                  anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y))
 

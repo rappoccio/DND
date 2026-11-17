@@ -3559,14 +3559,55 @@ class App:
                                  "This map has no grid — Set Grid… first, so the page",
                                  "has a footprint on the global (X, Y, Z) grid."])
             return
-        root = self._campaigns_root()
-        camps = [os.path.join(root, d) for d in sorted(os.listdir(root) if os.path.isdir(root) else ())
-                 if os.path.isfile(os.path.join(root, d, save_layout.CAMPAIGN_FILE))]
+        camps = self._list_campaigns()
         items = [(save_layout.Campaign(p).name,
                   lambda p=p: self._new_dungeon_named(p, None, anchor)) for p in camps]
         items += [("New campaign…", lambda: self._new_dungeon_new_campaign(anchor)),
                   ("No campaign (loose)", self._dungeon_new_loose)]
         self._ask_dm("action", "New Dungeon: campaign", items, anchor=anchor)
+
+    def _list_campaigns(self) -> list[str]:
+        root = self._campaigns_root()
+        return [os.path.join(root, d) for d in sorted(os.listdir(root) if os.path.isdir(root) else ())
+                if os.path.isfile(os.path.join(root, d, save_layout.CAMPAIGN_FILE))]
+
+    def _open_campaign(self, anchor=None):
+        """Open Campaign…: pick a campaign, then one of its dungeons or New Dungeon… on a
+        map from its library — no dungeon of it needs to be open first."""
+        if self.combat_active:
+            self._flash_status("Finish combat before opening a campaign.")
+            return
+        anchor = anchor or pygame.mouse.get_pos()
+        camps = self._list_campaigns()
+        if not camps:
+            self._flash_status("No campaigns under encounters/ — New Dungeon… makes one.")
+            return
+        items = [(save_layout.Campaign(p).name,
+                  lambda p=p: self._open_campaign_menu(p, anchor)) for p in camps]
+        self._ask_dm("action", "Open Campaign", items, anchor=anchor)
+
+    def _open_campaign_menu(self, camp_root, anchor):
+        try:
+            camp = save_layout.Campaign(camp_root)
+            dungeons = camp.list_dungeons()
+        except (OSError, ValueError) as e:
+            self._flash_status(f"Open Campaign: {e}")
+            return
+        items = [(d, lambda d=d: self._open_campaign_dungeon(camp.dungeon(d).manifest_path))
+                 for d in dungeons]
+        items.append(("New Dungeon…", lambda: self._open_campaign_new_dungeon(camp, anchor)))
+        self._ask_dm("action", camp.name, items, anchor=anchor)
+
+    def _open_campaign_new_dungeon(self, camp, anchor):
+        name = self._modal_text_prompt("New Dungeon", "Dungeon name:", ok_label="Next")
+        if not name:
+            return
+        try:
+            save_layout.slugify(name)
+        except ValueError as e:
+            self._flash_status(f"New Dungeon: {e}")
+            return
+        self._new_dungeon_pick_map(name, anchor, camp=camp)
 
     def _new_dungeon_new_campaign(self, anchor):
         """"New campaign…": a typed name; the folder is its slug, -2, -3 when taken."""
@@ -3596,12 +3637,15 @@ class App:
         else:
             self._new_dungeon_from_scene(camp_root, camp_name, name, anchor)
 
-    def _new_dungeon_pick_map(self, name, anchor):
-        """D1 / D5: the start map, from the open campaign's library; the map showing comes
-        first. A library of one map asks nothing."""
-        camp = self.store.campaign
+    def _new_dungeon_pick_map(self, name, anchor, camp=None):
+        """D1 / D5: the start map, from the campaign's library (the open one unless
+        ``camp`` is given); the map showing comes first. A library of one map asks nothing."""
+        if camp is None:
+            camp = self.store.campaign
         maps = camp.list_library_maps()
-        cur = self.dungeon_page.id if self.dungeon_page is not None else None
+        showing = (isinstance(self.store, CampaignStore)
+                   and os.path.samefile(self.store.campaign.root, camp.root))
+        cur = self.dungeon_page.id if showing and self.dungeon_page is not None else None
         if cur in maps:
             maps.remove(cur)
             maps.insert(0, cur)

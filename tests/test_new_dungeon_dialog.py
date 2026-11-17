@@ -198,10 +198,39 @@ def test_loose_and_refusals():
     print("  ✅ No campaign (loose) writes version 1; an open dungeon and a blank name refuse")
 
 
+def test_open_campaign():
+    tmp = tempfile.mkdtemp(prefix="new_dungeon_dialog_")
+    try:
+        png = _loose_map(tmp)
+        app = _app(png)
+        Script(app, picks=["New campaign…"], names=["My Campaign", "The Crypt"])
+        app._dungeon_new(anchor=(10, 10))
+        camp = sl.Campaign(os.path.join(tmp, "encounters", "my-campaign"))
+
+        # From a loose map, no dungeon open: Open Campaign → New Dungeon… on its library.
+        app = _app(png)
+        script = Script(app, picks=["My Campaign", "New Dungeon…"], names=["Annex"])
+        app._open_campaign(anchor=(10, 10))
+        assert script.menus[0] == ("Open Campaign", ["My Campaign"]), script.menus
+        assert script.menus[1] == ("My Campaign", ["the-crypt", "New Dungeon…"]), script.menus
+        assert camp.list_dungeons() == ["annex", "the-crypt"]
+        assert isinstance(app.store, CampaignStore)
+        assert app._dungeon_manifest_path == camp.dungeon("annex").manifest_path
+
+        # …or one of its dungeons, opened directly.
+        app = _app(png)
+        Script(app, picks=["My Campaign", "the-crypt"])
+        app._open_campaign(anchor=(10, 10))
+        assert app._dungeon_manifest_path == camp.dungeon("the-crypt").manifest_path
+    finally:
+        shutil.rmtree(tmp)
+    print("  ✅ Open Campaign lists its dungeons and makes a new one from its library")
+
+
 def main():
     pygame.init()
     tests = [test_new_campaign_then_second_dungeon, test_existing_sheet_keep_or_update,
-             test_loose_and_refusals]
+             test_loose_and_refusals, test_open_campaign]
     print("Running New Dungeon dialog tests…")
     for t in tests:
         t()
