@@ -128,6 +128,19 @@ def test_primal_champion_not_double_applied_on_remerge():
     print("✅ test_primal_champion_not_double_applied_on_remerge passed")
 
 
+# ── A classless monster keeps its stat-block Multiattack across the merge ─────────
+def test_classless_monster_keeps_num_attacks():
+    # Every save/load runs restore_class_resources → initialize_multiclass_resources on
+    # monsters too. With no class levels the merge used to reset num_attacks to 1, so a
+    # reloaded Creeping Hut (Multiattack: three Roots) swung once.
+    s = rpg.Stats()
+    s.num_attacks = 3
+    s.set_class_level(CC.__members__["None"], 1)
+    s.initialize_multiclass_resources()
+    assert s.num_attacks == 3, f"classless monster lost its Multiattack: {s.num_attacks}"
+    print("✅ test_classless_monster_keeps_num_attacks passed")
+
+
 if __name__ == "__main__":
     test_barbarian_fighter_merges_resources()
     test_extra_attack_does_not_stack()
@@ -135,4 +148,5 @@ if __name__ == "__main__":
     test_non_martial_multiclass_has_single_attack()
     test_single_class_merge_matches_single_class_init()
     test_primal_champion_not_double_applied_on_remerge()
+    test_classless_monster_keeps_num_attacks()
     print("\n✅ All multiclass resource-merge tests passed!")

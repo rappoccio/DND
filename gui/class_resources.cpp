@@ -923,8 +923,13 @@ void Agent::Stats::initializeClassResources(CharacterClass cls, int level) {
 // is taken as the MAX any one class grants (a Fighter 11's three attacks beats a
 // Barbarian 5's two), not the sum. Each class's body is isolated by resetting
 // num_attacks to 1 before it runs, then folding the result into the running max.
+// A creature with no class levels (a bestiary monster) keeps its stat-block
+// num_attacks: its Multiattack count isn't a class grant, so there is nothing to merge.
 void Agent::Stats::initializeMulticlassResources() {
   resources.clear();
+  if (std::none_of(class_levels.begin() + 1, class_levels.end(),
+                   [](int lvl) { return lvl > 0; }))
+    return;
   int max_attacks = 1;
   for (std::size_t i = 1; i < class_levels.size(); ++i) {  // skip CharClassNone (0)
     const int lvl = class_levels[i];
