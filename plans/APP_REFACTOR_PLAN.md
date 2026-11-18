@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed, 263/0. A2 next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -155,6 +155,15 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
      (staticmethod), ladders and door links stay. 263/0, goldens unchanged.
      `App` 19,913 lines.
   4. Initiative & Lair Turns (next to the existing `lair.py` / `tracker.py`).
+     **Done 2026-11-18:** 52 methods → `gui/app_initiative.py` (about 1.3k lines): combat
+     start/end, the initiative tracker, Tides of Chaos on Initiative, encounter XP, On Deck
+     and mob clearing, Thief's Reflexes, `_advance_turn` / `_proceed_to_new_turn` /
+     `_finish_turn_start`, and the legendary-action phase. `App` keeps 24 forwarders (names
+     used by `menus/`, `lair.py`, `tracker.py`, `arena.py`, `autosave.py`, `saves.py`,
+     `replay.py`, `app_dungeon_pages.py`, tests, or bound as callbacks); the module calls
+     those through the forwarder so instance patches in tests still see them. Stayed:
+     `_reset_turn_economy` (A3) and the pick machine (A2). 263/0, goldens unchanged.
+     `App` 18,166 lines, 576 methods.
   Re-run graphify (`/graphify . --update`) after each and check that the cluster's in/out
   edges now cross a module boundary instead of `App`.
 - **A2. Pending modes** (D4). Take Drag & Cancel and Special Attacks with it: 72 and 64 of
