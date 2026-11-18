@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0. A4b (summons → `gui/app_summons.py`) committed, 263/0.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0. A4b (summons → `gui/app_summons.py`) committed bd2b227, 263/0. Graph rebuilt at bd2b227; A5–A8 added 2026-11-18 (user), A9 deferred; A5 next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -338,6 +338,53 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   registry (`SUMMON_SPELL_TO_MONSTER`, `_load_summon_spirits`, `SUMMON_SPELL_TO_SPIRIT`) moved
   from `app_spells.py`, and `MAGE_HAND_STATBLOCK` / `DUPLICATE_STATBLOCK` from `main.py`;
   `app_spells` and `main` import the registry back. `main.py` 14,838 lines.
+
+- **A5–A8: the clean cuts the bd2b227 graph shows** (added 2026-11-18, user). Ranked by the
+  graph's call edges and a grep of names reached from outside `main.py`, measured at bd2b227
+  (`App` 14,446 lines). Each is a move with the A2c / A4 mechanics: module-level functions
+  taking `app`, one-line forwarders for names reached from outside `main.py` or bound as
+  callbacks, calls between moved functions through the forwarder where a test wraps the
+  instance, string references grepped before any forwarder is dropped. The method lists are
+  the graph's; re-derive each cut from the code when the step starts, as A2c and A4 did, and
+  record the final list under the step.
+  - **A5. Dungeon generation and import → `gui/app_dungeon_gen.py`.** About 20 methods,
+    1,073 lines (`_generate_multifloor`, `_modal_generate_dungeon`, `_modal_select_items`,
+    `_staple_floor_tiles`, `_modal_generate_terrain`, `_import_ddb_character`,
+    `_write_generated_terrain`, `_generate_terrain_with`, `_carve_dungeon_layout`, …).
+    Calls: 56 inside the group, 15 out to the rest of `App`; 11 names reached from outside.
+    The cleanest cut.
+  - **A6. Combat panel drawing → `gui/app_panel_render.py`.** About 14 methods, 1,051 lines
+    (`_draw_combat_panel` 632, `_draw_panel`, `_reposition_panel`, `_draw_combat_panel_log`,
+    `_draw_item_spells_panel`, `_panel_layout`, …). 28 in, 14 out; 7 reached from outside.
+    Same pattern as `app_board_render.py` (A1); the structural render golden is the oracle.
+  - **A7. Save / load and the lighting editor → `gui/app_persist.py`.** About 1,200 lines of
+    load/save (`_load_agents` 451, `_save_agents` 352, `_load_terrain` 191,
+    `_load_combat_state`, `_load_map_png`, …) plus the 9-method, 275-line lighting editor
+    (`_load_lighting`, `_apply_light_effects`, `_open_lighting_editor`,
+    `_save_lighting_no_reload`, …; 16 in, 6 out). The clustering folds load/save into
+    "Map View & Overlays" with `__init__`, so this seam is the least checked: confirm it
+    from the code first, and split the lighting editor into its own step if the two
+    don't share helpers.
+  - **A8. Character setup and feature weapons → `gui/app_char_setup.py`.** About 18 methods,
+    729 lines (`_on_stats_ok` 213, `_grant_class_features` 128,
+    `_load_npc_spells_from_record`, `_apply_feature_scaling`, the `_create_*_weapon` set,
+    `_set_origin_feat`, …). 36 in, 14 out; 9 reached from outside.
+  - **After A5–A8 `App` is about 10k lines.** Under ~8k also needs **A9 (deferred, user
+    2026-11-18):** split `_perform_action` (819 lines) and `_handle_events` (996) into
+    dispatch tables. That is a redesign, not a move; revisit after A8. Left on `App` on
+    purpose: pick arming and reactions (1,404 lines, 470 calls inside the group, 117 out,
+    35 reached from outside, the most tangled group) and the ~137 small helpers / forwarders.
+  - **Loop after every step (A5–A8), in this order, without waiting to be asked (user,
+    2026-11-18):**
+    1. Rebuild the graph: a code-only graphify update over `gui/` + `tools/` (filter the
+       incremental detect to those, as at e01fd7f and bd2b227; carry community labels
+       over by node overlap and name the new ones).
+    2. Run `./test.sh` in the container.
+    3. Fix anything not green and re-run until it is all green, goldens byte-identical.
+    4. Update this plan (status line + a "done" note under the step: final method list,
+       forwarder count, `main.py` line count) and commit the step, staging files by name.
+       This standing instruction is the commit request for A5–A8. Never push.
+    5. Give the user a 1–2 sentence handoff: the commit, the result, what's next.
 
 ## Risks
 
