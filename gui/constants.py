@@ -84,3 +84,7 @@ FONT_LG   = 20
 # ── File extensions ───────────────────────────────────────────────────────────
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp', '.tga'}
 JSON_EXTS  = {'.json'}
+
+# Room flood cap for waking On Deck enemies on drawn maps (matches the DM's Reveal this room).
+# Shared by main.py and app_dungeon_pages.py.
+_ROOM_FLOOD_CAP = 4000

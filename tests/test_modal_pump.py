@@ -238,7 +238,10 @@ def test_every_event_draining_loop_has_a_pump():
     recorded event list rather than pygame's queue, so the rule does not reach it — which
     is why it is not counted among them.
     """
-    tree = ast.parse(open(os.path.join(_ROOT, "gui", "main.py")).read())
+    # `_modal_dungeon_pages` moved to app_dungeon_pages.py (APP_REFACTOR_PLAN A1.3);
+    # its first statement is `app._pump_net()`, which the attr check below still reads.
+    trees = [(f, ast.parse(open(os.path.join(_ROOT, "gui", f)).read()))
+             for f in ("main.py", "app_dungeon_pages.py")]
 
     def drains_pygame_events(node):
         for sub in ast.walk(node):
@@ -250,7 +253,7 @@ def test_every_event_draining_loop_has_a_pump():
                 return True
         return False
 
-    loops = [n for n in ast.walk(tree)
+    loops = [(f, n) for f, tree in trees for n in ast.walk(tree)
              if isinstance(n, ast.While)
              and isinstance(n.test, ast.Constant) and n.test.value is True
              and drains_pygame_events(n)]
@@ -258,12 +261,12 @@ def test_every_event_draining_loop_has_a_pump():
     # Step 0.11 named six; _modal_pick_mobs (Generate Dungeon's mob picker) is the seventh.
     assert len(loops) == 7, f"{len(loops)} event-draining modal loops, not the known seven"
 
-    for loop in loops:
+    for f, loop in loops:
         first = loop.body[0]
         assert (isinstance(first, ast.Expr) and isinstance(first.value, ast.Call)
                 and isinstance(first.value.func, ast.Attribute)
                 and first.value.func.attr == "_pump_net"), \
-            f"the modal loop at main.py:{loop.lineno} does not open with self._pump_net()"
+            f"the modal loop at {f}:{loop.lineno} does not open with _pump_net()"
     print("✅ test_every_event_draining_loop_has_a_pump")
 
 

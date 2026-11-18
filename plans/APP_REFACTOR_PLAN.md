@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 done, uncommitted, 263/0. A1.3 next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 done, uncommitted, 263/0. A1.4 next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -141,6 +141,19 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
      now point at the new module. 263/0, goldens unchanged. `App` 20,704 lines, 629 methods.
   3. Dungeon Pages & Navigation (about 3.1k lines; its 23 calls into Shell show what the
      shell has to keep exposing).
+     **Done 2026-11-18:** 58 methods → `gui/app_dungeon_pages.py` (about 1.5k lines):
+     encounter export/import across pages, page/floor switching and carry, campaign and
+     New Dungeon flows, save/open/close/add page, Pages/Overview modal,
+     `_draw_floor_overview`, staircases, Send to page, the panel's Floor nav. `App` keeps
+     33 forwarders (names used by `menus/dm.py`, `menus/board.py`, `scene_store.py`,
+     `saves.py`, `floor_overlay.py`, `run_control.py`, tests, or passed as bound callbacks).
+     `_draw_panel` still calls `self._draw_panel_floor_nav` because `test_dungeon_pages`
+     wraps it on the instance. `_ROOM_FLOOD_CAP` moved to `constants.py` (shared).
+     `test_modal_pump`'s seven-loop scan now reads both files. Left for their own cuts:
+     the dungeon generator (`_generate_multifloor`, `_modal_generate_dungeon`, about 1.3k
+     lines) and the edge-carry review (`_maybe_carry_edges`, …); `_clear_page_mobs`
+     (staticmethod), ladders and door links stay. 263/0, goldens unchanged.
+     `App` 19,913 lines.
   4. Initiative & Lair Turns (next to the existing `lair.py` / `tracker.py`).
   Re-run graphify (`/graphify . --update`) after each and check that the cluster's in/out
   edges now cross a module boundary instead of `App`.
