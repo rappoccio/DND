@@ -11,6 +11,49 @@ the `AttackResolver` row plus the second mis-grouping (the turn-start reaction f
 **Handoff (2026-09-25)** first, then **Handoff (2026-09-14)**, **R5**, and **R3d/R4d/R4e** below
 before picking this up in a new session.
 
+**Staleness review (2026-11-18)**: no refactor work since 2026-09-25, but the repo moved on
+(~100 suites added, container-only rule, `compile.sh` job cap). Corrections are inline, marked
+*(updated 2026-11-18)*: the acceptance count, the build note, the old build-environment section,
+and the `NpcDriver` measurement. Numbers in the dated handoffs and phase writeups below them
+are left as history.
+
+**PAUSED (2026-11-18, agreed with the user)** at a safe stopping point. Order from here:
+(1) `plans/APP_REFACTOR_PLAN.md` A0–A2; (2) this plan's `NpcDriver` then `ReactionArbiter`,
+with `ReactionArbiter`'s API informed by A2's `app.pending` modes; (3) the App plan's A3–A4.
+The riders+resources class-family split (R4 follow-on, amended below) floats: do it the next
+time class features are added.
+
+**Graph review (2026-11-18)**: a graphify pass over `gui/` + `tools/` (`graphify-out/`) was
+run after this plan was written. Findings and recommendations:
+
+1. **The key finding holds, checked independently.** The graph clusters `CombatEngine::`
+   methods by call edges alone, knowing nothing about files, and each TU still lands mostly
+   in one cluster: `combat_conditions.cpp` 36/37, `combat_resources.cpp` 92/105,
+   `combat_core.cpp` 23/27, `combat_turn.cpp` 57/70, `combat_attack.cpp` 55/83,
+   `combat_spells.cpp` 45/90 (+18 in the resources cluster).
+2. **Goal (a) is largely met.** `combat.hpp` churn fell from 125 of 200 commits (baseline)
+   to **25 of the last 200**. The remaining R4 cuts (`NpcDriver`, `ReactionArbiter`) are
+   still correct and still in the right order, but they buy less than when they were
+   scheduled. **Recommendation:** weigh them against `plans/APP_REFACTOR_PLAN.md`, because
+   `main.py` is now the churn hot spot (124 of the last 200 commits) and `App` is a 22.8k-line,
+   649-method god class that no plan covered.
+3. **`combat_riders.cpp` and `combat_resources.cpp` are one cluster.** 48 of riders' 72
+   methods cluster with 92 of resources' 105 (this matches the baseline's `riders→resources`
+   27-call edge, the second-worst peer edge). **Recommendation:** the deferred "split
+   resources by class family" follow-on (see R4) should split **both files together** by
+   class family, so a class's activations and its riders land in one TU. It's also more
+   urgent than it was: resources grew from 84 to **105** `CombatEngine::` defs (spells 80 →
+   87, turn 47 → 69, attack 69 → 79).
+4. **The Python side mirrors engine state.** `App` copies `walk_remaining` etc. into its own
+   `move_remaining_*` fields and hand-maintains `action_used` / `attacks_remaining`, and
+   about 82 `pending_*` fields duplicate the role of `pending_decision_` on the UI side. Out of
+   scope here (no behavior changes, and it's Python), but it is tracked as A2/A3 of
+   `plans/APP_REFACTOR_PLAN.md`, and `ReactionArbiter`'s final API shape should be chosen
+   with A2's `app.pending` modes in mind.
+5. **Graph health caveat.** The build reported 529 dangling edges and about 865 merged
+   duplicates, and vendored `gui/net/static/mermaid.min.js` contributes about 2k noise nodes.
+   Exclude it (`.graphifyignore`) before using the graph as a re-measurement tool for R4.
+
 Goal: break up the `CombatEngine` god class so that (a) adding a spell/feat/subclass stops
 triggering a full rebuild of every combat TU, (b) the rules layer becomes testable without
 instantiating an engine, and (c) combat state becomes serializable — which is the same work
@@ -36,15 +79,19 @@ class wrapping one struct). `cast_stack_` travels with `ReactionArbiter` for the
 failure described in the 2026-09-14 handoff was fixed on the test side as item 1 of
 `MULTIPLAYER_PLAN_OWED.md` (2026-09-24; it was a fixture bug, as this file said). Acceptance for
 every remaining R4 step is now: clean build, no new warnings, `test_determinism.py`
-byte-identical, **`./test.sh` at 161/0** (162 once a new suite is registered), and a mutant
-check of whatever guards the moved state. Everything runs in the `rpg_map` image through
+byte-identical, **`./test.sh` all green with 0 failures**, and a mutant check of whatever guards
+the moved state. *(Updated 2026-11-18: the 161/0 figure is obsolete. `tests/run_all_tests.py`
+registers **261** suites as of this date, so get a fresh baseline count from `./test.sh` before the
+next cut and use that as the oracle.)* Everything runs in the `rpg_map` image through
 `./test.sh` or `docker run` — the `docker exec angry_goodall` recipes below are from before the
 repo's container-only rule and should not be followed literally.
 
 **Build note from R4e**: a header change under `combat.hpp` rebuilds every combat TU, and
 `./test.sh`'s unbounded `--parallel` got `cc1plus` OOM-killed in the container. `cmake --build
 build --parallel 3` inside the image completed. Not a code problem; worth knowing before
-reading a "Killed signal" as a compile error.
+reading a "Killed signal" as a compile error. *(Updated 2026-11-18: `compile.sh` now caps
+parallel jobs by available memory (~1.5 GB per job), so `./build.sh`/`./test.sh` should no longer
+OOM, and the manual `--parallel 3` workaround isn't needed.)*
 
 **Next**: `NpcDriver` — measured 2026-09-25, not yet scoped. `npc_turn_` is touched only in
 `combat_turn.cpp` (`runNpcTurn` 10×, `dispatchNpcTurn` 5×, `runAoeTurn`/`runCasterTurn` 3×
@@ -52,6 +99,10 @@ each, `runFleeTurn`/`runWeaponTurn` 1× each) and none of those functions touch
 `pending_decision_`, `in_flight_*`, `cast_stack_` or `decider_` directly — but they drive the
 turn *through* `beginAttack`/`beginCast`/`beginMove`, so re-measure what a container-only cut
 would move (`npc_turn_` plus the `npc_config_*` cache) before deciding anything larger.
+*(Updated 2026-11-18: the "only `combat_turn.cpp`" claim no longer holds. A grep now shows
+`npc_turn_` at 30 hits in `combat_turn.cpp` (up from the 23 counted above), **3 in
+`combat_serialization.cpp`** (R5 snapshot/restore), and 8 in `combat.hpp`. So a cut must also
+give the snapshot code a way into the moved state. Re-measure per function before scoping.)*
 `ReactionArbiter` stays last.
 
 ## Handoff (2026-09-14)
@@ -159,8 +210,16 @@ done 2026-09-25 as R4e, with `AttackResolver` folded into `ReactionArbiter` — 
 (2026-09-25).)* Do not start further work on R3 or R4 without the R0 determinism harness
 passing at every step — it's the oracle this whole plan depends on.
 
-**Build environment — read this before running anything.** This repo's real build/run
-environment is a Docker container, not the host machine directly:
+**Build environment — SUPERSEDED (2026-11-18), kept for history.** Don't follow the
+`docker exec angry_goodall` recipes below. The current rule (`CLAUDE.md`) is that everything
+runs in a fresh `rpg_map` container: `./build.sh`, `./test.sh`, or a single suite via
+`docker run --rm -v "$HOME":/home/user rpg_map -c "cd /home/user/Claude/DND && python3
+tests/<suite>.py"`. Nothing runs on the host. Opus may build and test without asking; Sonnet
+and Haiku never do. The `compile.sh` notes about Ninja and `FETCHCONTENT_UPDATES_DISCONNECTED`
+below still apply.
+
+*Original text:* This repo's real build/run environment is a Docker container, not the host
+machine directly:
 - Container: name `angry_goodall`, id `62aa12a89476` (check `docker ps` — the name/id may
   change if the container was recreated; look for image `rpg_map`).
 - `/Users/rappoccio` on the host is bind-mounted to `/home/user` in the container, so
@@ -757,7 +816,9 @@ Two mis-groupings to fix while here, both originally in `combat_riders.cpp`:
 Also flag: `combat_resources.cpp` (84 methods of class/subclass activations) is the file
 guaranteed to grow forever as classes are added. It should eventually split by class
 family (`resources_martial.cpp`, `resources_caster.cpp`, …), but that is a follow-on to
-R4, not part of it.
+R4, not part of it. *(Amended 2026-11-18, graph review: split `combat_riders.cpp` along the
+same class-family lines in the same step, since the two files cluster as one. Resources is
+at 105 defs, up from 84.)*
 
 #### R4a — `VisibilityService` — **DONE** (2026-09-14)
 
@@ -1041,7 +1102,8 @@ un-sets, restores, and requires both back. `test_snapshot.py` 6 → 7.
 
 #### Next cut: `NpcDriver`
 
-See **Handoff (2026-09-25)** for the measurement so far. `ReactionArbiter` stays last and now
+See **Handoff (2026-09-25)** for the measurement so far, and its 2026-11-18 update:
+`combat_serialization.cpp` now touches `npc_turn_` too. `ReactionArbiter` stays last and now
 carries **six** deferred items: `in_flight_move_` plus the movement flow (R4b),
 `ConditionTracker::mutableAll()`'s removal once the tick drivers move (R4c), the turn-start
 reaction flow (R4's second mis-grouping, still in `combat_riders.cpp`), `in_flight_attack_` and

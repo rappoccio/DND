@@ -30,6 +30,12 @@ test_scripts = [
     # can be proven structurally identical. Kept with the other oracles for the same
     # reason: a layout regression should fail before the rules suites run.
     "test_combat_panel.py",
+    # App-refactor oracles (APP_REFACTOR_PLAN.md A0): structural goldens of the board
+    # renderer (every draw call of run()'s map layer, per checkpoint) and of the dungeon
+    # open / page / floor / staircase flow. Each A1 cut must leave both byte-identical.
+    # The draw-call recorder they share is tests/draw_capture.py.
+    "test_board_render.py",
+    "test_dungeon_pages.py",
 
     # The legal-action model (MULTIPLAYER_PLAN.md M2, seam S3) — the other half of the
     # panel split: test_combat_panel.py proves the pixels did not move, this proves the

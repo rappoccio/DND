@@ -1,0 +1,331 @@
+=== 01 open the campaign dungeon — entry map hall ===
+state | page=hall z=0 origin=[0, 0, 0] size=10x8
+state | grid=10x8 bm_origin=0,0,0 cell_px=30
+state | map_rect=0,0,300,240 zoom=1.000 pan=0,0 map_scale=1.0000
+state | status='Golden Campaign / keep — hall'
+state | dungeon=yes store=CampaignStore run.current_map=hall
+store | hall: []
+store | annex: []
+store | cellar: []
+nav | blit screen <- text'Floor 0 — hall' @ (312,46)
+nav | draw.rect screen (44,46,56), R(312,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,66,76,24), 1, border_radius=5
+nav | blit screen <- text'West' @ (332,70)
+nav | draw.rect screen (44,46,56), R(392,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(392,66,76,24), 1, border_radius=5
+nav | blit screen <- text'North' @ (411,70)
+nav | draw.rect screen (44,46,56), R(472,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,66,76,24), 1, border_radius=5
+nav | blit screen <- text'South' @ (490,70)
+nav | draw.rect screen (58,82,116), R(552,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(552,66,76,24), 1, border_radius=5
+nav | blit screen <- text'East' @ (575,70)
+nav | draw.rect screen (44,46,56), R(312,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor +' @ (364,98)
+nav | draw.rect screen (58,82,116), R(472,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor -' @ (528,98)
+nav | hit floor_down 472,94,156,24
+nav | hit right 552,66,76,24
+overview z=-1 | draw.rect screen (24,24,36), R(40,40,400,240), border_radius=6
+overview z=-1 | draw.rect screen (90,90,115), R(40,40,400,240), 1, border_radius=6
+overview z=-1 | blit screen <- text'Floor -1' @ (48,44)
+overview z=-1 | draw.rect screen (44,50,66), R(105,52,270,216), border_radius=3
+overview z=-1 | draw.rect screen (110,110,140), R(105,52,270,216), 1, border_radius=3
+overview z=-1 | blit screen <- text'cellar' @ (220,152)
+overview z=-1 | hit cellar 105,52,270,216
+overview z=0 | draw.rect screen (24,24,36), R(40,40,400,240), border_radius=6
+overview z=0 | draw.rect screen (90,90,115), R(40,40,400,240), 1, border_radius=6
+overview z=0 | blit screen <- text'Floor 0' @ (48,44)
+overview z=0 | draw.rect screen (86,72,42), R(52,84,188,150), border_radius=3
+overview z=0 | draw.rect screen (110,110,140), R(52,84,188,150), 1, border_radius=3
+overview z=0 | blit screen <- text'★ hall' @ (125,151)
+overview z=0 | draw.rect screen (44,50,66), R(240,84,188,150), border_radius=3
+overview z=0 | draw.rect screen (110,110,140), R(240,84,188,150), 1, border_radius=3
+overview z=0 | blit screen <- text'annex' @ (312,151)
+overview z=0 | hit annex 240,84,188,150
+overview z=0 | hit hall 52,84,188,150
+
+=== 02 Aria and Skarn placed on hall (not yet saved) ===
+state | page=hall z=0 origin=[0, 0, 0] size=10x8
+state | grid=10x8 bm_origin=0,0,0 cell_px=30
+state | map_rect=0,0,300,240 zoom=1.000 pan=0,0 map_scale=1.0000
+state | status='Golden Campaign / keep — hall'
+state | dungeon=yes store=CampaignStore run.current_map=hall
+state | token Aria @ 2,3 faction=2
+state | token Skarn @ 7,6 faction=1
+store | hall: []
+store | annex: []
+store | cellar: []
+nav | blit screen <- text'Floor 0 — hall' @ (312,46)
+nav | draw.rect screen (44,46,56), R(312,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,66,76,24), 1, border_radius=5
+nav | blit screen <- text'West' @ (332,70)
+nav | draw.rect screen (44,46,56), R(392,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(392,66,76,24), 1, border_radius=5
+nav | blit screen <- text'North' @ (411,70)
+nav | draw.rect screen (44,46,56), R(472,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,66,76,24), 1, border_radius=5
+nav | blit screen <- text'South' @ (490,70)
+nav | draw.rect screen (58,82,116), R(552,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(552,66,76,24), 1, border_radius=5
+nav | blit screen <- text'East' @ (575,70)
+nav | draw.rect screen (44,46,56), R(312,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor +' @ (364,98)
+nav | draw.rect screen (58,82,116), R(472,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor -' @ (528,98)
+nav | hit floor_down 472,94,156,24
+nav | hit right 552,66,76,24
+
+=== 03 East — page to annex (hall saved on the way out) ===
+state | page=annex z=0 origin=[10, 0, 0] size=10x8
+state | grid=10x8 bm_origin=10,0,0 cell_px=30
+state | map_rect=0,0,300,240 zoom=1.000 pan=0,60 map_scale=1.0000
+state | status='Map: annex'
+state | dungeon=yes store=CampaignStore run.current_map=annex
+store | hall: [Aria@2,3, Skarn@7,6]
+store | annex: []
+store | cellar: []
+nav | blit screen <- text'Floor 0 — annex' @ (312,46)
+nav | draw.rect screen (58,82,116), R(312,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,66,76,24), 1, border_radius=5
+nav | blit screen <- text'West' @ (332,70)
+nav | draw.rect screen (44,46,56), R(392,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(392,66,76,24), 1, border_radius=5
+nav | blit screen <- text'North' @ (411,70)
+nav | draw.rect screen (44,46,56), R(472,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,66,76,24), 1, border_radius=5
+nav | blit screen <- text'South' @ (490,70)
+nav | draw.rect screen (44,46,56), R(552,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(552,66,76,24), 1, border_radius=5
+nav | blit screen <- text'East' @ (575,70)
+nav | draw.rect screen (44,46,56), R(312,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor +' @ (364,98)
+nav | draw.rect screen (58,82,116), R(472,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor -' @ (528,98)
+nav | hit floor_down 472,94,156,24
+nav | hit left 312,66,76,24
+
+=== 04 North from annex — no map there, refused ===
+state | page=annex z=0 origin=[10, 0, 0] size=10x8
+state | grid=10x8 bm_origin=10,0,0 cell_px=30
+state | map_rect=0,0,300,240 zoom=1.000 pan=0,60 map_scale=1.0000
+state | status='No map to the up.'
+state | dungeon=yes store=CampaignStore run.current_map=annex
+state | token Wisp @ 4,4 faction=1
+store | hall: [Aria@2,3, Skarn@7,6]
+store | annex: []
+store | cellar: []
+nav | blit screen <- text'Floor 0 — annex' @ (312,46)
+nav | draw.rect screen (58,82,116), R(312,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,66,76,24), 1, border_radius=5
+nav | blit screen <- text'West' @ (332,70)
+nav | draw.rect screen (44,46,56), R(392,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(392,66,76,24), 1, border_radius=5
+nav | blit screen <- text'North' @ (411,70)
+nav | draw.rect screen (44,46,56), R(472,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,66,76,24), 1, border_radius=5
+nav | blit screen <- text'South' @ (490,70)
+nav | draw.rect screen (44,46,56), R(552,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(552,66,76,24), 1, border_radius=5
+nav | blit screen <- text'East' @ (575,70)
+nav | draw.rect screen (44,46,56), R(312,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor +' @ (364,98)
+nav | draw.rect screen (58,82,116), R(472,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor -' @ (528,98)
+nav | hit floor_down 472,94,156,24
+nav | hit left 312,66,76,24
+
+=== 05 West — back to hall, its tokens reloaded ===
+state | page=hall z=0 origin=[0, 0, 0] size=10x8
+state | grid=10x8 bm_origin=0,0,0 cell_px=30
+state | map_rect=0,0,300,240 zoom=1.000 pan=0,60 map_scale=1.0000
+state | status='Map: hall'
+state | dungeon=yes store=CampaignStore run.current_map=hall
+state | token Aria @ 2,3 faction=2
+state | token Skarn @ 7,6 faction=1
+store | hall: [Aria@2,3, Skarn@7,6]
+store | annex: [Wisp@4,4]
+store | cellar: []
+nav | blit screen <- text'Floor 0 — hall' @ (312,46)
+nav | draw.rect screen (44,46,56), R(312,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,66,76,24), 1, border_radius=5
+nav | blit screen <- text'West' @ (332,70)
+nav | draw.rect screen (44,46,56), R(392,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(392,66,76,24), 1, border_radius=5
+nav | blit screen <- text'North' @ (411,70)
+nav | draw.rect screen (44,46,56), R(472,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,66,76,24), 1, border_radius=5
+nav | blit screen <- text'South' @ (490,70)
+nav | draw.rect screen (58,82,116), R(552,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(552,66,76,24), 1, border_radius=5
+nav | blit screen <- text'East' @ (575,70)
+nav | draw.rect screen (44,46,56), R(312,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor +' @ (364,98)
+nav | draw.rect screen (58,82,116), R(472,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor -' @ (528,98)
+nav | hit floor_down 472,94,156,24
+nav | hit right 552,66,76,24
+
+=== 06 Floor - — down to cellar, zoom kept ===
+state | page=cellar z=-1 origin=[0, 0, -1] size=10x8
+state | grid=10x8 bm_origin=0,0,-1 cell_px=30
+state | map_rect=0,0,375,300 zoom=1.250 pan=-37,0 map_scale=1.2500
+state | status='Floor -1: cellar'
+state | dungeon=yes store=CampaignStore run.current_map=cellar
+store | hall: [Aria@2,3, Skarn@7,6]
+store | annex: [Wisp@4,4]
+store | cellar: []
+nav | blit screen <- text'Floor -1 — cellar' @ (312,46)
+nav | draw.rect screen (44,46,56), R(312,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,66,76,24), 1, border_radius=5
+nav | blit screen <- text'West' @ (332,70)
+nav | draw.rect screen (44,46,56), R(392,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(392,66,76,24), 1, border_radius=5
+nav | blit screen <- text'North' @ (411,70)
+nav | draw.rect screen (44,46,56), R(472,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,66,76,24), 1, border_radius=5
+nav | blit screen <- text'South' @ (490,70)
+nav | draw.rect screen (44,46,56), R(552,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(552,66,76,24), 1, border_radius=5
+nav | blit screen <- text'East' @ (575,70)
+nav | draw.rect screen (58,82,116), R(312,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor +' @ (364,98)
+nav | draw.rect screen (44,46,56), R(472,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor -' @ (528,98)
+nav | hit floor_up 312,94,156,24
+overview z=-1 | draw.rect screen (24,24,36), R(40,40,400,240), border_radius=6
+overview z=-1 | draw.rect screen (90,90,115), R(40,40,400,240), 1, border_radius=6
+overview z=-1 | blit screen <- text'Floor -1' @ (48,44)
+overview z=-1 | draw.rect screen (86,72,42), R(105,52,270,216), border_radius=3
+overview z=-1 | draw.rect screen (110,110,140), R(105,52,270,216), 1, border_radius=3
+overview z=-1 | blit screen <- text'cellar' @ (220,152)
+overview z=-1 | hit cellar 105,52,270,216
+overview z=0 | draw.rect screen (24,24,36), R(40,40,400,240), border_radius=6
+overview z=0 | draw.rect screen (90,90,115), R(40,40,400,240), 1, border_radius=6
+overview z=0 | blit screen <- text'Floor 0' @ (48,44)
+overview z=0 | draw.rect screen (44,50,66), R(52,84,188,150), border_radius=3
+overview z=0 | draw.rect screen (110,110,140), R(52,84,188,150), 1, border_radius=3
+overview z=0 | blit screen <- text'★ hall' @ (125,151)
+overview z=0 | draw.rect screen (44,50,66), R(240,84,188,150), border_radius=3
+overview z=0 | draw.rect screen (110,110,140), R(240,84,188,150), 1, border_radius=3
+overview z=0 | blit screen <- text'annex' @ (312,151)
+overview z=0 | hit annex 240,84,188,150
+overview z=0 | hit hall 52,84,188,150
+
+=== 07 Floor - from cellar — no floor there, refused ===
+state | page=cellar z=-1 origin=[0, 0, -1] size=10x8
+state | grid=10x8 bm_origin=0,0,-1 cell_px=30
+state | map_rect=0,0,375,300 zoom=1.250 pan=-37,0 map_scale=1.2500
+state | status='No floor there.'
+state | dungeon=yes store=CampaignStore run.current_map=cellar
+store | hall: [Aria@2,3, Skarn@7,6]
+store | annex: [Wisp@4,4]
+store | cellar: []
+nav | blit screen <- text'Floor -1 — cellar' @ (312,46)
+nav | draw.rect screen (44,46,56), R(312,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,66,76,24), 1, border_radius=5
+nav | blit screen <- text'West' @ (332,70)
+nav | draw.rect screen (44,46,56), R(392,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(392,66,76,24), 1, border_radius=5
+nav | blit screen <- text'North' @ (411,70)
+nav | draw.rect screen (44,46,56), R(472,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,66,76,24), 1, border_radius=5
+nav | blit screen <- text'South' @ (490,70)
+nav | draw.rect screen (44,46,56), R(552,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(552,66,76,24), 1, border_radius=5
+nav | blit screen <- text'East' @ (575,70)
+nav | draw.rect screen (58,82,116), R(312,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor +' @ (364,98)
+nav | draw.rect screen (44,46,56), R(472,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor -' @ (528,98)
+nav | hit floor_up 312,94,156,24
+
+=== 08 Floor + — back up to hall ===
+state | page=hall z=0 origin=[0, 0, 0] size=10x8
+state | grid=10x8 bm_origin=0,0,0 cell_px=30
+state | map_rect=0,0,375,300 zoom=1.250 pan=-37,0 map_scale=1.2500
+state | status='Floor 0: hall'
+state | dungeon=yes store=CampaignStore run.current_map=hall
+state | token Aria @ 2,3 faction=2
+state | token Skarn @ 7,6 faction=1
+store | hall: [Aria@2,3, Skarn@7,6]
+store | annex: [Wisp@4,4]
+store | cellar: []
+nav | blit screen <- text'Floor 0 — hall' @ (312,46)
+nav | draw.rect screen (44,46,56), R(312,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,66,76,24), 1, border_radius=5
+nav | blit screen <- text'West' @ (332,70)
+nav | draw.rect screen (44,46,56), R(392,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(392,66,76,24), 1, border_radius=5
+nav | blit screen <- text'North' @ (411,70)
+nav | draw.rect screen (44,46,56), R(472,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,66,76,24), 1, border_radius=5
+nav | blit screen <- text'South' @ (490,70)
+nav | draw.rect screen (58,82,116), R(552,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(552,66,76,24), 1, border_radius=5
+nav | blit screen <- text'East' @ (575,70)
+nav | draw.rect screen (44,46,56), R(312,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor +' @ (364,98)
+nav | draw.rect screen (58,82,116), R(472,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor -' @ (528,98)
+nav | hit floor_down 472,94,156,24
+nav | hit right 552,66,76,24
+
+=== 09 Aria descends the Cellar Stair, carried to cellar ===
+state | page=cellar z=-1 origin=[0, 0, -1] size=10x8
+state | grid=10x8 bm_origin=0,0,-1 cell_px=30
+state | map_rect=0,0,375,300 zoom=1.250 pan=-93,94 map_scale=1.2500
+state | status='Descended Cellar Stair to floor -1: cellar'
+state | dungeon=yes store=CampaignStore run.current_map=cellar
+state | token Aria @ 6,5 faction=2
+store | hall: [Skarn@7,6]
+store | annex: [Wisp@4,4]
+store | cellar: [Aria@6,5]
+nav | blit screen <- text'Floor -1 — cellar' @ (312,46)
+nav | draw.rect screen (44,46,56), R(312,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,66,76,24), 1, border_radius=5
+nav | blit screen <- text'West' @ (332,70)
+nav | draw.rect screen (44,46,56), R(392,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(392,66,76,24), 1, border_radius=5
+nav | blit screen <- text'North' @ (411,70)
+nav | draw.rect screen (44,46,56), R(472,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,66,76,24), 1, border_radius=5
+nav | blit screen <- text'South' @ (490,70)
+nav | draw.rect screen (44,46,56), R(552,66,76,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(552,66,76,24), 1, border_radius=5
+nav | blit screen <- text'East' @ (575,70)
+nav | draw.rect screen (58,82,116), R(312,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(312,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor +' @ (364,98)
+nav | draw.rect screen (44,46,56), R(472,94,156,24), border_radius=5
+nav | draw.rect screen (102,102,128), R(472,94,156,24), 1, border_radius=5
+nav | blit screen <- text'Floor -' @ (528,98)
+nav | hit floor_up 312,94,156,24
+
+=== 10 in combat — Floor + refused, Floor-nav hidden ===
+state | page=cellar z=-1 origin=[0, 0, -1] size=10x8
+state | grid=10x8 bm_origin=0,0,-1 cell_px=30
+state | map_rect=0,0,375,300 zoom=1.250 pan=-93,94 map_scale=1.2500
+state | status='Finish combat before changing maps.'
+state | dungeon=yes store=CampaignStore run.current_map=cellar
+state | token Aria @ 6,5 faction=2
+store | hall: [Skarn@7,6]
+store | annex: [Wisp@4,4]
+store | cellar: [Aria@6,5]
+nav | (not drawn)

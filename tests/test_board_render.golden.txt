@@ -1,0 +1,1301 @@
+=== 01 setup — idle, nothing selected, pointer off the board ===
+_draw_map | blit screen <- surf#1 1040x1040 @ R(0,0,1040,1040)
+_draw_map | blit screen <- surf#2 1040x1040 @ R(0,0,1040,1040)
+_draw_agents | blit screen <- surf#3 84x84 @ R(261,261,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(261,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (284,275)
+_draw_agents | draw.rect screen (40,40,40), (262,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (262,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (262,337,82,7), 1
+_draw_agents | blit screen <- surf#4 84x84 @ R(347,261,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(347,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (372,275)
+_draw_agents | draw.rect screen (40,40,40), (348,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (348,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (348,337,82,7), 1
+_draw_agents | blit screen <- surf#5 84x84 @ R(174,521,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(174,521,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (198,535)
+_draw_agents | draw.rect screen (40,40,40), (175,597,82,7)
+_draw_agents | draw.rect screen (60,200,80), (175,597,82,7)
+_draw_agents | draw.rect screen (10,10,10), (175,597,82,7), 1
+_draw_agents | blit screen <- surf#6 84x84 @ R(781,781,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(781,781,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'V' @ (804,795)
+_draw_agents | draw.rect screen (40,40,40), (782,857,82,7)
+_draw_agents | draw.rect screen (60,200,80), (782,857,82,7)
+_draw_agents | draw.rect screen (10,10,10), (782,857,82,7), 1
+_draw_agents | blit screen <- surf#7 84x84 @ R(867,1,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(867,1,84,84), 2, border_radius=3
+_draw_agents | blit screen <- surf#8 39x55 @ (889,15)
+_draw_agents | blit screen <- surf#9 69x19 @ (874,-20)
+_draw_agents | blit screen <- text'ON DECK' @ (876,-19)
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'100%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.000 pan=0,0 map_scale=0.8667 selected=-1 combat=False fog=False dm_view=False
+
+=== 02 setup — Aria selected ===
+_draw_map | blit screen <- surf#1 1040x1040 @ R(0,0,1040,1040)
+_draw_map | blit screen <- surf#2 1040x1040 @ R(0,0,1040,1040)
+_draw_agents | blit screen <- surf#3 84x84 @ R(261,261,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(261,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (284,275)
+_draw_agents | draw.rect screen (40,40,40), (262,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (262,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (262,337,82,7), 1
+_draw_agents | draw.rect screen (255,215,0), R(260,260,86,86), 3, border_radius=3
+_draw_agents | blit screen <- surf#4 84x84 @ R(347,261,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(347,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (372,275)
+_draw_agents | draw.rect screen (40,40,40), (348,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (348,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (348,337,82,7), 1
+_draw_agents | blit screen <- surf#5 84x84 @ R(174,521,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(174,521,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (198,535)
+_draw_agents | draw.rect screen (40,40,40), (175,597,82,7)
+_draw_agents | draw.rect screen (60,200,80), (175,597,82,7)
+_draw_agents | draw.rect screen (10,10,10), (175,597,82,7), 1
+_draw_agents | blit screen <- surf#6 84x84 @ R(781,781,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(781,781,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'V' @ (804,795)
+_draw_agents | draw.rect screen (40,40,40), (782,857,82,7)
+_draw_agents | draw.rect screen (60,200,80), (782,857,82,7)
+_draw_agents | draw.rect screen (10,10,10), (782,857,82,7), 1
+_draw_agents | blit screen <- surf#7 84x84 @ R(867,1,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(867,1,84,84), 2, border_radius=3
+_draw_agents | blit screen <- surf#8 39x55 @ (889,15)
+_draw_agents | blit screen <- surf#9 69x19 @ (874,-20)
+_draw_agents | blit screen <- text'ON DECK' @ (876,-19)
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'100%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.000 pan=0,0 map_scale=0.8667 selected=0 combat=False fog=False dm_view=False
+
+=== 03 hover over an empty cell (6,6) ===
+_draw_map | blit screen <- surf#1 1040x1040 @ R(0,0,1040,1040)
+_draw_map | blit screen <- surf#2 1040x1040 @ R(0,0,1040,1040)
+_draw_agents | blit screen <- surf#3 84x84 @ R(261,261,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(261,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (284,275)
+_draw_agents | draw.rect screen (40,40,40), (262,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (262,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (262,337,82,7), 1
+_draw_agents | draw.rect screen (255,215,0), R(260,260,86,86), 3, border_radius=3
+_draw_agents | blit screen <- surf#4 84x84 @ R(347,261,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(347,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (372,275)
+_draw_agents | draw.rect screen (40,40,40), (348,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (348,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (348,337,82,7), 1
+_draw_agents | blit screen <- surf#5 84x84 @ R(174,521,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(174,521,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (198,535)
+_draw_agents | draw.rect screen (40,40,40), (175,597,82,7)
+_draw_agents | draw.rect screen (60,200,80), (175,597,82,7)
+_draw_agents | draw.rect screen (10,10,10), (175,597,82,7), 1
+_draw_agents | blit screen <- surf#6 84x84 @ R(781,781,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(781,781,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'V' @ (804,795)
+_draw_agents | draw.rect screen (40,40,40), (782,857,82,7)
+_draw_agents | draw.rect screen (60,200,80), (782,857,82,7)
+_draw_agents | draw.rect screen (10,10,10), (782,857,82,7), 1
+_draw_agents | blit screen <- surf#7 84x84 @ R(867,1,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(867,1,84,84), 2, border_radius=3
+_draw_agents | blit screen <- surf#8 39x55 @ (889,15)
+_draw_agents | blit screen <- surf#9 69x19 @ (874,-20)
+_draw_agents | blit screen <- text'ON DECK' @ (876,-19)
+_draw_hover_cursor | blit screen <- surf#10 86x86 @ (520,520)
+_draw_hover_cursor | draw.rect screen (235,235,250), R(520,520,86,86), 2
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'100%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.000 pan=0,0 map_scale=0.8667 selected=0 combat=False fog=False dm_view=False
+
+=== 04 hover over Skarn's token ===
+_draw_map | blit screen <- surf#1 1040x1040 @ R(0,0,1040,1040)
+_draw_map | blit screen <- surf#2 1040x1040 @ R(0,0,1040,1040)
+_draw_agents | blit screen <- surf#3 84x84 @ R(261,261,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(261,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (284,275)
+_draw_agents | draw.rect screen (40,40,40), (262,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (262,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (262,337,82,7), 1
+_draw_agents | draw.rect screen (255,215,0), R(260,260,86,86), 3, border_radius=3
+_draw_agents | blit screen <- surf#4 84x84 @ R(347,261,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(347,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (372,275)
+_draw_agents | draw.rect screen (40,40,40), (348,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (348,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (348,337,82,7), 1
+_draw_agents | blit screen <- surf#5 84x84 @ R(174,521,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(174,521,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (198,535)
+_draw_agents | draw.rect screen (40,40,40), (175,597,82,7)
+_draw_agents | draw.rect screen (60,200,80), (175,597,82,7)
+_draw_agents | draw.rect screen (10,10,10), (175,597,82,7), 1
+_draw_agents | blit screen <- surf#6 84x84 @ R(781,781,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(781,781,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'V' @ (804,795)
+_draw_agents | draw.rect screen (40,40,40), (782,857,82,7)
+_draw_agents | draw.rect screen (60,200,80), (782,857,82,7)
+_draw_agents | draw.rect screen (10,10,10), (782,857,82,7), 1
+_draw_agents | blit screen <- surf#7 84x84 @ R(867,1,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(867,1,84,84), 2, border_radius=3
+_draw_agents | blit screen <- surf#8 39x55 @ (889,15)
+_draw_agents | blit screen <- surf#9 69x19 @ (874,-20)
+_draw_agents | blit screen <- text'ON DECK' @ (876,-19)
+_draw_hover_cursor | blit screen <- surf#10 87x86 @ (346,260)
+_draw_hover_cursor | draw.rect screen (235,235,250), R(346,260,87,86), 2
+_draw_agent_hover_name | blit screen <- surf#11 56x29 @ (403,268)
+_draw_agent_hover_name | draw.rect screen (210,70,70), R(403,268,56,29), 2, border_radius=4
+_draw_agent_hover_name | blit screen <- text'Skarn' @ (408,273)
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'100%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.000 pan=0,0 map_scale=0.8667 selected=0 combat=False fog=False dm_view=False
+
+=== 05 a closed door, an open door and a chest ===
+_draw_map | blit screen <- surf#1 1040x1040 @ R(0,0,1040,1040)
+_draw_map | blit screen <- surf#2 1040x1040 @ R(0,0,1040,1040)
+_draw_agents | draw.rect screen (110,70,35), R(530,183,66,66)
+_draw_agents | draw.rect screen (70,45,20), R(530,183,66,66), 2
+_draw_agents | draw.line screen (70,45,20), (563,183), (563,249), 1
+_draw_agents | draw.circle screen (210,180,60), (578,216), 6
+_draw_agents | draw.rect screen (120,200,120), R(530,356,66,66), 2
+_draw_agents | blit screen <- surf#3 21x66 @ (530,356)
+_draw_agents | draw.rect screen (130,85,40), R(100,804,58,48)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,16)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,48), 2
+_draw_agents | draw.rect screen (215,180,70), R(122,813,14,14)
+_draw_agents | blit screen <- surf#4 84x84 @ R(261,261,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(261,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (284,275)
+_draw_agents | draw.rect screen (40,40,40), (262,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (262,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (262,337,82,7), 1
+_draw_agents | blit screen <- surf#5 84x84 @ R(347,261,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(347,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (372,275)
+_draw_agents | draw.rect screen (40,40,40), (348,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (348,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (348,337,82,7), 1
+_draw_agents | blit screen <- surf#6 84x84 @ R(174,521,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(174,521,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (198,535)
+_draw_agents | draw.rect screen (40,40,40), (175,597,82,7)
+_draw_agents | draw.rect screen (60,200,80), (175,597,82,7)
+_draw_agents | draw.rect screen (10,10,10), (175,597,82,7), 1
+_draw_agents | blit screen <- surf#7 84x84 @ R(781,781,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(781,781,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'V' @ (804,795)
+_draw_agents | draw.rect screen (40,40,40), (782,857,82,7)
+_draw_agents | draw.rect screen (60,200,80), (782,857,82,7)
+_draw_agents | draw.rect screen (10,10,10), (782,857,82,7), 1
+_draw_agents | blit screen <- surf#8 84x84 @ R(867,1,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(867,1,84,84), 2, border_radius=3
+_draw_agents | blit screen <- surf#9 39x55 @ (889,15)
+_draw_agents | blit screen <- surf#10 69x19 @ (874,-20)
+_draw_agents | blit screen <- text'ON DECK' @ (876,-19)
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'100%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.000 pan=0,0 map_scale=0.8667 selected=-1 combat=False fog=False dm_view=False
+
+=== 06 fog ON at 100% — only what the party has seen ===
+_draw_map | blit screen <- surf#1 1040x1040 @ R(0,0,1040,1040)
+_draw_map | blit screen <- surf#2 1040x1040 @ R(0,0,1040,1040)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (780,0,86,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (866,0,87,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (606,86,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (693,86,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (780,86,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (866,86,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (693,173,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (780,173,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (866,173,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (780,260,86,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (866,260,87,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (780,346,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (866,346,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (780,433,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (866,433,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (780,520,86,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (866,520,87,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (780,606,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (866,606,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (780,693,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (866,693,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (693,780,87,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (780,780,86,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (866,780,87,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (693,866,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (780,866,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,255), (866,866,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,-17,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,-17,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,-17,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,69,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,69,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,69,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,69,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,69,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,69,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,69,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,156,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,156,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,156,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,156,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,156,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,156,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,156,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,156,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,243,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,243,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,243,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,329,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,329,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,329,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,416,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,416,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,416,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,503,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,503,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,503,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,589,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,589,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,589,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,676,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,676,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,676,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,763,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,763,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,763,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,763,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,763,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,763,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,763,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,763,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,849,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,849,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,849,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,849,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,849,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,849,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,849,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,849,121,121)
+_draw_fog_overlay | blit screen <- surf#3 1040x1040 @ R(0,0,1040,1040)
+_draw_agents | draw.rect screen (110,70,35), R(530,183,66,66)
+_draw_agents | draw.rect screen (70,45,20), R(530,183,66,66), 2
+_draw_agents | draw.line screen (70,45,20), (563,183), (563,249), 1
+_draw_agents | draw.circle screen (210,180,60), (578,216), 6
+_draw_agents | draw.rect screen (120,200,120), R(530,356,66,66), 2
+_draw_agents | blit screen <- surf#4 21x66 @ (530,356)
+_draw_agents | draw.rect screen (130,85,40), R(100,804,58,48)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,16)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,48), 2
+_draw_agents | draw.rect screen (215,180,70), R(122,813,14,14)
+_draw_agents | blit screen <- surf#5 84x84 @ R(261,261,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(261,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (284,275)
+_draw_agents | draw.rect screen (40,40,40), (262,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (262,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (262,337,82,7), 1
+_draw_agents | blit screen <- surf#6 84x84 @ R(347,261,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(347,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (372,275)
+_draw_agents | draw.rect screen (40,40,40), (348,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (348,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (348,337,82,7), 1
+_draw_agents | blit screen <- surf#7 84x84 @ R(174,521,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(174,521,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (198,535)
+_draw_agents | draw.rect screen (40,40,40), (175,597,82,7)
+_draw_agents | draw.rect screen (60,200,80), (175,597,82,7)
+_draw_agents | draw.rect screen (10,10,10), (175,597,82,7), 1
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'100%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.000 pan=0,0 map_scale=0.8667 selected=-1 combat=False fog=True dm_view=False
+
+=== 07 fog ON at 40% ===
+_draw_map | blit screen <- surf#1 1040x1040 @ R(0,0,1040,1040)
+_draw_map | blit screen <- surf#2 1040x1040 @ R(0,0,1040,1040)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (780,0,86,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (866,0,87,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (606,86,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (693,86,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (780,86,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (866,86,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (693,173,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (780,173,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (866,173,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (780,260,86,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (866,260,87,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (780,346,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (866,346,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (780,433,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (866,433,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (780,520,86,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (866,520,87,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (780,606,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (866,606,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (780,693,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (866,693,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (693,780,87,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (780,780,86,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (866,780,87,86)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (693,866,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (780,866,86,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,102), (866,866,87,87)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,-17,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,-17,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,-17,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,-17,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,69,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,69,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,69,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,69,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,69,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,69,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,69,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,156,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,156,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,156,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,156,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,156,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,156,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,156,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,156,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,243,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,243,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,243,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,243,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,329,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,329,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,329,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,329,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,416,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,416,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,416,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,416,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,503,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,503,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,503,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,503,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,589,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,589,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,589,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,589,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,676,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,676,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,676,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (676,676,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,763,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,763,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,763,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,763,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,763,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,763,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,763,120,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,763,121,120)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (-17,849,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (69,849,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (156,849,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (243,849,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (329,849,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (416,849,121,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (503,849,120,121)
+_draw_fog_overlay | draw.rect surf#3 1040x1040 (0,0,0,0), (589,849,121,121)
+_draw_fog_overlay | blit screen <- surf#3 1040x1040 @ R(0,0,1040,1040)
+_draw_agents | draw.rect screen (110,70,35), R(530,183,66,66)
+_draw_agents | draw.rect screen (70,45,20), R(530,183,66,66), 2
+_draw_agents | draw.line screen (70,45,20), (563,183), (563,249), 1
+_draw_agents | draw.circle screen (210,180,60), (578,216), 6
+_draw_agents | draw.rect screen (120,200,120), R(530,356,66,66), 2
+_draw_agents | blit screen <- surf#4 21x66 @ (530,356)
+_draw_agents | draw.rect screen (130,85,40), R(100,804,58,48)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,16)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,48), 2
+_draw_agents | draw.rect screen (215,180,70), R(122,813,14,14)
+_draw_agents | blit screen <- surf#5 84x84 @ R(261,261,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(261,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (284,275)
+_draw_agents | draw.rect screen (40,40,40), (262,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (262,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (262,337,82,7), 1
+_draw_agents | blit screen <- surf#6 84x84 @ R(347,261,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(347,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (372,275)
+_draw_agents | draw.rect screen (40,40,40), (348,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (348,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (348,337,82,7), 1
+_draw_agents | blit screen <- surf#7 84x84 @ R(174,521,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(174,521,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (198,535)
+_draw_agents | draw.rect screen (40,40,40), (175,597,82,7)
+_draw_agents | draw.rect screen (60,200,80), (175,597,82,7)
+_draw_agents | draw.rect screen (10,10,10), (175,597,82,7), 1
+_draw_agents | blit screen <- surf#8 84x84 @ R(781,781,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(781,781,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'V' @ (804,795)
+_draw_agents | draw.rect screen (40,40,40), (782,857,82,7)
+_draw_agents | draw.rect screen (60,200,80), (782,857,82,7)
+_draw_agents | draw.rect screen (10,10,10), (782,857,82,7), 1
+_draw_agents | blit screen <- surf#9 84x84 @ R(867,1,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(867,1,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'G' @ (889,15)
+_draw_agents | draw.rect screen (40,40,40), (868,77,82,7)
+_draw_agents | draw.rect screen (60,200,80), (868,77,82,7)
+_draw_agents | draw.rect screen (10,10,10), (868,77,82,7), 1
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'100%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.000 pan=0,0 map_scale=0.8667 selected=-1 combat=False fog=True dm_view=False
+
+=== 08 DM view — fog lifted for drawing, banner up ===
+_draw_map | blit screen <- surf#1 1040x1040 @ R(0,0,1040,1040)
+_draw_map | blit screen <- surf#2 1040x1040 @ R(0,0,1040,1040)
+_draw_agents | draw.rect screen (110,70,35), R(530,183,66,66)
+_draw_agents | draw.rect screen (70,45,20), R(530,183,66,66), 2
+_draw_agents | draw.line screen (70,45,20), (563,183), (563,249), 1
+_draw_agents | draw.circle screen (210,180,60), (578,216), 6
+_draw_agents | draw.rect screen (120,200,120), R(530,356,66,66), 2
+_draw_agents | blit screen <- surf#3 21x66 @ (530,356)
+_draw_agents | draw.rect screen (130,85,40), R(100,804,58,48)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,16)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,48), 2
+_draw_agents | draw.rect screen (215,180,70), R(122,813,14,14)
+_draw_agents | blit screen <- surf#4 84x84 @ R(261,261,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(261,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (284,275)
+_draw_agents | draw.rect screen (40,40,40), (262,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (262,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (262,337,82,7), 1
+_draw_agents | blit screen <- surf#5 84x84 @ R(347,261,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(347,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (372,275)
+_draw_agents | draw.rect screen (40,40,40), (348,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (348,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (348,337,82,7), 1
+_draw_agents | blit screen <- surf#6 84x84 @ R(174,521,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(174,521,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (198,535)
+_draw_agents | draw.rect screen (40,40,40), (175,597,82,7)
+_draw_agents | draw.rect screen (60,200,80), (175,597,82,7)
+_draw_agents | draw.rect screen (10,10,10), (175,597,82,7), 1
+_draw_agents | blit screen <- surf#7 84x84 @ R(781,781,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(781,781,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'V' @ (804,795)
+_draw_agents | draw.rect screen (40,40,40), (782,857,82,7)
+_draw_agents | draw.rect screen (60,200,80), (782,857,82,7)
+_draw_agents | draw.rect screen (10,10,10), (782,857,82,7), 1
+_draw_agents | blit screen <- surf#8 84x84 @ R(867,1,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(867,1,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'G' @ (889,15)
+_draw_agents | draw.rect screen (40,40,40), (868,77,82,7)
+_draw_agents | draw.rect screen (60,200,80), (868,77,82,7)
+_draw_agents | draw.rect screen (10,10,10), (868,77,82,7), 1
+_draw_dm_view_banner | draw.rect screen (220,60,60), R(0,0,1040,29)
+_draw_dm_view_banner | blit screen <- text'DM VIEW: fog lifted, every token and HP shown' @ (332,5)
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'100%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.000 pan=0,0 map_scale=0.8667 selected=-1 combat=False fog=True dm_view=True
+
+=== 09 zoomed in two steps and panned ===
+_draw_map | blit screen <- surf#1 1625x1625 @ R(-329,-313,1625,1625)
+_draw_map | blit screen <- surf#2 1625x1625 @ R(-329,-313,1625,1625)
+_draw_agents | draw.rect screen (110,70,35), R(499,-26,103,103)
+_draw_agents | draw.rect screen (70,45,20), R(499,-26,103,103), 2
+_draw_agents | draw.line screen (70,45,20), (550,-26), (550,77), 1
+_draw_agents | draw.circle screen (210,180,60), (575,25), 9
+_draw_agents | draw.rect screen (120,200,120), R(499,244,103,103), 2
+_draw_agents | blit screen <- surf#3 33x103 @ (499,244)
+_draw_agents | draw.rect screen (130,85,40), R(-171,943,91,75)
+_draw_agents | draw.rect screen (75,48,22), R(-171,943,91,25)
+_draw_agents | draw.rect screen (75,48,22), R(-171,943,91,75), 2
+_draw_agents | draw.rect screen (215,180,70), R(-137,957,22,22)
+_draw_agents | blit screen <- surf#4 133x133 @ R(78,94,133,133)
+_draw_agents | draw.rect screen (130,170,255), R(78,94,133,133), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (116,117)
+_draw_agents | draw.rect screen (40,40,40), (79,215,131,11)
+_draw_agents | draw.rect screen (60,200,80), (79,215,131,11)
+_draw_agents | draw.rect screen (10,10,10), (79,215,131,11), 1
+_draw_agents | blit screen <- surf#5 133x133 @ R(213,94,133,133)
+_draw_agents | draw.rect screen (255,120,120), R(213,94,133,133), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (253,117)
+_draw_agents | draw.rect screen (40,40,40), (214,215,131,11)
+_draw_agents | draw.rect screen (60,200,80), (214,215,131,11)
+_draw_agents | draw.rect screen (10,10,10), (214,215,131,11), 1
+_draw_agents | blit screen <- surf#6 133x133 @ R(-57,500,133,133)
+_draw_agents | draw.rect screen (130,170,255), R(-57,500,133,133), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (-19,523)
+_draw_agents | draw.rect screen (40,40,40), (-56,621,131,11)
+_draw_agents | draw.rect screen (60,200,80), (-56,621,131,11)
+_draw_agents | draw.rect screen (10,10,10), (-56,621,131,11), 1
+_draw_agents | blit screen <- surf#7 133x133 @ R(890,906,133,133)
+_draw_agents | draw.rect screen (255,120,120), R(890,906,133,133), 2, border_radius=3
+_draw_agents | blit screen <- text'V' @ (928,929)
+_draw_agents | draw.rect screen (40,40,40), (891,1027,131,11)
+_draw_agents | draw.rect screen (60,200,80), (891,1027,131,11)
+_draw_agents | draw.rect screen (10,10,10), (891,1027,131,11), 1
+_draw_agents | blit screen <- surf#8 133x133 @ R(1026,-312,133,133)
+_draw_agents | draw.rect screen (255,120,120), R(1026,-312,133,133), 2, border_radius=3
+_draw_agents | blit screen <- text'G' @ (1062,-289)
+_draw_agents | draw.rect screen (40,40,40), (1027,-191,131,11)
+_draw_agents | draw.rect screen (60,200,80), (1027,-191,131,11)
+_draw_agents | draw.rect screen (10,10,10), (1027,-191,131,11), 1
+_draw_hover_cursor | blit screen <- surf#9 135x135 @ (-58,-42)
+_draw_hover_cursor | draw.rect screen (235,235,250), R(-58,-42,135,135), 2
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'156%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.562 pan=-329,-313 map_scale=1.3542 selected=-1 combat=False fog=False dm_view=False
+
+=== 10 combat — Aria on turn, reach overlays ===
+_draw_map | blit screen <- surf#1 1040x1040 @ R(0,0,1040,1040)
+_draw_map | blit screen <- surf#2 1040x1040 @ R(0,0,1040,1040)
+_draw_agents | draw.rect surf#3 86x86 (80,150,255,120), R(0,0,86,86), 1
+_draw_agents | blit screen <- surf#4 86x86 @ (0,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (606,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (606,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (606,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (606,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,86)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,86)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (606,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (606,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,86)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,86)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,86)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,86)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (693,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (693,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,0)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,0)
+_draw_agents | draw.rect surf#5 86x86 (255,100,100,150), R(0,0,86,86), 1
+_draw_agents | blit screen <- surf#6 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#5 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#6 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#5 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#6 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#5 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#6 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#5 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#6 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#5 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#6 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#5 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#6 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#5 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#6 86x86 @ (260,433)
+_draw_agents | blit screen <- surf#5 86x86 @ (260,433)
+_draw_agents | draw.rect screen (110,70,35), R(530,183,66,66)
+_draw_agents | draw.rect screen (70,45,20), R(530,183,66,66), 2
+_draw_agents | draw.line screen (70,45,20), (563,183), (563,249), 1
+_draw_agents | draw.circle screen (210,180,60), (578,216), 6
+_draw_agents | draw.rect screen (120,200,120), R(530,356,66,66), 2
+_draw_agents | blit screen <- surf#7 21x66 @ (530,356)
+_draw_agents | draw.rect screen (130,85,40), R(100,804,58,48)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,16)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,48), 2
+_draw_agents | draw.rect screen (215,180,70), R(122,813,14,14)
+_draw_agents | blit screen <- surf#8 84x84 @ R(261,261,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(261,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (284,275)
+_draw_agents | draw.rect screen (40,40,40), (262,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (262,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (262,337,82,7), 1
+_draw_agents | draw.rect screen (255,215,0), R(260,260,86,86), 3, border_radius=3
+_draw_agents | blit screen <- surf#9 84x84 @ R(347,261,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(347,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (372,275)
+_draw_agents | draw.rect screen (40,40,40), (348,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (348,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (348,337,82,7), 1
+_draw_agents | blit screen <- surf#10 84x84 @ R(174,521,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(174,521,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (198,535)
+_draw_agents | draw.rect screen (40,40,40), (175,597,82,7)
+_draw_agents | draw.rect screen (60,200,80), (175,597,82,7)
+_draw_agents | draw.rect screen (10,10,10), (175,597,82,7), 1
+_draw_agents | blit screen <- surf#11 84x84 @ R(781,781,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(781,781,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'V' @ (804,795)
+_draw_agents | draw.rect screen (40,40,40), (782,857,82,7)
+_draw_agents | draw.rect screen (60,200,80), (782,857,82,7)
+_draw_agents | draw.rect screen (10,10,10), (782,857,82,7), 1
+_draw_agents | blit screen <- surf#12 84x84 @ R(867,1,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(867,1,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'G' @ (889,15)
+_draw_agents | draw.rect screen (40,40,40), (868,77,82,7)
+_draw_agents | draw.rect screen (60,200,80), (868,77,82,7)
+_draw_agents | draw.rect screen (10,10,10), (868,77,82,7), 1
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'100%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.000 pan=0,0 map_scale=0.8667 selected=0 combat=True fog=False dm_view=False
+
+=== 11 a floating 'Hit (12)' over Skarn, 400 ms in ===
+_draw_map | blit screen <- surf#1 1040x1040 @ R(0,0,1040,1040)
+_draw_map | blit screen <- surf#2 1040x1040 @ R(0,0,1040,1040)
+_draw_agents | draw.rect surf#3 86x86 (80,150,255,120), R(0,0,86,86), 1
+_draw_agents | blit screen <- surf#4 86x86 @ (0,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (606,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (606,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (606,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (606,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,86)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,86)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (606,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (606,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,86)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,86)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,86)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,86)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (693,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (693,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,0)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,0)
+_draw_agents | draw.rect surf#5 86x86 (255,100,100,150), R(0,0,86,86), 1
+_draw_agents | blit screen <- surf#6 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#5 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#6 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#5 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#6 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#5 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#6 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#5 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#6 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#5 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#6 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#5 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#6 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#5 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#6 86x86 @ (260,433)
+_draw_agents | blit screen <- surf#5 86x86 @ (260,433)
+_draw_agents | draw.rect screen (110,70,35), R(530,183,66,66)
+_draw_agents | draw.rect screen (70,45,20), R(530,183,66,66), 2
+_draw_agents | draw.line screen (70,45,20), (563,183), (563,249), 1
+_draw_agents | draw.circle screen (210,180,60), (578,216), 6
+_draw_agents | draw.rect screen (120,200,120), R(530,356,66,66), 2
+_draw_agents | blit screen <- surf#7 21x66 @ (530,356)
+_draw_agents | draw.rect screen (130,85,40), R(100,804,58,48)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,16)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,48), 2
+_draw_agents | draw.rect screen (215,180,70), R(122,813,14,14)
+_draw_agents | blit screen <- surf#8 84x84 @ R(261,261,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(261,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (284,275)
+_draw_agents | draw.rect screen (40,40,40), (262,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (262,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (262,337,82,7), 1
+_draw_agents | draw.rect screen (255,215,0), R(260,260,86,86), 3, border_radius=3
+_draw_agents | blit screen <- surf#9 84x84 @ R(347,261,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(347,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (372,275)
+_draw_agents | draw.rect screen (40,40,40), (348,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (348,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (348,337,82,7), 1
+_draw_agents | blit screen <- surf#10 84x84 @ R(174,521,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(174,521,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (198,535)
+_draw_agents | draw.rect screen (40,40,40), (175,597,82,7)
+_draw_agents | draw.rect screen (60,200,80), (175,597,82,7)
+_draw_agents | draw.rect screen (10,10,10), (175,597,82,7), 1
+_draw_agents | blit screen <- surf#11 84x84 @ R(781,781,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(781,781,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'V' @ (804,795)
+_draw_agents | draw.rect screen (40,40,40), (782,857,82,7)
+_draw_agents | draw.rect screen (60,200,80), (782,857,82,7)
+_draw_agents | draw.rect screen (10,10,10), (782,857,82,7), 1
+_draw_agents | blit screen <- surf#12 84x84 @ R(867,1,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(867,1,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'G' @ (889,15)
+_draw_agents | draw.rect screen (40,40,40), (868,77,82,7)
+_draw_agents | draw.rect screen (60,200,80), (868,77,82,7)
+_draw_agents | draw.rect screen (10,10,10), (868,77,82,7), 1
+_draw_floating_texts | blit screen <- surf#13 59x19 @ (360,249)
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'100%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.000 pan=0,0 map_scale=0.8667 selected=0 combat=True fog=False dm_view=False
+
+=== 12 Brannor bloodied, Vex at 0 HP ===
+_draw_map | blit screen <- surf#1 1040x1040 @ R(0,0,1040,1040)
+_draw_map | blit screen <- surf#2 1040x1040 @ R(0,0,1040,1040)
+_draw_agents | draw.rect surf#3 86x86 (80,150,255,120), R(0,0,86,86), 1
+_draw_agents | blit screen <- surf#4 86x86 @ (0,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (606,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (606,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (606,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (606,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,86)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,86)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (606,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (606,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,86)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,86)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,86)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,86)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,606)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,606)
+_draw_agents | blit screen <- surf#4 86x86 @ (693,520)
+_draw_agents | blit screen <- surf#3 86x86 @ (693,520)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,693)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,693)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#4 86x86 @ (520,346)
+_draw_agents | blit screen <- surf#3 86x86 @ (520,346)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (0,260)
+_draw_agents | blit screen <- surf#3 86x86 @ (0,260)
+_draw_agents | blit screen <- surf#4 86x86 @ (346,173)
+_draw_agents | blit screen <- surf#3 86x86 @ (346,173)
+_draw_agents | blit screen <- surf#4 86x86 @ (86,866)
+_draw_agents | blit screen <- surf#3 86x86 @ (86,866)
+_draw_agents | blit screen <- surf#4 86x86 @ (433,780)
+_draw_agents | blit screen <- surf#3 86x86 @ (433,780)
+_draw_agents | blit screen <- surf#4 86x86 @ (173,0)
+_draw_agents | blit screen <- surf#3 86x86 @ (173,0)
+_draw_agents | draw.rect surf#5 86x86 (255,100,100,150), R(0,0,86,86), 1
+_draw_agents | blit screen <- surf#6 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#5 86x86 @ (173,606)
+_draw_agents | blit screen <- surf#6 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#5 86x86 @ (86,433)
+_draw_agents | blit screen <- surf#6 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#5 86x86 @ (260,606)
+_draw_agents | blit screen <- surf#6 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#5 86x86 @ (86,606)
+_draw_agents | blit screen <- surf#6 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#5 86x86 @ (260,520)
+_draw_agents | blit screen <- surf#6 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#5 86x86 @ (86,520)
+_draw_agents | blit screen <- surf#6 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#5 86x86 @ (173,433)
+_draw_agents | blit screen <- surf#6 86x86 @ (260,433)
+_draw_agents | blit screen <- surf#5 86x86 @ (260,433)
+_draw_agents | draw.rect screen (110,70,35), R(530,183,66,66)
+_draw_agents | draw.rect screen (70,45,20), R(530,183,66,66), 2
+_draw_agents | draw.line screen (70,45,20), (563,183), (563,249), 1
+_draw_agents | draw.circle screen (210,180,60), (578,216), 6
+_draw_agents | draw.rect screen (120,200,120), R(530,356,66,66), 2
+_draw_agents | blit screen <- surf#7 21x66 @ (530,356)
+_draw_agents | draw.rect screen (130,85,40), R(100,804,58,48)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,16)
+_draw_agents | draw.rect screen (75,48,22), R(100,804,58,48), 2
+_draw_agents | draw.rect screen (215,180,70), R(122,813,14,14)
+_draw_agents | blit screen <- surf#8 84x84 @ R(261,261,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(261,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'A' @ (284,275)
+_draw_agents | draw.rect screen (40,40,40), (262,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (262,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (262,337,82,7), 1
+_draw_agents | draw.rect screen (255,215,0), R(260,260,86,86), 3, border_radius=3
+_draw_agents | blit screen <- surf#9 84x84 @ R(347,261,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(347,261,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'S' @ (372,275)
+_draw_agents | draw.rect screen (40,40,40), (348,337,82,7)
+_draw_agents | draw.rect screen (60,200,80), (348,337,82,7)
+_draw_agents | draw.rect screen (10,10,10), (348,337,82,7), 1
+_draw_agents | blit screen <- surf#10 84x84 @ R(174,521,84,84)
+_draw_agents | draw.rect screen (130,170,255), R(174,521,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'B' @ (198,535)
+_draw_agents | draw.rect screen (40,40,40), (175,597,82,7)
+_draw_agents | draw.rect screen (220,60,60), (175,597,13,7)
+_draw_agents | draw.rect screen (10,10,10), (175,597,82,7), 1
+_draw_agents | blit screen <- surf#11 84x84 @ R(781,781,84,84)
+_draw_agents | draw.rect screen (105,105,115), R(781,781,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'V' @ (804,795)
+_draw_agents | draw.rect screen (40,40,40), (782,857,82,7)
+_draw_agents | draw.rect screen (10,10,10), (782,857,82,7), 1
+_draw_agents | blit screen <- surf#12 84x84 @ R(867,1,84,84)
+_draw_agents | draw.rect screen (255,120,120), R(867,1,84,84), 2, border_radius=3
+_draw_agents | blit screen <- text'G' @ (889,15)
+_draw_agents | draw.rect screen (40,40,40), (868,77,82,7)
+_draw_agents | draw.rect screen (60,200,80), (868,77,82,7)
+_draw_agents | draw.rect screen (10,10,10), (868,77,82,7), 1
+_draw_zoom_control | draw.rect screen (40,40,52), R(868,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(868,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'−' @ (876,1009)
+_draw_zoom_control | draw.rect screen (28,28,38), R(900,1004,54,26), border_radius=5
+_draw_zoom_control | blit screen <- text'100%' @ (907,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(958,1004,28,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(958,1004,28,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'+' @ (966,1009)
+_draw_zoom_control | draw.rect screen (40,40,52), R(990,1004,40,26), border_radius=5
+_draw_zoom_control | draw.rect screen (102,102,128), R(990,1004,40,26), 1, border_radius=5
+_draw_zoom_control | blit screen <- text'Fit' @ (1001,1009)
+meta | zoom=1.000 pan=0,0 map_scale=0.8667 selected=0 combat=True fog=False dm_view=False
