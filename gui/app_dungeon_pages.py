@@ -13,7 +13,7 @@ instance. main.py otherwise calls this module directly.
 
 Stayed on `App`: `_staircase_ends_here` / `_staircase_cells_here` (see app_board_render),
 `_clear_page_mobs` (a staticmethod), `_nearest_unoccupied`, ladders and door links, and
-the dungeon generator (`_generate_multifloor`, `_modal_generate_dungeon`, …) and the
+the dungeon generator (`app_dungeon_gen.py`, A5) and the
 edge-carry review (`_maybe_carry_edges`, …), which are their own seams.
 """
 

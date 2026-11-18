@@ -238,10 +238,11 @@ def test_every_event_draining_loop_has_a_pump():
     recorded event list rather than pygame's queue, so the rule does not reach it — which
     is why it is not counted among them.
     """
-    # `_modal_dungeon_pages` moved to app_dungeon_pages.py (APP_REFACTOR_PLAN A1.3);
-    # its first statement is `app._pump_net()`, which the attr check below still reads.
+    # `_modal_dungeon_pages` moved to app_dungeon_pages.py (APP_REFACTOR_PLAN A1.3), and
+    # the generator / mob-picker / item-select modals to app_dungeon_gen.py (A5); their
+    # first statement is `app._pump_net()`, which the attr check below still reads.
     trees = [(f, ast.parse(open(os.path.join(_ROOT, "gui", f)).read()))
-             for f in ("main.py", "app_dungeon_pages.py")]
+             for f in ("main.py", "app_dungeon_pages.py", "app_dungeon_gen.py")]
 
     def drains_pygame_events(node):
         for sub in ast.walk(node):

@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0. A4b (summons → `gui/app_summons.py`) committed bd2b227, 263/0. Graph rebuilt at bd2b227; A5–A8 added 2026-11-18 (user), A9 deferred; A5 next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0. A4b (summons → `gui/app_summons.py`) committed bd2b227, 263/0. Graph rebuilt at bd2b227; A5–A8 added 2026-11-18 (user), A9 deferred. A5 (dungeon generation and import → `gui/app_dungeon_gen.py`) committed, 263/0; A6 next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -353,6 +353,26 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
     `_write_generated_terrain`, `_generate_terrain_with`, `_carve_dungeon_layout`, …).
     Calls: 56 inside the group, 15 out to the rest of `App`; 11 names reached from outside.
     The cleanest cut.
+    **Done (2026-11-18, 263/0).** 22 methods moved to `gui/app_dungeon_gen.py` as module
+    functions without the leading underscore: `_import_ddb_character`,
+    `_place_imported_agent`, `_modal_generate_terrain`, `_carve_dungeon_layout`,
+    `_regions_from_grid` and `_pick_room_cell` (both staticmethods, now plain functions),
+    `_staple_floor_tiles`, `_write_generated_terrain`, `_generate_multifloor`,
+    `_carve_current_map`, `_on_generate_terrain`, `_generate_terrain_with`,
+    `_multifloor_page_base`, `_generation_targets`, `_dungeon_out_path`, `_generated_base`,
+    `_modal_select_items`, `_modal_generate_dungeon`, `_mob_picker_layout`,
+    `_modal_pick_mobs`, `_on_generate_dungeon`, `_generate_dungeon_with`. The graph's
+    cluster also held `_modal_text_prompt` and `_modal_message`; they stay on `App` as the
+    generic dialogs `app_dungeon_pages` / `app_initiative` call. 9 forwarders (reached from
+    `menus/dm.py` or tests): `_import_ddb_character`, `_on_generate_terrain`,
+    `_generation_targets`, `_generated_base`, `_modal_generate_terrain`,
+    `_modal_select_items`, `_modal_generate_dungeon`, `_modal_pick_mobs`,
+    `_mob_picker_layout`. `main.py` calls `place_imported_agent` and `on_generate_dungeon`
+    as `app_dungeon_gen.*(self, …)`. `tests/test_modal_pump.py` now also parses
+    `app_dungeon_gen.py` for its seven event-draining modal loops. `main.py` 13,484 lines.
+    Graph rebuilt after the move: changed files only (`graphify update` with no path
+    re-extracts the whole repo because the manifest was near-empty — don't), 8,990 nodes,
+    367 communities, 334 labels carried by ≥60% node overlap, 33 named by hand.
   - **A6. Combat panel drawing → `gui/app_panel_render.py`.** About 14 methods, 1,051 lines
     (`_draw_combat_panel` 632, `_draw_panel`, `_reposition_panel`, `_draw_combat_panel_log`,
     `_draw_item_spells_panel`, `_panel_layout`, …). 28 in, 14 out; 7 reached from outside.
