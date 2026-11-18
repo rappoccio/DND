@@ -19,7 +19,7 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _APP_JS = os.path.join(_ROOT, "gui", "net", "static", "app.js")
 _APP_CSS = os.path.join(_ROOT, "gui", "net", "static", "app.css")
-_MAIN = os.path.join(_ROOT, "gui", "main.py")
+_MAIN = os.path.join(_ROOT, "gui", "app_board_render.py")   # _draw_agents moved here (APP_REFACTOR A1.2)
 _CONSTANTS = os.path.join(_ROOT, "gui", "constants.py")
 _CHECKS = os.path.join(_ROOT, "tests", "roster_checks.js")
 
@@ -44,8 +44,8 @@ def test_turn_row_colour_matches_the_dm_screen():
 def test_turn_outline_matches_the_dm_screen():
     src = open(_MAIN, encoding="utf-8").read()
     m = re.search(r"# Selection highlight \(yellow border\)\n.*?\n.*?\n"
-                  r"\s*pygame\.draw\.rect\(self\.screen, (\([^)]*\))", src)
-    assert m, "main.py _draw_agents has no selection highlight rect"
+                  r"\s*pygame\.draw\.rect\(app\.screen, (\([^)]*\))", src)
+    assert m, "app_board_render.py draw_agents has no selection highlight rect"
     js = open(_APP_JS, encoding="utf-8").read()
     j = re.search(r'^const TURN_OUTLINE = "(rgb\([^)]*\))";', js, re.M)
     assert j, "app.js has no top-level const TURN_OUTLINE"

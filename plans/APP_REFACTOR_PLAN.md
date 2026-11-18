@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) done, uncommitted, 263/0. A1.2 next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 done, uncommitted, 263/0. A1.3 next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -129,6 +129,16 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
      classes the cluster is named after already live in `dialogs.py` / `prompts.py`.
      **Done 2026-11-18:** 263/0, goldens unchanged.
   2. Board Rendering & Fog (about 2.1k lines, 24 in / 24 out, mostly reads state).
+     **Done 2026-11-18:** 40 render methods → `gui/app_board_render.py` (about 1.8k lines);
+     `run()` calls the module directly, and `App` keeps 18 one-line forwarders for the
+     names tests call (`_draw_map`, `_draw_agents`, `_draw_doors`, …). Stayed on `App`,
+     because `net/`, `playback.py` or `App` itself also ask them: the fog rules
+     (`_fog_active`, `_fog_conceals`, `_party_fog_active`, `_agent_fogged`, `_door_visible`,
+     `_any_explored`), `_staircase_cells_here`/`_ends_here`, `_cell_to_screen(_f)`,
+     `_get_sprite`, the fog state setters, and the NPC-playback state machine (not
+     rendering). `_draw_floor_overview` waits for A1.3. Three tests that read `main.py`'s
+     text or patch its namespace (`test_roster`, `test_drag`, `test_drawn_wall_detection`)
+     now point at the new module. 263/0, goldens unchanged. `App` 20,704 lines, 629 methods.
   3. Dungeon Pages & Navigation (about 3.1k lines; its 23 calls into Shell show what the
      shell has to keep exposing).
   4. Initiative & Lair Turns (next to the existing `lair.py` / `tracker.py`).

@@ -792,7 +792,7 @@ def test_fog_hides_unseen_doors_and_ladders():
     """Doors and ladders draw after the fog overlay, so they showed through it. Under fog
     only those with an explored cell draw (an edge door counts either side), as the
     player view already does; with fog off everything draws."""
-    import main as main_mod
+    import app_board_render as main_mod   # the board renderer calls the glyphs (A1.2)
     with tempfile.TemporaryDirectory() as tmp:
         app, _ = _app(tmp, {"detection": DETECTION})
         seen_door = app.bm.add_door(cells=[C(3, 3)])

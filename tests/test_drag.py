@@ -19,7 +19,7 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _APP_JS = os.path.join(_ROOT, "gui", "net", "static", "app.js")
 _MOVE = os.path.join(_ROOT, "gui", "net", "move.py")
-_MAIN = os.path.join(_ROOT, "gui", "main.py")
+_MAIN = os.path.join(_ROOT, "gui", "app_board_render.py")   # _draw_agents moved here (APP_REFACTOR A1.2)
 _CHECKS = os.path.join(_ROOT, "tests", "drag_checks.js")
 
 
@@ -36,7 +36,7 @@ def test_move_id_matches_the_server():
 def test_outline_colours_match_the_dm_drag_ghost():
     js = open(_APP_JS, encoding="utf-8").read()
     main = open(_MAIN, encoding="utf-8").read()
-    m = re.search(r"border_col = \((\d+, \d+, \d+)\) if self\.drag_valid else \((\d+, \d+, \d+)\)",
+    m = re.search(r"border_col = \((\d+, \d+, \d+)\) if app\.drag_valid else \((\d+, \d+, \d+)\)",
                   main)
     assert m, "main.py's drag-ghost outline not found"
     for name, want in (("DRAG_OK", m.group(1)), ("DRAG_BAD", m.group(2))):
