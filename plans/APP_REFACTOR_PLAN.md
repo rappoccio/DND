@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
-**Status 2026-11-18: Step 0 frozen (D1–D7). A0 done (uncommitted): baseline `./test.sh` 263/0.
-A1.1 next.** Nothing has been moved yet.
+**Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
+A1.1 (narrowed) done, uncommitted, 263/0. A1.2 next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -121,7 +121,13 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   Baseline: **263 passed / 0 failed** (with the working tree's uncommitted
   `DND2024_MonsterStats.json` / `spells.json` edits in place).
 - **A1. Leaf cuts**, in this order:
-  1. Selection Dialogs & Prompts (143 single-owner attributes, about 1.2k lines).
+  1. ~~Selection Dialogs & Prompts~~ **narrowed 2026-11-18** to `_init_combat_panel` →
+     `menus/panel.py:init_combat_panel(app)` (about 425 lines). Checked against the code,
+     the cluster was not a seam: inside `App` it is `__init__` (about 764 lines, stays) plus
+     `_init_combat_panel`, and the "143 single-owner attributes" are the `btn_cbt_*`
+     buttons, which everything else reaches by string through `panel.cbt_btn`. The dialog
+     classes the cluster is named after already live in `dialogs.py` / `prompts.py`.
+     **Done 2026-11-18:** 263/0, goldens unchanged.
   2. Board Rendering & Fog (about 2.1k lines, 24 in / 24 out, mostly reads state).
   3. Dungeon Pages & Navigation (about 3.1k lines; its 23 calls into Shell show what the
      shell has to keep exposing).
