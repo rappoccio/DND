@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed, 263/0. Drag & Cancel to be decided.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Next: the combat plan's `NpcDriver` → `ReactionArbiter`, then A3.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -231,7 +231,7 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   than the unarmed punch. `App` 16,579 lines, 558 methods.
   **Drag & Cancel is not a method seam:** map drag handling is inline in `_handle_events`
   (its map-mouse block), item drag is three small methods, and cancel already lives in
-  `net/picks.py`. Whether to split that block out is open.
+  `net/picks.py`. **Dropped 2026-11-18 (user): A2 closes without it.**
 
 - **A3. Turn mirrors** (D5, behavior change, separate sign-off): read budgets/action state
   from the engine instead of copying them.
