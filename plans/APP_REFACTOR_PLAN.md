@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) implemented 2026-11-18, 263/0, uncommitted. Next: A3b, then A4.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) implemented 2026-11-18, 263/0, uncommitted. Next: A4.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -260,6 +260,18 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   flags are turn-global today and per-creature after, so Haste's extra action (writes
   `False`) and anything spending an action off the creature's own turn need a look. No
   gameplay change intended.
+  Done (2026-11-18), smaller than planned: `bonus_used` was already engine-owned (a
+  property over `bonus_actions_remaining`), so only `action_used` moved. It is a new
+  `Agent::Conditions::action_used`, cleared in `Agent::turn()` (beginTurn), bound
+  read/write and in `RPG_CONDITIONS_FIELDS`. `app.action_used` became a property beside
+  `bonus_used` over the current combatant's copy, with the same pre-combat fallback, so
+  no call site or test changed and no `spend_action()` helper was needed. Old saves need
+  no shim: `saves.py` still restores the `economy` keys through the property after
+  `settle_turn`. Semantics checked: Haste / Action Surge write `False` on the current
+  creature (the one they apply to); no legendary or off-turn path writes `action_used`;
+  every `turn_idx` re-point keeps the same actor. A spent Action now stays on its creature
+  until that creature's next beginTurn. New test in `test_action_menu.py`. 263/0, goldens
+  unchanged.
   **Not in scope (Size B):** the engine enforcing the economy at every action entry point.
   That is plan-sized C++ and a behavior change; it belongs with multiplayer's future-auth
   work, not here.

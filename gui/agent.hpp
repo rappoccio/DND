@@ -1073,6 +1073,7 @@ namespace rpg {
       bool dashing{false};       // double movement speed
       bool dodging{false};       // attacks against have disadvantage, advantage on DEX saves
       bool disengaging{false};   // does not provoke opportunity attacks
+      bool action_used{false};   // the Action already spent this turn (the GUI's economy flag; the engine stores it, it doesn't enforce it)
       bool reaction_used{false}; // reaction already used this turn
       bool reactions_denied{false}; // cannot take ANY reaction (incl. opportunity attacks) until the source's next turn (Balor Lightning Blade). Session-only; keyed to the source via a caster-ticked condition. Distinct from reaction_used so the target's own beginTurn reset can't restore reactions early.
       bool hidden{false};        // enemies cannot detect; attacks from hiding have advantage
@@ -1301,6 +1302,7 @@ namespace rpg {
       conditions_.dashing     = false;
       conditions_.dodging     = false;
       conditions_.disengaging = false;
+      conditions_.action_used   = false;
       conditions_.reaction_used = false;
       // Per-turn Barbarian flags. Previously reset only in CombatEngine::runRound,
       // which the GUI never calls — left Brutal Strike/Divine Fury stuck after one use.

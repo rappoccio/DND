@@ -71,6 +71,25 @@ def _give_nick_offhand(app, idx):
     _set_conditions(app, idx, offhand_attack_used=False)
 
 
+def test_action_used_is_the_current_creatures_engine_flag():
+    """A3b: `app.action_used` is a view over the current combatant's
+    Agent::Conditions.action_used. It is per creature, and beginTurn clears it."""
+    app = _app()
+    aria, brannor = _idx(app, "Aria"), _idx(app, "Brannor")
+    cond = lambda i: app.combat.get_agent_conditions(app.bm, i)
+    _goto(app, "Aria")
+    assert not app.action_used and not cond(aria).action_used
+    app.action_used = True
+    assert cond(aria).action_used, "the write reaches Aria's engine conditions"
+    _goto(app, "Brannor")              # writes False to Brannor, not to Aria
+    assert not app.action_used
+    assert cond(aria).action_used, "Aria keeps its own spent Action off its turn"
+    assert not cond(brannor).action_used
+    app.combat.begin_turn(app.bm, aria)
+    assert not cond(aria).action_used, "beginTurn clears the flag"
+    print("✅ test_action_used_is_the_current_creatures_engine_flag")
+
+
 def test_build_returns_only_converted_groups():
     """Nothing from an unconverted section leaks in early — M2b would silently
     double-draw its buttons if it did."""
@@ -2007,6 +2026,7 @@ if __name__ == "__main__":
     # courtesy test_combat_panel.py extends, and this suite calls it nine times.
     _saved = _preserve_cwd_logs()
     try:
+        test_action_used_is_the_current_creatures_engine_flag()
         test_build_returns_only_converted_groups()
         test_every_action_has_a_widget_and_is_enabled()
         test_session_group_is_unconditional_and_labels_the_pause_state()

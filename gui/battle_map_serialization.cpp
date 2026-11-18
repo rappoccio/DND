@@ -146,7 +146,7 @@ namespace {
 
 // ── Agent::Conditions — every member, one X() each ───────────────────────────
 #define RPG_CONDITIONS_FIELDS(X) \
-    X(dashing) X(dodging) X(disengaging) X(reaction_used) X(reactions_denied) \
+    X(dashing) X(dodging) X(disengaging) X(action_used) X(reaction_used) X(reactions_denied) \
     X(hidden) X(invisible) X(invisible_persists_on_action) X(attacked_while_invisible) \
     X(incapacitated) X(sanctuary_active) X(sanctuary_dc) X(concentrating) \
     X(concentrating_on) X(has_advantage) X(has_disadvantage) X(paralyzed) X(blinded) \

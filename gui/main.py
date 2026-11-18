@@ -374,32 +374,50 @@ CURSE_CHOICE_SPELLS = {
 DRACONIC_AFFINITY_OPTIONS = [("Acid", 0), ("Cold", 1), ("Fire", 2), ("Lightning", 4), ("Poison", 6)]
 
 class App:
-    # ── Bonus-action economy: a thin view over the C++ engine budget ──────────
-    # `self.bonus_used` is NOT a plain flag — it reads/writes the active combatant's
-    # bonus-action budget in the engine (Agent::Stats.bonus_actions_remaining/max via
-    # has_bonus_action / spend_bonus_action / reset_bonus_actions). Reading answers
-    # "has the current combatant spent their bonus action(s) this turn?"; assigning
-    # True spends one, False refills to max. Keeping the rule in C++ (not a Python
-    # bool) makes it the single source of truth and lets feats grant extra bonus
-    # actions (bonus_actions_max > 1). Before combat / with no active combatant it
-    # falls back to a plain attribute so early __init__ assignments are harmless.
-    def _bonus_economy_idx(self) -> int:
-        """Active combatant index for the bonus-action budget, or -1 if the engine
+    # ── Action economy: a thin view over the C++ engine ──────────────────────
+    # `self.action_used` and `self.bonus_used` are NOT plain flags. Each reads/writes the
+    # active combatant's own copy in the engine:
+    #   · action_used → Agent::Conditions.action_used, cleared by beginTurn (Agent::turn()).
+    #     The engine stores it and serializes it; it does not enforce it (APP_REFACTOR_PLAN A3b).
+    #   · bonus_used  → the bonus-action budget, Agent::Stats.bonus_actions_remaining/max via
+    #     has_bonus_action / spend_bonus_action / reset_bonus_actions. Assigning True spends
+    #     one, False refills to max, so feats can grant extra bonus actions (max > 1).
+    # Before combat / with no active combatant both fall back to a plain attribute so early
+    # __init__ assignments are harmless.
+    def _economy_idx(self) -> int:
+        """Active combatant index for the action economy, or -1 if the engine
         isn't ready / no one is acting (pre-combat __init__, between combats)."""
         if getattr(self, "combat", None) is None or getattr(self, "bm", None) is None:
             return -1
         return self._current_agent_idx()
 
     @property
+    def action_used(self) -> bool:
+        idx = self._economy_idx()
+        if idx < 0:
+            return getattr(self, "_action_used_fallback", False)
+        return self.combat.get_agent_conditions(self.bm, idx).action_used
+
+    @action_used.setter
+    def action_used(self, value: bool) -> None:
+        idx = self._economy_idx()
+        if idx < 0:
+            self._action_used_fallback = bool(value)
+            return
+        cond = self.combat.get_agent_conditions(self.bm, idx)
+        cond.action_used = bool(value)
+        self.combat.set_agent_conditions(self.bm, idx, cond)
+
+    @property
     def bonus_used(self) -> bool:
-        idx = self._bonus_economy_idx()
+        idx = self._economy_idx()
         if idx < 0:
             return getattr(self, "_bonus_used_fallback", False)
         return not self.combat.has_bonus_action(self.bm, idx)
 
     @bonus_used.setter
     def bonus_used(self, value: bool) -> None:
-        idx = self._bonus_economy_idx()
+        idx = self._economy_idx()
         if idx < 0:
             self._bonus_used_fallback = bool(value)
             return

@@ -839,6 +839,9 @@ void bindTypes(py::module_& m) {
         .def_readwrite("dashing",       &Agent::Conditions::dashing)
         .def_readwrite("dodging",       &Agent::Conditions::dodging)
         .def_readwrite("disengaging",   &Agent::Conditions::disengaging)
+        .def_readwrite("action_used",   &Agent::Conditions::action_used,
+             "The Action already spent this turn. Cleared by beginTurn; the GUI's app.action_used "
+             "reads and writes the current combatant's copy. Stored, not enforced.")
         .def_readwrite("reaction_used", &Agent::Conditions::reaction_used)
         .def_readwrite("reactions_denied", &Agent::Conditions::reactions_denied,
              "Balor Lightning Blade: the creature can take NO reaction (incl. opportunity attacks) "
