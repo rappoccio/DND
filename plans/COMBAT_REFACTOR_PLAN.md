@@ -1,16 +1,13 @@
 # Combat Engine Refactor — Implementation Plan
 
-Status: **IN PROGRESS** — R0, R1, R2, R3 (additive landing + `rules.hpp` unit tests + the
-forwarder deletion that closes it), all six of R4's sub-engine cuts (`VisibilityService`,
-`MovementController`, `ConditionTracker`, `SpellEffectStore`, `NpcState`, `ReactionArbiter`) plus its
-first mis-grouping fix (`combat_contested.cpp`), and **R5** (`snapshot()`/`restore()`) are done and
-verified. **R3 is now closed**: the four deletable forwarders are gone and the remaining call-site
-migration falls out of R4 rather than being swept. **R4 is the only phase with work left** — **R4h**,
-a pure TU move of the park/resume flow into `combat_reactions.cpp`, which also fixes the second
-mis-grouping (the turn-start reaction flow). See **Handoff (2026-11-18, later)** and **R4g** first,
-then **Handoff (2026-11-18)**, **R4f**, **Handoff (2026-09-25)**, **Handoff (2026-09-14)**, **R5**, and
-**R3d/R4d/R4e** below
-before picking this up in a new session.
+Status: **DONE** (2026-11-18) — R0, R1, R2, R3 (additive landing + `rules.hpp` unit tests + the
+forwarder deletion that closes it), **R4** (all six sub-engine cuts — `VisibilityService`,
+`MovementController`, `ConditionTracker`, `SpellEffectStore`, `NpcState`, `ReactionArbiter` — and
+both mis-grouping fixes, `combat_contested.cpp` and `combat_reactions.cpp`), and **R5**
+(`snapshot()`/`restore()`) are done and verified. **R4h closed R4** with a pure TU move of the
+park/resume flow into `combat_reactions.cpp`. The only open item is the floating follow-on (the
+riders+resources class-family split; see R4). See **Handoff (2026-11-18, R4h)** and **R4h** for the
+last step.
 
 **Staleness review (2026-11-18)**: no refactor work since 2026-09-25, but the repo moved on
 (~100 suites added, container-only rule, `compile.sh` job cap). Corrections are inline, marked
@@ -52,7 +49,7 @@ run after this plan was written. Findings and recommendations:
    `plans/APP_REFACTOR_PLAN.md`, and `ReactionArbiter`'s final API shape should be chosen
    with A2's `app.pending` modes in mind.
 5. **Graph health caveat.** The build reported 529 dangling edges and about 865 merged
-   duplicates, and vendored `gui/net/static/mermaid.min.js` contributes about 2k noise nodes.
+   duplicates, and vendored `tools/mermaid.min.js` contributes about 2k noise nodes.
    Exclude it (`.graphifyignore`) before using the graph as a re-measurement tool for R4.
 
 Goal: break up the `CombatEngine` god class so that (a) adding a spell/feat/subclass stops
@@ -65,6 +62,14 @@ No behavior changes, no new features, no bug fixes bundled in. Every phase must 
 `tests/run_all_tests.py` green with byte-identical results for a fixed seed.
 
 ---
+
+## Handoff (2026-11-18, R4h): R4 closed
+
+**R4h landed (2026-11-18)**: the 19 park/resume flow bodies moved, byte-identical, into the new
+`gui/combat_reactions.cpp`, which fixes R4's second mis-grouping (the turn-start flow left
+`combat_riders.cpp`). No state moved, no call site changed, and the bindings and `main.py` are
+untouched. **R4 and this plan are done.** Next, per the agreed order: `plans/APP_REFACTOR_PLAN.md`
+A3 (turn mirrors), then A4 (Spell Activation UI).
 
 ## Handoff (2026-11-18, later): R4g landed
 
@@ -798,7 +803,7 @@ look like if a Python-side *caller* ever wants it, is in `memory/known_limitatio
 *Architecture / Infrastructure* → "`rules::` has no Python binding". `README.md`'s Test section
 summarises it for anyone running the suite.
 
-### R4 — Sub-engines behind a facade — **IN PROGRESS** (6 of 6 cut + 1 of 2 mis-groupings fixed, 2026-11-18; R4h left)
+### R4 — Sub-engines behind a facade — **DONE** (6 of 6 cut + 2 of 2 mis-groupings fixed, 2026-11-18)
 
 Legend in the table below: ✅ fully cut · ◐ partially cut (see its subsection for what stayed
 behind and why).
@@ -838,8 +843,9 @@ system's park/resume flow is the hardest thing to move without behavior drift.
 
 Two mis-groupings to fix while here, both originally in `combat_riders.cpp`:
 - The turn-start reaction flow (`beginTurnFlow`, `turnStartOptions`, `turnStartReactors`,
-  `applyTurnStartReaction`, `advanceTurnStart`) belongs in `ReactionArbiter`. **Still open** —
-  it travels with that sub-engine, which is scheduled last.
+  `applyTurnStartReaction`, `advanceTurnStart`) belongs in `ReactionArbiter`. **DONE
+  (2026-11-18)** — it moved with the rest of the park/resume flow into `combat_reactions.cpp`;
+  see **R4h** below.
 - Contested physical actions (`executeGrapple`, `executeGrappleEscape`, `executeShove`,
   `attemptBreakDoor`, `attemptPickLock`, `resolveGrapple`) are neither riders nor
   reactions — they want their own `ContestedActions` module. **DONE (2026-09-15)** — see
@@ -1269,13 +1275,38 @@ restores, and requires the identical stack; C then counters and A's missile land
 cut, clean build with no warnings, `test_determinism.py` byte-identical to the golden,
 `test_snapshot` 10/10, `./test.sh` **263/0**.
 
-**R4h, next**: a pure TU move, R4d-style, into a new `gui/combat_reactions.cpp`, bodies
-byte-identical: the turn-start flow (`turnStartReactors`, `turnStartOptions`,
-`applyTurnStartReaction`, `advanceTurnStart`, `beginTurnFlow`) from `combat_riders.cpp` — R4's second
-mis-grouping —, `applyReactionResponse`/`advanceMove`/`beginMove`/`submitDecision`/`resolveMove` from
-`combat_movement.cpp`, `beginAttack`/`advanceAttack` from `combat_attack.cpp`, and
-`pushCounterspell`/`resolveCounterspellEffect`/`stepTopCast`/`finalizeAndPop`/`advanceCast`/
-`beginCast`/`resolveCast` from `combat_spells.cpp`.
+#### R4h — the park/resume flow → `combat_reactions.cpp` — **DONE** (2026-11-18)
+
+A pure TU move, R4d-style: no state moves (R4g already did that), so there is no serialization
+work. The new **`gui/combat_reactions.cpp`** (738 lines, added to `gui/CMakeLists.txt` after
+`combat_contested.cpp`) holds 19 functions in four sections:
+
+| Section | Functions | From | File before → after |
+| ------- | --------- | ---- | ------------------- |
+| Turn start | `turnStartReactors`, `turnStartOptions`, `applyTurnStartReaction`, `advanceTurnStart`, `beginTurnFlow` | `combat_riders.cpp` (R4's second mis-grouping) | 2,645 → 2,561 |
+| Movement | `applyReactionResponse`, `advanceMove`, `beginMove`, `submitDecision`, `resolveMove` | `combat_movement.cpp` | 941 → 705 |
+| Attack | `beginAttack`, `advanceAttack` | `combat_attack.cpp` | 4,991 → 4,863 |
+| Cast stack | `pushCounterspell`, `resolveCounterspellEffect`, `stepTopCast`, `finalizeAndPop`, `advanceCast`, `beginCast`, `resolveCast` | `combat_spells.cpp` | 5,769 → 5,528 |
+
+- **File-local helpers**: none needed moving. The only file-local statics in the four source TUs
+  (`martialArtsDieSize`, the damage-name pair, `d20ReactorBase`, `metamagicName`, the dispel
+  helpers, `spellAppliesCharmOrFear`, `saveReactorBase`) are not used by any moved body. Every
+  callee is a `CombatEngine` member or comes from `combat_internal.hpp` / `rules.hpp`.
+- **Byte-identity**: the moved line ranges were cut with `sed` and concatenated, with doc comments
+  attached. A diff of each source file against its original shows deletions only, and every
+  removed line appears in the new file. The new file adds only its banner, section banners and
+  includes.
+- **Left behind on purpose**: the Branches/Vitality features (`can/applyBranchesOfTree`,
+  `can/applyVitalityOfTheTree`) stay in `combat_riders.cpp`, because they are features the window
+  offers, not flow. So do the attack-window helpers between `beginAttack` and `advanceAttack`
+  (`rollInFlightAttack`, `takeShadowyDodge`, `shadowyDodgeFollowUp`, `shadowyDodgeTeleportOptions`)
+  and the `apply*Reaction` handlers, since R4h's list did not include them. The `combat_riders.cpp`
+  and `combat_movement.cpp` banners now point to the new file. `combat.hpp` declarations, call
+  sites and `roll`/`rules::` qualification are untouched.
+
+**Verification** (2026-11-18, `rpg_map` image): fresh baseline `./test.sh` **263/0**; after the
+move, `./build.sh` recompiled the five touched TUs with **no warnings**, `test_determinism.py`
+matches the golden, and `./test.sh` passes **263/0**.
 
 ### R5 — Serialization — **DONE** (2026-09-15)
 

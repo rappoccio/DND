@@ -11,7 +11,8 @@
 //    · Reaction/utility riders— Protective Field, Telekinetic Movement
 //    · Bonus attacks          — Flurry of Blows, consumeBonusAttack,
 //                               Telekinetic Shove
-//    · OnTurnStartNearby      — the turn-start reaction window (Branches of the Tree)
+//    · OnTurnStartNearby      — the turn-start reaction features (Branches of the Tree,
+//                               Vitality of the Tree)
 //
 //  Shove / Grapple / Grapple Escape / Pick Lock / Break Door moved OUT of this file
 //  to combat_contested.cpp (COMBAT_REFACTOR_PLAN.md R4's first mis-grouping fix) —
@@ -19,9 +20,9 @@
 //  activation resolved by a saving throw, not a contested check.
 //
 //  The turn-start reaction flow (beginTurnFlow / turnStartOptions / turnStartReactors /
-//  applyTurnStartReaction / advanceTurnStart) is R4's SECOND mis-grouping and is still
-//  here on purpose: it belongs to ReactionArbiter, which the plan schedules last because
-//  pending_decision_ + the in_flight_* members are the only genuinely entangled state.
+//  applyTurnStartReaction / advanceTurnStart), R4's SECOND mis-grouping, moved OUT to
+//  combat_reactions.cpp (R4h) with the rest of the park/resume flow. The features it
+//  offers (can/applyBranchesOfTree, can/applyVitalityOfTheTree) stayed here.
 //
 #include "combat.hpp"
 #include "battle_map.hpp"
@@ -2422,37 +2423,6 @@ bool CombatEngine::canBranchesOfTree(const BattleMap& bm, int reactor, int sourc
     return std::find(in_range.begin(), in_range.end(), reactor) != in_range.end();
 }
 
-std::vector<int> CombatEngine::turnStartReactors(const BattleMap& bm, int source) const
-{
-    const int n = static_cast<int>(bm.placedAgents().size());
-    std::vector<int> out;
-    // Vitality of the Tree fires on the source's OWN turn start, so the source itself is a reactor.
-    if (canVitalityOfTheTree(bm, source)) out.push_back(source);
-    for (int i = 0; i < n; ++i) {
-        if (i == source) continue;
-        if (canBranchesOfTree(bm, i, source)) out.push_back(i);
-    }
-    return out;
-}
-
-std::vector<ReactionOption> CombatEngine::turnStartOptions(const BattleMap& bm, int reactor, int source) const
-{
-    std::vector<ReactionOption> opts;
-    if (reactor == source) {
-        // The source's own turn-start self-option (free, once per turn — needs a target pick).
-        if (canVitalityOfTheTree(bm, source))
-            opts.push_back(ReactionOption{ReactionOption::Feature, -1,
-                                          "Vitality of the Tree — grant Xd6 temp HP (free)",
-                                          "VitalityOfTheTree"});
-    } else if (canBranchesOfTree(bm, reactor, source)) {
-        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
-                                      "Branches of the Tree — STR save or teleported + Speed 0 (reaction)",
-                                      "BranchesOfTheTree"});
-    }
-    opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
-    return opts;
-}
-
 bool CombatEngine::applyBranchesOfTree(BattleMap& bm, int reactor, int source)
 {
     if (!canBranchesOfTree(bm, reactor, source)) return false;
@@ -2586,60 +2556,6 @@ bool CombatEngine::applyVitalityOfTheTree(BattleMap& bm, int source, int target)
     log_("{} uses Vitality of the Tree on {}: {}d6 = {} temp HP",
          agentName(bm, source), agentName(bm, target), dice, amount);
     return true;
-}
-
-void CombatEngine::applyTurnStartReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp)
-{
-    if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // Skip / invalid
-    const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
-    if (opt.kind != ReactionOption::Feature) return;                                     // Skip
-    if (opt.feature == "BranchesOfTheTree") (void)applyBranchesOfTree(bm, ctx.reactor_idx, ctx.source_idx);
-    else if (opt.feature == "VitalityOfTheTree")
-        // Self-option (reactor == source); resp.target_idx is the chosen creature within 10 ft.
-        (void)applyVitalityOfTheTree(bm, ctx.source_idx, resp.target_idx);
-}
-
-FlowStatus CombatEngine::advanceTurnStart(BattleMap& bm)
-{
-    InFlightTurn& t = rx_.turn();
-    // A creature whose turn is skipped (paralyzed/unconscious/Wild-Magic) or that is down isn't
-    // meaningfully "present" to be reacted to — open no window (completes immediately).
-    const bool open = !t.result.turn_skipped && t.agent_idx >= 0
-                   && t.agent_idx < static_cast<int>(bm.placedAgents().size())
-                   && bm.getAgentStats(t.agent_idx).hp_cur > 0;
-    if (open && !t.window_built) {
-        t.reactors     = turnStartReactors(bm, t.agent_idx);
-        t.window_built = true;
-    }
-    while (open && t.cursor < t.reactors.size()) {
-        const int reactor = t.reactors[t.cursor];
-        const auto opts = turnStartOptions(bm, reactor, t.agent_idx);
-        if (opts.size() <= 1) { ++t.cursor; continue; }            // only Skip → no longer qualifies
-        ReactionCtx ctx;
-        ctx.window      = ReactionWindow::OnTurnStartNearby;
-        ctx.reactor_idx = reactor;
-        ctx.source_idx  = t.agent_idx;
-        ctx.options     = opts;
-        if (t.interactive) {                                       // GUI suspends; resumes via submitDecision
-            rx_.park(ctx);
-            return FlowStatus::AwaitingDecision;
-        }
-        applyTurnStartReaction(bm, ctx, decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{});
-        ++t.cursor;                                                // auto/RL inline
-    }
-    rx_.unpark();
-    t.active = false;
-    return FlowStatus::Completed;
-}
-
-FlowStatus CombatEngine::beginTurnFlow(BattleMap& bm, int agent_idx, bool interactive)
-{
-    rx_.turn()             = InFlightTurn{};
-    rx_.turn().active      = true;
-    rx_.turn().interactive = interactive;
-    rx_.turn().agent_idx   = agent_idx;
-    rx_.turn().result      = beginTurn(bm, agent_idx);        // the existing synchronous body
-    return advanceTurnStart(bm);
 }
 
 } // namespace rpg

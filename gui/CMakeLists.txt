@@ -55,6 +55,7 @@ pybind11_add_module(rpg_battle_map
     combat_core.cpp
     combat_conditions.cpp
     combat_contested.cpp
+    combat_reactions.cpp
     combat_riders.cpp
     combat_turn.cpp
     combat_resources.cpp
