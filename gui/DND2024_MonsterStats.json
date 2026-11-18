@@ -67002,24 +67002,30 @@
       "True Seeing",
       "Finger of Death",
       "Mirage Arcane",
-      "Power Word Stun"
+      "Power Word Stun",
+      "Mass Suggestion",
+      "Forcecage"
     ],
     "npc_spell_groups": {
       "99": [
         "Detect Magic",
         "Light",
         "Mage Hand",
-        "Prestidigitation"
+        "Prestidigitation",
+        "Sleep",
+        "Enlarge/Reduce"	  
       ],
-      "2": [
-        "Magic Missile"
+      "3": [
+        "Magic Missile",
+	"Fireball",
+	"Misty Step",
+	"Dispel Magic",
+	"Cloudkill",
+	"Black Tentacles",
+	"Polymorph",
+	"Lightning Bolt"
       ],
       "1": [
-        "Sleep",
-        "Enlarge/Reduce",
-        "Misty Step",
-        "Dispel Magic",
-        "Fireball",
         "Lightning Bolt",
         "Blight",
         "Black Tentacles",
@@ -67031,7 +67037,10 @@
         "True Seeing",
         "Finger of Death",
         "Mirage Arcane",
-        "Power Word Stun"
+        "Power Word Stun",
+	"Forcecage",
+	"Power Word Stun",
+	"Mass Suggestion"
       ]
     }
   }

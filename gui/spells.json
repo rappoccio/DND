@@ -6194,6 +6194,7 @@
         "condition_name": "Stunned",
         "condition_duration": 10,
         "save_repeat_turns": 1,
+        "save_at_end_of_turn": true,
         "save_dc_ability": "SaveSpellcasterMod"
       }
     ],
