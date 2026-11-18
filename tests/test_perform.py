@@ -72,8 +72,7 @@ def _plain(obj):
 
 
 _APP_FIELDS = ("action_used", "bonus_used", "attack_seq",
-               "move_remaining_walk", "move_remaining_fly", "move_remaining_swim",
-               "move_remaining_burrow", "turn_idx", "round_num", "combat_paused",
+               "turn_idx", "round_num", "combat_paused",
                "combat_active", "pending", "hint")
 
 
@@ -84,7 +83,7 @@ def _state(app):
     for i, a in enumerate(app.bm.placed_agents):
         out[f"agent {i}"] = (
             a.name, a.origin.col, a.origin.row,
-            a.walk_remaining, a.fly_remaining,
+            a.walk_remaining, a.fly_remaining, a.swim_remaining, a.burrow_remaining,
             _plain(app.combat.get_agent_stats(app.bm, i)),
             _plain(app.combat.get_agent_conditions(app.bm, i)),
             [w.name for w in app.combat.get_agent_weapons(app.bm, i)],

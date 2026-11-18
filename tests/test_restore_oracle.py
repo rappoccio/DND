@@ -413,7 +413,8 @@ def test_resumed_actor_can_move():
         assert app2._current_agent_idx() == actor and app2.combat_active
         assert app2.bm.placed_agents[actor].walk_remaining == had, \
             f"resumed with {app2.bm.placed_agents[actor].walk_remaining} ft, not {had}"
-        assert app2.move_remaining_walk == had, "the panel's copy must agree"
+        assert app2.move_remaining(actor, rpg.MovementType.Walk) == had, \
+            "the panel's budget must agree"
 
         start = app2.bm.placed_agents[actor].origin
         dest = rpg.Cell(start.col + 1, start.row)

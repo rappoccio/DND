@@ -234,6 +234,10 @@ void bindTypes(py::module_& m) {
             [](const PlacedAgent& p){ return p.agent->getSwimRemaining(); })
         .def_property_readonly("burrow_remaining",
             [](const PlacedAgent& p){ return p.agent->getBurrowRemaining(); })
+        .def_property_readonly("raw_movement",
+            [](const PlacedAgent& p){ return p.agent->rawMovement(); },
+            "The four budgets as stored (walk, fly, swim, burrow), before exhaustion is taken "
+            "off: what to pass back to init_movement to change one budget and keep the rest.")
         .def("walk_to",   [](PlacedAgent& p, int x, int y, int z){ return p.agent->walkTo(x, y, z); },
             py::arg("x"), py::arg("y"), py::arg("z") = 0)
         .def("fly_to",    [](PlacedAgent& p, int x, int y, int z){ return p.agent->flyTo(x, y, z); },

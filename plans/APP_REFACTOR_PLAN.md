@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Next: the combat plan's `NpcDriver` → `ReactionArbiter`, then A3.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) implemented 2026-11-18, 263/0, uncommitted. Next: A3b, then A4.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -235,6 +235,34 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
 
 - **A3. Turn mirrors** (D5, behavior change, separate sign-off): read budgets/action state
   from the engine instead of copying them.
+  **Scoped 2026-11-18 (user):** movement only. `attacks_remaining` already left with A2b
+  (`app.attack_seq`). `action_used` / `bonus_used` have no engine owner to read, so they
+  move to A3b. Done: the four `move_remaining_*` fields are gone; `app.move_remaining(idx,
+  move_type)` reads the placed agent's own budget (exhaustion already off), and
+  `move_budget`, the panel and `_reset_movement`'s default move type use it. Signed-off
+  behavior change: Steady Aim zeroes the agent's budget (`init_movement(0,0,0,0)`) and
+  Dragon Wings retract zeroes its fly budget, through a new `PlacedAgent.raw_movement`
+  binding (stored budgets before exhaustion). Side effects of reading per agent: during a
+  legendary Dash the panel shows the current creature's budget, not the legendary mover's,
+  and a stale mirror no longer outlives that move; the legendary mover's budget now has
+  exhaustion taken off like every other. Tests: `test_move.py`, `test_perform.py`,
+  `test_restore_oracle.py` read agent budgets; Steady Aim's test drives the real handler.
+  263/0, goldens unchanged.
+  **Left for the combat plan:** the engine holds two movement budgets, the agent's and
+  `MovementController`'s (`begin_move` spends/clamps the latter); the legendary Dash seeds
+  both by hand. Merging them is C++ work.
+- **A3b. Action economy into the engine, storage only** (agreed 2026-11-18): `action_used`
+  and `bonus_used` become `Agent::Conditions` flags beside `reaction_used`, cleared in the
+  `beginTurn` reset, bound read/write, serialized. C++ about 20 lines. Python: about 80
+  writes become a helper (`app.spend_action()` style) on the current creature, about 255
+  reads go through it; 43 test suites (281 refs, 61 direct writes) follow. `saves.py`
+  stores both at app level today, so old saves need a load shim. Semantics to check: the
+  flags are turn-global today and per-creature after, so Haste's extra action (writes
+  `False`) and anything spending an action off the creature's own turn need a look. No
+  gameplay change intended.
+  **Not in scope (Size B):** the engine enforcing the economy at every action entry point.
+  That is plan-sized C++ and a behavior change; it belongs with multiplayer's future-auth
+  work, not here.
 - **A4. Spell Activation UI** last, once its callers go through `app.pending`.
 
 ## Risks
@@ -254,5 +282,5 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
 - `class App` under about 8k lines, and no single module over about 3.5k.
 - Adding a spell's activation UI touches the spell-activation module plus at most a
   `pending` mode, not `main.py`'s class body.
-- No `move_remaining_*` / `attacks_remaining` mirrors after A3.
+- No `move_remaining_*` / `attacks_remaining` mirrors after A3; `action_used` / `bonus_used` engine-owned after A3b.
 - Goldens byte-identical and `./test.sh` all green after every step.

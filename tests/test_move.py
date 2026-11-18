@@ -71,8 +71,8 @@ def _open_move(app, kira):
 
 
 def _budgets(app):
-    return (app.move_remaining_walk, app.move_remaining_fly,
-            app.move_remaining_swim, app.move_remaining_burrow)
+    ag = app.bm.placed_agents[app._current_agent_idx()]
+    return (ag.walk_remaining, ag.fly_remaining, ag.swim_remaining, ag.burrow_remaining)
 
 
 def _set_cond(app, idx, **flags):
@@ -102,7 +102,7 @@ def test_commit_move_refuses_at_speed_zero():
     app = _app()
     aria = _goto(app, "Aria")
     _set_cond(app, aria, restrained=True)
-    assert app.move_remaining_walk > 0
+    assert app.bm.placed_agents[aria].walk_remaining > 0
     ok = app.commit_move(aria, rpg.Cell(3, 4), rpg.MovementType.Walk, DM_PRINCIPAL_ID)
     assert ok is False, "a restrained creature's move was started"
     assert _pos(app, aria) == (3, 3), f"Aria moved to {_pos(app, aria)}"
@@ -120,7 +120,7 @@ def test_a_dm_drag_takes_the_turn_over():
     app._update_reach()
     _drag(app, (3, 3), (3, 4))
     assert _pos(app, aria) == (3, 4), f"the drag left Aria at {_pos(app, aria)}"
-    assert app.move_remaining_walk == 25, app.move_remaining_walk
+    assert app.bm.placed_agents[aria].walk_remaining == 25, app.bm.placed_agents[aria].walk_remaining
 
     tmp = tempfile.mkdtemp()
     try:
@@ -162,7 +162,8 @@ def test_the_move_row():
     assert not refused.ok and refused.error == "bad_option", refused
 
     _set_cond(app, aria, restrained=False)
-    app.move_remaining_walk = 0
+    _w, fl, sw, bu = app.bm.placed_agents[aria].raw_movement
+    app.bm.placed_agents[aria].init_movement(0, fl, sw, bu)
     _frame(app)
     row = _offer(app).options[0]
     assert not row.enabled and row.disabled_reason == net_move.REASON_NO_BUDGET, row
@@ -170,13 +171,14 @@ def test_the_move_row():
 
 
 def test_steady_aim_stops_a_remote_move():
-    """Steady Aim zeroes the App's budgets and leaves the agent's own (`main.py`, the
-    steady_aim handler). The Move row and the reachable set follow the App's."""
+    """Steady Aim zeroes the agent's own budgets (`main.py`, the steady_aim handler, A3).
+    The Move row and the reachable set follow them."""
     app, _, _ = _aria_turn()
     aria = _idx(app, "Aria")
-    for f in ("walk", "fly", "swim", "burrow"):
-        setattr(app, f"move_remaining_{f}", 0)
-    assert app.bm.placed_agents[aria].walk_remaining > 0, "the scene no longer shows the gap"
+    assert app.bm.placed_agents[aria].walk_remaining > 0, "the scene starts with no walk"
+    app._perform_action("steady_aim", None)
+    assert app.bm.placed_agents[aria].conditions.steady_aim, "Steady Aim did not land"
+    assert _budgets(app) == (0, 0, 0, 0), _budgets(app)
     _frame(app)
     row = _offer(app).options[0]
     assert not row.enabled, "Move was offered after Steady Aim"
@@ -213,7 +215,8 @@ def test_a_mode_option_reposts_and_leaves_move_type():
     the same offer with the fly set, and the DM's `move_type` is not touched (D-M5-4.4)."""
     app, kira, _ = _aria_turn()
     aria = _idx(app, "Aria")
-    app.move_remaining_fly = 30
+    w, _f, sw, bu = app.bm.placed_agents[aria].raw_movement
+    app.bm.placed_agents[aria].init_movement(w, 30, sw, bu)
     offer, walking = _open_move(app, kira)
     assert app.move_type == rpg.MovementType.Walk
     assert [o.id for o in walking.options] == ["fly"], walking.options
@@ -406,7 +409,8 @@ def test_move_dodge_move_over_the_wire():
         t.stop()
         assert _pos(app, aria) == (4, 4), f"Aria is at {_pos(app, aria)}"
         assert app.bm.placed_agents[aria].conditions.dodging, "the Dodge did not land"
-        assert app.move_remaining_walk == 20, app.move_remaining_walk
+        assert app.bm.placed_agents[aria].walk_remaining == 20, \
+            app.bm.placed_agents[aria].walk_remaining
     print("✅ test_move_dodge_move_over_the_wire")
 
 

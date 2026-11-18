@@ -1022,10 +1022,6 @@ class App:
         self.spell_anchor_cell    = None  # first click of a two-click wall (Rectangle) cast
         self.combat_log           = []    # list[str], newest first
         self.combat_log_wire      = deque(maxlen=200)  # every line, oldest first, for net views
-        self.move_remaining_walk   = 0     # feet remaining this turn (walk)
-        self.move_remaining_fly    = 0     # feet remaining this turn (fly)
-        self.move_remaining_swim   = 0     # feet remaining this turn (swim)
-        self.move_remaining_burrow = 0     # feet remaining this turn (burrow)
         self.move_type             = rpg.MovementType.Walk  # selected movement type
         self._move_type_btns: dict = {}    # MovementType -> pygame.Rect (built each draw)
         self.last_movement_dist    = 0     # distance of most recent movement (for running jump)
@@ -3220,20 +3216,28 @@ class App:
         self._reach_set = {(c.col, c.row)
                            for c in _reach_by_type.get(self.move_type, [])}
 
+    def move_remaining(self, idx: int, move_type) -> int:
+        """Feet agent `idx` has left this turn by `move_type`: the placed agent's own budget
+        (exhaustion already taken off), seeded by `_reset_movement` and spent by its moves.
+        0 for an index with no agent."""
+        if not 0 <= idx < len(self.bm.placed_agents):
+            return 0
+        ag = self.bm.placed_agents[idx]
+        return {rpg.MovementType.Walk:   ag.walk_remaining,
+                rpg.MovementType.Fly:    ag.fly_remaining,
+                rpg.MovementType.Swim:   ag.swim_remaining,
+                rpg.MovementType.Burrow: ag.burrow_remaining}.get(move_type, 0)
+
     def move_budget(self, idx: int, move_type) -> int:
         """Feet agent `idx` may still move by `move_type`, as the overlay and the drag use it.
 
-        In combat the budget is the App's `move_remaining_*`, which belong to the creature
-        whose turn it is. They, not the agent's own `*_remaining`, are what the turn's
-        effects write: Steady Aim zeroes only these. Outside combat it is the stat speed.
+        In combat the budget is the agent's own `*_remaining` (`move_remaining`); the turn's
+        effects (Steady Aim, Dragon Wings) write it there. Outside combat it is the stat speed.
         Dragging a grappled creature costs double per foot (BattleMap::moveAgent), so the
         agent can only reach half as far, and the budget is halved to match enforcement.
         """
         if self.combat_active:
-            ft = {rpg.MovementType.Walk:   self.move_remaining_walk,
-                  rpg.MovementType.Fly:    self.move_remaining_fly,
-                  rpg.MovementType.Swim:   self.move_remaining_swim,
-                  rpg.MovementType.Burrow: self.move_remaining_burrow}.get(move_type, 0)
+            ft = self.move_remaining(idx, move_type)
         else:
             stats = self.combat.get_agent_stats(self.bm, idx)
             ft = {rpg.MovementType.Walk:   stats.speed_walk,
@@ -3675,28 +3679,12 @@ class App:
                 walk = fly = swim = burrow = 0
             # Pass base speeds to init_movement; C++ getWalkRemaining() applies exhaustion penalty
             agent.init_movement(walk, fly, swim, burrow)
-            # Update UI with exhaustion-adjusted remaining movement
-            exhaustion_reduction = 5 * cond.exhaustion_level
-            self.move_remaining_walk   = max(0, walk - exhaustion_reduction)
-            self.move_remaining_fly    = max(0, fly - exhaustion_reduction)
-            self.move_remaining_swim   = max(0, swim - exhaustion_reduction)
-            self.move_remaining_burrow = max(0, burrow - exhaustion_reduction)
-            if cond.exhaustion_level > 0:
-                pass  # print(f"[_reset_movement] Agent {agent.name}: exhaustion_level={cond.exhaustion_level} (−{exhaustion_reduction}ft)")
-                # print(f"  walk: {walk} → {self.move_remaining_walk}, fly: {fly} → {self.move_remaining_fly}, swim: {swim} → {self.move_remaining_swim}, burrow: {burrow} → {self.move_remaining_burrow}")
-            else:
-                pass  # print(f"[_reset_movement] Agent {agent.name}: exhaustion_level=0, walk={walk}, fly={fly}, swim={swim}, burrow={burrow}")
-        else:
-            self.move_remaining_walk   = 0
-            self.move_remaining_fly    = 0
-            self.move_remaining_swim   = 0
-            self.move_remaining_burrow = 0
         # Default to Walk; fall back to first available type if walk speed is 0.
-        if self.move_remaining_walk > 0:
+        if self.move_remaining(agent_idx, rpg.MovementType.Walk) > 0:
             self.move_type = rpg.MovementType.Walk
-        elif self.move_remaining_fly > 0:
+        elif self.move_remaining(agent_idx, rpg.MovementType.Fly) > 0:
             self.move_type = rpg.MovementType.Fly
-        elif self.move_remaining_swim > 0:
+        elif self.move_remaining(agent_idx, rpg.MovementType.Swim) > 0:
             self.move_type = rpg.MovementType.Swim
         else:
             self.move_type = rpg.MovementType.Burrow
@@ -3788,12 +3776,6 @@ class App:
         # Execute jump (C++ handles all movement-budget deductions)
         if self.combat.jump_agent(self.bm, agent_idx, target_cell, is_running):
             self._flush_combat_log()  # Flush any spell effect damage messages
-            # Update remaining movement values
-            ag = self.bm.placed_agents[agent_idx]
-            self.move_remaining_walk = ag.walk_remaining
-            self.move_remaining_fly = ag.fly_remaining
-            self.move_remaining_swim = ag.swim_remaining
-            self.move_remaining_burrow = ag.burrow_remaining
             self.last_movement_dist = 0  # Reset run-up after jump
             self.bonus_used = True       # jumping spends the Bonus Action
             jump_type = "running" if is_running else "standing"
@@ -8317,10 +8299,6 @@ class App:
             detection_msg = self.combat.check_hidden_agent_detection(self.bm, idx, in_combat)
             if detection_msg:
                 self._combat_log_add(detection_msg)
-        self.move_remaining_walk   = ag.walk_remaining
-        self.move_remaining_fly    = ag.fly_remaining
-        self.move_remaining_swim   = ag.swim_remaining
-        self.move_remaining_burrow = ag.burrow_remaining
         self.last_movement_dist    = getattr(self, "_reaction_dist_moved", 0)
         self.selected_idx          = idx
         self._update_reach()
@@ -10479,16 +10457,6 @@ class App:
             return True
         if self.combat_active:
             self.show_terrain = True           # matches how combat start leaves it
-            # Re-mirror the current actor's movement budgets, the same way every other
-            # post-move path in this file does (the budgets themselves live in the engine
-            # and on the placed agent; these fields are only the panel's copy).
-            cur = self.initiative_order[self.turn_idx].agent_idx
-            if 0 <= cur < len(self.bm.placed_agents):
-                ag = self.bm.placed_agents[cur]
-                self.move_remaining_walk   = ag.walk_remaining
-                self.move_remaining_fly    = ag.fly_remaining
-                self.move_remaining_swim   = ag.swim_remaining
-                self.move_remaining_burrow = ag.burrow_remaining
         return True
 
     # FLAG: Move to C++
@@ -14083,10 +14051,6 @@ class App:
                 if 0 <= idx < len(self.bm.placed_agents):
                     agent = self.bm.placed_agents[idx]
                     self.bm.apply_dash(idx)
-                    self.move_remaining_walk   = agent.walk_remaining
-                    self.move_remaining_fly    = agent.fly_remaining
-                    self.move_remaining_swim   = agent.swim_remaining
-                    self.move_remaining_burrow = agent.burrow_remaining
                     self._combat_log_add(f"{agent.name}: Dashing (+{self.combat.get_agent_stats(self.bm, idx).speed_walk}ft)")
                     self._update_reach()
                 self.action_used = True
@@ -14133,10 +14097,6 @@ class App:
             if 0 <= idx < len(self.bm.placed_agents):
                 self.combat.standup(self.bm, idx)
                 agent = self.bm.placed_agents[idx]
-                self.move_remaining_walk   = agent.walk_remaining
-                self.move_remaining_fly    = agent.fly_remaining
-                self.move_remaining_swim   = agent.swim_remaining
-                self.move_remaining_burrow = agent.burrow_remaining
                 self._combat_log_add(f"{agent.name}: Standing up")
                 self._update_reach()
                 self._update_attack_overlay()
@@ -14191,10 +14151,6 @@ class App:
                 if 0 <= idx < len(self.bm.placed_agents):
                     agent = self.bm.placed_agents[idx]
                     self.bm.apply_dash(idx)
-                    self.move_remaining_walk   = agent.walk_remaining
-                    self.move_remaining_fly    = agent.fly_remaining
-                    self.move_remaining_swim   = agent.swim_remaining
-                    self.move_remaining_burrow = agent.burrow_remaining
                     self._combat_log_add(f"{agent.name}: Dashing (Cunning Action, +{self.combat.get_agent_stats(self.bm, idx).speed_walk}ft)")
                     self._update_reach()
                 self.bonus_used = True
@@ -14392,10 +14348,7 @@ class App:
                     cond.steady_aim = True
                     self.combat.set_agent_conditions(self.bm, idx, cond)
                     # Steady Aim sets your Speed to 0 for the rest of the turn.
-                    self.move_remaining_walk = 0
-                    self.move_remaining_fly = 0
-                    self.move_remaining_swim = 0
-                    self.move_remaining_burrow = 0
+                    self.bm.placed_agents[idx].init_movement(0, 0, 0, 0)
                     self._update_reach()
                     self.bonus_used = True
                     self._combat_log_add(
@@ -14616,11 +14569,12 @@ class App:
                         if stats.dragon_wings_active:
                             self._combat_log_add(
                                 f"{self.bm.placed_agents[idx].name}: Dragon Wings extended (fly {stats.speed_walk} ft)")
-                            self.move_remaining_fly = self.bm.placed_agents[idx].fly_remaining
                         else:
                             self._combat_log_add(
                                 f"{self.bm.placed_agents[idx].name}: Dragon Wings retracted")
-                            self.move_remaining_fly = 0
+                            # Retracting removes the fly budget left this turn; the rest stay.
+                            w, _f, sw, bu = self.bm.placed_agents[idx].raw_movement
+                            self.bm.placed_agents[idx].init_movement(w, 0, sw, bu)
             if action_id == "draconic_resistance":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
@@ -14697,7 +14651,6 @@ class App:
                     if self.combat.activate_revelation_in_flesh(self.bm, idx):
                         self.bonus_used = True  # Revelation in Flesh is a Bonus Action
                         stats = self.combat.get_agent_stats(self.bm, idx)
-                        self.move_remaining_fly = self.bm.placed_agents[idx].fly_remaining
                         self._combat_log_add(
                             f"{self.bm.placed_agents[idx].name}: Revelation in Flesh — fly {stats.speed_fly} ft, "
                             f"truesight 60 ft (1 SP)")
@@ -14769,10 +14722,6 @@ class App:
                     agent = self.bm.placed_agents[idx]
                     agent.disengage()
                     self.bm.apply_dash(idx)
-                    self.move_remaining_walk   = agent.walk_remaining
-                    self.move_remaining_fly    = agent.fly_remaining
-                    self.move_remaining_swim   = agent.swim_remaining
-                    self.move_remaining_burrow = agent.burrow_remaining
                     self._combat_log_add(f"{agent.name}: Fleet Step — free Step of the Wind (disengaging and dashing)")
                     self._update_reach()
                 elif can_pay_focus:
@@ -14780,10 +14729,6 @@ class App:
                     agent = self.bm.placed_agents[idx]
                     agent.disengage()
                     self.bm.apply_dash(idx)
-                    self.move_remaining_walk   = agent.walk_remaining
-                    self.move_remaining_fly    = agent.fly_remaining
-                    self.move_remaining_swim   = agent.swim_remaining
-                    self.move_remaining_burrow = agent.burrow_remaining
                     self._combat_log_add(f"{agent.name}: Step of the Wind (disengaging and dashing)")
                     self._update_reach()
                     self.bonus_used = True
@@ -15419,13 +15364,13 @@ class App:
             txt(exh_note, lx, y, (200, 100, 50), self.font_sm)
             y += 14
         mv_entries = [
-            (rpg.MovementType.Walk,   "Walk",   self.move_remaining_walk,
+            (rpg.MovementType.Walk,   "Walk",   self.move_remaining(cur_idx, rpg.MovementType.Walk),
              mv_stats.speed_walk   if mv_stats else 0),
-            (rpg.MovementType.Fly,    "Fly",    self.move_remaining_fly,
+            (rpg.MovementType.Fly,    "Fly",    self.move_remaining(cur_idx, rpg.MovementType.Fly),
              mv_stats.speed_fly    if mv_stats else 0),
-            (rpg.MovementType.Swim,   "Swim",   self.move_remaining_swim,
+            (rpg.MovementType.Swim,   "Swim",   self.move_remaining(cur_idx, rpg.MovementType.Swim),
              mv_stats.speed_swim   if mv_stats else 0),
-            (rpg.MovementType.Burrow, "Burrow", self.move_remaining_burrow,
+            (rpg.MovementType.Burrow, "Burrow", self.move_remaining(cur_idx, rpg.MovementType.Burrow),
              mv_stats.speed_burrow if mv_stats else 0),
         ]
         available_mv = [(mt, lbl, rem, spd) for mt, lbl, rem, spd in mv_entries if spd > 0]

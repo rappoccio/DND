@@ -632,10 +632,6 @@ def end_combat(app, award_xp: bool = True):
     if award_xp:
         app._award_encounter_xp()
     app._close_sim_trace("end" if award_xp else "discarded")
-    app.move_remaining_walk   = 0
-    app.move_remaining_fly    = 0
-    app.move_remaining_swim   = 0
-    app.move_remaining_burrow = 0
     app.move_type             = rpg.MovementType.Walk
     app.combat_active         = False
     lair.end_phase(app)                 # Phase never outlasts the fight
@@ -1278,10 +1274,6 @@ def begin_legendary_dash(app, idx: int, half: bool):
     app.bm.placed_agents[idx].init_movement(walk, fly, swim, burrow)
     app.combat.seed_move_budgets(idx, walk, fly, swim, burrow)
     app.selected_idx          = idx
-    app.move_remaining_walk   = walk
-    app.move_remaining_fly    = fly
-    app.move_remaining_swim   = swim
-    app.move_remaining_burrow = burrow
     app.move_type = (rpg.MovementType.Walk if walk > 0 else
                       rpg.MovementType.Fly if fly > 0 else
                       rpg.MovementType.Swim if swim > 0 else
