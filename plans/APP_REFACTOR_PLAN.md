@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) implemented 2026-11-18, 263/0, uncommitted. Next: A4.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) done 2026-11-18, 263/0, uncommitted; A4b next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -276,6 +276,60 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   That is plan-sized C++ and a behavior change; it belongs with multiplayer's future-auth
   work, not here.
 - **A4. Spell Activation UI** last, once its callers go through `app.pending`.
+  **Re-scoped 2026-11-18 against a graph rebuilt at e01fd7f** (`graphify-out/`, code-only
+  incremental update over `gui/` + `tools/`: 8,930 nodes, 310 communities). `App` is now
+  16,542 lines and 561 methods. The table's "Spell Activation UI" cluster (125 methods,
+  3,356 lines) predates A1–A3b and no longer exists as such. In the new clustering, the
+  spell lifecycle sits mostly in two `main.py` communities, *App Spell Resolution & Pending
+  Modes* (69 nodes) and *App Spell & Feature Activation* (131), with some of it in *App Pick
+  Resolution & Cancels*. The second also pulls in class-feature activations
+  (`_use_*`, `_start_mantle`, Wild Shape), door actions and the 819-line `_perform_action`,
+  because call edges cluster callers with what they call. That is not a seam, so the cut
+  below was re-derived from the code (as A2c was), with the graph as a cross-check.
+  - **A4 → `gui/app_spells.py`: 56 methods, about 1,545 lines.** The spell lifecycle:
+    start/activate (`_start_cast_spell`, `_activate_spell`, `_dispatch_spell_geometry`,
+    `_ask_spell_browser`, `_ask_ward_types`, `_on_spell_done`); resolution
+    (`_resolve_spell_cast`, `_resolve_spell_cast_aoe`, `_resolve_teleport_spell`,
+    `_resolve_corpse_spell`, `_finish_animate_dead`, `_resolve_planar_binding`, the
+    multi-target pair, `_finish_cast`, `_resolve_wild_magic_surge`); cost
+    (`_consume_cast_slot`, `_apply_pact_slot_level`, `_spell_costs_action_and_bonus`) and
+    `_log_spell_results`; the aiming reads (`_pending_spell*` predicates, `_aoe_cells`,
+    `_area_template`, `_filter_spell_cells_by_range_and_los`, `_wall_anchor_in_range`);
+    and the spell-specific flows: Chromatic Orb chain (6), armed Metamagic (6), Dispel
+    Magic (`_cast_dispel_selection`, `_apply_dispel_selection`), Wish / Divine
+    Intervention (4), Beguiling / Bewitching Magic (6).
+  - **A4b → `gui/app_summons.py`: 16 methods, about 610 lines.** Summons, familiars,
+    companions, Duplicity (`_resolve_summon`, `_spawn_summon`, `_auto_summon_fey`,
+    `_choose_summon_form`, `_summon_cell_valid`, the companion/familiar find / summon /
+    dismiss sets, the Duplicity five). A separate lifecycle with its own callers
+    (`menus/features.py`, `actions.py`, `arena.py`), cut separately to keep each step short.
+  - Mechanics as A2c: module-level functions taking `app`; `App` keeps a one-line
+    forwarder for every name reached from outside `main.py` (about 31 for A4, mostly
+    `net/picks.py`, `menus/features.py` and tests; 11 for A4b) or bound as a callback;
+    calls between moved functions go through the forwarder where a test wraps the
+    instance. Grep string references before dropping any forwarder. Goldens
+    byte-identical, `./test.sh` all green.
+  - **Stays on `app` in A4:** `_are_allies`, the pick plumbing (`_armed`, `_disarm`,
+    `_clear_pending_target_picks`, `_reset_turn_economy`), `_drop_concentration*`,
+    `_sync_item_spells` / item-spell panel, `_spell_to_dict` (save path),
+    `_load_spell_effects` / `_build_spell_effect_metadata` (load path).
+  - **After A4 + A4b `App` is about 14.4k lines**, still well over the ~8k criterion.
+    Candidate cuts the new graph surfaces, not yet scoped: class-feature activations
+    (the `_use_*` / `_start_*` feature handlers, about 25 methods), the `_perform_action`
+    dispatcher (819 lines in one method), *App Map Editing & Encounters* (173 nodes),
+    *App Dungeon Generation & Import* (55), fog/rooms/doors.
+  **A4 done 2026-11-18 (263/0, goldens unchanged, uncommitted):** the 56 methods above
+  (1,545 lines; the six Metamagic are `_careful_ally_targets`, `_sorcery_incarnate_active`,
+  `_armed_metamagic_options`, `_enhanced_necromancy_armed_for`, `_twinned_single_armed`,
+  `_apply_armed_metamagic`; `_grave_return_to_life` stayed) → `gui/app_spells.py`. `App`
+  keeps 31 forwarders (names used outside `main.py`, plus the bound callbacks
+  `_on_wish_duplicate`, `_drop_di_wish_free`, `_finish_cast`, `_finish_multi_target_spell`).
+  The spell-only tables moved with them (`_REPEAT_TARGET_SPELLS`, `ELEMENT_CHOICE_SPELLS`,
+  the Magic Circle ward options, `CLERIC_DI_SPELL_NAMES`, the Curse options) and so did the
+  summon registry (`SUMMON_SPELL_TO_MONSTER`, `_load_summon_spirits`,
+  `SUMMON_SPELL_TO_SPIRIT`), because `_activate_spell` reads it and `app_spells` cannot import
+  `main`; `main.py` imports back `CLERIC_DI_SPELL_NAMES` (tests) and `SUMMON_SPELL_TO_SPIRIT`.
+  A4b can take the summon registry into `app_summons.py`. `main.py` 15,459 lines.
 
 ## Risks
 
