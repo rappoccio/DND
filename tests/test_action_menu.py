@@ -282,9 +282,9 @@ def test_move_hunters_mark_is_offered_once_the_mark_drops():
     assert "move_hunters_mark" not in _group(app, aria, GROUP_BONUS), "costs the Bonus Action"
     app.bonus_used = False
     app._perform_action("move_hunters_mark", (0, 0))
-    assert app.pending_move_hunters_mark
+    assert app._picking("move_hunters_mark")
     app._resolve_move_hunters_mark(_idx(app, "Brannor"))
-    assert not app.pending_move_hunters_mark
+    assert not app._picking("move_hunters_mark")
     assert app.combat.get_agent_stats(app.bm, aria).hunters_mark_target == _idx(app, "Brannor")
     assert app.bonus_used
     s = app.combat.get_agent_stats(app.bm, skarn)
@@ -1630,17 +1630,17 @@ def test_shadowy_dodge_cell_pick_submits_the_parked_window():
     assert ctx.window == rpg.ReactionWindow.AfterAttack
     app._begin_shadowy_dodge_pick(
         next(i for i, o in enumerate(ctx.options) if o.feature == "ShadowyDodgeTeleportPick"))
-    assert app.pending_shadowy_dodge_cell
+    assert app._picking("shadowy_dodge_cell")
 
     app._resolve_shadowy_dodge_cell(rpg.Cell(sk.col, sk.row))       # occupied
-    assert app.pending_shadowy_dodge_cell and app.combat.pending_decision().active
+    assert app._picking("shadowy_dodge_cell") and app.combat.pending_decision().active
     me = app.bm.placed_agents[cyra].origin
     dest = next(rpg.Cell(me.col + dc, me.row + dr) for dr in range(-6, 7) for dc in range(-6, 7)
                 if app.combat.is_shadowy_dodge_destination(app.bm, cyra, rpg.Cell(me.col + dc, me.row + dr)))
     app._resolve_shadowy_dodge_cell(dest)
     at = app.bm.placed_agents[cyra].origin
     assert (at.col, at.row) == (dest.col, dest.row)
-    assert not app.pending_shadowy_dodge_cell and not app.combat.pending_decision().active
+    assert not app._picking("shadowy_dodge_cell") and not app.combat.pending_decision().active
     print("✅ test_shadowy_dodge_cell_pick_submits_the_parked_window passed")
 
 
@@ -1709,14 +1709,14 @@ def test_misty_wanderer_pick_and_the_passenger_prompt():
     assert app.combat.teleport_agent(app.bm, cyra, 3, 2)          # a willing ally within 5 ft
     _draw(app)
     assert app.perform("misty_wanderer", DM_PRINCIPAL_ID) is True
-    assert app.pending_misty_wanderer
+    assert app._picking("misty_wanderer")
     app._resolve_misty_wanderer(rpg.Cell(8, 3))
     assert app.prompts.live is not None, "an ally is within 5 ft: who comes along?"
     app.prompts.choose_label("Bring Cyra")
     at, ca = app.bm.placed_agents[aria].origin, app.bm.placed_agents[cyra].origin
     assert (at.col, at.row) == (8, 3)
     assert max(abs(ca.col - 8), abs(ca.row - 3)) == 1, "Cyra lands beside Aria"
-    assert app.bonus_used and not app.pending_misty_wanderer
+    assert app.bonus_used and not app._picking("misty_wanderer")
     print("✅ test_misty_wanderer_pick_and_the_passenger_prompt passed")
 
 
@@ -1812,19 +1812,19 @@ def test_the_two_telekinetic_options_are_two_widgets():
     # And one click arms one of them. Both handlers used to run on either click,
     # because neither was gated on the feat or on the subclass.
     app.pending_shove_type = ""
-    app.pending_telekinetic = False
+    app._drop_pick("telekinetic")
     app._draw_combat_panel()
     post_click(app, panel.cbt_btn(app, "telekinetic_psi").rect.center)
-    assert app.pending_telekinetic, "the Psi Warrior's own option did not arm"
+    assert app._picking("telekinetic"), "the Psi Warrior's own option did not arm"
     assert app.pending_shove_type != "telekinetic", "the feat's handler cross-fired"
 
-    app.pending_telekinetic = False
+    app._drop_pick("telekinetic")
     app._draw_combat_panel()
     post_click(app, panel.cbt_btn(app, "telekinetic_feat").rect.center)
     assert app.pending_shove_type == "telekinetic", "the feat's option did not arm"
-    assert not app.pending_telekinetic, "the Psi Warrior's handler cross-fired"
+    assert not app._picking("telekinetic"), "the Psi Warrior's handler cross-fired"
     app.pending_shove_type = ""
-    app.pending_telekinetic = False
+    app._drop_pick("telekinetic")
 
     s = app.combat.get_agent_stats(app.bm, cyra)
     s.feats = []

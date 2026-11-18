@@ -173,20 +173,20 @@ def main():
     shot(app, "10_F10_two_widgets_two_labels")
 
     app.pending_shove_type = ""
-    app.pending_telekinetic = False
+    app._drop_pick("telekinetic")
     frame(app)
     click(app, "telekinetic_psi")
-    print("  after clicking Movement: pending_telekinetic =", app.pending_telekinetic,
+    print("  after clicking Movement: pending_telekinetic =", app._picking("telekinetic"),
           " pending_shove_type =", repr(app.pending_shove_type))
     shot(app, "11_F10_psi_click_arms_only_psi")
-    app.pending_telekinetic = False
+    app._drop_pick("telekinetic")
     frame(app)
     click(app, "telekinetic_feat")
-    print("  after clicking Shove:    pending_telekinetic =", app.pending_telekinetic,
+    print("  after clicking Shove:    pending_telekinetic =", app._picking("telekinetic"),
           " pending_shove_type =", repr(app.pending_shove_type))
     shot(app, "12_F10_feat_click_arms_only_feat")
     app.pending_shove_type = ""
-    app.pending_telekinetic = False
+    app._drop_pick("telekinetic")
     s = app.combat.get_agent_stats(app.bm, cyra_f10)
     s.feats = []
     app.combat.set_agent_stats(app.bm, cyra_f10, s)

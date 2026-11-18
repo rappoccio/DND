@@ -86,6 +86,7 @@ import autosave
 import lair
 import run_control
 import sim_trace
+import pending
 import playback
 import app_board_render
 import app_dungeon_pages
@@ -922,6 +923,8 @@ class App:
         # is not reset between fights, and `_combat.json` carries it across a resume.
         self.reaction_timeout_s   = REACTION_TIMEOUT_DEFAULT_S
         self._offer_key           = None  # ...and the projection it was built from (net/offer.py)
+        # A2a: the click pick in progress (pending.py), at most one; None while nothing is armed.
+        self.pick: pending.Pick | None = None
         self._move_prompt         = None  # D-M5-4: the player's live Move prompt, if any (net/move.py)
         self._pick_prompt         = None  # M5d: the player's live target prompt, if any (net/picks.py)
         self._pick_key            = None  # ...and the projection it was built from
@@ -944,13 +947,6 @@ class App:
         self.pending_sudden_strike_targets = []  # Sudden Strike (Gloom Stalker L11): likewise
         self.pending_beasts_strike_targets = []  # Beast's Strike (Beast Master): the companion's legal targets
         self._beasts_strike_paid_now = False     # ...and whether arming it just paid an attack (cancel refunds it)
-        # Cleave weapon mastery: awaiting a 2nd-target click. {"attacker","first","weapon"} or None.
-        # Resolved out-of-band (no attacks_remaining / bonus-action accounting): Cleave is part of
-        # the Attack action, not a bonus action.
-        self.pending_cleave           = None
-        self.pending_sweep            = None   # Battle Master Sweeping Attack: awaiting 2nd-target click
-        self.pending_rally            = None   # Battle Master Rally: awaiting ally-target click
-        self.pending_feint            = None   # Battle Master Feinting Attack: awaiting target click
         self.attacks_remaining        = 0     # attacks left in current pending slot
         self._attack_sequence_slot    = ""    # "action" | "bonus" | "" — which slot the sequence belongs to
         self.pending_spell_slot        = ""    # "" | "action" | "bonus"
@@ -962,11 +958,7 @@ class App:
         # on the next cast, or None to dispel everything at the target (NPC/RL default). See
         # _begin_dispel_pick / _cast_dispel_selection.
         self.pending_dispel_selection  = None
-        # Chromatic Orb leap chain: after the primary target is chosen, the player clicks the
-        # orb's preferred leap path (each hop within 30 ft of the previous), then Enter to cast
-        # / Esc to cancel. The chain rides on SpellAction.chromatic_leap_targets; unpicked hops
-        # auto-target the nearest foe engine-side.
-        self.pending_chromatic_active  = False
+        # Chromatic Orb leap chain (the "chromatic" pick): the primary target and the hops chosen.
         self.pending_chromatic_primary = -1
         self.pending_chromatic_chain   = []
         # Summoning: awaiting a cell click to place a summoned creature.
@@ -991,52 +983,18 @@ class App:
         # Greater-DI (L20): set while a DI-chosen Wish runs its own duplicate flow, so _on_wish_duplicate
         # skips the 9th-slot charge (DI's 2d4 recharge lock is the cost instead).
         self._di_wish_free             = False
-        self.arcane_charge_pending     = False # Eldritch Knight L15: awaiting a teleport destination after Action Surge
-        self.blink_steps_pending       = False # Boon of Dimensional Travel: awaiting a Blink Steps teleport destination (≤30 ft)
-        self.pending_psychic_teleport  = False # Soulknife L9: awaiting a Psychic Teleportation destination
-        self.pending_shadow_step       = False # Warrior of Shadow L6+: awaiting a Shadow Step destination
-        self.pending_wild_magic_teleport = False # Wild Magic Sorcerer: awaiting a teleport destination (20 ft)
-        self.pending_warping_implosion = False # Aberrant L18 Warping Implosion: awaiting a teleport destination (120 ft)
-        self.pending_shadow_darkness   = False # Warrior of Shadow L3: awaiting a Shadow Arts: Darkness center cell
-        # Archfey Warlock — Misty Step teleports (Steps of the Fey / Misty Escape / Bewitching Magic).
-        self.pending_steps_of_fey      = False # Archfey L3+: awaiting a Steps of the Fey destination (Bonus)
-        self.pending_misty_wanderer    = False # Fey Wanderer L15: awaiting a Misty Wanderer destination (Bonus)
-        self.pending_misty_escape      = False # Archfey L6+: awaiting a Misty Escape destination (Reaction)
-        self.pending_bewitching_misty  = False # Archfey L14: awaiting a free Bewitching Magic Misty Step
         self.steps_of_fey_effect       = 0     # rider: 0 None,1 Refreshing,2 Taunting,3 Disappearing,4 Dreadful
-        self.pending_elemental_burst   = -1    # Warrior of the Elements L6: chosen element (MagicDamage_t) awaiting an Elemental Burst center cell; -1 = inactive
         # Trickery Cleric — Invoke Duplicity (Channel Divinity illusion).
-        self.pending_invoke_duplicity  = False # awaiting a cell to place an illusory duplicate
         self.pending_duplicity_remaining = 0   # duplicates still to place this activation (L17 → up to 4)
         self._duplicity_cd_pending     = False # spend Channel Divinity on the FIRST placement of an activation
-        self.pending_move_duplicity    = False # awaiting a destination to move a duplicate
         self.move_duplicity_idx        = -1    # selected duplicate to move/swap (-1 = pick one first)
-        self.pending_swap_duplicity    = False # awaiting which duplicate to swap with (multi-duplicate case)
         self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
         self.pending_shove_type        = ""    # "push" | "prone"
         self.pending_grapple_slot      = ""
         self.pending_unarmed_type      = ""    # "" | "grapple" | "push" (Damage routes via pending_attack_slot)
-        self.pending_heal_light        = False # Celestial Warlock Healing Light: awaiting target click
-        self.pending_lay_on_hands      = False # Paladin Lay on Hands: awaiting target click
-        self.pending_bastion_of_law    = False # Clockwork Sorcerer Bastion of Law: awaiting ward target click
         self.pending_bastion_sp        = 0     # SP chosen for the pending Bastion of Law ward (1-5)
-        self.pending_hand_of_healing   = False # Monk Warrior of Mercy Hand of Healing: awaiting target click
-        self.pending_use_item          = -1    # inventory slot chosen from the Use Item menu: awaiting target click (-1 = none)
-        self.pending_escape_net        = False # "Free from Net": awaiting the click on the netted creature to cut loose
-        self.pending_grant_inspiration = False # Bard Grant Inspiration: awaiting ally target click
-        self.pending_mantle_active     = False # Glamour Bard Mantle of Inspiration: collecting recipients
         self.pending_mantle_targets    = []    # chosen recipient indices (capped to CHA mod on resolve)
-        self.pending_beguiling         = False # Glamour Bard Beguiling Magic: awaiting target click after cast
         self.pending_beguiling_bard    = -1    # the Glamour bard who cast the qualifying Enchantment/Illusion spell
-        self.pending_clairvoyant       = False # Great Old One Warlock Clairvoyant Combatant: awaiting enemy target click
-        self.pending_vow_of_enmity     = False # Paladin Oath of Vengeance Vow of Enmity: awaiting enemy target click
-        self.pending_move_hunters_mark = False # Hunter's Mark / Hex: awaiting the mark's new creature
-        self.pending_path_to_the_grave = False # Grave Cleric Path to the Grave: awaiting a creature target click
-        self.pending_inspiring_smite   = False # Paladin Oath of Glory Inspiring Smite: awaiting temp-HP recipient click
-        self.pending_telekinetic       = False # Psi Warrior Telekinetic Movement: awaiting target click
-        self.pending_flurry_target     = False # Monk Flurry of Blows: awaiting target click
-        self.pending_vitality_target   = False # World Tree Vitality of the Tree: awaiting target click (within a parked turn-start window)
-        self.pending_shadowy_dodge_cell = False # Shadowy Dodge: awaiting a teleport cell (within a parked AfterAttack window)
         self._shadowy_dodge_option_index = -1   # the chosen AfterAttack option to submit once a cell is picked
         self._vitality_option_index    = -1    # the chosen reaction option index to submit once a target is picked
         self.pending_flurry_atk_idx    = -1    # attacker index for Flurry
@@ -1065,12 +1023,9 @@ class App:
         # next turn begins. _legendary_queue holds those creature indices, drained one at a time.
         self._legendary_queue        = []    # creature indices still owed a legendary-action offer
         self._legendary_actor        = -1    # creature currently being offered / resolving an action
-        self._legendary_target_pick  = False # armed: next map click picks the legendary attack target
-        self._legendary_spell_pick   = ""    # armed legendary spell: "creature" / "cell" pick, "" = none
         # Lair actions on initiative 20 (lair.py, STRAHD_LAIR_PLAN.md): the lair's owner while its
-        # turn runs, the armed map pick ("doors" / "apparition" / "shadow"), and the Doors choices.
+        # turn runs and the Doors choices (the map pick itself is the "lair" pick).
         self._lair_actor             = -1
-        self._lair_pick              = ""
         self._lair_doors             = {}
         self._legendary_spell_idx    = -1
         self._legendary_spell_label  = ""
@@ -3946,83 +3901,83 @@ class App:
         """
         hit = self._agent_at(cell)
         # Arcane Charge (EK L15): teleport up to 30 ft after Action Surge.
-        if self.arcane_charge_pending:
+        if self._picking("arcane_charge"):
             self._resolve_arcane_charge(cell)
         # Shadowy Dodge (Gloom Stalker L15): the teleport cell, inside a parked AfterAttack window.
-        elif self.pending_shadowy_dodge_cell:
+        elif self._picking("shadowy_dodge_cell"):
             self._resolve_shadowy_dodge_cell(cell)
         # Blink Steps (Boon of Dimensional Travel): teleport up to 30 ft after the action.
-        elif self.blink_steps_pending:
+        elif self._picking("blink_steps"):
             self._resolve_blink_steps(cell)
         # Psychic Teleportation (Soulknife L9): teleport up to 10×die ft.
-        elif self.pending_psychic_teleport:
+        elif self._picking("psychic_teleport"):
             self._resolve_psychic_teleport(cell)
-        elif self.pending_shadow_step:
+        elif self._picking("shadow_step"):
             self._resolve_shadow_step(cell)
-        elif self.pending_misty_wanderer:
+        elif self._picking("misty_wanderer"):
             self._resolve_misty_wanderer(cell)
-        elif self.pending_steps_of_fey:
+        elif self._picking("steps_of_fey"):
             self._resolve_steps_of_fey(cell)
-        elif self.pending_misty_escape:
+        elif self._picking("misty_escape"):
             self._resolve_misty_escape(cell)
-        elif self.pending_bewitching_misty:
+        elif self._picking("bewitching_misty"):
             self._resolve_bewitching_misty(cell)
-        elif self.pending_wild_magic_teleport:
+        elif self._picking("wild_magic_teleport"):
             self._resolve_wild_magic_teleport(cell)
-        elif self.pending_warping_implosion:
+        elif self._picking("warping_implosion"):
             self._resolve_warping_implosion(cell)
-        elif self.pending_shadow_darkness:
+        elif self._picking("shadow_darkness"):
             self._resolve_shadow_darkness(cell)
-        elif self.pending_elemental_burst >= 0:
+        elif self._pick_data("elemental_burst") >= 0:
             self._resolve_elemental_burst(cell)
         # Trickery Cleric — Invoke Duplicity placement / movement / multi-dup swap.
-        elif self.pending_invoke_duplicity:
+        elif self._picking("invoke_duplicity"):
             self._resolve_invoke_duplicity(cell)
-        elif self.pending_move_duplicity:
+        elif self._picking("move_duplicity"):
             self._resolve_move_duplicity(cell)
-        elif self.pending_swap_duplicity:
+        elif self._picking("swap_duplicity"):
             self._resolve_swap_duplicity(cell)
         # Pending attack: resolve against the clicked agent.
-        elif self.pending_cleave is not None and hit >= 0:
+        elif self._pick_data("cleave") is not None and hit >= 0:
             self._resolve_cleave(hit)
-        elif self.pending_sweep is not None and hit >= 0:
+        elif self._pick_data("sweep") is not None and hit >= 0:
             self._resolve_sweep(hit)
-        elif self.pending_rally is not None and hit >= 0:
+        elif self._pick_data("rally") is not None and hit >= 0:
             self._resolve_rally(hit)
-        elif self.pending_feint is not None and hit >= 0:
+        elif self._pick_data("feint") is not None and hit >= 0:
             self._resolve_feint(hit)
-        elif self.pending_mantle_active and hit >= 0:
+        elif self._picking("mantle") and hit >= 0:
             # Collecting Mantle of Inspiration recipients: each click adds one.
             self._mantle_add_target(hit)
-        elif self.pending_beguiling and hit >= 0:
+        elif self._picking("beguiling") and hit >= 0:
             # Beguiling Magic: the clicked creature must make a WIS save (then pick Charmed/Frightened).
             features.beguiling_pick_target(self, hit)
-        elif self.pending_clairvoyant and hit >= 0:
+        elif self._picking("clairvoyant") and hit >= 0:
             # Clairvoyant Combatant: the clicked enemy makes a WIS save against the GOO warlock.
             self._resolve_clairvoyant_combatant(hit)
-        elif self.pending_vow_of_enmity and hit >= 0:
+        elif self._picking("vow_of_enmity") and hit >= 0:
             # Vow of Enmity: the clicked enemy becomes the Vengeance paladin's sworn foe.
             self._resolve_vow_of_enmity(hit)
-        elif self.pending_path_to_the_grave and hit >= 0:
+        elif self._picking("path_to_the_grave") and hit >= 0:
             # Path to the Grave: the clicked creature is cursed by the Grave cleric.
             self._resolve_path_to_the_grave(hit)
-        elif self.pending_move_hunters_mark and hit >= 0:
+        elif self._picking("move_hunters_mark") and hit >= 0:
             # Hunter's Mark / Hex: the clicked creature takes over the mark.
             self._resolve_move_hunters_mark(hit)
-        elif self.pending_inspiring_smite and hit >= 0:
+        elif self._picking("inspiring_smite") and hit >= 0:
             # Inspiring Smite: the clicked creature (within 30 ft) gains temp HP.
             self._resolve_inspiring_smite(hit)
-        elif self._legendary_target_pick and hit >= 0:
+        elif self._picking("legendary_target") and hit >= 0:
             app_initiative.resolve_legendary_attack(self, hit)
-        elif self._legendary_spell_pick:
+        elif self._pick_data("legendary_spell"):
             self._resolve_legendary_spell(hit, cell)
-        elif self._lair_pick:
+        elif self._pick_data("lair"):
             lair.resolve_click(self, hit, cell, anchor)
         elif self.pending_attack_slot and hit >= 0:
             features.confirm_friendly_harm(self, hit, lambda h=hit: self._resolve_combat_attack(h))
         elif self.pending_summon_slot:
             self._resolve_summon(cell)
-        elif self.pending_chromatic_active and self.pending_spell_slot:
+        elif self._picking("chromatic") and self.pending_spell_slot:
             # Collecting Chromatic Orb's leap chain: each click adds a hop.
             self._chromatic_add_leap(hit)
         elif self.pending_spell_slot:
@@ -4098,25 +4053,25 @@ class App:
             self._resolve_shove(hit)
         elif self.pending_unarmed_type and hit >= 0:
             self._resolve_unarmed_option(hit)
-        elif self.pending_heal_light and hit >= 0:
+        elif self._picking("heal_light") and hit >= 0:
             self._resolve_healing_light(hit)
-        elif self.pending_lay_on_hands and hit >= 0:
+        elif self._picking("lay_on_hands") and hit >= 0:
             self._resolve_lay_on_hands(hit)
-        elif self.pending_bastion_of_law and hit >= 0:
+        elif self._picking("bastion_of_law") and hit >= 0:
             self._resolve_bastion_of_law(hit)
-        elif self.pending_hand_of_healing and hit >= 0:
+        elif self._picking("hand_of_healing") and hit >= 0:
             self._resolve_hand_of_healing(hit)
-        elif self.pending_use_item >= 0 and hit >= 0:
+        elif self._pick_data("use_item") >= 0 and hit >= 0:
             self._resolve_use_item(hit)
-        elif self.pending_escape_net and hit >= 0:
+        elif self._picking("escape_net") and hit >= 0:
             self._resolve_escape_net(hit)
-        elif self.pending_grant_inspiration and hit >= 0:
+        elif self._picking("grant_inspiration") and hit >= 0:
             self._resolve_grant_inspiration(hit)
-        elif self.pending_telekinetic and hit >= 0:
+        elif self._picking("telekinetic") and hit >= 0:
             self._resolve_telekinetic(hit)
-        elif self.pending_flurry_target and hit >= 0:
+        elif self._picking("flurry_target") and hit >= 0:
             self._resolve_flurry_target(hit)
-        elif self.pending_vitality_target and hit >= 0:
+        elif self._picking("vitality_target") and hit >= 0:
             self._resolve_vitality_target(hit)
         else:
             return False
@@ -4132,47 +4087,11 @@ class App:
         the next click into the stale handler ("the offer shows up on my next action"). This is the
         single defensive clear called at every turn boundary (turn start, combat start, combat end),
         so no single-feature clear has to be maintained per-site (fixes L36)."""
-        # Boolean "awaiting a click" arms.
-        self.arcane_charge_pending       = False
-        self.blink_steps_pending         = False
-        self.pending_psychic_teleport    = False
-        self.pending_shadow_step         = False
-        self.pending_wild_magic_teleport = False
-        self.pending_warping_implosion   = False
-        self.pending_shadow_darkness     = False
-        self.pending_steps_of_fey        = False
-        self.pending_misty_wanderer      = False
-        self.pending_misty_escape        = False
-        self.pending_bewitching_misty    = False
-        self.pending_invoke_duplicity    = False
-        self.pending_move_duplicity      = False
-        self.pending_swap_duplicity      = False
-        self.pending_heal_light          = False
-        self.pending_lay_on_hands        = False
-        self.pending_bastion_of_law      = False
-        self.pending_hand_of_healing     = False
-        self.pending_escape_net          = False
-        self.pending_grant_inspiration   = False
-        self.pending_mantle_active       = False
-        self.pending_beguiling           = False
-        self.pending_clairvoyant         = False
-        self.pending_vow_of_enmity       = False
-        self.pending_path_to_the_grave   = False
-        self.pending_move_hunters_mark   = False
-        self.pending_inspiring_smite     = False
-        self.pending_telekinetic         = False
-        self.pending_flurry_target       = False
-        self.pending_vitality_target     = False
-        self._legendary_target_pick      = False
-        self._legendary_spell_pick       = ""
-        self._lair_pick                  = ""
-        # None / -1 idle sentinels and their companion state.
-        self.pending_cleave              = None
-        self.pending_sweep               = None
-        self.pending_rally               = None
-        self.pending_feint               = None
-        self.pending_use_item            = -1
-        self.pending_elemental_burst     = -1
+        # Every click pick (pending.py) but Chromatic Orb's leap chain, which the turn boundary
+        # has never reset: it rides on its spell arm, and the spell arm is not reset here either.
+        if self.pick is not None and self.pick.kind != "chromatic":
+            self.pick = None
+        # Their companion state.
         self.pending_beguiling_bard      = -1
         self.move_duplicity_idx          = -1
         self._vitality_option_index      = -1
@@ -4199,32 +4118,12 @@ class App:
         self.pending_sudden_strike_targets = []   # rides along with pending_attack_slot
         self.pending_beasts_strike_targets = []   # rides along with pending_attack_slot
         self._beasts_strike_paid_now     = False
-        self.pending_shadowy_dodge_cell  = False
 
-    # The arms `_target_pick_armed` reads, with the idle value each rests at. Every field
-    # `_clear_pending_target_picks` resets is either here or in `_TARGET_PICK_COMPANIONS`;
-    # tests/test_offer.py holds the two lists to that function's body.
+    # Besides `self.pick` (any armed pick holds the offer back), the arms `_target_pick_armed`
+    # reads, with the idle value each rests at. Every field `_clear_pending_target_picks`
+    # resets is `pick`, one of these, or in `_TARGET_PICK_COMPANIONS`; tests/test_offer.py
+    # holds the lists to that function's body.
     _TARGET_PICK_ARMS = (
-        ("arcane_charge_pending", False), ("blink_steps_pending", False),
-        ("pending_psychic_teleport", False), ("pending_shadow_step", False),
-        ("pending_wild_magic_teleport", False), ("pending_warping_implosion", False),
-        ("pending_shadow_darkness", False), ("pending_steps_of_fey", False),
-        ("pending_misty_wanderer", False),
-        ("pending_misty_escape", False), ("pending_bewitching_misty", False),
-        ("pending_invoke_duplicity", False), ("pending_move_duplicity", False),
-        ("pending_swap_duplicity", False), ("pending_heal_light", False),
-        ("pending_lay_on_hands", False), ("pending_bastion_of_law", False),
-        ("pending_hand_of_healing", False), ("pending_escape_net", False),
-        ("pending_grant_inspiration", False), ("pending_mantle_active", False),
-        ("pending_beguiling", False), ("pending_clairvoyant", False),
-        ("pending_vow_of_enmity", False), ("pending_inspiring_smite", False),
-        ("pending_path_to_the_grave", False), ("pending_move_hunters_mark", False),
-        ("pending_telekinetic", False), ("pending_flurry_target", False),
-        ("pending_vitality_target", False), ("pending_shadowy_dodge_cell", False), ("_legendary_target_pick", False),
-        ("_legendary_spell_pick", ""), ("_lair_pick", ""),
-        ("pending_cleave", None), ("pending_sweep", None),
-        ("pending_rally", None), ("pending_feint", None),
-        ("pending_use_item", -1), ("pending_elemental_burst", -1),
         ("pending_beguiling_bard", -1), ("pending_summon_slot", ""),
         # Not reset at a turn boundary, but armed the same way: the attack, shove and
         # spell picks, and the jump overlay.
@@ -4252,7 +4151,31 @@ class App:
         would let it run over the armed one. A wired arm reaches its player as a target
         prompt instead (net/picks.py, M5d); any other is resolved by the DM on the map, or
         cleared by the turn boundary's `_clear_pending_target_picks()`."""
-        return any(getattr(self, name, idle) != idle for name, idle in self._TARGET_PICK_ARMS)
+        return (self.pick is not None
+                or any(getattr(self, name, idle) != idle for name, idle in self._TARGET_PICK_ARMS))
+
+    # ── The click pick in progress (pending.py). `kind` names the arm; see its docstring.
+    def _picking(self, kind: str) -> bool:
+        return self.pick is not None and self.pick.kind == kind
+
+    def _pick_data(self, kind: str):
+        """What the arm holds while `kind` is armed, else the idle value its old field rested at."""
+        return self.pick.data if self._picking(kind) else pending.idle(kind)
+
+    def _arm_pick(self, kind: str, data=True):
+        self.pick = pending.Pick(kind, data)
+
+    def _drop_pick(self, kind: str):
+        """Disarm `kind`. A different pick, if one is armed, is left alone."""
+        if self._picking(kind):
+            self.pick = None
+
+    def _set_pick(self, kind: str, value):
+        """Arm `kind` with `value`, or disarm it when `value` is its idle value."""
+        if value == pending.idle(kind):
+            self._drop_pick(kind)
+        else:
+            self._arm_pick(kind, value)
 
     def _reset_turn_economy(self):
         """The action economy and the half-finished action picks, as a turn starts them.
@@ -6063,8 +5986,8 @@ class App:
     def _cancel_cleave(self):
         """Esc out of a pending Cleave second-target pick. Refunds the once-per-turn use so the
         player can still Cleave on a later attack this turn."""
-        info = self.pending_cleave
-        self.pending_cleave = None
+        info = self._pick_data("cleave")
+        self._drop_pick("cleave")
         if not info:
             return
         c = self.combat.get_agent_conditions(self.bm, info["attacker"])
@@ -6079,8 +6002,8 @@ class App:
         no positive ability modifier on damage. The click must be one of the highlighted legal
         targets (within 5 ft of the first AND within reach); a stray click re-arms rather than
         wasting the Cleave. No action/bonus is consumed."""
-        info = self.pending_cleave
-        self.pending_cleave = None
+        info = self._pick_data("cleave")
+        self._drop_pick("cleave")
         if not info:
             return
         atk, first, wi = info["attacker"], info["first"], info["weapon"]
@@ -6089,14 +6012,14 @@ class App:
             valid = self._cleave_valid_targets(atk, first, wi)
         agents = self.bm.placed_agents
         if not (0 <= second_target < len(agents)):
-            self.pending_cleave = info  # off-map click — keep waiting
+            self._set_pick("cleave", info)  # off-map click — keep waiting
             return
         if second_target not in valid:
             self._combat_log_add(
                 "Cleave: pick a highlighted creature within 5 ft of the first target "
                 "and within your reach.")
             self._flush_combat_log()
-            self.pending_cleave = info  # re-arm so a misclick doesn't waste the Cleave
+            self._set_pick("cleave", info)  # re-arm so a misclick doesn't waste the Cleave
             return
 
         action = rpg.Attack(atk, second_target, wi)
@@ -6271,17 +6194,17 @@ class App:
         # Prompt for target selection
         self.pending_flurry_atk_idx = atk_idx
         self.pending_flurry_rider_option = rider_option
-        self.pending_flurry_target = True
+        self._arm_pick("flurry_target")
         self.hint = "Click target for Flurry of Blows"
 
     def _resolve_flurry_target(self, target_idx):
         """Resolve Flurry of Blows target selection and execute."""
-        if not hasattr(self, 'pending_flurry_atk_idx') or not self.pending_flurry_target:
+        if not hasattr(self, 'pending_flurry_atk_idx') or not self._picking("flurry_target"):
             return
 
         atk_idx = self.pending_flurry_atk_idx
         rider_option = self.pending_flurry_rider_option
-        self.pending_flurry_target = False
+        self._drop_pick("flurry_target")
 
         # Execute Flurry in C++
         result = self.combat.execute_flurry_of_blows(
@@ -6377,8 +6300,8 @@ class App:
         """Resolve a pending Sweeping Attack against the clicked 2nd creature (within 5 ft of the
         first target). Spends the superiority die; the original attack roll is reused to see if it
         would hit the 2nd creature's AC. No new attack roll, no action/bonus consumed."""
-        info = self.pending_sweep
-        self.pending_sweep = None
+        info = self._pick_data("sweep")
+        self._drop_pick("sweep")
         if not info:
             return
         atk, first = info["attacker"], info["first"]
@@ -6871,7 +6794,7 @@ class App:
 
     def _resolve_healing_light(self, target_idx: int):
         """Celestial Warlock Healing Light: spend max(1, CHA mod) d6 on the clicked target."""
-        self.pending_heal_light = False
+        self._drop_pick("heal_light")
         healer_idx = self._current_agent_idx()
         if not (0 <= healer_idx < len(self.bm.placed_agents)):
             return
@@ -6915,10 +6838,10 @@ class App:
 
     def _resolve_rally(self, target_idx: int):
         """Resolve a pending Rally against the clicked creature (within 30 ft)."""
-        fighter = self.pending_rally
+        fighter = self._pick_data("rally")
         agents = self.bm.placed_agents
         if fighter is None or not (0 <= target_idx < len(agents)):
-            self.pending_rally = None
+            self._drop_pick("rally")
             return
         fo, to = agents[fighter].origin, agents[target_idx].origin
         if max(abs(fo.col - to.col), abs(fo.row - to.row)) > 6:   # 30 ft = 6 cells (Chebyshev)
@@ -6926,7 +6849,7 @@ class App:
             self._combat_log_add("Rally: the target must be within 30 ft — pick a closer creature.")
             self._flush_combat_log()
             return
-        self.pending_rally = None
+        self._drop_pick("rally")
         amount = self.combat.apply_rally(self.bm, fighter, target_idx)
         if amount > 0:
             self.bonus_used = True
@@ -6935,10 +6858,10 @@ class App:
 
     def _resolve_feint(self, target_idx: int):
         """Resolve a pending Feinting Attack against the clicked creature (within 5 ft)."""
-        fighter = self.pending_feint
+        fighter = self._pick_data("feint")
         agents = self.bm.placed_agents
         if fighter is None or not (0 <= target_idx < len(agents)):
-            self.pending_feint = None
+            self._drop_pick("feint")
             return
         # Refused like an empty square: the pick stays armed, and the player is asked again.
         if target_idx == fighter:
@@ -6950,7 +6873,7 @@ class App:
             self._combat_log_add("Feinting Attack: the target must be within 5 ft — pick an adjacent creature.")
             self._flush_combat_log()
             return
-        self.pending_feint = None
+        self._drop_pick("feint")
         if self.combat.apply_feinting_attack(self.bm, fighter, target_idx):
             self.bonus_used = True
         self._flush_combat_log()
@@ -7037,15 +6960,15 @@ class App:
         clicked cell. Click your own cell to cancel. Engine validates range/legality + spends the die."""
         idx = self._current_agent_idx()
         if idx < 0:
-            self.pending_psychic_teleport = False
+            self._drop_pick("psychic_teleport")
             return
         origin = self.bm.placed_agents[idx].origin
         if cell.col == origin.col and cell.row == origin.row:
-            self.pending_psychic_teleport = False
+            self._drop_pick("psychic_teleport")
             self._combat_log_add("Psychic Teleportation cancelled.")
             return
         if self.combat.psychic_teleportation(self.bm, idx, cell.col, cell.row):
-            self.pending_psychic_teleport = False
+            self._drop_pick("psychic_teleport")
             self._flush_combat_log()
             self.bonus_used = True
             self._reset_movement(idx)
@@ -7061,15 +6984,15 @@ class App:
         L6 requires dim/dark light; L11+ works from any light. Click your own cell to cancel."""
         idx = self._current_agent_idx()
         if idx < 0:
-            self.pending_shadow_step = False
+            self._drop_pick("shadow_step")
             return
         origin = self.bm.placed_agents[idx].origin
         if cell.col == origin.col and cell.row == origin.row:
-            self.pending_shadow_step = False
+            self._drop_pick("shadow_step")
             self._combat_log_add("Shadow Step cancelled.")
             return
         if self.combat.shadow_step_teleport(self.bm, idx, cell.col, cell.row):
-            self.pending_shadow_step = False
+            self._drop_pick("shadow_step")
             self._flush_combat_log()
             self.bonus_used = True
             self._reset_movement(idx)
@@ -7085,7 +7008,7 @@ class App:
         willing creature within 5 ft, ask who comes along; the engine lands them in the first free
         space beside the destination. Click your own cell to cancel."""
         idx = self._current_agent_idx()
-        self.pending_misty_wanderer = False
+        self._drop_pick("misty_wanderer")
         if idx < 0:
             return
         origin = self.bm.placed_agents[idx].origin
@@ -7104,7 +7027,7 @@ class App:
             else:
                 self._flush_combat_log()
                 self._combat_log_add("Misty Wanderer: can't go there — pick another cell.")
-                self.pending_misty_wanderer = True
+                self._arm_pick("misty_wanderer")
 
         dest = rpg.Cell(cell.col, cell.row)
         allies = [a for a in self.combat.misty_wanderer_allies(self.bm, idx)
@@ -7122,15 +7045,15 @@ class App:
         Click your own cell to cancel."""
         idx = self._current_agent_idx()
         if idx < 0:
-            self.pending_steps_of_fey = False
+            self._drop_pick("steps_of_fey")
             return
         origin = self.bm.placed_agents[idx].origin
         if cell.col == origin.col and cell.row == origin.row:
-            self.pending_steps_of_fey = False
+            self._drop_pick("steps_of_fey")
             self._combat_log_add("Steps of the Fey cancelled.")
             return
         if self.combat.steps_of_the_fey(self.bm, idx, cell.col, cell.row, self.steps_of_fey_effect, False):
-            self.pending_steps_of_fey = False
+            self._drop_pick("steps_of_fey")
             self._flush_combat_log()
             self.bonus_used = True
             self._reset_movement(idx)
@@ -7145,15 +7068,15 @@ class App:
         Action. Click your own cell to cancel."""
         idx = self._current_agent_idx()
         if idx < 0:
-            self.pending_misty_escape = False
+            self._drop_pick("misty_escape")
             return
         origin = self.bm.placed_agents[idx].origin
         if cell.col == origin.col and cell.row == origin.row:
-            self.pending_misty_escape = False
+            self._drop_pick("misty_escape")
             self._combat_log_add("Misty Escape cancelled.")
             return
         if self.combat.steps_of_the_fey(self.bm, idx, cell.col, cell.row, self.steps_of_fey_effect, True):
-            self.pending_misty_escape = False
+            self._drop_pick("misty_escape")
             self._flush_combat_log()
             self._reset_movement(idx)
             self._update_reach()
@@ -7167,15 +7090,15 @@ class App:
         Enchantment/Illusion action-cast. Click your own cell to decline."""
         idx = self._current_agent_idx()
         if idx < 0:
-            self.pending_bewitching_misty = False
+            self._drop_pick("bewitching_misty")
             return
         origin = self.bm.placed_agents[idx].origin
         if cell.col == origin.col and cell.row == origin.row:
-            self.pending_bewitching_misty = False
+            self._drop_pick("bewitching_misty")
             self._combat_log_add("Bewitching Magic Misty Step declined.")
             return
         if self.combat.bewitching_misty_step(self.bm, idx, cell.col, cell.row, self.steps_of_fey_effect):
-            self.pending_bewitching_misty = False
+            self._drop_pick("bewitching_misty")
             self._flush_combat_log()
             self._reset_movement(idx)
             self._update_reach()
@@ -7189,11 +7112,11 @@ class App:
         Click your own cell to cancel."""
         idx = self._current_agent_idx()
         if idx < 0:
-            self.pending_wild_magic_teleport = False
+            self._drop_pick("wild_magic_teleport")
             return
         origin = self.bm.placed_agents[idx].origin
         if cell.col == origin.col and cell.row == origin.row:
-            self.pending_wild_magic_teleport = False
+            self._drop_pick("wild_magic_teleport")
             self._combat_log_add("Wild Magic Teleport cancelled.")
             return
         # Validate 20-ft range (4 cells at 5-ft scale).
@@ -7204,7 +7127,7 @@ class App:
             self._combat_log_add("Wild Magic Teleport: destination must be within 20 ft — pick a closer cell.")
             return
         if self.combat.teleport_agent(self.bm, idx, cell.col, cell.row):
-            self.pending_wild_magic_teleport = False
+            self._drop_pick("wild_magic_teleport")
             stats = self.combat.get_agent_stats(self.bm, idx)
             stats.wild_magic_teleport_bonus_turns = max(0, stats.wild_magic_teleport_bonus_turns - 1)
             self.combat.set_agent_stats(self.bm, idx, stats)
@@ -7225,11 +7148,11 @@ class App:
         engine validates range/cost. Click your own cell to cancel."""
         idx = self._current_agent_idx()
         if idx < 0:
-            self.pending_warping_implosion = False
+            self._drop_pick("warping_implosion")
             return
         origin = self.bm.placed_agents[idx].origin
         if cell.col == origin.col and cell.row == origin.row:
-            self.pending_warping_implosion = False
+            self._drop_pick("warping_implosion")
             self._combat_log_add("Warping Implosion cancelled.")
             return
         dist_ft = max(abs(cell.col - origin.col), abs(cell.row - origin.row)) * 5
@@ -7238,7 +7161,7 @@ class App:
             return
         affected = self.combat.warping_implosion(self.bm, idx, cell.col, cell.row)
         if affected >= 0:
-            self.pending_warping_implosion = False
+            self._drop_pick("warping_implosion")
             self.action_used = True
             self._reset_movement(idx)
             self._update_reach()
@@ -7256,15 +7179,15 @@ class App:
         cell with magical Darkness (1 Focus, Magic action). Click your own cell to cancel."""
         idx = self._current_agent_idx()
         if idx < 0:
-            self.pending_shadow_darkness = False
+            self._drop_pick("shadow_darkness")
             return
         origin = self.bm.placed_agents[idx].origin
         if cell.col == origin.col and cell.row == origin.row:
-            self.pending_shadow_darkness = False
+            self._drop_pick("shadow_darkness")
             self._combat_log_add("Shadow Arts: Darkness cancelled.")
             return
         if self.combat.shadow_arts_darkness(self.bm, idx, cell.col, cell.row) >= 0:
-            self.pending_shadow_darkness = False
+            self._drop_pick("shadow_darkness")
             self._flush_combat_log()
             self.action_used = True
             self._update_attack_overlay()
@@ -7277,16 +7200,16 @@ class App:
         the clicked cell (2 Focus, Magic action). Click your own cell to cancel."""
         idx = self._current_agent_idx()
         if idx < 0:
-            self.pending_elemental_burst = -1
+            self._drop_pick("elemental_burst")
             return
-        element = self.pending_elemental_burst
+        element = self._pick_data("elemental_burst")
         origin = self.bm.placed_agents[idx].origin
         if cell.col == origin.col and cell.row == origin.row:
-            self.pending_elemental_burst = -1
+            self._drop_pick("elemental_burst")
             self._combat_log_add("Elemental Burst cancelled.")
             return
         if self.combat.elemental_burst(self.bm, idx, cell.col, cell.row, element):
-            self.pending_elemental_burst = -1
+            self._drop_pick("elemental_burst")
             self._flush_combat_log()
             self.action_used = True
             self._update_attack_overlay()
@@ -7336,7 +7259,7 @@ class App:
         if (stats.character_class == rpg.CharacterClass.Fighter and
                 stats.fighter_subclass == rpg.FighterSubclass.EldritchKnight and
                 stats.char_level >= 15):
-            self.arcane_charge_pending = True
+            self._arm_pick("arcane_charge")
             self._combat_log_add(
                 "Arcane Charge: click a destination within 30 ft to teleport (or click yourself to skip).")
 
@@ -7346,16 +7269,16 @@ class App:
         skip gesture (click your own cell) and maps the engine's status code to a message."""
         idx = self._current_agent_idx()
         if idx < 0:
-            self.arcane_charge_pending = False
+            self._drop_pick("arcane_charge")
             return
         origin = self.bm.placed_agents[idx].origin
         if cell.col == origin.col and cell.row == origin.row:
-            self.arcane_charge_pending = False
+            self._drop_pick("arcane_charge")
             self._combat_log_add("Arcane Charge skipped.")
             return
         feet = self.combat.apply_arcane_charge(self.bm, idx, cell.col, cell.row)
         if feet >= 0:
-            self.arcane_charge_pending = False
+            self._drop_pick("arcane_charge")
             self._flush_combat_log()  # surface the engine's teleport log line
         elif feet == -2:
             self._combat_log_add("Arcane Charge: out of range (max 30 ft) — pick a closer cell.")
@@ -7369,13 +7292,13 @@ class App:
         engine path; clears the blink_steps_available arming on success or on the skip gesture."""
         idx = self._current_agent_idx()
         if idx < 0:
-            self.blink_steps_pending = False
+            self._drop_pick("blink_steps")
             return
         pt = self.bm.placed_agents[idx]
         origin = pt.origin
         # Click your own cell to skip.
         if cell.col == origin.col and cell.row == origin.row:
-            self.blink_steps_pending = False
+            self._drop_pick("blink_steps")
             self._clear_blink_steps_arm(idx)
             self._combat_log_add("Blink Steps skipped.")
             return
@@ -7390,7 +7313,7 @@ class App:
             self._combat_log_add("Blink Steps: no line of sight to that cell — pick a visible one.")
             return
         if self.combat.teleport_agent(self.bm, idx, cell.col, cell.row):
-            self.blink_steps_pending = False
+            self._drop_pick("blink_steps")
             self._clear_blink_steps_arm(idx)
             self._mark_fog_dirty()   # the teleport moved the token; explored mask + overlays need a refresh
             self._combat_log_add(
@@ -7500,7 +7423,7 @@ class App:
 
     def _resolve_telekinetic(self, target_idx: int):
         """Psi Warrior Telekinetic Movement: push the clicked target up to 30 ft away (once per rest)."""
-        self.pending_telekinetic = False
+        self._drop_pick("telekinetic")
         idx = self._current_agent_idx()
         if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
             return
@@ -7517,7 +7440,7 @@ class App:
         """Great Old One Warlock Clairvoyant Combatant: the clicked enemy makes a WIS save against the
         warlock; on a failure the warlock gains Advantage vs it and it has Disadvantage vs the warlock
         until the warlock's next turn. Spends a use (or a Pact slot) and the bonus action on success."""
-        self.pending_clairvoyant = False
+        self._drop_pick("clairvoyant")
         idx = self._current_agent_idx()
         if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
             return
@@ -7534,7 +7457,7 @@ class App:
     def _resolve_vow_of_enmity(self, target_idx: int):
         """Paladin Oath of Vengeance Vow of Enmity: the clicked enemy becomes the sworn foe — the
         paladin gains Advantage on attacks against it for 1 minute. Spends one Channel Oath use."""
-        self.pending_vow_of_enmity = False
+        self._drop_pick("vow_of_enmity")
         idx = self._current_agent_idx()
         if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
             return
@@ -7550,7 +7473,7 @@ class App:
     def _resolve_path_to_the_grave(self, target_idx: int):
         """Grave Cleric Path to the Grave: curse the clicked creature (within 30 ft, seen) until the
         start of the cleric's next turn. The engine spends the Channel Divinity use and the Bonus Action."""
-        self.pending_path_to_the_grave = False
+        self._drop_pick("path_to_the_grave")
         idx = self._current_agent_idx()
         if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
             return
@@ -7566,7 +7489,7 @@ class App:
     def _resolve_move_hunters_mark(self, target_idx: int):
         """Hunter's Mark / Hex: the marked creature dropped to 0 HP, so move the mark to the clicked
         creature (seen, within 90 ft). The engine spends the Bonus Action."""
-        self.pending_move_hunters_mark = False
+        self._drop_pick("move_hunters_mark")
         idx = self._current_agent_idx()
         if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
             return
@@ -7579,7 +7502,7 @@ class App:
     def _resolve_inspiring_smite(self, target_idx: int):
         """Paladin Oath of Glory Inspiring Smite: grant the clicked creature (within 30 ft, may be self)
         2d8 + Paladin level temporary HP. Spends one Channel Oath use; only right after a Divine Smite."""
-        self.pending_inspiring_smite = False
+        self._drop_pick("inspiring_smite")
         idx = self._current_agent_idx()
         if not (0 <= idx < len(self.bm.placed_agents)) or not (0 <= target_idx < len(self.bm.placed_agents)):
             return
@@ -7592,7 +7515,7 @@ class App:
 
     def _resolve_lay_on_hands(self, target_idx: int):
         """Paladin Lay on Hands: spend from pool, heal target."""
-        self.pending_lay_on_hands = False
+        self._drop_pick("lay_on_hands")
         healer_idx = self._current_agent_idx()
         if not (0 <= healer_idx < len(self.bm.placed_agents)):
             return
@@ -7616,7 +7539,7 @@ class App:
         if healing <= 0:
             # Refused like an empty square: the pick stays armed, so the player is asked
             # again and the DM can click someone else or Esc out.
-            self.pending_lay_on_hands = True
+            self._arm_pick("lay_on_hands")
             self._combat_log_add(f"{self.bm.placed_agents[target_idx].name}: Already at full HP. "
                                  "Choose another creature, or cancel.")
             return
@@ -7640,7 +7563,7 @@ class App:
     def _resolve_bastion_of_law(self, target_idx: int):
         """Clockwork Sorcerer L6 Bastion of Law: spend the chosen Sorcery Points (1-5) to ward the
         clicked target (self or a creature within 30 ft) with a pre-rolled (sp)d8 absorption pool."""
-        self.pending_bastion_of_law = False
+        self._drop_pick("bastion_of_law")
         sp = self.pending_bastion_sp
         self.pending_bastion_sp = 0
         caster_idx = self._current_agent_idx()
@@ -7659,7 +7582,7 @@ class App:
     def _resolve_hand_of_healing(self, target_idx: int):
         """Monk Warrior of Mercy Hand of Healing: spend a bonus action + 1 Focus Point to heal the
         clicked target (Martial Arts die + WIS). At L6 (Physician's Touch) it also ends a condition."""
-        self.pending_hand_of_healing = False
+        self._drop_pick("hand_of_healing")
         healer_idx = self._current_agent_idx()
         if not (0 <= healer_idx < len(self.bm.placed_agents)):
             return
@@ -7731,8 +7654,8 @@ class App:
         The engine owns the rules — range, the heal/save rolls, the condition riders, and spending
         the charge — so a rejected use (out of reach, no bonus action left) costs nothing. The
         action economy is charged here, on the GUI's budgets."""
-        slot = self.pending_use_item
-        self.pending_use_item = -1
+        slot = self._pick_data("use_item")
+        self._drop_pick("use_item")
         user_idx = self._current_agent_idx()
         if not (0 <= user_idx < len(self.bm.placed_agents)):
             return
@@ -7830,12 +7753,12 @@ class App:
         elif len(freeable) == 1:
             self._resolve_escape_net(freeable[0])  # only one neighbour to free — no click needed
         else:
-            self.pending_escape_net = True
+            self._arm_pick("escape_net")
             self.hint = "Click the netted creature to free (within 5 ft)"
 
     def _resolve_escape_net(self, target_idx: int):
         """Free a netted creature (self, or one within 5 ft) with a DC 10 STR check — an action."""
-        self.pending_escape_net = False
+        self._drop_pick("escape_net")
         actor_idx = self._current_agent_idx()
         if not (0 <= actor_idx < len(self.bm.placed_agents)):
             return
@@ -7861,7 +7784,7 @@ class App:
     def _resolve_grant_inspiration(self, target_idx: int):
         """Bard Grant Inspiration (bonus action): spend a Bardic Inspiration use to give
         an ally a Bardic Inspiration die of the bard's current size."""
-        self.pending_grant_inspiration = False
+        self._drop_pick("grant_inspiration")
         bard_idx = self._current_agent_idx()
         if not (0 <= bard_idx < len(self.bm.placed_agents)):
             return
@@ -7919,7 +7842,7 @@ class App:
             self._combat_log_add(f"{self.bm.placed_agents[bard_idx].name}: no Bardic Inspiration uses left.")
             self._flush_combat_log()
             return
-        self.pending_mantle_active  = True
+        self._arm_pick("mantle")
         self.pending_mantle_targets = []
         cap = self._mantle_cha_cap(bard_idx)
         self._combat_log_add(
@@ -7958,7 +7881,7 @@ class App:
         """Resolve Mantle of Inspiration on the collected recipients."""
         bard_idx = self._current_agent_idx()
         targets  = list(self.pending_mantle_targets)
-        self.pending_mantle_active  = False
+        self._drop_pick("mantle")
         self.pending_mantle_targets = []
         if not (0 <= bard_idx < len(self.bm.placed_agents)) or not targets:
             self._combat_log_add("Mantle of Inspiration cancelled (no targets).")
@@ -7977,7 +7900,7 @@ class App:
 
     def _cancel_mantle(self):
         """Esc out of Mantle of Inspiration without spending the Bardic Inspiration use."""
-        self.pending_mantle_active  = False
+        self._drop_pick("mantle")
         self.pending_mantle_targets = []
         self._combat_log_add("Mantle of Inspiration cancelled.")
         self._flush_combat_log()
@@ -8573,7 +8496,7 @@ class App:
         self.pending_forcecage_sealed   = False   # Forcecage form: False = Cage (20 ft), True = Box (10 ft)
         # A new cast always starts with no leftover Chromatic Orb leap chain (e.g. if a prior
         # chain was abandoned by a turn change), so stale hops can't hijack this cast's clicks.
-        self.pending_chromatic_active  = False
+        self._drop_pick("chromatic")
         self.pending_chromatic_primary = -1
         self.pending_chromatic_chain   = []
 
@@ -9585,7 +9508,7 @@ class App:
         now arm a target click so they choose which creature within 10 ft gets the temp HP. The
         OnTurnStartNearby window stays parked until _resolve_vitality_target submits the response."""
         self._vitality_option_index = option_index
-        self.pending_vitality_target = True
+        self._arm_pick("vitality_target")
         pd = self.combat.pending_decision()
         src = pd.ctx.source_idx if pd.active else -1
         agents = self.bm.placed_agents
@@ -9599,7 +9522,7 @@ class App:
         """Shadowy Dodge (Gloom Stalker L15): the player chose to pick the teleport cell. The
         AfterAttack window stays parked until _resolve_shadowy_dodge_cell submits it."""
         self._shadowy_dodge_option_index = option_index
-        self.pending_shadowy_dodge_cell = True
+        self._arm_pick("shadowy_dodge_cell")
         pd = self.combat.pending_decision()
         idx = pd.ctx.reactor_idx if pd.active else -1
         agents = self.bm.placed_agents
@@ -9613,7 +9536,7 @@ class App:
         cell stays put; an illegal cell re-prompts."""
         pd = self.combat.pending_decision()
         if not pd.active or pd.ctx.window != rpg.ReactionWindow.AfterAttack:
-            self.pending_shadowy_dodge_cell = False   # stale arm: the window is gone
+            self._drop_pick("shadowy_dodge_cell")   # stale arm: the window is gone
             self._shadowy_dodge_option_index = -1
             return
         idx = pd.ctx.reactor_idx
@@ -9629,7 +9552,7 @@ class App:
         else:
             resp.option = self._shadowy_dodge_option_index
             resp.cell_col, resp.cell_row = cell.col, cell.row
-        self.pending_shadowy_dodge_cell = False
+        self._drop_pick("shadowy_dodge_cell")
         self._shadowy_dodge_option_index = -1
         status = self.combat.submit_decision(self.bm, resp)
         self._flush_combat_log()
@@ -9663,7 +9586,7 @@ class App:
         # catches a stale click mid-turn before the next turn starts.
         if not pd.active or pd.ctx.window != rpg.ReactionWindow.OnTurnStartNearby or src < 0:
             print("[VITALITY] no live OnTurnStartNearby window — disarming stale target-pick")
-            self.pending_vitality_target = False
+            self._drop_pick("vitality_target")
             self._vitality_option_index  = -1
             return
         if (target_idx == src or not self._vitality_in_range(src, target_idx)
@@ -9671,8 +9594,8 @@ class App:
                 or self.combat.get_agent_stats(self.bm, target_idx).hp_cur <= 0):
             self._combat_log_add("Pick a living creature within 10 ft (or choose Skip).")
             self._flush_combat_log()
-            return  # keep pending_vitality_target armed for another click
-        self.pending_vitality_target = False
+            return  # keep the vitality_target pick armed for another click
+        self._drop_pick("vitality_target")
         resp = rpg.ReactionResponse()
         resp.option     = self._vitality_option_index
         resp.target_idx = target_idx
@@ -10246,7 +10169,7 @@ class App:
         Divinity + the Bonus Action are spent on the FIRST placement of an activation; at L17 (Improved
         Duplicity) up to four duplicates are placed across successive clicks."""
         caster_idx = self._current_agent_idx()
-        if caster_idx < 0 or not self.pending_invoke_duplicity:
+        if caster_idx < 0 or not self._picking("invoke_duplicity"):
             return
         cstats = self.combat.get_agent_stats(self.bm, caster_idx)
         caster = self.bm.placed_agents[caster_idx]
@@ -10271,7 +10194,7 @@ class App:
             cd = cstats.get_resource("Channel Divinity")
             if not cd or cd.current <= 0:
                 self._combat_log_add("No Channel Divinity uses remaining.")
-                self.pending_invoke_duplicity = False
+                self._drop_pick("invoke_duplicity")
                 self.pending_duplicity_remaining = 0
                 return
             for di in self._my_duplicates(caster_idx):
@@ -10306,7 +10229,7 @@ class App:
             self._combat_log_add(
                 f"Improved Duplicity — click to place {self.pending_duplicity_remaining} more duplicate(s).")
         else:
-            self.pending_invoke_duplicity = False
+            self._drop_pick("invoke_duplicity")
             if cstats.char_level >= 6:
                 self._combat_log_add("Trickster's Transposition available — 'Swap w/ Duplicate' to teleport.")
 
@@ -10314,11 +10237,11 @@ class App:
         """Move a duplicate up to 30 ft (Bonus Action). With multiple duplicates the first click selects
         one; the lone-duplicate case pre-selects it so the click is its destination."""
         caster_idx = self._current_agent_idx()
-        if caster_idx < 0 or not self.pending_move_duplicity:
+        if caster_idx < 0 or not self._picking("move_duplicity"):
             return
         dups = self._my_duplicates(caster_idx)
         if not dups:
-            self.pending_move_duplicity = False
+            self._drop_pick("move_duplicity")
             self.move_duplicity_idx = -1
             return
         if self.move_duplicity_idx < 0:
@@ -10338,18 +10261,18 @@ class App:
         else:
             self._flush_combat_log()
             self._combat_log_add("Cannot move the duplicate there (out of range or blocked).")
-        self.pending_move_duplicity = False
+        self._drop_pick("move_duplicity")
         self.move_duplicity_idx = -1
 
     def _resolve_swap_duplicity(self, cell):
         """Multi-duplicate Trickster's Transposition: the click picks which duplicate to swap with."""
         caster_idx = self._current_agent_idx()
-        if caster_idx < 0 or not self.pending_swap_duplicity:
+        if caster_idx < 0 or not self._picking("swap_duplicity"):
             return
         hit = self._agent_at(cell)
         if hit in self._my_duplicates(caster_idx):
             self._do_swap_duplicity(caster_idx, hit)
-            self.pending_swap_duplicity = False
+            self._drop_pick("swap_duplicity")
         else:
             self._combat_log_add("Click one of your duplicates to swap with it.")
 
@@ -10611,7 +10534,7 @@ class App:
 
     def _enter_chromatic_chain(self, primary_idx: int):
         """Primary target chosen — switch to leap-chain collection mode (no cast yet)."""
-        self.pending_chromatic_active  = True
+        self._arm_pick("chromatic")
         self.pending_chromatic_primary = primary_idx
         self.pending_chromatic_chain   = []
         name = self.bm.placed_agents[primary_idx].name
@@ -10651,12 +10574,12 @@ class App:
         primary = self.pending_chromatic_primary
         if primary < 0:
             return
-        self.pending_chromatic_active = False
+        self._drop_pick("chromatic")
         # _resolve_spell_cast reads pending_chromatic_chain and clears the chain state.
         self._resolve_spell_cast(primary)
 
     def _cancel_chromatic_chain(self):
-        self.pending_chromatic_active  = False
+        self._drop_pick("chromatic")
         self.pending_chromatic_primary = -1
         self.pending_chromatic_chain   = []
         self.pending_spell_slot        = ""
@@ -11003,7 +10926,7 @@ class App:
         self.pending_spell_command_word = -1
         self.pending_spell_curse_choice = -1
         self.spell_hover_cell          = None
-        self.pending_chromatic_active  = False
+        self._drop_pick("chromatic")
         self.pending_chromatic_primary = -1
         self.pending_chromatic_chain   = []
 
@@ -11084,21 +11007,21 @@ class App:
     def _arm_bewitching_misty(self, caster_idx: int):
         """DM accepted Bewitching Magic — arm the free Misty Step destination pick (with the currently
         selected Steps of the Fey rider)."""
-        self.pending_bewitching_misty = True
+        self._arm_pick("bewitching_misty")
         self._combat_log_add(
             "Bewitching Magic — click a destination within 30 ft (or click yourself to decline).")
         self._flush_combat_log()
 
     def _decline_bewitching_offer(self):
         """DM declined the free Bewitching Magic Misty Step."""
-        self.pending_bewitching_misty = False
+        self._drop_pick("bewitching_misty")
         self._combat_log_add("Bewitching Magic not used.")
         self._flush_combat_log()
 
     def _arm_beguiling_target_pick(self, caster_idx: int):
         """DM accepted the Beguiling Magic offer — arm the click-a-creature target pick (a following
         creature click routes to _beguiling_pick_target for the WIS save + Charmed/Frightened pick)."""
-        self.pending_beguiling      = True
+        self._arm_pick("beguiling")
         self.pending_beguiling_bard = caster_idx
         self._combat_log_add(
             "Beguiling Magic — click a creature within 60 ft to force a WIS save (Esc declines).")
@@ -11106,7 +11029,7 @@ class App:
 
     def _decline_beguiling_offer(self):
         """DM declined the Beguiling Magic offer — spend nothing, disarm."""
-        self.pending_beguiling      = False
+        self._drop_pick("beguiling")
         self.pending_beguiling_bard = -1
         self._combat_log_add("Beguiling Magic not used.")
         self._flush_combat_log()
@@ -11114,7 +11037,7 @@ class App:
 
     def _cancel_beguiling(self):
         """Esc out of Beguiling Magic without using it (the spell was already cast normally)."""
-        self.pending_beguiling      = False
+        self._drop_pick("beguiling")
         self.pending_beguiling_bard = -1
         self._combat_log_add("Beguiling Magic declined.")
         self._flush_combat_log()
@@ -15808,7 +15731,7 @@ class App:
                     else:
                         self._combat_log_add(f"{agent.name}: Wholeness of Body unavailable.")
             if action_id == "hand_of_healing":
-                self.pending_hand_of_healing = True
+                self._arm_pick("hand_of_healing")
                 self.hint = "Click target for Hand of Healing"
             if action_id == "rage":
                 idx = self._current_agent_idx()
@@ -15836,22 +15759,22 @@ class App:
             if action_id == "clairvoyant_combatant":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_clairvoyant = True
+                    self._arm_pick("clairvoyant")
                     self._combat_log_add("Clairvoyant Combatant: click an enemy within 60 ft to target.")
             if action_id == "path_to_the_grave":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_path_to_the_grave = True
+                    self._arm_pick("path_to_the_grave")
                     self._combat_log_add("Path to the Grave: click a creature within 30 ft to curse it.")
             if action_id == "vow_of_enmity":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_vow_of_enmity = True
+                    self._arm_pick("vow_of_enmity")
                     self._combat_log_add("Vow of Enmity: click an enemy within 30 ft to swear enmity against it.")
             if action_id == "inspiring_smite":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_inspiring_smite = True
+                    self._arm_pick("inspiring_smite")
                     self._combat_log_add("Inspiring Smite: click a creature within 30 ft (including yourself) to grant temp HP.")
             if action_id == "avenging_angel":
                 idx = self._current_agent_idx()
@@ -15875,7 +15798,7 @@ class App:
             if action_id == "healing_light":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_heal_light = True
+                    self._arm_pick("heal_light")
                     self._combat_log_add("Healing Light — click an ally (or self) to heal.")
             if action_id == "turn_undead":
                 idx = self._current_agent_idx()
@@ -15938,7 +15861,7 @@ class App:
                 if 0 <= idx < len(self.bm.placed_agents):
                     stats = self.combat.get_agent_stats(self.bm, idx)
                     # Improved Duplicity (L17) creates up to four illusions; otherwise just one.
-                    self.pending_invoke_duplicity   = True
+                    self._arm_pick("invoke_duplicity")
                     self.pending_duplicity_remaining = 4 if stats.char_level >= 17 else 1
                     self._duplicity_cd_pending      = True
                     self.move_duplicity_idx         = -1
@@ -15953,7 +15876,7 @@ class App:
                     if not dups:
                         self._combat_log_add("No active duplicate to move.")
                     else:
-                        self.pending_move_duplicity = True
+                        self._arm_pick("move_duplicity")
                         # Lone duplicate: pre-select it so the next click is its destination.
                         self.move_duplicity_idx = dups[0] if len(dups) == 1 else -1
                         self._combat_log_add(
@@ -15968,7 +15891,7 @@ class App:
                     elif len(dups) == 1:
                         self._do_swap_duplicity(idx, dups[0])
                     else:
-                        self.pending_swap_duplicity = True
+                        self._arm_pick("swap_duplicity")
                         self._combat_log_add("Swap — click the duplicate to trade places with.")
             if action_id == "steady_aim":
                 idx = self._current_agent_idx()
@@ -16021,7 +15944,7 @@ class App:
             if action_id == "blink_steps":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents) and self._blink_steps_ready(idx):
-                    self.blink_steps_pending = True
+                    self._arm_pick("blink_steps")
                     self._combat_log_add(
                         "Blink Steps: click a destination within 30 ft you can see "
                         "(or click yourself to skip).")
@@ -16069,10 +15992,10 @@ class App:
                 if 0 <= idx < len(self.bm.placed_agents):
                     self._use_action_surge(idx)
             if action_id == "lay_on_hands":
-                self.pending_lay_on_hands = True
+                self._arm_pick("lay_on_hands")
                 self.hint = "Click target for Lay on Hands healing"
             if action_id == "grant_inspiration":
-                self.pending_grant_inspiration = True
+                self._arm_pick("grant_inspiration")
                 self.hint = "Click an ally to grant a Bardic Inspiration die"
             if action_id == "mantle":
                 idx = self._current_agent_idx()
@@ -16104,7 +16027,7 @@ class App:
                 if 0 <= idx < len(self.bm.placed_agents):
                     self._use_corona_of_light(idx)
             if action_id == "telekinetic_psi":
-                self.pending_telekinetic = True
+                self._arm_pick("telekinetic")
                 self.hint = "Click a creature to move with Telekinetic Movement"
             if action_id == "tireless":
                 idx = self._current_agent_idx()
@@ -16125,13 +16048,13 @@ class App:
             if action_id == "psychic_teleport":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_psychic_teleport = True
+                    self._arm_pick("psychic_teleport")
                     self._combat_log_add(
                         "Psychic Teleportation: click a destination (or click yourself to cancel).")
             if action_id == "shadow_step":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_shadow_step = True
+                    self._arm_pick("shadow_step")
                     self._combat_log_add(
                         "Shadow Step: click a destination (or click yourself to cancel).")
             if action_id == "cloak_of_shadows":
@@ -16147,7 +16070,7 @@ class App:
             if action_id == "shadow_arts_darkness":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_shadow_darkness = True
+                    self._arm_pick("shadow_darkness")
                     self._combat_log_add(
                         "Shadow Arts: Darkness: click a center cell (or click yourself to cancel).")
             if action_id == "fey_effect":
@@ -16161,24 +16084,24 @@ class App:
             if action_id == "misty_wanderer":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_misty_wanderer = True
+                    self._arm_pick("misty_wanderer")
                     self._combat_log_add(
                         "Misty Wanderer: click a destination (or click yourself to cancel).")
             if action_id == "move_hunters_mark":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_move_hunters_mark = True
+                    self._arm_pick("move_hunters_mark")
                     self._combat_log_add("Move Hunter's Mark: click a creature within 90 ft.")
             if action_id == "steps_of_fey":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_steps_of_fey = True
+                    self._arm_pick("steps_of_fey")
                     self._combat_log_add(
                         "Steps of the Fey: click a destination (or click yourself to cancel).")
             if action_id == "misty_escape":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_misty_escape = True
+                    self._arm_pick("misty_escape")
                     self._combat_log_add(
                         "Misty Escape: click a destination (or click yourself to cancel).")
             if action_id == "elemental_attunement":
@@ -16294,7 +16217,7 @@ class App:
             if action_id == "warping_implosion":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_warping_implosion = True
+                    self._arm_pick("warping_implosion")
                     self._combat_log_add(
                         "Warping Implosion: click a destination within 120 ft (each creature within "
                         "30 ft of where you stand makes a DEX save vs 3d10 Force). Click yourself to cancel.")
@@ -16313,7 +16236,7 @@ class App:
             if action_id == "wild_magic_teleport":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
-                    self.pending_wild_magic_teleport = True
+                    self._arm_pick("wild_magic_teleport")
                     self._combat_log_add("Wild Magic Teleport: click a destination cell.")
             if action_id == "companion":
                 features.show_companion_menu(self, anchor)
@@ -16444,7 +16367,7 @@ class App:
             dm.show_table_menu(self, anchor=(self.btn_cbt_table.rect.x,
                                              self.btn_cbt_table.rect.y))
         if action_id == "end_turn":
-            if self.pending_beguiling:
+            if self._picking("beguiling"):
                 # Don't let End Turn silently waste an armed Beguiling Magic offer — make the
                 # DM resolve (click a creature) or decline (Esc) it first.
                 self._combat_log_add(
@@ -17808,17 +17731,17 @@ class App:
                     continue
                 # Esc cancels a pending Invoke Duplicity placement / move / swap (no Channel Divinity
                 # is spent until a duplicate is actually placed, so cancelling here costs nothing).
-                if event.key == pygame.K_ESCAPE and (self.pending_invoke_duplicity or
-                        self.pending_move_duplicity or self.pending_swap_duplicity):
+                if event.key == pygame.K_ESCAPE and (self._picking("invoke_duplicity") or
+                        self._picking("move_duplicity") or self._picking("swap_duplicity")):
                     net_picks.cancel_duplicity(self)
                     continue
                 # Enter casts Chromatic Orb with the leap chain collected so far (may be empty —
                 # the orb still leaps to the nearest foe on a match). Esc cancels the whole cast.
-                if self.pending_chromatic_active and self.pending_spell_slot \
+                if self._picking("chromatic") and self.pending_spell_slot \
                         and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     self._finalize_chromatic_cast()
                     continue
-                if self.pending_chromatic_active and self.pending_spell_slot \
+                if self._picking("chromatic") and self.pending_spell_slot \
                         and event.key == pygame.K_ESCAPE:
                     self._cancel_chromatic_chain()
                     continue
@@ -17829,44 +17752,44 @@ class App:
                     self._finish_multi_target_spell()
                     continue
                 # Esc cancels a pending Cleave second-target pick (refunds the use this turn).
-                if event.key == pygame.K_ESCAPE and self.pending_cleave is not None:
+                if event.key == pygame.K_ESCAPE and self._pick_data("cleave") is not None:
                     self._cancel_cleave()
                     continue
                 # Mantle of Inspiration: Enter resolves on the collected recipients, Esc cancels
                 # (without spending the Bardic Inspiration use).
-                if self.pending_mantle_active \
+                if self._picking("mantle") \
                         and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     self._finalize_mantle()
                     continue
                 # Lair Doors: Enter applies the chosen doors; Esc backs out of any lair pick.
-                if self._lair_pick == "doors" \
+                if self._pick_data("lair") == "doors" \
                         and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     lair.apply_doors(self)
                     continue
-                if self._lair_pick and event.key == pygame.K_ESCAPE:
+                if self._pick_data("lair") and event.key == pygame.K_ESCAPE:
                     lair.cancel_pick(self)
                     continue
-                if self.pending_mantle_active and event.key == pygame.K_ESCAPE:
+                if self._picking("mantle") and event.key == pygame.K_ESCAPE:
                     self._cancel_mantle()
                     continue
                 # Beguiling Magic: Esc declines the rider (the spell was already cast normally).
-                if self.pending_beguiling and event.key == pygame.K_ESCAPE:
+                if self._picking("beguiling") and event.key == pygame.K_ESCAPE:
                     self._cancel_beguiling()
                     continue
                 # Esc cancels a pending Clairvoyant Combatant target pick (nothing spent until resolve).
-                if self.pending_clairvoyant and event.key == pygame.K_ESCAPE:
+                if self._picking("clairvoyant") and event.key == pygame.K_ESCAPE:
                     net_picks.cancel_clairvoyant(self)
                     continue
-                if self.pending_vow_of_enmity and event.key == pygame.K_ESCAPE:
+                if self._picking("vow_of_enmity") and event.key == pygame.K_ESCAPE:
                     net_picks.cancel_vow_of_enmity(self)
                     continue
-                if self.pending_path_to_the_grave and event.key == pygame.K_ESCAPE:
+                if self._picking("path_to_the_grave") and event.key == pygame.K_ESCAPE:
                     net_picks.cancel_path_to_the_grave(self)
                     continue
-                if self.pending_move_hunters_mark and event.key == pygame.K_ESCAPE:
+                if self._picking("move_hunters_mark") and event.key == pygame.K_ESCAPE:
                     net_picks.cancel_move_hunters_mark(self)
                     continue
-                if self.pending_inspiring_smite and event.key == pygame.K_ESCAPE:
+                if self._picking("inspiring_smite") and event.key == pygame.K_ESCAPE:
                     net_picks.cancel_inspiring_smite(self)
                     continue
                 # Esc cancels a pending spell cast. For an anchored wall, the first
@@ -18012,8 +17935,8 @@ class App:
                             and self.safe_target_edit_idx < 0 \
                             and not self.pending_attack_slot and not self.pending_spell_slot \
                             and not self.pending_shove_slot and not self.pending_grapple_slot \
-                            and not self.pending_cleave and not self.pending_sweep \
-                            and not self.pending_rally and not self.pending_feint:
+                            and not self._pick_data("cleave") and not self._pick_data("sweep") \
+                            and not self._pick_data("rally") and not self._pick_data("feint"):
                         items_here = self.bm.get_items_at_cell(cell)
                         if items_here:
                             self._begin_item_drag(items_here[-1])
@@ -18378,8 +18301,8 @@ class App:
                         and not self.context_menu.visible \
                         and not self.pending_attack_slot and not self.pending_spell_slot \
                         and not self.pending_shove_slot and not self.pending_grapple_slot \
-                        and not self.pending_cleave and not self.pending_sweep \
-                        and not self.pending_rally and not self.pending_feint:
+                        and not self._pick_data("cleave") and not self._pick_data("sweep") \
+                        and not self._pick_data("rally") and not self._pick_data("feint"):
                     items_at_cell = self.bm.get_items_at_cell(cell) if cell is not None else []
                     if items_at_cell:
                         cur_idx = self._current_agent_idx() if self.combat_active else self.selected_idx

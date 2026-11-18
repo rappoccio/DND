@@ -934,9 +934,9 @@ def proceed_to_new_turn(app):
     app._reset_turn_economy()
     # World Tree Vitality of the Tree: diagnostic for a stale turn-start target-pick (the actual
     # clear now lives in _clear_pending_target_picks, called just below).
-    if app.pending_vitality_target or app._vitality_option_index != -1:
+    if app._picking("vitality_target") or app._vitality_option_index != -1:
         print(f"[VITALITY] turn-start clearing stale state "
-              f"(pending={app.pending_vitality_target}, opt={app._vitality_option_index})")
+              f"(pending={app._picking('vitality_target')}, opt={app._vitality_option_index})")
     # One defensive clear of every armed target-pick flag so none leaks into this new turn.
     app._clear_pending_target_picks()
     # Initiative count 20: the lair acts (lair.py), and no creature's turn begins.
@@ -1021,8 +1021,8 @@ def begin_legendary_phase(app, prev_idx: int):
     Falls straight through to the new turn when nothing is eligible (the common case)."""
     app._legendary_queue = []
     app._legendary_actor = -1
-    app._legendary_target_pick = False
-    app._legendary_spell_pick = ""
+    app._drop_pick("legendary_target")
+    app._drop_pick("legendary_spell")
     app._legendary_move_active = False
     if app.combat_active and prev_idx >= 0:
         for i in range(len(app.bm.placed_agents)):
@@ -1126,7 +1126,7 @@ def choose_legendary_action(app, action_name: str):
         return
     app._legendary_attack_name = action_name
     app._legendary_attack_widx = widx
-    app._legendary_target_pick = True
+    app._arm_pick("legendary_target")
     app._combat_log_add(
         f"{app.bm.placed_agents[idx].name}: click a target for legendary {action_name}.")
     app._flush_combat_log()
@@ -1138,7 +1138,7 @@ def resolve_legendary_attack(app, target_idx: int):
     idx = app._legendary_actor
     agents = app.bm.placed_agents
     if idx < 0 or idx >= len(agents):
-        app._legendary_target_pick = False
+        app._drop_pick("legendary_target")
         offer_next_legendary(app); return
     if not (0 <= target_idx < len(agents)) or target_idx == idx:
         app._combat_log_add("Pick a valid target.")
@@ -1148,7 +1148,7 @@ def resolve_legendary_attack(app, target_idx: int):
         app._combat_log_add("Target is already down — pick another.")
         app._flush_combat_log()
         return
-    app._legendary_target_pick = False
+    app._drop_pick("legendary_target")
     widx = app._legendary_attack_widx
     action = rpg.Attack(idx, target_idx, widx)
     action.attack_slot = "legendary"   # resolves like a normal attack; no turn-economy cost
@@ -1195,13 +1195,13 @@ def begin_legendary_spell(app, idx: int, action_name: str, spell_name: str):
     app._legendary_spell_idx = si
     app._legendary_spell_label = action_name
     if getattr(sp, "teleportation_spell", False):
-        app._legendary_spell_pick = "cell"
+        app._set_pick("legendary_spell", "cell")
         hint = f"click a destination within {sp.teleport_range_ft} ft"
     elif sp.geometry == rpg.SpellGeometry.Single:
-        app._legendary_spell_pick = "creature"
+        app._set_pick("legendary_spell", "creature")
         hint = f"click a target within {sp.range} ft"
     else:
-        app._legendary_spell_pick = "cell"
+        app._set_pick("legendary_spell", "cell")
         hint = "click where to centre it"
     app._combat_log_add(f"{name}: legendary {action_name} — {hint}.")
     app._flush_combat_log()
@@ -1211,10 +1211,10 @@ def resolve_legendary_spell(app, hit: int, cell):
     """Resolve the armed legendary spell at the clicked creature / cell, spend its cost and
     move on. An invalid click (out of range, no creature) keeps the pick armed."""
     idx = app._legendary_actor
-    mode = app._legendary_spell_pick
+    mode = app._pick_data("legendary_spell")
     agents = app.bm.placed_agents
     if idx < 0 or idx >= len(agents):
-        app._legendary_spell_pick = ""
+        app._drop_pick("legendary_spell")
         offer_next_legendary(app); return
     spells = app.combat.get_agent_spells(app.bm, idx)
     si = app._legendary_spell_idx
@@ -1236,7 +1236,7 @@ def resolve_legendary_spell(app, hit: int, cell):
             app._combat_log_add(f"{name}: failed to teleport — no valid destination.")
             app._flush_combat_log()
             return
-        app._legendary_spell_pick = ""
+        app._drop_pick("legendary_spell")
         spend_legendary_action(app, idx, app._legendary_cost_pending)
         app._combat_log_add(f"{name} uses legendary {label} and teleports to "
                              f"({cell.col}, {cell.row}).")
@@ -1263,7 +1263,7 @@ def resolve_legendary_spell(app, hit: int, cell):
             return
         action.target_indices = []
         action.aoe_col, action.aoe_row = cell.col, cell.row
-    app._legendary_spell_pick = ""
+    app._drop_pick("legendary_spell")
     spend_legendary_action(app, idx, app._legendary_cost_pending)
     app._combat_log_add(f"{name} uses legendary {label}.")
     app.combat.execute_spell(app.bm, action)

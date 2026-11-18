@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed, 263/0. A2 next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -103,6 +103,20 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   object per mode (spell, attack, shove, summon, chromatic chain, mantle, …), with
   `app.pending` holding at most one. `_clear_pending_target_picks` becomes
   `app.pending = None`. Field-for-field translation. No mode semantics change.
+  **Amended 2026-11-18 (user): two slots.** "At most one" did not hold: Chromatic Orb's
+  chain sits on its spell arm, and Cleave/Sweep arm while `pending_attack_slot` still
+  holds the next Extra Attack; `resolve_pick`'s priority chain decides between them. So
+  `app.pending` holds the action being built (Attack / Spell / Shove / Unarmed / Summon,
+  with their companions) and `app.pick` holds at most one click pick on top of it
+  (teleports, heals, maneuvers, Chromatic chain, legendary and lair picks). An
+  instrumented full-suite run (263/0) confirmed it: never two picks or two base modes at
+  once, only a pick over a base. The same run found base-mode companions that outlive
+  their arm: `pending_attack_offhand` / `pending_weapon_idx` / `pending_attack_resource`
+  are attack-sequence state that `cancel_attack` restores while the slot is idle; summon
+  and spell staging fields are set before the slot arms; `_resolve_teleport_spell` reads
+  `pending_spell_slot_level` after the slot clears. A2b has to settle each of those before
+  `app.pending` can be None when idle. Split: **A2a** picks, **A2b** base modes, then
+  Drag & Cancel and Special Attacks.
 - **D5. Turn mirrors (A3) are a behavior change.** They are a separate step with its own
   sign-off, not folded into a move. Leave them alone until A2 lands.
 - **D6. One cluster per commit**, each green on `./test.sh` with goldens byte-identical.
@@ -168,6 +182,21 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   edges now cross a module boundary instead of `App`.
 - **A2. Pending modes** (D4). Take Drag & Cancel and Special Attacks with it: 72 and 64 of
   their outbound calls are the pending machine reaching into Spell Activation.
+  **A2a done 2026-11-18:** the 41 click-pick arms (`pending_shadow_step`, `pending_cleave`,
+  `arcane_charge_pending`, `_legendary_spell_pick`, `_lair_pick`, …) became one
+  `app.pick: pending.Pick(kind, data) | None` (`gui/pending.py`, which catalogues each kind
+  and the field it replaced). `App` reads and writes it through `_picking`, `_pick_data`,
+  `_arm_pick`, `_drop_pick` and `_set_pick`; dropping a kind that is not the armed one is a
+  no-op, as resetting its old flag was. `resolve_pick`'s chain is unchanged in order;
+  `net/picks.py` arms for picks are named by kind with `idle=PICK`. The turn-boundary clear
+  drops every pick except `chromatic`, which the old clear never reset (kept as is; worth
+  a look as its own fix). Companion fields (`pending_mantle_targets`, `pending_bastion_sp`,
+  `pending_beguiling_bard`, `pending_flurry_*`, `move_duplicity_idx`, …) stay on `app` for
+  now. 263/0, goldens unchanged.
+  **A2b next:** the base modes (`pending_attack_slot`, `pending_spell_slot`,
+  `pending_shove_slot`/`_type`, `pending_grapple_slot`, `pending_unarmed_type`,
+  `pending_summon_*`) into `app.pending`, after settling the out-of-lifetime companions
+  listed under D4.
 - **A3. Turn mirrors** (D5, behavior change, separate sign-off): read budgets/action state
   from the engine instead of copying them.
 - **A4. Spell Activation UI** last, once its callers go through `app.pending`.

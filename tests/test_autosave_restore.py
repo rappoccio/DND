@@ -112,13 +112,13 @@ def test_rewind_in_place():
         app._advance_turn()
         app.action_used = True
         app.pending_attack_slot = "action"
-        app.pending_shadow_step = True
+        app._arm_pick("shadow_step")
         assert fingerprint(app) != before, "the two turns changed nothing to rewind"
         assert autosave.restore(app, k)
         gaps = diff(_without_door_ids(before), _without_door_ids(fingerprint(app)))
         _report(gaps)
         assert not gaps, f"the rewind lost: {sorted(gaps)}"
-        assert app.pending_attack_slot == "" and not app.pending_shadow_step
+        assert app.pending_attack_slot == "" and not app._picking("shadow_step")
         assert app.selected_idx == app._current_agent_idx()
         print("✅ test_rewind_in_place")
     finally:

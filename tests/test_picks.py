@@ -94,6 +94,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pygame
 import rpg_battle_map as rpg
 
+import pending
 from net import offer as net_offer, picks as net_picks, view as net_view
 from net.roster import DM_PRINCIPAL_ID
 from prompts import Response, SPELL_BROWSER_RENDER
@@ -202,16 +203,25 @@ def _esc(app):
     assert app._handle_events() is not False
 
 
+def _arm(app, arm, value):
+    """Arm `arm` with `value`: a click pick through `app.pick`, a slot by its attribute."""
+    if arm.idle is net_picks.PICK:
+        app._set_pick(arm.name, value)
+    else:
+        setattr(app, arm.name, value)
+
+
 def _armed_value(app, arm, aria, skarn):
-    if arm.name in ("pending_cleave", "pending_sweep"):
+    if arm.name in ("cleave", "sweep"):
         return {"action": None, "result": None, "first": skarn, "attacker": aria}
-    if arm.name in ("pending_rally", "pending_feint"):
+    if arm.name in ("rally", "feint"):
         return aria
-    if arm.idle is False:
+    idle = pending.idle(arm.name) if arm.idle is net_picks.PICK else arm.idle
+    if idle is False:
         return True
-    if arm.idle == -1:
+    if idle == -1:
         return 0
-    if arm.idle == "":
+    if idle == "":
         return "action"
     raise AssertionError(arm.name)
 
@@ -219,6 +229,18 @@ def _armed_value(app, arm, aria, skarn):
 # ─────────────────────────────────────────────────────────────────────────────
 #  The table holds to the chain
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _tested(n):
+    """What an `if` in the chain tests: a click pick's kind (`self._picking("k")`,
+    `self._pick_data("k")`) or a `self.` attribute."""
+    if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+            and n.func.attr in ("_picking", "_pick_data")):
+        return n.args[0].value
+    if (isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self"
+            and n.attr not in ("_picking", "_pick_data")):
+        return n.attr
+    return None
+
 
 def test_the_arm_table_is_the_chain():
     """`ARMS` is `resolve_pick`'s if/elif chain, in its order, plus the jump. The order
@@ -229,17 +251,15 @@ def test_the_arm_table_is_the_chain():
     node = next(n for n in fn.body if isinstance(n, ast.If))
     chain = []
     while isinstance(node, ast.If):
-        first = next(n for n in ast.walk(node.test)
-                     if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
-                     and n.value.id == "self")
-        chain.append(first.attr)
+        chain.append(next(_tested(n) for n in ast.walk(node.test) if _tested(n)))
         node = node.orelse[0] if len(node.orelse) == 1 else None
     names = [a.name for a in net_picks.ARMS]
     assert names[-1] == "jump_overlay_active", names[-1]
     assert names[:-1] == chain, (names, chain)
 
     # Every field the offer waits on is an arm here. `pending_beguiling_bard` is the one
-    # exception: it is armed beside `pending_beguiling`, which the chain tests instead.
+    # exception: it is armed beside the `beguiling` pick, which the chain tests instead.
+    # Every click pick is waited on through `app.pick`.
     from main import App
     waits = {n for n, _ in App._TARGET_PICK_ARMS} - {"pending_beguiling_bard"}
     assert waits <= set(names), sorted(waits - set(names))
@@ -424,12 +444,12 @@ def test_a_cancelled_sweep_continues_the_sequence():
     calls = []
     real = app._continue_attack_sequence_after_rider
     app._continue_attack_sequence_after_rider = lambda i: (calls.append(i), real(i))
-    app.pending_sweep = {"action": None, "result": None, "first": skarn, "attacker": aria}
+    app._set_pick("sweep", {"action": None, "result": None, "first": skarn, "attacker": aria})
     _frame(app)
     pick = _pick(app)
     assert pick is not None and pick.kind == "target", pick
     assert app.prompts.cancel_as(pick.id, kira.id).ok
-    assert app.pending_sweep is None
+    assert app._pick_data("sweep") is None
     assert calls == [aria], calls
     print("✅ test_a_cancelled_sweep_continues_the_sequence")
 
@@ -440,11 +460,11 @@ def test_a_cancelled_vitality_submits_its_skip():
     app, kira, _ = _aria_turn()
     skips = []
     app._submit_reaction_skip = lambda: skips.append(True)
-    app.pending_vitality_target = True
+    app._arm_pick("vitality_target")
     app._vitality_option_index = 0
     _esc(app)
     assert skips == [True], "the Skip was not submitted"
-    assert not app.pending_vitality_target and app._vitality_option_index == -1
+    assert not app._picking("vitality_target") and app._vitality_option_index == -1
     print("✅ test_a_cancelled_vitality_submits_its_skip")
 
 
@@ -454,11 +474,11 @@ def test_a_cancelled_shadowy_dodge_stays_put():
     app, kira, _ = _aria_turn()
     skips = []
     app._submit_reaction_skip = lambda: skips.append(True)
-    app.pending_shadowy_dodge_cell = True
+    app._arm_pick("shadowy_dodge_cell")
     app._shadowy_dodge_option_index = 1
     _esc(app)
     assert skips == [True], "the Skip was not submitted"
-    assert not app.pending_shadowy_dodge_cell and app._shadowy_dodge_option_index == -1
+    assert not app._picking("shadowy_dodge_cell") and app._shadowy_dodge_option_index == -1
     print("✅ test_a_cancelled_shadowy_dodge_stays_put")
 
 
@@ -471,16 +491,16 @@ def test_every_wired_arm_projects_and_cancels():
     her cancel runs its cancel, which leaves it idle, and the offer comes back. Vitality
     needs a live window, and the jump its own landing set: both are checked on their own (as is
     Shadowy Dodge's cell, which is Vitality's case)."""
-    skip = {"pending_vitality_target", "jump_overlay_active", "pending_shadowy_dodge_cell"}
+    skip = {"vitality_target", "jump_overlay_active", "shadowy_dodge_cell"}
     for arm in net_picks.ARMS:
         if arm.name not in net_picks.WIRED or arm.name in skip:
             continue
         app, kira, _ = _aria_turn()
         aria, skarn = _idx(app, "Aria"), _idx(app, "Skarn")
         app.pending_flurry_atk_idx = aria
-        if arm.name == "pending_beguiling":
+        if arm.name == "beguiling":
             app.pending_beguiling_bard = aria
-        setattr(app, arm.name, _armed_value(app, arm, aria, skarn))
+        _arm(app, arm, _armed_value(app, arm, aria, skarn))
         _frame(app)
         pick = _pick(app)
         assert pick is not None, f"{arm.name}: no target prompt"
@@ -499,10 +519,10 @@ def test_an_unwired_arm_holds_the_offer():
     NPC-only. While an unwired arm is armed the offer is held back, as in M5b, and no
     target prompt is posted: the DM resolves it."""
     unwired = [a.name for a in net_picks.ARMS if a.name not in net_picks.WIRED]
-    assert unwired == ["_legendary_target_pick", "_legendary_spell_pick", "_lair_pick"], unwired
-    for name, armed in (("_legendary_target_pick", True), ("_legendary_spell_pick", "cell")):
+    assert unwired == ["legendary_target", "legendary_spell", "lair"], unwired
+    for name, armed in (("legendary_target", True), ("legendary_spell", "cell")):
         app, kira, _ = _aria_turn()
-        setattr(app, name, armed)
+        app._set_pick(name, armed)
         _frame(app)
         assert _offer(app) is None and _pick(app) is None, (name, app.prompts.live)
     print("✅ test_an_unwired_arm_holds_the_offer")
@@ -535,9 +555,9 @@ def test_a_parked_window_holds_every_pick_but_vitality():
         app.pending_attack_slot = "action"
         assert net_picks.wanted(app) is None, "an attack pick was wanted over a parked window"
         app.pending_attack_slot = ""
-        app.pending_vitality_target = True
+        app._arm_pick("vitality_target")
         want = net_picks.wanted(app)
-        assert want is not None and want[0].name == "pending_vitality_target", want
+        assert want is not None and want[0].name == "vitality_target", want
         assert want[1:] == (aria, kira.id), want
     finally:
         app.combat = real
@@ -560,13 +580,13 @@ def test_a_multi_pick_carries_done():
     """Mantle of Inspiration collects recipients one pick at a time. Its prompt carries
     Done, and Done runs the Enter branch: the collection is finalised and the arm is idle."""
     app, kira, _ = _aria_turn()
-    app.pending_mantle_active = True
+    app._arm_pick("mantle")
     app.pending_mantle_targets = []
     _frame(app)
     pick = _pick(app)
     assert [o.id for o in pick.options] == [net_picks.DONE_ID], pick.options
     assert app.prompts.submit(pick.id, Response(option=net_picks.DONE_ID), kira.id).ok
-    assert not app.pending_mantle_active
+    assert not app._picking("mantle")
     assert app.combat_log[0] == "Mantle of Inspiration cancelled (no targets).", app.combat_log[0]
     print("✅ test_a_multi_pick_carries_done")
 
@@ -645,7 +665,7 @@ def test_lay_on_hands_on_a_full_hp_creature_keeps_the_pick():
     _choose(app, kira, "lay_on_hands")
     pick = _until_pick(app, kira)
     assert app.prompts.submit(pick.id, Response(cell=_pos(app, skarn)), kira.id).ok
-    assert app.pending_lay_on_hands, "a full-HP target disarmed the pick"
+    assert app._picking("lay_on_hands"), "a full-HP target disarmed the pick"
     assert not app.action_used
     assert app.combat.get_agent_stats(app.bm, aria).get_resource("Lay on Hands").current == pool
     _frame(app)
@@ -655,7 +675,7 @@ def test_lay_on_hands_on_a_full_hp_creature_keeps_the_pick():
     t.hp_cur = t.hp_max - 5
     app.combat.set_agent_stats(app.bm, skarn, t)
     assert app.prompts.submit(again.id, Response(cell=_pos(app, skarn)), kira.id).ok
-    assert not app.pending_lay_on_hands and app.action_used
+    assert not app._picking("lay_on_hands") and app.action_used
     t = app.combat.get_agent_stats(app.bm, skarn)
     assert t.hp_cur == t.hp_max, (t.hp_cur, t.hp_max)
     print("✅ test_lay_on_hands_on_a_full_hp_creature_keeps_the_pick")
@@ -674,7 +694,7 @@ def test_rally_picked_over_the_bus():
     pick = _until_pick(app, kira)
     assert pick.title == "Rally: choose a creature", pick.title
     assert app.prompts.submit(pick.id, Response(cell=_pos(app, skarn)), kira.id).ok
-    assert app.pending_rally is None and app.bonus_used
+    assert app._pick_data("rally") is None and app.bonus_used
     assert app.combat.get_agent_stats(app.bm, skarn).temp_hp > 0
     assert _res(app, aria, "Superiority Dice") == dice - 1
     print("✅ test_rally_picked_over_the_bus")
@@ -692,7 +712,7 @@ def _maneuver_out_of_reach(option, flag, beyond):
     _frame(app)
     _choose(app, kira, "bm_maneuver")
     pick = _until_pick(app, kira, first=option)
-    assert getattr(app, flag) is not None
+    assert app._pick_data(flag) is not None
     assert app.prompts.submit(pick.id, Response(cell=_pos(app, skarn)), kira.id).ok
     return app, kira, pick, dice
 
@@ -700,8 +720,8 @@ def _maneuver_out_of_reach(option, flag, beyond):
 def test_rally_out_of_range_keeps_the_pick():
     """A creature beyond 30 ft is refused the way an empty square is: nothing is spent,
     the pick stays armed and Kira is asked again (the Lay on Hands 7(a) pattern)."""
-    app, kira, pick, dice = _maneuver_out_of_reach(0, "pending_rally", 6)
-    assert app.pending_rally is not None, "a far creature disarmed Rally"
+    app, kira, pick, dice = _maneuver_out_of_reach(0, "rally", 6)
+    assert app._pick_data("rally") is not None, "a far creature disarmed Rally"
     assert not app.bonus_used and _res(app, _idx(app, "Aria"), "Superiority Dice") == dice
     _frame(app)
     again = _pick(app)
@@ -711,8 +731,8 @@ def test_rally_out_of_range_keeps_the_pick():
 
 def test_feint_out_of_reach_keeps_the_pick():
     """The same for Feinting Attack, whose reach is 5 ft."""
-    app, kira, pick, dice = _maneuver_out_of_reach(1, "pending_feint", 1)
-    assert app.pending_feint is not None, "a far creature disarmed Feinting Attack"
+    app, kira, pick, dice = _maneuver_out_of_reach(1, "feint", 1)
+    assert app._pick_data("feint") is not None, "a far creature disarmed Feinting Attack"
     assert not app.bonus_used and _res(app, _idx(app, "Aria"), "Superiority Dice") == dice
     _frame(app)
     again = _pick(app)
@@ -799,7 +819,7 @@ def test_feint_on_yourself_keeps_the_pick():
     _choose(app, kira, "bm_maneuver")
     pick = _until_pick(app, kira, first=1)
     assert app.prompts.submit(pick.id, Response(cell=_pos(app, aria)), kira.id).ok
-    assert app.pending_feint == aria and not app.bonus_used
+    assert app._pick_data("feint") == aria and not app.bonus_used
     print("✅ test_feint_on_yourself_keeps_the_pick")
 
 
@@ -960,14 +980,14 @@ def test_misty_escape_picked_over_the_bus():
     pick = _until_pick(app, kira)
     far = _free_cell(app, aria, 12, beyond=6)
     assert app.prompts.submit(pick.id, Response(cell=far), kira.id).ok
-    assert app.pending_misty_escape, "a far cell disarmed the pick"
+    assert app._picking("misty_escape"), "a far cell disarmed the pick"
     _frame(app)
     again = _pick(app)
     assert again is not None and again.id != pick.id, "Kira was not asked again"
     dest = _free_cell(app, aria, 6)
     assert app.prompts.submit(again.id, Response(cell=dest), kira.id).ok
     assert _pos(app, aria) == dest, (_pos(app, aria), dest)
-    assert not app.pending_misty_escape
+    assert not app._picking("misty_escape")
     assert app.combat.get_agent_conditions(app.bm, aria).reaction_used
     assert _res(app, aria, "Steps of the Fey") == steps - 1
     assert not app.bonus_used, "Misty Escape spent the Bonus Action"
@@ -989,7 +1009,7 @@ def test_shadow_step_picked_over_the_bus():
     pick = _until_pick(app, kira)
     new = _record(app)
     assert app.prompts.submit(pick.id, Response(cell=_pos(app, aria)), kira.id).ok
-    assert not app.pending_shadow_step and not app.bonus_used
+    assert not app._picking("shadow_step") and not app.bonus_used
     assert "Shadow Step cancelled." in new, new
     _frame(app)
     _choose(app, kira, "shadow_step")
@@ -997,7 +1017,7 @@ def test_shadow_step_picked_over_the_bus():
     dest = _free_cell(app, aria, 6)
     assert app.prompts.submit(pick.id, Response(cell=dest), kira.id).ok
     assert _pos(app, aria) == dest, (_pos(app, aria), dest)
-    assert not app.pending_shadow_step and app.bonus_used
+    assert not app._picking("shadow_step") and app.bonus_used
     print("✅ test_shadow_step_picked_over_the_bus")
 
 
@@ -1014,10 +1034,10 @@ def test_elemental_burst_picked_over_the_bus():
     _frame(app)
     _choose(app, kira, "elemental_burst")
     pick = _until_pick(app, kira)
-    assert app.pending_elemental_burst >= 0
+    assert app._pick_data("elemental_burst") >= 0
     new = _record(app)
     assert app.prompts.submit(pick.id, Response(cell=_pos(app, skarn)), kira.id).ok
-    assert app.pending_elemental_burst == -1 and app.action_used
+    assert app._pick_data("elemental_burst") == -1 and app.action_used
     assert _res(app, aria, "Focus Points") == focus - 2
     assert any("Skarn" in line for line in new), new
     print("✅ test_elemental_burst_picked_over_the_bus")
@@ -1039,7 +1059,7 @@ def test_invoke_duplicity_at_17_picked_over_the_bus():
     pick = _until_pick(app, kira)
     assert net_picks.DONE_ID not in [o.id for o in pick.options], pick.options
     assert app.prompts.cancel_as(pick.id, kira.id).ok
-    assert not app.pending_invoke_duplicity
+    assert not app._picking("invoke_duplicity")
     assert _res(app, aria, "Channel Divinity") == cd and not app.bonus_used
     _frame(app)
     _choose(app, kira, "invoke_duplicity")
@@ -1058,7 +1078,7 @@ def test_invoke_duplicity_at_17_picked_over_the_bus():
     _frame(app)
     third = _pick(app)
     assert app.prompts.submit(third.id, Response(option=net_picks.DONE_ID), kira.id).ok
-    assert not app.pending_invoke_duplicity
+    assert not app._picking("invoke_duplicity")
     assert len(app._my_duplicates(aria)) == 2
     _frame(app)
     assert _offer(app) is not None, "the offer did not come back"
@@ -1082,13 +1102,13 @@ def test_arcane_charge_picked_over_the_bus():
     assert _res(app, aria, "Action Surge") == surges - 1 and not app.action_used
     far = _free_cell(app, aria, 12, beyond=6)
     assert app.prompts.submit(pick.id, Response(cell=far), kira.id).ok
-    assert app.arcane_charge_pending, "a far cell disarmed the pick"
+    assert app._picking("arcane_charge"), "a far cell disarmed the pick"
     _frame(app)
     again = _pick(app)
     assert again is not None and again.id != pick.id, "Kira was not asked again"
     dest = _free_cell(app, aria, 6)
     assert app.prompts.submit(again.id, Response(cell=dest), kira.id).ok
-    assert _pos(app, aria) == dest and not app.arcane_charge_pending
+    assert _pos(app, aria) == dest and not app._picking("arcane_charge")
     _frame(app)
     offer = _offer(app)
     assert offer is not None, "the offer did not come back"
@@ -1524,7 +1544,7 @@ def test_chromatic_orb_done_casts_the_chain():
         app.prompts.live
     assert [o.id for o in chain.options] == [net_picks.DONE_ID], chain.options
     assert app.prompts.submit(chain.id, Response(option=net_picks.DONE_ID), kira.id).ok
-    assert not app.pending_chromatic_active and app.pending_spell_slot == ""
+    assert not app._picking("chromatic") and app.pending_spell_slot == ""
     assert _slots(app, aria, 1) == before - 1, "Done did not cast"
     print("✅ test_chromatic_orb_done_casts_the_chain")
 
@@ -1647,7 +1667,7 @@ def test_beguiling_rides_on_a_players_spell():
         kira.id, "target", "Beguiling Magic: choose a creature"), pick
     _tap(app, kira, _pos(app, skarn))
     _answer(app, kira, "Beguiling Magic")                   # Charmed
-    assert not app.pending_beguiling and app.pending_beguiling_bard == -1
+    assert not app._picking("beguiling") and app.pending_beguiling_bard == -1
     _frame(app)
     assert _offer(app) is not None, app.prompts.live
     print("✅ test_beguiling_rides_on_a_players_spell")

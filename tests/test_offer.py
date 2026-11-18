@@ -204,6 +204,8 @@ def test_the_pick_predicate_covers_the_clear():
     arms = {name for name, _ in App._TARGET_PICK_ARMS}
     companions = set(App._TARGET_PICK_COMPANIONS)
     assert not arms & companions, arms & companions
+    assert "pick" in reset, "the clear does not drop the click pick"
+    reset.discard("pick")
     assert reset <= arms | companions, f"unaccounted for: {sorted(reset - arms - companions)}"
     assert companions <= reset, f"not reset at all: {sorted(companions - reset)}"
 
@@ -214,6 +216,9 @@ def test_the_pick_predicate_covers_the_clear():
         setattr(app, name, True if idle in (False, None) else ("action" if idle == "" else 1))
         assert app._target_pick_armed(), f"{name} armed is not seen"
         setattr(app, name, saved)
+    app._arm_pick("shadow_step")
+    assert app._target_pick_armed(), "an armed click pick is not seen"
+    app._drop_pick("shadow_step")
     print("✅ test_the_pick_predicate_covers_the_clear")
 
 

@@ -130,7 +130,7 @@ def show_menu(app):
 
 def reset(app):
     app._lair_actor = -1
-    app._lair_pick = ""
+    app._drop_pick("lair")
     app._lair_doors = {}
 
 
@@ -154,18 +154,18 @@ def choose(app, action: str):
                             f"until initiative {LAIR_INIT} of the next round.")
         finish(app)
     elif key == "doors":
-        app._lair_pick = "doors"
+        app._set_pick("lair", "doors")
         app._lair_doors = {}
         app._combat_log_add(f"{name}: click doors he can see to cycle open → close → close + "
                             "lock → unchanged. Enter applies, Esc goes back.")
         app._flush_combat_log()
     elif key == "apparition":
-        app._lair_pick = "apparition"
+        app._set_pick("lair", "apparition")
         app._combat_log_add(f"{name}: click a hostile creature he can see for the apparition "
                             "to attack. Esc goes back.")
         app._flush_combat_log()
     elif key == "shadow theft":
-        app._lair_pick = "shadow"
+        app._set_pick("lair", "shadow")
         app._combat_log_add(f"{name}: click a Medium or smaller creature within "
                             f"{SHADOW_THEFT_RANGE_FT} ft he can see. Esc goes back.")
         app._flush_combat_log()
@@ -177,14 +177,14 @@ def choose(app, action: str):
 
 def cancel_pick(app):
     """Esc during a lair pick: back to the menu, nothing spent."""
-    app._lair_pick = ""
+    app._drop_pick("lair")
     app._lair_doors = {}
     show_menu(app)
 
 
 def resolve_click(app, hit: int, cell, anchor=None):
     """A map click while a lair pick is armed. An invalid click keeps the pick armed."""
-    mode = app._lair_pick
+    mode = app._pick_data("lair")
     if mode == "doors":
         _click_door(app, cell, anchor)
     elif mode == "apparition":
@@ -244,7 +244,7 @@ def _click_door(app, cell, anchor):
 
 def apply_doors(app):
     """Enter: carry out the chosen door changes. Using Doors ends the earlier locks first."""
-    if app._lair_pick != "doors":
+    if app._pick_data("lair") != "doors":
         return
     bm = app.bm
     ended = bm.clear_lair_locks()
@@ -368,7 +368,7 @@ def _apparition(app, hit: int):
         app._combat_log_add("Strahd can't see that creature.")
         app._flush_combat_log()
         return
-    app._lair_pick = ""
+    app._drop_pick("lair")
     _strike_and_vanish(app, SPECTER, hit, own,
                        "The angry spirit of one who died in the castle rises beside")
 
@@ -395,7 +395,7 @@ def _shadow_theft(app, hit: int):
         app._combat_log_add(why)
         app._flush_combat_log()
         return
-    app._lair_pick = ""
+    app._drop_pick("lair")
     saved = app.combat.roll_fixed_dc_save(app.bm, hit, rpg.SaveAbility.SaveCha,
                                           SHADOW_THEFT_DC, "Shadow Theft")
     app._flush_combat_log()

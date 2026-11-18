@@ -238,7 +238,7 @@ def show_use_item_menu(app, pos):
         return True
 
     def _arm(slot):
-        app.pending_use_item = slot
+        app._set_pick("use_item", slot)
         it = items[slot]
         if it.type == rpg.ItemType.Thrown:
             prompt = f"Click a creature within {it.range} ft to throw {it.name}"
@@ -370,7 +370,7 @@ def start_mantle_majesty(app, bard_idx: int):
         app.pending_spell_command_word = word
         app.pending_spell_curse_choice = -1
         app.pending_forcecage_sealed   = False   # an earlier Forcecage's Box must not seal this
-        app.pending_chromatic_active   = False
+        app._drop_pick("chromatic")
         app.pending_chromatic_chain    = []
         word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")
         app._combat_log_add(
@@ -587,7 +587,7 @@ def beguiling_pick_target(app, hit: int):
         return
 
     def _on_choice(chosen, bard_idx=bard_idx, hit=hit):
-        app.pending_beguiling      = False
+        app._drop_pick("beguiling")
         app.pending_beguiling_bard = -1
         if not chosen:   # Esc/no pick → decline without spending the use
             app._combat_log_add("Beguiling Magic declined.")
@@ -631,7 +631,7 @@ def show_elemental_burst_menu(app, idx):
         element = chosen[0] if chosen else -1
         if element < 0:
             return
-        app.pending_elemental_burst = element
+        app._set_pick("elemental_burst", element)
         type_name = next((lbl for lbl, val in ELEMENTAL_MONK_OPTIONS
                           if val == element), "?")
         app._combat_log_add(
@@ -691,7 +691,7 @@ def show_bastion_of_law_menu(app, idx, pos):
         return
     def _arm_bastion(n):
         app.pending_bastion_sp = n
-        app.pending_bastion_of_law = True
+        app._arm_pick("bastion_of_law")
         app._combat_log_add(
             f"Bastion of Law: click the creature to ward ({n} SP, {n}d8) — self or within 30 ft")
         app._flush_combat_log()

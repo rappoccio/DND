@@ -70,10 +70,10 @@ def test_gaze_costs_two_and_burns_the_target():
     _make_legendary(app, skarn)
     _weak(app, aria)
     app._choose_legendary_action("Immolating Gaze")
-    assert app._legendary_spell_pick == "creature", "a Single-target spell arms a creature pick"
+    assert app._pick_data("legendary_spell") == "creature", "a Single-target spell arms a creature pick"
     assert _budget(app, skarn) == 3, "nothing is spent until the target is picked"
     app._resolve_legendary_spell(aria, None)
-    assert app._legendary_spell_pick == ""
+    assert app._pick_data("legendary_spell") == ""
     assert _budget(app, skarn) == 1, "Immolating Gaze costs 2"
     assert app.combat.get_agent_stats(app.bm, aria).hp_cur < 200, "the failed WIS save burns"
     print("✅ test_gaze_costs_two_and_burns_the_target passed")
@@ -84,7 +84,7 @@ def test_an_unaffordable_option_is_refused():
     skarn = _idx(app, "Skarn")
     _make_legendary(app, skarn, budget=1)
     app._choose_legendary_action("Immolating Gaze")
-    assert app._legendary_spell_pick == "", "a 2-cost option with 1 left must not arm"
+    assert app._pick_data("legendary_spell") == "", "a 2-cost option with 1 left must not arm"
     assert _budget(app, skarn) == 1
     print("✅ test_an_unaffordable_option_is_refused passed")
 
@@ -94,7 +94,7 @@ def test_teleport_moves_the_legendary_creature():
     skarn = _idx(app, "Skarn")
     _make_legendary(app, skarn)
     app._choose_legendary_action("Teleport")
-    assert app._legendary_spell_pick == "cell"
+    assert app._pick_data("legendary_spell") == "cell"
     o = app.bm.placed_agents[skarn].origin
     dest = next(rpg.Cell(o.col + dc, o.row + dr)
                 for dc in range(-6, 7) for dr in range(-6, 7)
@@ -116,7 +116,7 @@ def test_out_of_range_keeps_the_pick():
     app.combat.set_agent_spells(app.bm, skarn, spells)
     app._choose_legendary_action("Immolating Gaze")
     app._resolve_legendary_spell(aria, None)
-    assert app._legendary_spell_pick == "creature", "an out-of-range click keeps the pick armed"
+    assert app._pick_data("legendary_spell") == "creature", "an out-of-range click keeps the pick armed"
     assert _budget(app, skarn) == 3
     print("✅ test_out_of_range_keeps_the_pick passed")
 

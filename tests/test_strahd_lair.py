@@ -215,7 +215,7 @@ def test_doors_cycle_and_lock():
     did = _door_near(app)
     _to_lair_turn(app)
     lair.choose(app, "Doors")
-    assert app._lair_pick == "doors"
+    assert app._pick_data("lair") == "doors"
     for want in ("open", "close", "lock"):
         lair.resolve_click(app, -1, rpg.Cell(5, 5))
         assert app._lair_doors.get(did) == want, app._lair_doors
@@ -286,7 +286,7 @@ def test_apparition_attacks_and_vanishes():
     _to_lair_turn(app)
     lair.choose(app, "Apparition")
     lair.resolve_click(app, skarn, None)
-    assert app._lair_pick == "apparition", "Strahd's own side is refused"
+    assert app._pick_data("lair") == "apparition", "Strahd's own side is refused"
     lair.resolve_click(app, brannor, None)
     _decline_reactions(app)
     sp = _vanished(app, "Strahd Specter")

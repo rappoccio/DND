@@ -1,7 +1,8 @@
 """Agent and cell picks from the browser (MULTIPLAYER_PLAN.md D-M5-3, slice M5d).
 
-An action that needs a creature or a place arms a `pending_*` flag, and the DM's next map
-click resolves it through `App.resolve_pick`. Those flags stay the state. When one is armed
+An action that needs a creature or a place arms a pick (`app.pick`, pending.py) or a
+`pending_*` slot, and the DM's next map click resolves it through `App.resolve_pick`.
+Those stay the state. When one is armed
 for a token a player controls, `offer.ensure` posts this module's prompt as its projection:
 
   · `kind:"target"` when a creature is wanted and `kind:"cell"` for a place, both with
@@ -66,48 +67,59 @@ def _flag(attr: str, idle, label: str, *companions: tuple[str, object]):
     return cancel
 
 
+def _drop(kind: str, label: str, *companions: tuple[str, object]):
+    """The plain cancel of a click pick (pending.py): the pick and its companions back to
+    idle, and a log line."""
+    def cancel(app) -> None:
+        app._drop_pick(kind)
+        for name, value in companions:
+            setattr(app, name, value)
+        _say(app, f"{label} cancelled.")
+    return cancel
+
+
 def cancel_duplicity(app) -> None:
     """Invoke / Move / Swap Duplicity. Channel Divinity is spent on the first placement, not
     on arming, so a cancel before it costs nothing and one after it ends the placements."""
-    app.pending_invoke_duplicity    = False
+    app._drop_pick("invoke_duplicity")
     app.pending_duplicity_remaining = 0
     app._duplicity_cd_pending       = False
-    app.pending_move_duplicity      = False
+    app._drop_pick("move_duplicity")
     app.move_duplicity_idx          = -1
-    app.pending_swap_duplicity      = False
+    app._drop_pick("swap_duplicity")
     app._combat_log_add("Invoke Duplicity cancelled.")
 
 
 def cancel_clairvoyant(app) -> None:
-    app.pending_clairvoyant = False
+    app._drop_pick("clairvoyant")
     app._combat_log_add("Clairvoyant Combatant cancelled.")
 
 
 def cancel_vow_of_enmity(app) -> None:
-    app.pending_vow_of_enmity = False
+    app._drop_pick("vow_of_enmity")
     app._combat_log_add("Vow of Enmity cancelled.")
 
 
 def cancel_path_to_the_grave(app) -> None:
-    app.pending_path_to_the_grave = False
+    app._drop_pick("path_to_the_grave")
     app._combat_log_add("Path to the Grave cancelled.")
 
 
 def cancel_move_hunters_mark(app) -> None:
-    app.pending_move_hunters_mark = False
+    app._drop_pick("move_hunters_mark")
     app._combat_log_add("Move Hunter's Mark cancelled.")
 
 
 def cancel_inspiring_smite(app) -> None:
-    app.pending_inspiring_smite = False
+    app._drop_pick("inspiring_smite")
     app._combat_log_add("Inspiring Smite cancelled.")
 
 
 def cancel_sweep(app) -> None:
     """The die is spent when the sweep resolves, so nothing is refunded. The attack
     sequence the sweep interrupted continues, as it does after a refused pick."""
-    info = app.pending_sweep
-    app.pending_sweep = None
+    info = app._pick_data("sweep")
+    app._drop_pick("sweep")
     _say(app, "Sweeping Attack declined.")
     if info:
         app._continue_attack_sequence_after_rider(info["attacker"])
@@ -154,7 +166,7 @@ def cancel_attack(app) -> None:
 def cancel_vitality(app) -> None:
     """The window is parked until the pick submits, so a cancel must submit its Skip, or
     the engine waits forever (M5d Step 0)."""
-    app.pending_vitality_target = False
+    app._drop_pick("vitality_target")
     app._vitality_option_index  = -1
     _say(app, "Vitality of the Tree not used.")
     app._submit_reaction_skip()
@@ -163,7 +175,7 @@ def cancel_vitality(app) -> None:
 def cancel_shadowy_dodge(app) -> None:
     """Shadowy Dodge's cell pick sits inside a parked AfterAttack window: a cancel stays put by
     submitting the window's Skip, as Vitality's does."""
-    app.pending_shadowy_dodge_cell  = False
+    app._drop_pick("shadowy_dodge_cell")
     app._shadowy_dodge_option_index = -1
     _say(app, "Shadowy Dodge: staying put.")
     app._submit_reaction_skip()
@@ -215,8 +227,12 @@ def _current(app) -> int:
     return app._current_agent_idx()
 
 
-def _key(field: str, key: str) -> Callable:
-    return lambda app: (getattr(app, field) or {}).get(key, -1)
+# `Arm.idle` for an arm that is a click pick (pending.py) rather than an attribute.
+PICK = object()
+
+
+def _key(kind: str, key: str) -> Callable:
+    return lambda app: (app._pick_data(kind) or {}).get(key, -1)
 
 
 def _reactor(app) -> int:
@@ -228,7 +244,8 @@ def _reactor(app) -> int:
 class Arm:
     """One arm of the click chain.
 
-    `name` is the attribute the chain tests first, `idle` the value it rests at. `title`
+    `name` is what the chain tests first: a click pick's kind (`app.pick`, pending.py) when
+    `idle` is `PICK`, else an attribute of the app and `idle` the value it rests at. `title`
     is a function so a multi-pick can count. `kind` is a string, or a function of the app
     where one arm takes more than one shape (the spell arm, M5e E-1); read it through
     `kind_for`. `in_window` is the one arm armed inside a
@@ -248,6 +265,8 @@ class Arm:
     resolve: Callable[[object, int, object], bool] | None = None
 
     def armed(self, app) -> bool:
+        if self.idle is PICK:
+            return app._picking(self.name)
         return getattr(app, self.name, self.idle) != self.idle
 
     def kind_for(self, app) -> str:
@@ -360,83 +379,83 @@ def _summon_title(app) -> str:
 
 
 ARMS: tuple[Arm, ...] = (
-    Arm("arcane_charge_pending", False, CELL, _t("Arcane Charge: choose where to teleport"),
-        _flag("arcane_charge_pending", False, "Arcane Charge")),
-    Arm("pending_shadowy_dodge_cell", False, CELL,
+    Arm("arcane_charge", PICK, CELL, _t("Arcane Charge: choose where to teleport"),
+        _drop("arcane_charge", "Arcane Charge")),
+    Arm("shadowy_dodge_cell", PICK, CELL,
         _t("Shadowy Dodge: choose where to teleport (30 ft)"), cancel_shadowy_dodge,
         actor=_reactor, in_window=True),
-    Arm("blink_steps_pending", False, CELL, _t("Blink Steps: choose where to teleport"),
-        _flag("blink_steps_pending", False, "Blink Steps")),
-    Arm("pending_psychic_teleport", False, CELL, _t("Psychic Teleportation: choose a destination"),
-        _flag("pending_psychic_teleport", False, "Psychic Teleportation")),
-    Arm("pending_shadow_step", False, CELL, _t("Shadow Step: choose a destination"),
-        _flag("pending_shadow_step", False, "Shadow Step")),
-    Arm("pending_misty_wanderer", False, CELL, _t("Misty Wanderer: choose a destination"),
-        _flag("pending_misty_wanderer", False, "Misty Wanderer")),
-    Arm("pending_steps_of_fey", False, CELL, _t("Steps of the Fey: choose a destination"),
-        _flag("pending_steps_of_fey", False, "Steps of the Fey")),
-    Arm("pending_misty_escape", False, CELL, _t("Misty Escape: choose a destination"),
-        _flag("pending_misty_escape", False, "Misty Escape")),
-    Arm("pending_bewitching_misty", False, CELL, _t("Bewitching Magic: choose a destination"),
+    Arm("blink_steps", PICK, CELL, _t("Blink Steps: choose where to teleport"),
+        _drop("blink_steps", "Blink Steps")),
+    Arm("psychic_teleport", PICK, CELL, _t("Psychic Teleportation: choose a destination"),
+        _drop("psychic_teleport", "Psychic Teleportation")),
+    Arm("shadow_step", PICK, CELL, _t("Shadow Step: choose a destination"),
+        _drop("shadow_step", "Shadow Step")),
+    Arm("misty_wanderer", PICK, CELL, _t("Misty Wanderer: choose a destination"),
+        _drop("misty_wanderer", "Misty Wanderer")),
+    Arm("steps_of_fey", PICK, CELL, _t("Steps of the Fey: choose a destination"),
+        _drop("steps_of_fey", "Steps of the Fey")),
+    Arm("misty_escape", PICK, CELL, _t("Misty Escape: choose a destination"),
+        _drop("misty_escape", "Misty Escape")),
+    Arm("bewitching_misty", PICK, CELL, _t("Bewitching Magic: choose a destination"),
         lambda app: app._decline_bewitching_offer()),
-    Arm("pending_wild_magic_teleport", False, CELL, _t("Wild Magic: choose where to teleport"),
-        _flag("pending_wild_magic_teleport", False, "Wild Magic Teleport")),
-    Arm("pending_warping_implosion", False, CELL, _t("Warping Implosion: choose a destination"),
-        _flag("pending_warping_implosion", False, "Warping Implosion")),
-    Arm("pending_shadow_darkness", False, CELL, _t("Shadow Arts: choose the Darkness's center"),
-        _flag("pending_shadow_darkness", False, "Shadow Arts: Darkness")),
-    Arm("pending_elemental_burst", -1, CELL, _t("Elemental Burst: choose the center"),
-        _flag("pending_elemental_burst", -1, "Elemental Burst")),
-    Arm("pending_invoke_duplicity", False, CELL, _t("Invoke Duplicity: place the duplicate"),
+    Arm("wild_magic_teleport", PICK, CELL, _t("Wild Magic: choose where to teleport"),
+        _drop("wild_magic_teleport", "Wild Magic Teleport")),
+    Arm("warping_implosion", PICK, CELL, _t("Warping Implosion: choose a destination"),
+        _drop("warping_implosion", "Warping Implosion")),
+    Arm("shadow_darkness", PICK, CELL, _t("Shadow Arts: choose the Darkness's center"),
+        _drop("shadow_darkness", "Shadow Arts: Darkness")),
+    Arm("elemental_burst", PICK, CELL, _t("Elemental Burst: choose the center"),
+        _drop("elemental_burst", "Elemental Burst")),
+    Arm("invoke_duplicity", PICK, CELL, _t("Invoke Duplicity: place the duplicate"),
         cancel_duplicity,
         done=lambda app: not app._duplicity_cd_pending, finish=cancel_duplicity),
-    Arm("pending_move_duplicity", False, CELL,
+    Arm("move_duplicity", PICK, CELL,
         lambda app: ("Move Duplicity: choose the destination" if app.move_duplicity_idx >= 0
                      else "Move Duplicity: choose a duplicate"), cancel_duplicity),
-    Arm("pending_swap_duplicity", False, TARGET, _t("Swap Duplicity: choose a duplicate"),
+    Arm("swap_duplicity", PICK, TARGET, _t("Swap Duplicity: choose a duplicate"),
         cancel_duplicity),
-    Arm("pending_cleave", None, TARGET, _t("Cleave: choose a second creature"),
-        lambda app: app._cancel_cleave(), actor=_key("pending_cleave", "attacker")),
-    Arm("pending_sweep", None, TARGET, _t("Sweeping Attack: choose a second creature"),
-        cancel_sweep, actor=_key("pending_sweep", "attacker")),
-    Arm("pending_rally", None, TARGET, _t("Rally: choose a creature"),
-        _flag("pending_rally", None, "Rally"),
-        actor=lambda app: -1 if app.pending_rally is None else app.pending_rally),
-    Arm("pending_feint", None, TARGET, _t("Feinting Attack: choose a creature"),
-        _flag("pending_feint", None, "Feinting Attack"),
-        actor=lambda app: -1 if app.pending_feint is None else app.pending_feint),
-    Arm("pending_mantle_active", False, TARGET, _mantle_title,
+    Arm("cleave", PICK, TARGET, _t("Cleave: choose a second creature"),
+        lambda app: app._cancel_cleave(), actor=_key("cleave", "attacker")),
+    Arm("sweep", PICK, TARGET, _t("Sweeping Attack: choose a second creature"),
+        cancel_sweep, actor=_key("sweep", "attacker")),
+    Arm("rally", PICK, TARGET, _t("Rally: choose a creature"),
+        _drop("rally", "Rally"),
+        actor=lambda app: -1 if app._pick_data("rally") is None else app._pick_data("rally")),
+    Arm("feint", PICK, TARGET, _t("Feinting Attack: choose a creature"),
+        _drop("feint", "Feinting Attack"),
+        actor=lambda app: -1 if app._pick_data("feint") is None else app._pick_data("feint")),
+    Arm("mantle", PICK, TARGET, _mantle_title,
         lambda app: app._cancel_mantle(),
         done=lambda app: True, finish=lambda app: app._finalize_mantle()),
-    Arm("pending_beguiling", False, TARGET, _t("Beguiling Magic: choose a creature"),
+    Arm("beguiling", PICK, TARGET, _t("Beguiling Magic: choose a creature"),
         lambda app: app._cancel_beguiling(), actor=lambda app: app.pending_beguiling_bard),
-    Arm("pending_clairvoyant", False, TARGET, _t("Clairvoyant Combatant: choose an enemy"),
+    Arm("clairvoyant", PICK, TARGET, _t("Clairvoyant Combatant: choose an enemy"),
         cancel_clairvoyant),
-    Arm("pending_vow_of_enmity", False, TARGET, _t("Vow of Enmity: choose an enemy"),
+    Arm("vow_of_enmity", PICK, TARGET, _t("Vow of Enmity: choose an enemy"),
         cancel_vow_of_enmity),
-    Arm("pending_path_to_the_grave", False, TARGET, _t("Path to the Grave: choose a creature"),
+    Arm("path_to_the_grave", PICK, TARGET, _t("Path to the Grave: choose a creature"),
         cancel_path_to_the_grave),
-    Arm("pending_move_hunters_mark", False, TARGET, _t("Move Hunter's Mark: choose a creature"),
+    Arm("move_hunters_mark", PICK, TARGET, _t("Move Hunter's Mark: choose a creature"),
         cancel_move_hunters_mark),
-    Arm("pending_inspiring_smite", False, TARGET, _t("Inspiring Smite: choose a creature"),
+    Arm("inspiring_smite", PICK, TARGET, _t("Inspiring Smite: choose a creature"),
         cancel_inspiring_smite),
-    Arm("_legendary_target_pick", False, TARGET, _t("Legendary action: choose a target"),
+    Arm("legendary_target", PICK, TARGET, _t("Legendary action: choose a target"),
         None, actor=lambda app: app._legendary_actor),
-    Arm("_legendary_spell_pick", "",
-        lambda app: TARGET if app._legendary_spell_pick == "creature" else CELL,
+    Arm("legendary_spell", PICK,
+        lambda app: TARGET if app._pick_data("legendary_spell") == "creature" else CELL,
         lambda app: f"Legendary {app._legendary_spell_label}: "
-                    + ("choose a target" if app._legendary_spell_pick == "creature"
+                    + ("choose a target" if app._pick_data("legendary_spell") == "creature"
                        else "choose a cell"),
         None, actor=lambda app: app._legendary_actor),
-    Arm("_lair_pick", "",
-        lambda app: CELL if app._lair_pick == "doors" else TARGET,
+    Arm("lair", PICK,
+        lambda app: CELL if app._pick_data("lair") == "doors" else TARGET,
         lambda app: {"doors": "Lair Doors: choose doors",
                      "apparition": "Lair Apparition: choose a hostile creature",
-                     "shadow": "Lair Shadow Theft: choose a creature"}.get(app._lair_pick, "Lair"),
+                     "shadow": "Lair Shadow Theft: choose a creature"}.get(app._pick_data("lair"), "Lair"),
         None, actor=lambda app: app._lair_actor),
     Arm("pending_attack_slot", "", TARGET, _attack_title, cancel_attack),
     Arm("pending_summon_slot", "", CELL, _summon_title, cancel_summon),
-    Arm("pending_chromatic_active", False, TARGET, _chromatic_title,
+    Arm("chromatic", PICK, TARGET, _chromatic_title,
         lambda app: app._cancel_chromatic_chain(),
         done=lambda app: True, finish=lambda app: app._finalize_chromatic_cast()),
     Arm("pending_spell_slot", "", _spell_kind, _spell_title, cancel_spell,
@@ -446,27 +465,27 @@ ARMS: tuple[Arm, ...] = (
         _flag("pending_shove_slot", "", "Shove", ("pending_shove_type", ""))),
     Arm("pending_unarmed_type", "", TARGET, _t("Unarmed Strike: choose a creature"),
         _flag("pending_unarmed_type", "", "Unarmed Strike")),
-    Arm("pending_heal_light", False, TARGET, _t("Healing Light: choose a creature"),
-        _flag("pending_heal_light", False, "Healing Light")),
-    Arm("pending_lay_on_hands", False, TARGET, _t("Lay on Hands: choose a creature"),
-        _flag("pending_lay_on_hands", False, "Lay on Hands")),
-    Arm("pending_bastion_of_law", False, TARGET, _t("Bastion of Law: choose a creature"),
-        _flag("pending_bastion_of_law", False, "Bastion of Law", ("pending_bastion_sp", 0))),
-    Arm("pending_hand_of_healing", False, TARGET, _t("Hand of Healing: choose a creature"),
-        _flag("pending_hand_of_healing", False, "Hand of Healing")),
-    Arm("pending_use_item", -1, TARGET, _t("Use Item: choose a creature"),
-        _flag("pending_use_item", -1, "Use Item")),
-    Arm("pending_escape_net", False, TARGET, _t("Free from Net: choose the netted creature"),
-        _flag("pending_escape_net", False, "Free from Net")),
-    Arm("pending_grant_inspiration", False, TARGET, _t("Bardic Inspiration: choose an ally"),
-        _flag("pending_grant_inspiration", False, "Bardic Inspiration")),
-    Arm("pending_telekinetic", False, TARGET, _t("Telekinetic Movement: choose a creature"),
-        _flag("pending_telekinetic", False, "Telekinetic Movement")),
-    Arm("pending_flurry_target", False, TARGET, _t("Flurry of Blows: choose a target"),
-        _flag("pending_flurry_target", False, "Flurry of Blows",
+    Arm("heal_light", PICK, TARGET, _t("Healing Light: choose a creature"),
+        _drop("heal_light", "Healing Light")),
+    Arm("lay_on_hands", PICK, TARGET, _t("Lay on Hands: choose a creature"),
+        _drop("lay_on_hands", "Lay on Hands")),
+    Arm("bastion_of_law", PICK, TARGET, _t("Bastion of Law: choose a creature"),
+        _drop("bastion_of_law", "Bastion of Law", ("pending_bastion_sp", 0))),
+    Arm("hand_of_healing", PICK, TARGET, _t("Hand of Healing: choose a creature"),
+        _drop("hand_of_healing", "Hand of Healing")),
+    Arm("use_item", PICK, TARGET, _t("Use Item: choose a creature"),
+        _drop("use_item", "Use Item")),
+    Arm("escape_net", PICK, TARGET, _t("Free from Net: choose the netted creature"),
+        _drop("escape_net", "Free from Net")),
+    Arm("grant_inspiration", PICK, TARGET, _t("Bardic Inspiration: choose an ally"),
+        _drop("grant_inspiration", "Bardic Inspiration")),
+    Arm("telekinetic", PICK, TARGET, _t("Telekinetic Movement: choose a creature"),
+        _drop("telekinetic", "Telekinetic Movement")),
+    Arm("flurry_target", PICK, TARGET, _t("Flurry of Blows: choose a target"),
+        _drop("flurry_target", "Flurry of Blows",
               ("pending_flurry_atk_idx", -1), ("pending_flurry_rider_option", -1)),
         actor=lambda app: app.pending_flurry_atk_idx),
-    Arm("pending_vitality_target", False, TARGET,
+    Arm("vitality_target", PICK, TARGET,
         _t("Vitality of the Tree: choose a creature within 10 ft"), cancel_vitality,
         actor=_reactor, in_window=True),
     # Not in the chain: the jump has its own landing set and its own click handler.
@@ -477,32 +496,32 @@ ARMS: tuple[Arm, ...] = (
 BY_NAME = {a.name: a for a in ARMS}
 
 # Projected to the player. The rest hold the offer back, as in M5b, and the DM resolves
-# them on the map. `_legendary_target_pick`, `_legendary_spell_pick` and `_lair_pick` are NPC-only.
+# them on the map. The `legendary_target`, `legendary_spell` and `lair` picks are NPC-only.
 WIRED = frozenset({
     # M5d.1 — weapon attacks and the picks that follow them
-    "pending_attack_slot", "pending_cleave", "pending_sweep", "pending_rally",
-    "pending_feint", "pending_shove_slot", "pending_unarmed_type", "pending_flurry_target",
+    "pending_attack_slot", "cleave", "sweep", "rally",
+    "feint", "pending_shove_slot", "pending_unarmed_type", "flurry_target",
     # M5d.2 — single-creature picks
-    "pending_heal_light", "pending_lay_on_hands", "pending_bastion_of_law",
-    "pending_hand_of_healing", "pending_use_item", "pending_escape_net",
-    "pending_grant_inspiration", "pending_telekinetic", "pending_clairvoyant",
-    "pending_vow_of_enmity", "pending_inspiring_smite", "pending_vitality_target",
-    "pending_path_to_the_grave", "pending_move_hunters_mark",
+    "heal_light", "lay_on_hands", "bastion_of_law",
+    "hand_of_healing", "use_item", "escape_net",
+    "grant_inspiration", "telekinetic", "clairvoyant",
+    "vow_of_enmity", "inspiring_smite", "vitality_target",
+    "path_to_the_grave", "move_hunters_mark",
     # M5d.3 — place picks
-    "arcane_charge_pending", "blink_steps_pending", "pending_psychic_teleport",
-    "pending_shadow_step", "pending_steps_of_fey", "pending_misty_escape",
-    "pending_wild_magic_teleport", "pending_warping_implosion", "pending_shadow_darkness",
-    "pending_elemental_burst", "jump_overlay_active",
+    "arcane_charge", "blink_steps", "psychic_teleport",
+    "shadow_step", "steps_of_fey", "misty_escape",
+    "wild_magic_teleport", "warping_implosion", "shadow_darkness",
+    "elemental_burst", "jump_overlay_active",
     # Ranger R2 — Shadowy Dodge's teleport, inside its parked AfterAttack window
-    "pending_shadowy_dodge_cell",
+    "shadowy_dodge_cell",
     # Ranger R3 — Misty Wanderer's destination (the passenger question is a bus prompt)
-    "pending_misty_wanderer",
+    "misty_wanderer",
     # M5d.4 — multi-picks
-    "pending_mantle_active", "pending_invoke_duplicity", "pending_move_duplicity",
-    "pending_swap_duplicity",
+    "mantle", "invoke_duplicity", "move_duplicity",
+    "swap_duplicity",
     # M5e.1 — the spell pipeline, and the two riders a player's own spell can arm
-    "pending_spell_slot", "pending_chromatic_active", "pending_summon_slot",
-    "pending_beguiling", "pending_bewitching_misty",
+    "pending_spell_slot", "chromatic", "pending_summon_slot",
+    "beguiling", "bewitching_misty",
 })
 
 

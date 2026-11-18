@@ -236,7 +236,7 @@ def draw_spell_aoe_preview(app, cpx: int):
 def draw_chromatic_chain(app, cpx: int):
     """Overlay the orb's leap path while the player builds it: caster → primary → each hop,
     with a numbered ring on every chosen leap target and a white ring on the primary."""
-    if not (app.pending_chromatic_active and app.pending_spell_slot):
+    if not (app._picking("chromatic") and app.pending_spell_slot):
         return
     agents = app.bm.placed_agents
     caster_idx = app._current_agent_idx()
@@ -271,7 +271,7 @@ def draw_chromatic_chain(app, cpx: int):
 
 def draw_mantle_overlay(app, cpx: int):
     """Overlay a numbered ring on each chosen Mantle of Inspiration recipient while picking."""
-    if not app.pending_mantle_active:
+    if not app._picking("mantle"):
         return
     agents = app.bm.placed_agents
     ring = max(8, cpx // 3)
@@ -292,7 +292,7 @@ def draw_mantle_overlay(app, cpx: int):
 def draw_cleave_picker(app, cpx: int):
     """While picking a Cleave second target, ring the first target (white) and every legal
     second target (green), with a line from the attacker to each candidate."""
-    info = app.pending_cleave
+    info = app._pick_data("cleave")
     if not info:
         return
     agents = app.bm.placed_agents

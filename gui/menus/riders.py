@@ -148,8 +148,8 @@ def offer_cleave(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, 
                 c.cleave_used_this_turn = True
                 c.cleave_available = False
                 app.combat.set_agent_conditions(app.bm, atk_idx, c)
-                app.pending_cleave = {"attacker": atk_idx, "first": target_idx,
-                                       "weapon": weapon_idx, "valid": valid}
+                app._set_pick("cleave", {"attacker": atk_idx, "first": target_idx,
+                                         "weapon": weapon_idx, "valid": valid})
                 app._combat_log_add(
                     f"Cleave — click a highlighted creature within 5 ft of {tgt_name} "
                     f"(Esc to cancel).")
@@ -772,7 +772,7 @@ def offer_maneuver(app, action, atk_idx, target_idx, atk_name, tgt_name, result,
     def _apply_sweeping():
         # Mark the die-spend pending; the 2nd target is chosen by a follow-up map click.
         app._combat_log_add(atk_msg)
-        app.pending_sweep = {"action": action, "result": result, "first": target_idx, "attacker": atk_idx}
+        app._set_pick("sweep", {"action": action, "result": result, "first": target_idx, "attacker": atk_idx})
         app._combat_log_add(f"Sweeping Attack — click a 2nd creature within 5 ft of {tgt_name}.")
         app._flush_combat_log()
         app._update_attack_overlay()
@@ -937,12 +937,12 @@ def offer_bonus_maneuver(app, idx: int):
     """Battle Master bonus-action maneuvers menu: Rally (ally temp HP), Feinting (Advantage +
     die vs an adjacent creature), Quick Toss (thrown attack + die). Each spends 1 Superiority Die."""
     def _rally():
-        app.pending_rally = idx
+        app._set_pick("rally", idx)
         app._combat_log_add("Rally — click a creature within 30 ft to bolster.")
         app._flush_combat_log()
 
     def _feint():
-        app.pending_feint = idx
+        app._set_pick("feint", idx)
         app._combat_log_add("Feinting Attack — click a creature within 5 ft to feint.")
         app._flush_combat_log()
 

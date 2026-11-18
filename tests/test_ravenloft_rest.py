@@ -215,7 +215,7 @@ def test_panel_draws_luck_and_potion_works_at_full_hp():
     assert st.hp_cur == st.hp_max
     app.bonus_used = False
     inv = app.combat.get_agent_items(app.bm, idx)
-    app.pending_use_item = next(i for i, it in enumerate(inv) if it.name == "Potion of Heroism")
+    app._set_pick("use_item", next(i for i, it in enumerate(inv) if it.name == "Potion of Heroism"))
     app._resolve_use_item(idx)
     st = app.combat.get_agent_stats(app.bm, idx)
     assert st.temp_hp == 10 and st.blessed, "drunk at full HP for its temp HP and Bless"

@@ -58,9 +58,9 @@ def _swing(app, attacker, target):
 
 def _curse(app, cleric, target):
     _goto(app, "Brannor")
-    app.pending_path_to_the_grave = True
+    app._arm_pick("path_to_the_grave")
     app._resolve_path_to_the_grave(target)
-    assert not app.pending_path_to_the_grave
+    assert not app._picking("path_to_the_grave")
     assert app.combat.get_agent_conditions(app.bm, target).grave_cursed_by == cleric
 
 
