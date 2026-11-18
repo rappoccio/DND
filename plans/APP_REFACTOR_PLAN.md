@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0; A4b next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0. A4b (summons → `gui/app_summons.py`) committed, 263/0.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -330,6 +330,14 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   `SUMMON_SPELL_TO_SPIRIT`), because `_activate_spell` reads it and `app_spells` cannot import
   `main`; `main.py` imports back `CLERIC_DI_SPELL_NAMES` (tests) and `SUMMON_SPELL_TO_SPIRIT`.
   A4b can take the summon registry into `app_summons.py`. `main.py` 15,459 lines.
+  **A4b committed 2026-11-18 (263/0, goldens unchanged):** the 16 methods above
+  → `gui/app_summons.py` (733 lines with tables). `App` keeps 13 forwarders, two more than
+  estimated: `_spawn_summon` (tests) and `_choose_summon_form` (bound in `app_spells`) are
+  also reached from outside. `_resolve_move_duplicity`, `_resolve_swap_duplicity` and
+  `_do_swap_duplicity` have none; `main.py` calls them as `app_summons.*(self, …)`. The summon
+  registry (`SUMMON_SPELL_TO_MONSTER`, `_load_summon_spirits`, `SUMMON_SPELL_TO_SPIRIT`) moved
+  from `app_spells.py`, and `MAGE_HAND_STATBLOCK` / `DUPLICATE_STATBLOCK` from `main.py`;
+  `app_spells` and `main` import the registry back. `main.py` 14,838 lines.
 
 ## Risks
 

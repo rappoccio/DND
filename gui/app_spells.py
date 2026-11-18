@@ -19,13 +19,11 @@ through the forwarder (`app._finish_cast()`), so a test that wraps one on the in
 sees every call; the rest are called directly.
 
 The spell-only option tables that used to sit at the top of `main.py` live here too;
-`main.py` imports back the two it still reads (`CLERIC_DI_SPELL_NAMES`,
-`SUMMON_SPELL_TO_SPIRIT`).
+`main.py` imports back the one it still reads (`CLERIC_DI_SPELL_NAMES`). The summon registry
+(`SUMMON_SPELL_TO_SPIRIT`, `SUMMON_SPELL_TO_MONSTER`) lives in `app_summons.py` (A4b).
 """
 
-import json
 import math
-import os
 
 import pygame
 
@@ -36,49 +34,12 @@ from constants import FLASH_BAD, FLASH_GOOD
 from helpers import _INT_TO_ABILITY, _dict_to_spell, is_item_spell, item_spell_label
 from menus import features
 from net import picks as net_picks
+from app_summons import SUMMON_SPELL_TO_MONSTER, SUMMON_SPELL_TO_SPIRIT
 from prompts import SPELL_BROWSER_RENDER
 
 
 # Multi-target spells whose darts / rays / beams may each pick the same creature again.
 _REPEAT_TARGET_SPELLS = frozenset({"Magic Missile", "Scorching Ray", "Eldritch Blast"})
-
-
-# ── Summoning registry ─────────────────────────────────────────────────────
-# Maps a summon spell's name to a FIXED DND2024_MonsterStats.json key it conjures (non-scaling).
-# The 2024 "Summon X" line now uses the scaling SUMMON_SPELL_TO_SPIRIT path instead (which takes
-# precedence); this dict is for fixed-statblock summons that don't scale with the slot level.
-SUMMON_SPELL_TO_MONSTER = {
-    # Arcane Trickster's Mage Hand Legerdemain is modeled as a tiny, controllable summon so it has a
-    # real grid position — that anchors Versatile Trickster (L13: Advantage vs creatures next to it).
-    # Not in the bestiary, so it uses the synthetic MAGE_HAND_STATBLOCK below (see _resolve_summon).
-    "Mage Hand": "Mage Hand",
-}
-
-
-def _load_summon_spirits():
-    """Load summons.json → {spell_name: {form_name: block}}. Each 'Summon X' / 'Conjure X'
-    spell maps to its forms; the chosen form's block is scaled at cast time by
-    compute_summon_loadout. README/comment records (spell starting with '_') are skipped."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "summons.json")
-    try:
-        with open(path) as f:
-            records = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return {}
-    out = {}
-    for rec in records:
-        spell = rec.get("spell", "")
-        form  = rec.get("form", "")
-        if not spell or spell.startswith("_") or not form:
-            continue
-        out.setdefault(spell, {})[form] = rec
-    return out
-
-
-# 2024 "Summon X" spells whose conjured spirit scales with the slot level used. spell → {form: block}.
-# The form picker reuses the Primal-Companion context menu; the chosen block is scaled at cast time
-# (compute_summon_loadout). Takes precedence over SUMMON_SPELL_TO_MONSTER when both match.
-SUMMON_SPELL_TO_SPIRIT = _load_summon_spirits()
 
 
 # Spells whose damage type is chosen per cast (not fixed in spells.json). Each maps to the
