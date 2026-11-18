@@ -11837,6 +11837,8 @@ class App:
             self.pending_spell_targets = []  # Will collect targets sequentially
             self.pending_spell_num_targets = num_targets
             hint = f"click {num_targets} target{'s' if num_targets != 1 else ''} ({0}/{num_targets})"
+            if num_targets > 1:
+                hint += ", or Enter to cast on fewer"
         else:
             # AoE (Line, Cone, Sphere, Square, Rectangle)
             self.pending_spell_is_aoe = True
@@ -13911,7 +13913,22 @@ class App:
         self.pending_spell_free_cast = False
         self._consume_cast_slot(slot, caster_idx)
 
-    def _resolve_spell_cast(self, target_idx: int):
+    def _multi_target_finishable(self) -> bool:
+        """A multi-target spell with at least one target picked can be cast early (Enter / Done)
+        on fewer than its maximum — Mass Suggestion need not find all twelve."""
+        sp = self._pending_spell()
+        return (sp is not None and not self.pending_spell_is_aoe
+                and self.pending_spell_num_targets > 0
+                and 0 < len(self.pending_spell_targets) < self.pending_spell_num_targets)
+
+    def _finish_multi_target_spell(self):
+        """Cast the armed multi-target spell on the targets collected so far."""
+        if self._multi_target_finishable():
+            self._resolve_spell_cast(None)
+
+    def _resolve_spell_cast(self, target_idx: int | None):
+        """`target_idx` None finishes a multi-target collection early (see
+        `_finish_multi_target_spell`)."""
         caster_idx = self._current_agent_idx()
         slot       = self.pending_spell_slot
         if caster_idx < 0 or not slot:
@@ -13926,7 +13943,13 @@ class App:
                         self._twinned_single_armed(sp, caster_idx) or
                         self._enhanced_necromancy_armed_for(sp, caster_idx,
                                                             self.pending_spell_slot_level))
-        if multi_target:
+        if multi_target and target_idx is None:
+            if not self.pending_spell_targets:
+                return
+            # Finishing early: cast on the targets collected so far.
+        elif target_idx is None:
+            return
+        elif multi_target:
             # Only darts, rays and beams may land on one creature more than once; every other
             # multi-target spell (Bless, Bane, Hold Person, a Twinned spell, …) needs distinct ones.
             if (target_idx in self.pending_spell_targets
@@ -13942,7 +13965,8 @@ class App:
 
             if targets_collected < targets_needed:
                 # Still collecting targets
-                self._combat_log_add(f"Target selected ({targets_collected}/{targets_needed})")
+                self._combat_log_add(f"Target selected ({targets_collected}/{targets_needed}) "
+                                     f"— Enter to cast on these.")
                 return
             # else: we have all targets, fall through to execute
 
@@ -22404,6 +22428,12 @@ class App:
                 if self.pending_chromatic_active and self.pending_spell_slot \
                         and event.key == pygame.K_ESCAPE:
                     self._cancel_chromatic_chain()
+                    continue
+                # Enter casts a multi-target spell (Mass Suggestion, Bless, …) on the targets picked
+                # so far, short of its maximum.
+                if self.pending_spell_slot and self._multi_target_finishable() \
+                        and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self._finish_multi_target_spell()
                     continue
                 # Esc cancels a pending Cleave second-target pick (refunds the use this turn).
                 if event.key == pygame.K_ESCAPE and self.pending_cleave is not None:

@@ -1182,6 +1182,42 @@ def test_a_multi_target_spell_counts_its_picks():
     print("✅ test_a_multi_target_spell_counts_its_picks")
 
 
+def test_a_multi_target_spell_finishes_early_from_the_phone():
+    """Bless at 1st takes up to three targets. The first pick offers no Done; after one
+    target the pick carries Done, and Done casts on that one, spending the slot."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Cleric, 5, ["Bless"])
+    before = _slots(app, aria, 1)
+    _choose(app, kira, "spell_action")
+    first = _until_pick(app, kira)
+    assert net_picks.DONE_ID not in [o.id for o in first.options], first.options
+    _tap(app, kira, _pos(app, aria))
+    second = _until_pick(app, kira)
+    assert second.title == "Bless: choose a target (2 of 3)", second.title
+    assert net_picks.DONE_ID in [o.id for o in second.options], second.options
+    assert app.prompts.submit(second.id, Response(option=net_picks.DONE_ID), kira.id).ok
+    _frame(app)
+    assert app.pending_spell_slot == "" and _slots(app, aria, 1) == before - 1
+    print("✅ test_a_multi_target_spell_finishes_early_from_the_phone")
+
+
+def test_a_multi_target_spell_finishes_early_from_the_dm_console():
+    """The DM's Enter (`_finish_multi_target_spell`) casts on the targets so far; with none
+    picked it does nothing and the spell stays armed."""
+    app, kira, _ = _aria_turn()
+    aria = _caster(app, rpg.CharacterClass.Cleric, 5, ["Bless"])
+    before = _slots(app, aria, 1)
+    _choose(app, kira, "spell_action")
+    _until_pick(app, kira)
+    app._finish_multi_target_spell()
+    assert app.pending_spell_slot != "", "Enter with no targets cast the spell"
+    app.resolve_pick(rpg.Cell(*_pos(app, aria)))
+    app._finish_multi_target_spell()
+    _frame(app)
+    assert app.pending_spell_slot == "" and _slots(app, aria, 1) == before - 1
+    print("✅ test_a_multi_target_spell_finishes_early_from_the_dm_console")
+
+
 def test_an_area_spell_is_a_cell_pick():
     """Fireball: the pick is a `cell` (mutant: the spell arm's kind fixed at `target`), and
     the tap on a square, not a creature, aims it; Cast here casts it."""
@@ -2024,6 +2060,8 @@ if __name__ == "__main__":
         test_a_cancelled_spell_after_an_unswung_attack_leaves_the_attack_open()
         test_a_single_target_spell_picked_over_the_bus()
         test_a_multi_target_spell_counts_its_picks()
+        test_a_multi_target_spell_finishes_early_from_the_phone()
+        test_a_multi_target_spell_finishes_early_from_the_dm_console()
         test_an_area_spell_is_a_cell_pick()
         test_an_area_tap_aims_and_asks_to_confirm()
         test_a_cancelled_confirm_cancels_the_cast()
