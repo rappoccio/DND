@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0. A4b (summons → `gui/app_summons.py`) committed bd2b227, 263/0. Graph rebuilt at bd2b227; A5–A8 added 2026-11-18 (user), A9 deferred. A5 (dungeon generation and import → `gui/app_dungeon_gen.py`) committed, 263/0; A6 next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0. A4b (summons → `gui/app_summons.py`) committed bd2b227, 263/0. Graph rebuilt at bd2b227; A5–A8 added 2026-11-18 (user), A9 deferred. A5 (dungeon generation and import → `gui/app_dungeon_gen.py`) committed bd92253, 263/0. A6 (panel drawing → `gui/app_panel_render.py`) committed, 263/0; A7 next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -377,6 +377,18 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
     (`_draw_combat_panel` 632, `_draw_panel`, `_reposition_panel`, `_draw_combat_panel_log`,
     `_draw_item_spells_panel`, `_panel_layout`, …). 28 in, 14 out; 7 reached from outside.
     Same pattern as `app_board_render.py` (A1); the structural render golden is the oracle.
+    **Done 2026-11-18, 263/0 first run:** 8 methods, 1,002 lines → `app_panel_render.py`:
+    `_panel_layout`, `_reposition_panel`, `_draw_item_spells_panel`, `_draw_combat_panel`,
+    `_draw_combat_panel_log`, `_draw_panel`, `_draw_xp_total`, `_draw_cursor_cell_info`.
+    `_panel_x` and `_panel_rect` stay on `App` (geometry used across modules);
+    `_draw_panel_floor_nav` was already a forwarder to `app_dungeon_pages`. The §4 / §7 row
+    tuples (`_ACT_ROW_*`, `_BON_ROW_*`, `_BON_RUN_*`, `_BON_FEY_TRIO`, `_BON_DRAW_RUNS`)
+    moved with the draw code; `main` re-imports them by name because test_action_menu and
+    test_gui_headless_smoke read them from `vars(main)`. 3 forwarders (tests, `gui_driver`,
+    `playback.py`): `_reposition_panel`, `_draw_combat_panel`, `_draw_panel`. `main.py`
+    calls `panel_layout`, `draw_xp_total`, `draw_cursor_cell_info` as
+    `app_panel_render.*(self)`. `main.py` 12,396 lines. Graph rebuilt (changed files
+    only): 8,995 nodes, 328 communities, 314 labels carried by overlap, 14 named by hand.
   - **A7. Save / load and the lighting editor → `gui/app_persist.py`.** About 1,200 lines of
     load/save (`_load_agents` 451, `_save_agents` 352, `_load_terrain` 191,
     `_load_combat_state`, `_load_map_png`, …) plus the 9-method, 275-line lighting editor
