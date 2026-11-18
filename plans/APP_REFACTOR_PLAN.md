@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) done, uncommitted, 263/0. Drag & Cancel and Special Attacks next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. Drag & Cancel and Special Attacks next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -200,7 +200,7 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   a look as its own fix). Companion fields (`pending_mantle_targets`, `pending_bastion_sp`,
   `pending_beguiling_bard`, `pending_flurry_*`, `move_duplicity_idx`, …) stay on `app` for
   now. 263/0, goldens unchanged.
-  **A2b done 2026-11-18 (uncommitted, 263/0, goldens unchanged):** the base modes became
+  **A2b committed e6fff8e 2026-11-18 (263/0, goldens unchanged):** the base modes became
   `app.pending: pending.Attack | Spell | Shove | Unarmed | Summon | None`, with companions
   inside their mode (spell idx/slot_level/is_aoe/targets, summon monster/spirit/…, shove
   type). `App._armed(*modes)`, `_armed_slot(mode)` (the old "" when idle) and
