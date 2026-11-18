@@ -5535,12 +5535,12 @@ void CombatEngine::pushCounterspell(BattleMap& bm, int reactor, int target_caste
     csa.target_indices = { target_caster };
     InFlightCast child{};
     child.active                = true;
-    child.interactive           = !cast_stack_.empty() && cast_stack_.back().interactive;  // inherit driver
+    child.interactive           = !rx_.casts().empty() && rx_.casts().back().interactive;  // inherit driver
     child.action                = csa;
     child.is_counterspell       = true;
     child.counter_target_caster = target_caster;
     child.reactors              = declareCastReactors(bm, csa);     // who can counter THIS counterspell
-    cast_stack_.push_back(std::move(child));                        // ⚠ any prior back() ref now invalid
+    rx_.casts().push_back(std::move(child));                        // ⚠ any prior back() ref now invalid
 }
 
 void CombatEngine::resolveCounterspellEffect(BattleMap& bm, InFlightCast& c)
@@ -5555,8 +5555,8 @@ void CombatEngine::resolveCounterspellEffect(BattleMap& bm, InFlightCast& c)
          agentName(bm, target), dc, d20, save_mod >= 0 ? "+" : "", save_mod, total);
     if (total >= dc) { log_("{} resists — the spell resolves", agentName(bm, target)); return; }
     log_("{}'s spell is countered and fails (its slot is retained)", agentName(bm, target));
-    if (cast_stack_.size() >= 2)                          // mark the PARENT (directly below) countered
-        cast_stack_[cast_stack_.size() - 2].countered = true;
+    if (rx_.casts().size() >= 2)                          // mark the PARENT (directly below) countered
+        rx_.casts()[rx_.casts().size() - 2].countered = true;
 }
 
 // One step of cast_stack_.back() through its windows. Operates on a re-fetched back() reference and
@@ -5564,7 +5564,7 @@ void CombatEngine::resolveCounterspellEffect(BattleMap& bm, InFlightCast& c)
 // values it needs before pushing, then returns Pushed immediately.
 CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
 {
-    InFlightCast& c = cast_stack_.back();
+    InFlightCast& c = rx_.casts().back();
     const auto& agents = bm.placedAgents();
     std::string castName;                                            // the spell being cast (for option gating)
     if (c.action.caster_idx >= 0 && c.action.caster_idx < static_cast<int>(agents.size())) {
@@ -5598,12 +5598,12 @@ CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
         if (ctx.options.empty()) { ++c.cursor; continue; }           // lost eligibility since enumeration
         ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
         if (c.interactive) {
-            pending_decision_ = PendingDecision{true, ctx};         // suspend; GUI resumes via submitDecision
+            rx_.park(ctx);         // suspend; GUI resumes via submitDecision
             return CastStep::Awaiting;
         }
         const ReactionResponse resp = decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{};
         // Counterspell → push a nested cast (defensive depth cap backstops the economy bound).
-        if (isCounterspellChoice(ctx, resp) && cast_stack_.size() <= agents.size()) {
+        if (isCounterspellChoice(ctx, resp) && rx_.casts().size() <= agents.size()) {
             const int target_caster = c.action.caster_idx;           // capture BEFORE the push (c dangles after)
             ++c.cursor;                                              // this reactor is handled in the parent
             castCounterspell(bm, reactor, target_caster);
@@ -5645,7 +5645,7 @@ CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
                 ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
                                                      "Cast Shield (+5 AC — the spell attack misses)", "Shield"});
                 ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
-                pending_decision_ = PendingDecision{true, ctx};     // suspend; GUI resumes via submitDecision
+                rx_.park(ctx);     // suspend; GUI resumes via submitDecision
                 return CastStep::Awaiting;
             }
         }
@@ -5700,7 +5700,7 @@ CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
         ctx.d20_value   = ss->total;
         ctx.options     = opts;
         if (c.interactive) {
-            pending_decision_ = PendingDecision{true, ctx};        // suspend; GUI resumes via submitDecision
+            rx_.park(ctx);        // suspend; GUI resumes via submitDecision
             return CastStep::Awaiting;
         }
         applySaveFailReaction(bm, ctx, decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{});
@@ -5713,7 +5713,7 @@ CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
 // Resolve cast_stack_.back() and pop it. No push happens in here, so the reference stays valid.
 void CombatEngine::finalizeAndPop(BattleMap& bm)
 {
-    InFlightCast& c = cast_stack_.back();
+    InFlightCast& c = rx_.casts().back();
     if (c.is_counterspell) {
         if (!c.countered)                                 // not itself countered → it works
             resolveCounterspellEffect(bm, c);             // deferred CON save → maybe mark parent .countered
@@ -5722,46 +5722,46 @@ void CombatEngine::finalizeAndPop(BattleMap& bm)
         c.result = executeSpell(bm, c.action);            // normal resolution (slot spent inside, late)
     }
     c.active = false;
-    const bool bottom = (cast_stack_.size() == 1);
+    const bool bottom = (rx_.casts().size() == 1);
     const SpellResult r = c.result;
     const bool cnt = c.countered;
-    cast_stack_.pop_back();
+    rx_.casts().pop_back();
     if (bottom) { last_cast_result_ = r; last_cast_countered_ = cnt; }
 }
 
 FlowStatus CombatEngine::advanceCast(BattleMap& bm)
 {
-    while (!cast_stack_.empty()) {
+    while (!rx_.casts().empty()) {
         const CastStep st = stepTopCast(bm);               // runs back()'s windows; may push/suspend
         if (st == CastStep::Awaiting) return FlowStatus::AwaitingDecision;  // GUI suspend
         if (st == CastStep::Pushed)   continue;            // a counterspell went on top → loop to it
         finalizeAndPop(bm);                                // Completed → resolve + pop back()
     }
-    pending_decision_.active = false;
+    rx_.unpark();
     return FlowStatus::Completed;
 }
 
 FlowStatus CombatEngine::beginCast(BattleMap& bm, const SpellAction& action)
 {
-    cast_stack_.clear();
+    rx_.casts().clear();
     InFlightCast c{};
     c.active      = true;
     c.interactive = true;
     c.action      = action;
     c.reactors    = declareCastReactors(bm, action);
-    cast_stack_.push_back(std::move(c));
+    rx_.casts().push_back(std::move(c));
     return advanceCast(bm);
 }
 
 SpellResult CombatEngine::resolveCast(BattleMap& bm, const SpellAction& action)
 {
-    cast_stack_.clear();
+    rx_.casts().clear();
     InFlightCast c{};
     c.active      = true;
     c.interactive = false;                                 // auto driver: resolve each checkpoint inline
     c.action      = action;
     c.reactors    = declareCastReactors(bm, action);
-    cast_stack_.push_back(std::move(c));
+    rx_.casts().push_back(std::move(c));
     (void)advanceCast(bm);
     return last_cast_result_;                              // snapshot, set when the bottom popped
 }

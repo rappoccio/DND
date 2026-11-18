@@ -2362,11 +2362,11 @@ void CombatEngine::applyD20SeenReaction(BattleMap& bm, const ReactionCtx& ctx, c
     if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // skip/invalid
     const ReactionOption& opt = ctx.options[static_cast<std::size_t>(resp.option)];
     if (opt.kind != ReactionOption::Feature) return;
-    AttackResult& r = in_flight_attack_.r;
+    AttackResult& r = rx_.attack().r;
     if      (opt.feature == "BendLuck")     applyBendLuckToAttack(bm, ctx.reactor_idx, r);
     else if (opt.feature == "CuttingWords") applyCuttingWordsToAttack(bm, ctx.reactor_idx, r);
     else if (opt.feature == "SilveryBarbs") applySilveryBarbsToAttack(bm, ctx.reactor_idx, r);
-    else if (opt.feature == "WardingFlare") applyWardingFlareToAttack(bm, ctx.reactor_idx, in_flight_attack_.action.target_idx, r);
+    else if (opt.feature == "WardingFlare") applyWardingFlareToAttack(bm, ctx.reactor_idx, rx_.attack().action.target_idx, r);
     else if (opt.feature == "RestoreBalance") applyRestoreBalanceToAttack(bm, ctx.reactor_idx, r);
 }
 
@@ -2410,24 +2410,24 @@ void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, co
     if (opt.kind != ReactionOption::Feature) return;
     if (opt.feature == "Shield") {
         if (applyShield(bm, ctx.reactor_idx)) {
-            in_flight_attack_.r.hit = false;
+            rx_.attack().r.hit = false;
             log_("{} casts Shield (+5 AC) — the attack misses!", agentName(bm, ctx.reactor_idx));
         }
     } else if (opt.feature == "UncannyDodge") {
-        applyUncannyDodge(bm, ctx.reactor_idx, in_flight_attack_.r);
+        applyUncannyDodge(bm, ctx.reactor_idx, rx_.attack().r);
     } else if (opt.feature == "SuperiorHuntersDefense") {
-        applySuperiorHunterDefense(bm, ctx.reactor_idx, in_flight_attack_.r);
+        applySuperiorHunterDefense(bm, ctx.reactor_idx, rx_.attack().r);
     } else if (opt.feature == "BeguilingDefenses") {
-        applyBeguilingDefenses(bm, ctx.reactor_idx, in_flight_attack_.action, in_flight_attack_.r);
+        applyBeguilingDefenses(bm, ctx.reactor_idx, rx_.attack().action, rx_.attack().r);
     } else if (opt.feature == "DeflectAttacks") {
-        applyDeflectAttacks(bm, ctx.reactor_idx, in_flight_attack_.r);
+        applyDeflectAttacks(bm, ctx.reactor_idx, rx_.attack().r);
     } else if (opt.feature == "Parry") {
-        applyParry(bm, ctx.reactor_idx, in_flight_attack_.r);
+        applyParry(bm, ctx.reactor_idx, rx_.attack().r);
     } else if (opt.feature == "DefensiveDuelist") {
         if (applyDefensiveDuelist(bm, ctx.reactor_idx))
-            in_flight_attack_.r.hit = false;
+            rx_.attack().r.hit = false;
     } else if (opt.feature == "GloriousDefense") {
-        applyGloriousDefense(bm, ctx.reactor_idx, in_flight_attack_.action, in_flight_attack_.r);
+        applyGloriousDefense(bm, ctx.reactor_idx, rx_.attack().action, rx_.attack().r);
     }
 }
 
@@ -2437,11 +2437,11 @@ void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, co
 // (inline Shield). Result is read via lastAttackResult(); submitDecision resumes a parked attack.
 FlowStatus CombatEngine::beginAttack(BattleMap& bm, const Attack& action)
 {
-    in_flight_attack_             = InFlightAttack{};
-    in_flight_attack_.active      = true;
-    in_flight_attack_.interactive = true;
-    in_flight_attack_.action      = action;
-    InFlightAttack& s = in_flight_attack_;
+    rx_.attack()             = InFlightAttack{};
+    rx_.attack().active      = true;
+    rx_.attack().interactive = true;
+    rx_.attack().action      = action;
+    InFlightAttack& s = rx_.attack();
     if (!determineAdvantage(bm, s)) {            // illegal/blocked attack (s.r stays valid == false)
         last_attack_result_ = s.r;
         s.active = false;
@@ -2500,7 +2500,7 @@ std::vector<ReactionOption> CombatEngine::shadowyDodgeTeleportOptions() const
 // stats, so a Shield cast in the window (its +5 AC / slot spend) is reflected.
 FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
 {
-    InFlightAttack& s = in_flight_attack_;
+    InFlightAttack& s = rx_.attack();
     // Shadowy Dodge (Gloom Stalker L15): the target may react BEFORE the d20 is rolled, imposing
     // Disadvantage. Offered once; submitDecision applies the choice and comes back here to roll.
     if (!s.rolled) {
@@ -2514,7 +2514,7 @@ FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
                 ctx.options.push_back(ReactionOption{ReactionOption::Feature, -1,
                                                      "Shadowy Dodge (Disadvantage, then teleport)", "ShadowyDodge"});
                 ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
-                pending_decision_ = PendingDecision{true, ctx};   // suspend; GUI resumes via submitDecision
+                rx_.park(ctx);   // suspend; GUI resumes via submitDecision
                 return FlowStatus::AwaitingDecision;
             }
         }
@@ -2538,7 +2538,7 @@ FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
         ctx.source_idx  = s.action.attacker_idx;
         ctx.options     = std::move(opts);
         ctx.d20_value   = s.r.total_roll;
-        pending_decision_ = PendingDecision{true, ctx};           // suspend; GUI resumes via submitDecision
+        rx_.park(ctx);           // suspend; GUI resumes via submitDecision
         return FlowStatus::AwaitingDecision;
     }
     // Offer the OnHit defender window (Shield and/or Uncanny Dodge) at most once: on resume after a Skip
@@ -2553,7 +2553,7 @@ FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
             ctx.reactor_idx = s.action.target_idx;
             ctx.source_idx  = s.action.attacker_idx;
             ctx.options     = std::move(opts);
-            pending_decision_ = PendingDecision{true, ctx};   // suspend; GUI resumes via submitDecision
+            rx_.park(ctx);   // suspend; GUI resumes via submitDecision
             return FlowStatus::AwaitingDecision;
         }
         s.onhit_offered = true;   // nothing to offer — don't re-check on a later resume
@@ -2576,10 +2576,10 @@ FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
                                              "Sentinel at Death's Door (halve the damage)", "SentinelAtDeathsDoor"});
         ctx.options.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
         s.sentinel_parked = true;
-        pending_decision_ = PendingDecision{true, ctx};   // suspend; GUI resumes via submitDecision
+        rx_.park(ctx);   // suspend; GUI resumes via submitDecision
         return FlowStatus::AwaitingDecision;
     }
-    pending_decision_.active = false;
+    rx_.unpark();
     if (!s.applied) {
         last_attack_result_ = applyAttackResult(bm, s);
         s.applied = true;
@@ -2595,7 +2595,7 @@ FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
             ctx.reactor_idx = d;
             ctx.source_idx  = s.action.attacker_idx;
             ctx.options     = shadowyDodgeTeleportOptions();
-            pending_decision_ = PendingDecision{true, ctx};
+            rx_.park(ctx);
             return FlowStatus::AwaitingDecision;
         }
     }

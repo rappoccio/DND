@@ -751,7 +751,7 @@ CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const
             log_("{}: {} misses {} — roll {} vs AC {}", oa_label,
                  agentName(bm, reactor), agentName(bm, target), r.total_roll, r.target_ac);
         }
-        in_flight_move_.results.push_back(r);
+        rx_.move().results.push_back(r);
     } else {  // Spell
         SpellAction sa;
         sa.caster_idx     = reactor;
@@ -770,7 +770,7 @@ CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const
     // mover at the provoke cell (speed → 0) — advanceMove commits the partial move there and zeroes the
     // remaining budget, so the run from `saved` (origin) is still needed for the budgeted/terrain commit.
     if (bm.getAgentStats(ctx.source_idx).hp_cur <= 0) {
-        in_flight_move_.mover_down = true;
+        rx_.move().mover_down = true;
         bm.setAgentPosition(ctx.source_idx, ctx.source_cell);
     } else {
         // An OA can inflict an incapacitating condition (Stunned/Paralyzed/Incapacitated — all route
@@ -780,8 +780,8 @@ CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const
         // *actions* is handled GUI-side by the Incapacitated action-gate, which now sees the condition.
         const bool mover_incapacitated = bm.getAgentConditions(ctx.source_idx).incapacitated;
         if (sentinel_hit || mover_incapacitated) {
-            in_flight_move_.mover_halted = true;
-            in_flight_move_.halt_cell    = ctx.source_cell;   // stop where the OA triggered
+            rx_.move().mover_halted = true;
+            rx_.move().halt_cell    = ctx.source_cell;   // stop where the OA triggered
         }
         bm.setAgentPosition(ctx.source_idx, saved);
     }
@@ -790,7 +790,7 @@ CombatEngine::applyReactionResponse(BattleMap& bm, const ReactionCtx& ctx, const
 FlowStatus
 CombatEngine::advanceMove(BattleMap& bm)
 {
-    InFlightMove& m = in_flight_move_;
+    InFlightMove& m = rx_.move();
     while (m.cursor < m.provokes.size() && !m.mover_down && !m.mover_halted) {
         const ProvokeEvent ev = m.provokes[m.cursor];
         // The reactor may have lost eligibility since detection (downed/used by a prior OA).
@@ -803,7 +803,7 @@ CombatEngine::advanceMove(BattleMap& bm)
         ReactionCtx ctx = buildReactionCheckpoint(bm, ReactionWindow::LeftReach,
                                                   ev.reactor, m.mover_idx, ev.left_cell);
         if (m.interactive) {
-            pending_decision_ = PendingDecision{true, ctx};   // suspend; GUI resumes via submitDecision
+            rx_.park(ctx);   // suspend; GUI resumes via submitDecision
             return FlowStatus::AwaitingDecision;
         }
         const ReactionResponse resp = decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{};
@@ -812,7 +812,7 @@ CombatEngine::advanceMove(BattleMap& bm)
     }
 
     // All provokes resolved (or the mover went down / was halted) — commit.
-    pending_decision_.active = false;
+    rx_.unpark();
     if (!m.mover_down) {
         // A Sentinel OA stops the mover at the provoke cell; otherwise it completes the move to dest.
         const Cell commit = m.mover_halted ? m.halt_cell : m.dest;
@@ -837,33 +837,33 @@ CombatEngine::beginMove(BattleMap& bm, int idx, Cell dest, MovementType type)
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return FlowStatus::Completed;
 
-    in_flight_move_             = InFlightMove{};
-    in_flight_move_.active      = true;
-    in_flight_move_.interactive = true;
-    in_flight_move_.mover_idx   = idx;
-    in_flight_move_.origin      = agents[static_cast<std::size_t>(idx)].origin;
-    in_flight_move_.dest        = dest;
-    in_flight_move_.type        = type;
-    in_flight_move_.provokes    = detectProvokes(bm, idx, in_flight_move_.origin, dest, type);
+    rx_.move()             = InFlightMove{};
+    rx_.move().active      = true;
+    rx_.move().interactive = true;
+    rx_.move().mover_idx   = idx;
+    rx_.move().origin      = agents[static_cast<std::size_t>(idx)].origin;
+    rx_.move().dest        = dest;
+    rx_.move().type        = type;
+    rx_.move().provokes    = detectProvokes(bm, idx, rx_.move().origin, dest, type);
     return advanceMove(bm);
 }
 
 FlowStatus
 CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
 {
-    if (!pending_decision_.active) return FlowStatus::Completed;
-    const ReactionCtx ctx = pending_decision_.ctx;
-    pending_decision_.active = false;
+    if (!rx_.parked()) return FlowStatus::Completed;
+    const ReactionCtx ctx = rx_.pending().ctx;
+    rx_.unpark();
     // Dispatch to whichever interruptible flow is parked. Cast (OnDeclareCast), attack (OnHit), move
     // (LeftReach) and turn-start (OnTurnStartNearby) share one transport; only one is active at a time
     // (the decision stack that would allow a reaction-during-reaction arrives later with
     // Counterspell-vs-Counterspell).
-    if (in_flight_turn_.active) {   // OnTurnStartNearby — top-level, never nested inside another flow
+    if (rx_.turn().active) {   // OnTurnStartNearby — top-level, never nested inside another flow
         applyTurnStartReaction(bm, ctx, resp);
-        ++in_flight_turn_.cursor;
+        ++rx_.turn().cursor;
         return advanceTurnStart(bm);
     }
-    if (in_flight_attack_.active) {
+    if (rx_.attack().active) {
         // Two windows share the in-flight attack: OnD20Seen (multi-reactor cursor, BEFORE the hit) and
         // OnHit Shield (single reactor, no cursor). Advance the d20 cursor on each OnD20Seen resume so
         // a Skip moves to the next reactor; the Shield branch re-enters advanceAttack with the gate
@@ -872,7 +872,7 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
             // Shadowy Dodge, before the roll: advanceAttack rolls next, with the Disadvantage if taken.
             if (resp.option >= 0 && resp.option < static_cast<int>(ctx.options.size()) &&
                 ctx.options[static_cast<std::size_t>(resp.option)].feature == "ShadowyDodge")
-                takeShadowyDodge(bm, in_flight_attack_);
+                takeShadowyDodge(bm, rx_.attack());
         } else if (ctx.window == ReactionWindow::AfterAttack) {
             // Shadowy Dodge's teleport: the safest cell, or the one the response names.
             if (resp.option >= 0 && resp.option < static_cast<int>(ctx.options.size()) &&
@@ -880,15 +880,15 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
                 shadowyDodgeFollowUp(bm, ctx.reactor_idx, resp.cell_col, resp.cell_row);
         } else if (ctx.window == ReactionWindow::OnD20Seen) {
             applyD20SeenReaction(bm, ctx, resp);
-            ++in_flight_attack_.d20_cursor;
-        } else if (in_flight_attack_.sentinel_parked) {
+            ++rx_.attack().d20_cursor;
+        } else if (rx_.attack().sentinel_parked) {
             // Sentinel at Death's Door (multi-reactor cursor after the defender's OnHit window).
-            in_flight_attack_.sentinel_parked = false;
+            rx_.attack().sentinel_parked = false;
             if (resp.option >= 0 && resp.option < static_cast<int>(ctx.options.size()) &&
                 ctx.options[static_cast<std::size_t>(resp.option)].feature == "SentinelAtDeathsDoor")
-                (void)applySentinelAtDeathsDoor(bm, ctx.reactor_idx, in_flight_attack_.action,
-                                                in_flight_attack_.w, in_flight_attack_.r);
-            ++in_flight_attack_.sentinel_cursor;
+                (void)applySentinelAtDeathsDoor(bm, ctx.reactor_idx, rx_.attack().action,
+                                                rx_.attack().w, rx_.attack().r);
+            ++rx_.attack().sentinel_cursor;
         } else {
             applyAttackReaction(bm, ctx, resp);
         }
@@ -902,7 +902,7 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
             applySaveFailReaction(bm, ctx, resp);
             ++c.savefail_cursor;
         } else if (isCounterspellChoice(ctx, resp) &&
-                   cast_stack_.size() <= bm.placedAgents().size()) {
+                   rx_.casts().size() <= bm.placedAgents().size()) {
             // Counterspell → push a nested cast. Capture the parent caster
             // (ctx.source_idx) before the push, and do NOT touch c afterward (it dangles).
             ++c.cursor;
@@ -916,7 +916,7 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
         return advanceCast(bm);
     }
     applyReactionResponse(bm, ctx, resp);
-    ++in_flight_move_.cursor;
+    ++rx_.move().cursor;
     return advanceMove(bm);
 }
 
@@ -926,16 +926,16 @@ CombatEngine::resolveMove(BattleMap& bm, int idx, Cell dest, MovementType type)
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return {};
 
-    in_flight_move_             = InFlightMove{};
-    in_flight_move_.active      = true;
-    in_flight_move_.interactive = false;
-    in_flight_move_.mover_idx   = idx;
-    in_flight_move_.origin      = agents[static_cast<std::size_t>(idx)].origin;
-    in_flight_move_.dest        = dest;
-    in_flight_move_.type        = type;
-    in_flight_move_.provokes    = detectProvokes(bm, idx, in_flight_move_.origin, dest, type);
+    rx_.move()             = InFlightMove{};
+    rx_.move().active      = true;
+    rx_.move().interactive = false;
+    rx_.move().mover_idx   = idx;
+    rx_.move().origin      = agents[static_cast<std::size_t>(idx)].origin;
+    rx_.move().dest        = dest;
+    rx_.move().type        = type;
+    rx_.move().provokes    = detectProvokes(bm, idx, rx_.move().origin, dest, type);
     (void)advanceMove(bm);
-    return in_flight_move_.results;
+    return rx_.move().results;
 }
 
 } // namespace rpg

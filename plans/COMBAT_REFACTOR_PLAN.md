@@ -1,14 +1,15 @@
 # Combat Engine Refactor — Implementation Plan
 
 Status: **IN PROGRESS** — R0, R1, R2, R3 (additive landing + `rules.hpp` unit tests + the
-forwarder deletion that closes it), R4's first five sub-engine cuts (`VisibilityService`,
-`MovementController`, `ConditionTracker`, `SpellEffectStore`, `NpcState`) plus its first mis-grouping fix
-(`combat_contested.cpp`), and **R5** (`snapshot()`/`restore()`) are done and verified.
-**R3 is now closed**: the four deletable forwarders are gone and the remaining call-site
-migration falls out of R4 rather than being swept. **R4 is the only phase with work left** —
-`ReactionArbiter` (`NpcState`, the renamed `NpcDriver` row, landed 2026-11-18 as R4f), which (amended 2026-09-25) now also absorbs what was
-the `AttackResolver` row plus the second mis-grouping (the turn-start reaction flow). See
-**Handoff (2026-11-18)** and **R4f** first, then **Handoff (2026-09-25)**, then **Handoff (2026-09-14)**, **R5**, and **R3d/R4d/R4e** below
+forwarder deletion that closes it), all six of R4's sub-engine cuts (`VisibilityService`,
+`MovementController`, `ConditionTracker`, `SpellEffectStore`, `NpcState`, `ReactionArbiter`) plus its
+first mis-grouping fix (`combat_contested.cpp`), and **R5** (`snapshot()`/`restore()`) are done and
+verified. **R3 is now closed**: the four deletable forwarders are gone and the remaining call-site
+migration falls out of R4 rather than being swept. **R4 is the only phase with work left** — **R4h**,
+a pure TU move of the park/resume flow into `combat_reactions.cpp`, which also fixes the second
+mis-grouping (the turn-start reaction flow). See **Handoff (2026-11-18, later)** and **R4g** first,
+then **Handoff (2026-11-18)**, **R4f**, **Handoff (2026-09-25)**, **Handoff (2026-09-14)**, **R5**, and
+**R3d/R4d/R4e** below
 before picking this up in a new session.
 
 **Staleness review (2026-11-18)**: no refactor work since 2026-09-25, but the repo moved on
@@ -64,6 +65,15 @@ No behavior changes, no new features, no bug fixes bundled in. Every phase must 
 `tests/run_all_tests.py` green with byte-identical results for a fixed seed.
 
 ---
+
+## Handoff (2026-11-18, later): R4g landed
+
+**R4g landed (2026-11-18)**: `reaction_arbiter.hpp` (new) takes the five park/resume members —
+`pending_decision_`, `in_flight_move_`, `in_flight_attack_`, `in_flight_turn_`, `cast_stack_`.
+Container-only again: the flow stays on `CombatEngine`. The scope was agreed with the user before
+coding: **R4g** the state, then **R4h** a pure TU move of the park/resume flow bodies into a new
+`combat_reactions.cpp` (fixing R4's second mis-grouping, the turn-start flow). The remaining
+deferred items were closed as won't-do; see **R4g**. **Next: R4h.**
 
 ## Handoff (2026-11-18)
 
@@ -788,7 +798,7 @@ look like if a Python-side *caller* ever wants it, is in `memory/known_limitatio
 *Architecture / Infrastructure* → "`rules::` has no Python binding". `README.md`'s Test section
 summarises it for anyone running the suite.
 
-### R4 — Sub-engines behind a facade — **IN PROGRESS** (5 of 6 cut + 1 of 2 mis-groupings fixed, 2026-11-18)
+### R4 — Sub-engines behind a facade — **IN PROGRESS** (6 of 6 cut + 1 of 2 mis-groupings fixed, 2026-11-18; R4h left)
 
 Legend in the table below: ✅ fully cut · ◐ partially cut (see its subsection for what stayed
 behind and why).
@@ -801,7 +811,7 @@ Each sub-engine owns its state struct and holds `CombatContext&`:
 | `MovementController` ◐ | `in_flight_move_`, walk/fly/swim/burrow budgets, `slipDistanceMoved_` | `combat_movement.cpp` |
 | `ConditionTracker` ◐ | `activeAgentConditions_`, `nextConditionId_`, petrify/gaseous snapshots | `combat_conditions.cpp` |
 | `SpellEffectStore` ◐ | `activeEffects_`, `safeTargets_`, `zoneAppliedTurn_` | `combat_spells.cpp` |
-| `ReactionArbiter` | `pending_decision_`, `in_flight_turn_`, `in_flight_attack_`, `cast_stack_` (+ `in_flight_move_` from R4b) | reaction paths in `combat_riders.cpp`, `combat_attack.cpp`, `combat_spells.cpp`, `combat_movement.cpp` |
+| `ReactionArbiter` ◐ | `pending_decision_`, `in_flight_turn_`, `in_flight_attack_`, `cast_stack_` (+ `in_flight_move_` from R4b) | reaction paths in `combat_riders.cpp`, `combat_attack.cpp`, `combat_spells.cpp`, `combat_movement.cpp` |
 | `NpcState` ◐ | `npc_turn_`, npc config cache (+ models, policy, forced macro, policy error, last decision, warning guard) | `combat_turn.cpp` |
 
 `CombatEngine` becomes ~281 one-line forwarders preserving the Python API exactly.
@@ -1190,6 +1200,82 @@ the turn-start reaction flow (R4's second mis-grouping, still in `combat_riders.
 `in_flight_attack_` and the attack interrupt flow (the folded `AttackResolver`), `cast_stack_`
 with the cast interrupt flow (R4e), and the NPC turn executors with `NpcState::turn()`'s mutable
 seam (R4f).
+
+#### R4g — `ReactionArbiter` (the state, not the flow) — **DONE** (2026-11-18)
+
+Scope agreed with the user before coding, in two sub-steps: **R4g** moves the state, **R4h** moves
+the flow bodies into their own TU. Measured first, per member, per function (outside
+`snapshot()`/`restore()`):
+
+| member | touched by |
+| ------ | ---------- |
+| `pending_decision_` | `advanceMove`, `submitDecision` (movement), `advanceAttack` (attack), `stepTopCast`, `advanceCast` (spells), `advanceTurnStart` (riders); `pendingDecision()` inline |
+| `in_flight_move_` | `applyReactionResponse`, `advanceMove`, `beginMove`, `submitDecision`, `resolveMove` |
+| `in_flight_attack_` | `beginAttack`, `advanceAttack`, `applyAttackReaction`, `maybeRestoreBalanceMissInline`, `submitDecision` |
+| `in_flight_turn_` | `beginTurnFlow`, `advanceTurnStart`, `submitDecision`; `lastTurnStartResult()` inline |
+| `cast_stack_` | `beginCast`, `advanceCast`, `stepTopCast`, `finalizeAndPop`, `pushCounterspell`, `resolveCounterspellEffect`, `resolveCast`, `submitDecision`; `castActive()`/`topCast()` inline |
+
+`submitDecision` is the single resume point of all four flows. `decider_` is a host callback, not
+state (about 35 inline `maybe*` helpers ask it), and stays on the engine.
+
+**New `gui/reaction_arbiter.hpp`**, header-only, **no `CombatContext&`** (nothing in it rolls or
+logs). `CombatEngine` holds `ReactionArbiter rx_;` where `pending_decision_` was. Every public
+method is unchanged (`pendingDecision()`, `lastTurnStartResult()`, `castActive()`, `topCast()` forward),
+so the bindings and `main.py` are untouched, and the App A2 seams (`app.pending` polling
+`pending_decision()`, resuming through `submit_decision()`) need nothing new.
+
+Call-site routes (mechanical, code only, comments untouched), each behaviour-identical:
+- `pending_decision_ = PendingDecision{true, ctx};` (9×) → `rx_.park(ctx)`, the same assignment.
+- `pending_decision_.active = false;` (5×) → `rx_.unpark()`, which clears only the flag and leaves
+  `ctx` as it was. `!pending_decision_.active` → `!rx_.parked()`; `.ctx` → `rx_.pending().ctx`.
+- `in_flight_move_` / `in_flight_attack_` / `in_flight_turn_` / `cast_stack_` → `rx_.move()` /
+  `attack()` / `turn()` / `casts()`, mutable references. That is the documented seam, like R4c's
+  `mutableAll()` and R4f's `NpcState::turn()`, and it **stays**: the code writing through it is not
+  moving (below).
+
+**Serialization keeps the five top-level keys** in the same positions in `snapshot()` and
+`restore()`, including the reset order with `npc_turn` in the middle. `mutablePending()` exists
+only for `restore()`.
+
+**Deferred items, closed as won't-do (agreed with the user):**
+- *The flow into the class.* Every flow function calls back into attack resolution, `executeSpell`,
+  the condition code and damage, so a `ReactionArbiter` that drove them would need the whole engine
+  by reference and would only rename the god class. R4d's rule (a module becomes a class when it
+  owns state) says the flow is a TU, which is R4h.
+- *`ConditionTracker::mutableAll()` removal, `NpcState::turn()`'s mutable seam, the NPC turn
+  executors.* The code that writes through those seams is not moving, so they stay, documented.
+
+**The finding: two of the five restores were unguarded.** Mutant-checked by deleting each
+`readMember` from `restore()` and running the ten suites that restore (`test_autosave*`,
+`test_board_snapshot`, `test_condition_immunities`, `test_npc_macro_actions`, `test_restore_oracle`,
+`test_reclaim`, `test_snapshot`, `test_tracker_mode`; a mutant in `restore()` is only observable
+through a restore, but the rest of the suite was not run per mutant):
+
+| Mutant | Caught by |
+| ------ | --------- |
+| skip `in_flight_turn` | `test_autosave_restore`, `test_autosave`, `test_restore_oracle` (the oracle's `engine` gap) |
+| skip `in_flight_attack` | **nothing** before R4g → new `test_parked_attack_round_trips: in_flight_attack did not round-trip` |
+| skip `cast_stack` | only `test_bad_payloads_refused`'s wrong-type check before R4g → new `test_parked_cast_stack_round_trips: cast_stack did not round-trip` |
+| skip `pending_decision` / `in_flight_move` | `test_parked_reaction_round_trips` (existing; not re-run as mutants) |
+
+`test_parked_attack_round_trips` parks a marginal hit at the defender's Shield window, resolves it,
+rewinds the defender, restores, and requires the identical `in_flight_attack` plus the OnHit park,
+then Shield still negates. `test_parked_cast_stack_round_trips` snapshots a two-deep
+counter-counterspell stack (A's Magic Missile under B's Counterspell, C parked), lets C skip,
+restores, and requires the identical stack; C then counters and A's missile lands.
+`test_snapshot.py` 8 → 10.
+
+**Verification** (2026-11-18, `rpg_map` image): fresh baseline `./test.sh` **263/0**; after the
+cut, clean build with no warnings, `test_determinism.py` byte-identical to the golden,
+`test_snapshot` 10/10, `./test.sh` **263/0**.
+
+**R4h, next**: a pure TU move, R4d-style, into a new `gui/combat_reactions.cpp`, bodies
+byte-identical: the turn-start flow (`turnStartReactors`, `turnStartOptions`,
+`applyTurnStartReaction`, `advanceTurnStart`, `beginTurnFlow`) from `combat_riders.cpp` — R4's second
+mis-grouping —, `applyReactionResponse`/`advanceMove`/`beginMove`/`submitDecision`/`resolveMove` from
+`combat_movement.cpp`, `beginAttack`/`advanceAttack` from `combat_attack.cpp`, and
+`pushCounterspell`/`resolveCounterspellEffect`/`stepTopCast`/`finalizeAndPop`/`advanceCast`/
+`beginCast`/`resolveCast` from `combat_spells.cpp`.
 
 ### R5 — Serialization — **DONE** (2026-09-15)
 

@@ -39,6 +39,7 @@
 #include "condition_tracker.hpp"   // ConditionTracker — active-condition store + stat snapshots (R4c)
 #include "spell_effect_store.hpp"  // SpellEffectStore — ticking effects, safe targets, zone ledger (R4e)
 #include "npc_state.hpp"           // NpcState — in-flight NPC turn, config cache, models, policy (R4f)
+#include "reaction_arbiter.hpp"     // ReactionArbiter — parked decision, in-flight flows, cast stack (R4g)
 
 #include <array>
 #include <cstdint>
@@ -454,7 +455,7 @@ public:
     // the OA AttackResults produced along the way.
     std::vector<AttackResult> resolveMove(BattleMap& bm, int idx, Cell dest, MovementType type);
     // What the engine is parked on (active=false when not parked). GUI polls each frame.
-    [[nodiscard]] const PendingDecision& pendingDecision() const noexcept { return pending_decision_; }
+    [[nodiscard]] const PendingDecision& pendingDecision() const noexcept { return rx_.pending(); }
 
     // Interruptible spell cast: opens the OnDeclareCast window before the
     // spell resolves, so reactions (this pass: Shield vs Magic Missile) can change/cancel it.
@@ -513,7 +514,7 @@ public:
     // (resolves each reactor inline via the installed decider). Read the TurnStartResult via
     // lastTurnStartResult() once the flow Completes. The plain beginTurn() above stays the no-window path.
     FlowStatus beginTurnFlow(BattleMap& bm, int agent_idx, bool interactive);
-    [[nodiscard]] const TurnStartResult& lastTurnStartResult() const noexcept { return in_flight_turn_.result; }
+    [[nodiscard]] const TurnStartResult& lastTurnStartResult() const noexcept { return rx_.turn().result; }
 
     // ── NPC automation turn driver (NPC_AUTOMATION_PLAN.md Step 2) ────────────
     // Drive one automated NPC's turn through the engine instead of requiring manual GUI control.
@@ -2380,9 +2381,9 @@ private:
     // Per-turn walk/fly/swim/burrow budgets and the slipping-terrain counter — the maps that
     // used to be walkRemaining_/flyRemaining_/swimRemaining_/burrowRemaining_/slipDistanceMoved_
     // here. See movement_controller.hpp (COMBAT_REFACTOR_PLAN.md R4b), including why the movement
-    // FLOW (moveAgent/jumpAgent/teleportAgent/checkSlippingTerrain/standup and in_flight_move_)
-    // stayed on the engine: it is entangled with pending_decision_ and so travels with
-    // ReactionArbiter, which the plan deliberately schedules last.
+    // FLOW (moveAgent/jumpAgent/teleportAgent/checkSlippingTerrain/standup) stayed on the engine:
+    // it is entangled with the parked decision. in_flight_move_ now lives in rx_ (ReactionArbiter,
+    // R4g); the flow still stays here (see reaction_arbiter.hpp).
     MovementController mv_;
 
     // The active spell-applied conditions (Hold Person, Stun, …), the id counter, and the
@@ -2449,8 +2450,11 @@ private:
     }
 
     // ── Reaction system internals (combat_movement.cpp) ──────────────────────
-    PendingDecision pending_decision_{};   // what the engine is parked on (GUI polls it)
-    InFlightMove    in_flight_move_{};      // resumable state of a provoking move
+    // The parked decision, the in-flight move / attack / turn-start flows and the cast stack —
+    // what used to be pending_decision_/in_flight_move_/in_flight_attack_/in_flight_turn_/
+    // cast_stack_ here. See reaction_arbiter.hpp (COMBAT_REFACTOR_PLAN.md R4g): the state lives
+    // there, the park/resume flow that drives it stays on the engine.
+    ReactionArbiter rx_;
     // Detect which creatures the mover leaves the reach of along origin→dest (per-creature,
     // per-step via the straight-line path). Returns events ordered by path step.
     [[nodiscard]] std::vector<ProvokeEvent> detectProvokes(const BattleMap& bm, int mover_idx,
@@ -2470,13 +2474,13 @@ private:
     //    A Counterspell is a genuine nested cast pushed on top of the cast
     //    it targets; the stack lets a deeper Counterspell negate it before it fires. back() = the cast
     //    currently resolving; empty = idle. The bottom (original) cast's outcome is snapshotted into
-    //    last_cast_result_/last_cast_countered_ when the stack empties (the GUI accessors read those). ──
-    std::vector<InFlightCast> cast_stack_;
+    //    last_cast_result_/last_cast_countered_ when the stack empties (the GUI accessors read those).
+    //    The stack itself lives in rx_ (ReactionArbiter, R4g); castActive/topCast forward to it. ──
     SpellResult last_cast_result_{};
     bool        last_cast_countered_{false};
-    [[nodiscard]] bool          castActive() const noexcept { return !cast_stack_.empty(); }
-    [[nodiscard]] InFlightCast& topCast()           noexcept { return cast_stack_.back(); }   // precond: castActive()
-    [[nodiscard]] const InFlightCast& topCast() const noexcept { return cast_stack_.back(); }
+    [[nodiscard]] bool          castActive() const noexcept { return rx_.castActive(); }
+    [[nodiscard]] InFlightCast& topCast()           noexcept { return rx_.topCast(); }   // precond: castActive()
+    [[nodiscard]] const InFlightCast& topCast() const noexcept { return rx_.topCast(); }
     // OnDeclareCast reactors for a cast: Counterspell casters that can see the caster, plus (for
     // Magic Missile) targets that can cast Shield. advanceCast builds each reactor's options.
     [[nodiscard]] std::vector<int> declareCastReactors(const BattleMap& bm, const SpellAction& action) const;
@@ -2654,7 +2658,7 @@ private:
     [[nodiscard]] bool npcHoldsConcentration(const BattleMap& bm, int agent_idx) const noexcept;
 
     // ── Attack interrupt internals (combat_attack.cpp) ───────────────────────
-    InFlightAttack in_flight_attack_{};      // resumable state of a begin_attack flow
+    // (in_flight_attack_ moved to rx_ — ReactionArbiter::attack(), R4g)
     AttackResult   last_attack_result_{};    // result of the most recent begin_attack flow (read by GUI)
     // True iff the target should be offered a Shield reaction vs this just-rolled attack: a non-crit
     // hit whose +5 AC would flip it to a miss, and the target can cast Shield right now. Shared by the
@@ -2809,7 +2813,7 @@ private:
     void applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
 
     // ── OnTurnStartNearby internals (combat_riders.cpp) ──────────────────
-    InFlightTurn in_flight_turn_{};   // resumable state of a begin_turn_flow
+    // (in_flight_turn_ moved to rx_ — ReactionArbiter::turn(), R4g)
     // The creatures (≠ source) eligible for ANY turn-start reaction vs `source`, in order.
     [[nodiscard]] std::vector<int> turnStartReactors(const BattleMap& bm, int source) const;
     // reactor's legal Feature options ("BranchesOfTheTree") vs `source`, + a trailing Skip

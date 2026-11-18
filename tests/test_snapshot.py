@@ -40,6 +40,9 @@ import rpg_battle_map as rpg
 from test_helpers import (setup_battle_map, setup_combat_engine,
                           create_test_agent, add_agent_to_battle)
 from test_reactions import equip_oa_weapon, ready_mover, pick_weapon
+from test_shield_vs_attack import (_setup as _shield_setup, _reset_defender, _shield_opt,
+                                   _skip_opt)
+from test_counterspell import _add, _make_caster, _make_counterspeller, _mm_action
 
 
 SEED = 20260915
@@ -396,6 +399,107 @@ def test_parked_npc_turn_round_trips():
     print("✅ test_parked_npc_turn_round_trips passed")
 
 
+def _submit(engine, bm, option):
+    resp = rpg.ReactionResponse()
+    resp.option = option
+    return engine.submit_decision(bm, resp)
+
+
+def _feature_opt(ctx, feature):
+    return next(i for i, o in enumerate(ctx.options)
+                if o.kind == rpg.ReactionOptionKind.Feature and o.feature == feature)
+
+
+def test_parked_attack_round_trips():
+    """A begin_attack parked at its OnHit window (ReactionArbiter::attack(), key
+    "in_flight_attack") survives a snapshot and still resumes.
+
+    Before R4g nothing guarded this: a restore that skipped the in_flight_attack read
+    passed every suite that restores. Here a marginal hit parks at the defender's Shield
+    window, the park is resolved (Shield), the defender is rewound by hand, and the
+    snapshot is restored: the identical in-flight attack must come back, and Shield
+    must still negate it."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk, tgt = _shield_setup(engine, bm)
+    for _ in range(120):
+        _reset_defender(engine, bm, tgt)
+        if engine.begin_attack(bm, rpg.Attack(atk, tgt, 0)) == rpg.FlowStatus.AwaitingDecision:
+            break
+    else:
+        assert False, "setup: no marginal hit parked the OnHit window in 120 begin_attack calls"
+
+    snap = engine.snapshot_json()
+    parked = json.loads(snap)["in_flight_attack"]
+    assert parked["active"], "the parked attack was not captured"
+
+    # Clobber: Shield resolves the attack. Then rewind the defender's slot, Shield and
+    # reaction, which live in BattleMap and are not in the snapshot.
+    assert _submit(engine, bm, _shield_opt(engine.pending_decision().ctx)) == rpg.FlowStatus.Completed
+    _reset_defender(engine, bm, tgt)
+
+    assert engine.restore_json(snap)
+    again = json.loads(engine.snapshot_json())["in_flight_attack"]
+    assert again == parked, "in_flight_attack did not round-trip"
+    pd = engine.pending_decision()
+    assert pd.active and pd.ctx.window == rpg.ReactionWindow.OnHit and pd.ctx.reactor_idx == tgt, \
+        "the OnHit park did not come back"
+    assert _submit(engine, bm, _shield_opt(pd.ctx)) == rpg.FlowStatus.Completed
+    assert not engine.last_attack_result().hit, "the restored attack no longer resolves under Shield"
+    print("✅ test_parked_attack_round_trips passed")
+
+
+def test_parked_cast_stack_round_trips():
+    """A two-deep counter-counterspell stack (ReactionArbiter::casts(), key "cast_stack")
+    survives a snapshot and still resolves.
+
+    Before R4g the only thing a skipped cast_stack read broke was
+    test_bad_payloads_refused's wrong-type check; no test compared the stack's content.
+    A casts Magic Missile, B counters, and the snapshot is taken while C is parked on
+    B's Counterspell. C skips (B's counter lands, the stack empties), the snapshot is
+    restored, and this time C counters B, so A's missile lands."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    a      = _add(engine, bm, "A", 5, 5)
+    victim = _add(engine, bm, "Victim", 7, 5)
+    b      = _add(engine, bm, "B", 5, 6)
+    c      = _add(engine, bm, "C", 6, 5)
+    _make_caster(engine, bm, a)
+    vs = engine.get_agent_stats(bm, victim)
+    vs.hp_max = 40
+    vs.hp_cur = 40
+    engine.set_agent_stats(bm, victim, vs)
+    _make_counterspeller(engine, bm, b)
+    _make_counterspeller(engine, bm, c)
+
+    assert engine.begin_cast(bm, _mm_action(a, victim)) == rpg.FlowStatus.AwaitingDecision
+    pd = engine.pending_decision()
+    assert pd.ctx.reactor_idx == b
+    assert _submit(engine, bm, _feature_opt(pd.ctx, "Counterspell")) == rpg.FlowStatus.AwaitingDecision
+    assert engine.pending_decision().ctx.reactor_idx == c, "setup: C should be parked on B's Counterspell"
+
+    snap = engine.snapshot_json()
+    parked = json.loads(snap)["cast_stack"]
+    assert len(parked) == 2, f"expected A's cast under B's Counterspell, got {len(parked)} entries"
+
+    # Clobber: C skips, so B's counter lands on A and the stack empties. Nothing in
+    # BattleMap changed after the snapshot (C's reaction and slots are untouched, a
+    # countered spell keeps its slot, the victim takes no damage), so no rewind is needed.
+    assert _submit(engine, bm, _skip_opt(engine.pending_decision().ctx)) == rpg.FlowStatus.Completed
+    assert engine.last_cast_countered(), "setup: B's Counterspell should counter A"
+    assert json.loads(engine.snapshot_json())["cast_stack"] == [], "setup: the stack did not empty"
+
+    assert engine.restore_json(snap)
+    again = json.loads(engine.snapshot_json())["cast_stack"]
+    assert again == parked, "cast_stack did not round-trip"
+    pd = engine.pending_decision()
+    assert pd.active and pd.ctx.reactor_idx == c, "C's park did not come back"
+    assert _submit(engine, bm, _feature_opt(pd.ctx, "Counterspell")) == rpg.FlowStatus.Completed
+    assert not engine.last_cast_countered(), "C counters B, so A's cast resolves"
+    assert engine.get_agent_stats(bm, victim).hp_cur < 40, "A's Magic Missile lands after the restore"
+    print("✅ test_parked_cast_stack_round_trips passed")
+
+
 def test_bad_payloads_refused():
     """Malformed, wrong-shaped and future-version payloads return False, not an
     exception crossing the pybind11 boundary."""
@@ -422,6 +526,8 @@ def main():
         test_spell_effects_round_trip,
         test_parked_reaction_round_trips,
         test_parked_npc_turn_round_trips,
+        test_parked_attack_round_trips,
+        test_parked_cast_stack_round_trips,
         test_bad_payloads_refused,
     ]
     failed = 0

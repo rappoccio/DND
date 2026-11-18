@@ -261,11 +261,11 @@ nlohmann::json CombatEngine::snapshot() const
     j["death_burst_fired"] = deathBurstFired_;
 
     // Park/resume state, so a restore can pick a suspended reaction window back up.
-    j["pending_decision"] = pending_decision_;
-    j["in_flight_move"]   = in_flight_move_;
-    j["in_flight_attack"] = in_flight_attack_;
-    j["in_flight_turn"]   = in_flight_turn_;
-    j["cast_stack"]       = cast_stack_;
+    j["pending_decision"] = rx_.pending();
+    j["in_flight_move"]   = rx_.move();
+    j["in_flight_attack"] = rx_.attack();
+    j["in_flight_turn"]   = rx_.turn();
+    j["cast_stack"]       = rx_.casts();
     j["npc_turn"]         = npc_.turn();   // NpcState (R4f), same top-level key
 
     // Last-result readbacks. These are outputs, not inputs to any rule — but the GUI
@@ -303,17 +303,17 @@ bool CombatEngine::restore(const nlohmann::json& j)
     deathBurstFired_.clear();
     readMember(j, "death_burst_fired", deathBurstFired_);
 
-    pending_decision_  = {};
-    in_flight_move_    = {};
-    in_flight_attack_  = {};
-    in_flight_turn_    = {};
-    npc_.turn()        = {};
-    cast_stack_.clear();
-    readMember(j, "pending_decision", pending_decision_);
-    readMember(j, "in_flight_move",   in_flight_move_);
-    readMember(j, "in_flight_attack", in_flight_attack_);
-    readMember(j, "in_flight_turn",   in_flight_turn_);
-    readMember(j, "cast_stack",       cast_stack_);
+    rx_.mutablePending() = {};   // ReactionArbiter (R4g), same keys and order as before
+    rx_.move()           = {};
+    rx_.attack()         = {};
+    rx_.turn()           = {};
+    npc_.turn()          = {};
+    rx_.casts().clear();
+    readMember(j, "pending_decision", rx_.mutablePending());
+    readMember(j, "in_flight_move",   rx_.move());
+    readMember(j, "in_flight_attack", rx_.attack());
+    readMember(j, "in_flight_turn",   rx_.turn());
+    readMember(j, "cast_stack",       rx_.casts());
     readMember(j, "npc_turn",         npc_.turn());
 
     last_attack_result_  = {};

@@ -2601,7 +2601,7 @@ void CombatEngine::applyTurnStartReaction(BattleMap& bm, const ReactionCtx& ctx,
 
 FlowStatus CombatEngine::advanceTurnStart(BattleMap& bm)
 {
-    InFlightTurn& t = in_flight_turn_;
+    InFlightTurn& t = rx_.turn();
     // A creature whose turn is skipped (paralyzed/unconscious/Wild-Magic) or that is down isn't
     // meaningfully "present" to be reacted to — open no window (completes immediately).
     const bool open = !t.result.turn_skipped && t.agent_idx >= 0
@@ -2621,24 +2621,24 @@ FlowStatus CombatEngine::advanceTurnStart(BattleMap& bm)
         ctx.source_idx  = t.agent_idx;
         ctx.options     = opts;
         if (t.interactive) {                                       // GUI suspends; resumes via submitDecision
-            pending_decision_ = PendingDecision{true, ctx};
+            rx_.park(ctx);
             return FlowStatus::AwaitingDecision;
         }
         applyTurnStartReaction(bm, ctx, decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{});
         ++t.cursor;                                                // auto/RL inline
     }
-    pending_decision_.active = false;
+    rx_.unpark();
     t.active = false;
     return FlowStatus::Completed;
 }
 
 FlowStatus CombatEngine::beginTurnFlow(BattleMap& bm, int agent_idx, bool interactive)
 {
-    in_flight_turn_             = InFlightTurn{};
-    in_flight_turn_.active      = true;
-    in_flight_turn_.interactive = interactive;
-    in_flight_turn_.agent_idx   = agent_idx;
-    in_flight_turn_.result      = beginTurn(bm, agent_idx);        // the existing synchronous body
+    rx_.turn()             = InFlightTurn{};
+    rx_.turn().active      = true;
+    rx_.turn().interactive = interactive;
+    rx_.turn().agent_idx   = agent_idx;
+    rx_.turn().result      = beginTurn(bm, agent_idx);        // the existing synchronous body
     return advanceTurnStart(bm);
 }
 
