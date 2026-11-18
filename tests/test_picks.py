@@ -193,8 +193,8 @@ def _record(app):
 
 
 def _attack_fields(app):
-    return (app.pending_attack_slot, app.attacks_remaining, app._attack_sequence_slot,
-            app.pending_attack_offhand, app.pending_attack_resource, app.action_used)
+    return (app._armed_slot(pending.Attack), app.attack_seq.remaining, app.attack_seq.slot,
+            app.attack_seq.offhand, app.attack_seq.resource, app.action_used)
 
 
 def _esc(app):
@@ -204,9 +204,12 @@ def _esc(app):
 
 
 def _arm(app, arm, value):
-    """Arm `arm` with `value`: a click pick through `app.pick`, a slot by its attribute."""
+    """Arm `arm` with `value`: a click pick through `app.pick`, a base mode through
+    `app.pending`, any other arm by its attribute."""
     if arm.idle is net_picks.PICK:
         app._set_pick(arm.name, value)
+    elif isinstance(arm.idle, type):
+        app.pending = value
     else:
         setattr(app, arm.name, value)
 
@@ -216,6 +219,12 @@ def _armed_value(app, arm, aria, skarn):
         return {"action": None, "result": None, "first": skarn, "attacker": aria}
     if arm.name in ("rally", "feint"):
         return aria
+    if arm.idle is pending.Shove:
+        return pending.Shove("bonus", "push")
+    if arm.idle is pending.Unarmed:
+        return pending.Unarmed("grapple")
+    if isinstance(arm.idle, type):
+        return arm.idle("action")
     idle = pending.idle(arm.name) if arm.idle is net_picks.PICK else arm.idle
     if idle is False:
         return True
@@ -232,10 +241,13 @@ def _armed_value(app, arm, aria, skarn):
 
 def _tested(n):
     """What an `if` in the chain tests: a click pick's kind (`self._picking("k")`,
-    `self._pick_data("k")`) or a `self.` attribute."""
+    `self._pick_data("k")`), a base mode (`self._armed(pending.Attack)` → "attack") or a
+    `self.` attribute."""
     if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
             and n.func.attr in ("_picking", "_pick_data")):
         return n.args[0].value
+    if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "_armed":
+        return n.args[0].attr.lower()
     if (isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self"
             and n.attr not in ("_picking", "_pick_data")):
         return n.attr
@@ -262,6 +274,7 @@ def test_the_arm_table_is_the_chain():
     # Every click pick is waited on through `app.pick`.
     from main import App
     waits = {n for n, _ in App._TARGET_PICK_ARMS} - {"pending_beguiling_bard"}
+    waits |= {m.__name__.lower() for m in App._TARGET_PICK_MODES}
     assert waits <= set(names), sorted(waits - set(names))
     for arm in net_picks.ARMS:
         if arm.name in net_picks.WIRED:
@@ -289,8 +302,8 @@ def test_an_attack_picked_over_the_bus():
     res = app.prompts.submit(pick.id, Response(cell=_pos(app, skarn)), kira.id)
     assert res.ok, res
     assert any("Aria→Skarn" in line for line in new), new
-    assert app.action_used and app.attacks_remaining == 1, _attack_fields(app)
-    assert app.pending_attack_slot == "", "the swing left the map armed"
+    assert app.action_used and app.attack_seq.remaining == 1, _attack_fields(app)
+    assert app._armed_slot(pending.Attack) == "", "the swing left the map armed"
     _frame(app)
     again = _offer(app)
     assert again is not None and again.id != offer.id, "no fresh offer after the swing"
@@ -308,7 +321,7 @@ def test_an_empty_square_keeps_the_pick():
     res = app.prompts.submit(pick.id, Response(cell=(0, 0)), kira.id)
     assert res.ok, res
     assert app.combat_log[0] == net_picks.NOT_TAKEN, app.combat_log[0]
-    assert app.pending_attack_slot == "action" and not app.action_used, _attack_fields(app)
+    assert app._armed_slot(pending.Attack) == "action" and not app.action_used, _attack_fields(app)
     _frame(app)
     again = _pick(app)
     assert again is not None and again.id != pick.id, "the pick was not posted again"
@@ -322,7 +335,7 @@ def test_cancelling_a_fresh_attack_undoes_it():
     before = _attack_fields(app)
     _choose(app, kira, "atk_action")
     pick = _until_pick(app, kira)
-    assert app.attacks_remaining > 0, "Attack did not seed its count"
+    assert app.attack_seq.remaining > 0, "Attack did not seed its count"
     res = app.prompts.cancel_as(pick.id, kira.id)
     assert res.ok, res
     assert _attack_fields(app) == before, (_attack_fields(app), before)
@@ -391,10 +404,10 @@ def test_a_resolved_pick_ends_the_undo():
     _frame(app)
     assert app.prompts.submit(_pick(app).id, Response(cell=_pos(app, skarn)), kira.id).ok
     app._start_extra_attack(weapon_idx=0, label="Extra attack", slot="action")
-    seq = app._attack_sequence_slot
+    seq = app.attack_seq.slot
     _frame(app)
     assert app.prompts.cancel_as(_pick(app).id, kira.id).ok
-    assert app._attack_sequence_slot == seq == "action", (app._attack_sequence_slot, seq)
+    assert app.attack_seq.slot == seq == "action", (app.attack_seq.slot, seq)
     print("✅ test_a_resolved_pick_ends_the_undo")
 
 
@@ -406,7 +419,7 @@ def test_a_cancelled_punch_restores_the_weapons():
     names = [w.name for w in app.combat.get_agent_weapons(app.bm, aria)]
     _choose(app, kira, "unarmed")
     pick = _until_pick(app, kira)            # the first option is Damage
-    assert app.pending_attack_slot == "action", "Damage did not arm the attack"
+    assert app._armed_slot(pending.Attack) == "action", "Damage did not arm the attack"
     assert [w.name for w in app.combat.get_agent_weapons(app.bm, aria)] != names
     assert app.prompts.cancel_as(pick.id, kira.id).ok
     assert [w.name for w in app.combat.get_agent_weapons(app.bm, aria)] == names
@@ -432,7 +445,7 @@ def test_a_cancelled_hew_is_refunded():
     assert pick is not None and pick.owner == kira.id
     assert app.prompts.cancel_as(pick.id, kira.id).ok
     assert app.combat.get_agent_conditions(app.bm, aria).gwm_hew_available, "Hew not refunded"
-    assert app.attacks_remaining == 0 and app._attack_sequence_slot == ""
+    assert app.attack_seq.remaining == 0 and app.attack_seq.slot == ""
     print("✅ test_a_cancelled_hew_is_refunded")
 
 
@@ -552,9 +565,9 @@ def test_a_parked_window_holds_every_pick_but_vitality():
     real = app.combat
     app.combat = _ParkedWindow(real, aria)
     try:
-        app.pending_attack_slot = "action"
+        app.pending = pending.Attack("action")
         assert net_picks.wanted(app) is None, "an attack pick was wanted over a parked window"
-        app.pending_attack_slot = ""
+        app._disarm(pending.Attack)
         app._arm_pick("vitality_target")
         want = net_picks.wanted(app)
         assert want is not None and want[0].name == "vitality_target", want
@@ -570,7 +583,7 @@ def test_no_pick_prompt_for_the_dms_token():
     from test_combat_panel import _goto
     app, kira, _ = _aria_turn()
     _goto(app, "Brannor")
-    app.pending_attack_slot = "action"
+    app.pending = pending.Attack("action")
     _frame(app)
     assert _pick(app) is None and _offer(app) is None, app.prompts.live
     print("✅ test_no_pick_prompt_for_the_dms_token")
@@ -605,7 +618,7 @@ def test_cells_do_not_leak_positions():
     explored = {(c.col, c.row) for c in app.bm.explored_cells()}
     assert fogged.cells == frozenset(explored), "the fogged set is not the explored mask"
     app.bm.set_agent_position(skarn, rpg.Cell(5, 3))
-    assert net_picks.cells(app, net_picks.BY_NAME["pending_attack_slot"], 0) == sorted(explored)
+    assert net_picks.cells(app, net_picks.BY_NAME["attack"], 0) == sorted(explored)
     print("✅ test_cells_do_not_leak_positions")
 
 
@@ -755,12 +768,12 @@ def test_dash_after_an_unswung_attack_undoes_the_arm():
                               DM_PRINCIPAL_ID).ok
     _frame(app)
     armed = _attack_fields(app)
-    assert app.pending_attack_slot == "action", armed
+    assert app._armed_slot(pending.Attack) == "action", armed
     assert app.perform("dash", DM_PRINCIPAL_ID), "Dash was refused"
     _frame(app)
     after = _attack_fields(app)
     assert app.action_used, after
-    assert (app.pending_attack_slot, app.attacks_remaining, app._attack_sequence_slot) \
+    assert (app._armed_slot(pending.Attack), app.attack_seq.remaining, app.attack_seq.slot) \
         == ("", 0, ""), f"armed {armed}, after the Dash {after}"
     atk = app._action_menu.get("atk_action")
     assert atk is None or not atk.enabled, "Attack is still on offer after the Dash"
@@ -786,10 +799,10 @@ def test_a_bite_after_an_unswung_attack_is_one_of_its_swings():
         assert app.prompts.submit(weapon.id, Response(option=weapon.options[0].id),
                                   DM_PRINCIPAL_ID).ok
     _frame(app)
-    assert app.pending_attack_slot == "action" and app.attacks_remaining == 2, _attack_fields(app)
+    assert app._armed_slot(pending.Attack) == "action" and app.attack_seq.remaining == 2, _attack_fields(app)
     assert app.perform("bite_grappled", DM_PRINCIPAL_ID), "the Bite was refused"
     assert app.action_used
-    assert (app.attacks_remaining, app._attack_sequence_slot) == (1, "action"), _attack_fields(app)
+    assert (app.attack_seq.remaining, app.attack_seq.slot) == (1, "action"), _attack_fields(app)
     print("✅ test_a_bite_after_an_unswung_attack_is_one_of_its_swings")
 
 
@@ -805,7 +818,7 @@ def test_attack_after_a_dash_is_refused():
     atk = app._action_menu.get("atk_action")
     assert atk is None or not atk.enabled, "Attack is on offer after the Dash"
     assert not app.perform("atk_action", DM_PRINCIPAL_ID), "Attack ran after the Dash"
-    assert (app.pending_attack_slot, app.attacks_remaining) == ("", 0), _attack_fields(app)
+    assert (app._armed_slot(pending.Attack), app.attack_seq.remaining) == ("", 0), _attack_fields(app)
     print("✅ test_attack_after_a_dash_is_refused")
 
 
@@ -834,7 +847,7 @@ def test_a_player_cancels_then_dashes():
     _choose(app, kira, "dash")
     _frame(app)
     assert app.action_used
-    assert (app.pending_attack_slot, app.attacks_remaining, app._attack_sequence_slot) \
+    assert (app._armed_slot(pending.Attack), app.attack_seq.remaining, app.attack_seq.slot) \
         == ("", 0, ""), _attack_fields(app)
     offer = _offer(app)
     assert offer is None or not any(o.id == "atk_action" and o.enabled
@@ -852,7 +865,7 @@ def test_a_dm_takeover_then_dash_leaves_no_attack():
     net_offer.take_over(app)
     assert app.perform("dash", DM_PRINCIPAL_ID), "Dash was refused"
     _frame(app)
-    assert (app.pending_attack_slot, app.attacks_remaining, app._attack_sequence_slot) \
+    assert (app._armed_slot(pending.Attack), app.attack_seq.remaining, app.attack_seq.slot) \
         == ("", 0, ""), _attack_fields(app)
     offer = _offer(app)
     assert offer is None or not any(o.id == "atk_action" and o.enabled
@@ -886,12 +899,10 @@ def test_a_summon_does_not_outlive_its_turn():
     aria = _idx(app, "Aria")
     form = _summon_beast(app, aria)
     assert app.prompts.submit(form.id, Response(option=form.options[0].id), kira.id).ok
-    assert app.pending_summon_slot == "action" and app.pending_summon_monster, \
-        (app.pending_summon_slot, app.pending_summon_monster)
+    assert app._armed_slot(pending.Summon) == "action" and app.pending.monster, app.pending
     app._advance_turn()
     _frame(app)
-    assert (app.pending_summon_slot, app.pending_summon_monster, app.pending_summon_spirit) \
-        == ("", "", None), (app.pending_summon_slot, app.pending_summon_monster)
+    assert app._armed(pending.Summon) is None, app.pending
     print("✅ test_a_summon_does_not_outlive_its_turn")
 
 
@@ -913,7 +924,7 @@ def test_a_cancelled_summon_form_disarms():
     app, kira, _ = _aria_turn()
     form = _summon_beast(app, _idx(app, "Aria"))
     assert app.prompts.cancel_as(form.id, kira.id).ok
-    assert app.pending_summon_slot == "", app.pending_summon_slot
+    assert app._armed_slot(pending.Summon) == "", app._armed_slot(pending.Summon)
     assert not app.resolve_pick(rpg.Cell(*_pos(app, _idx(app, "Aria")))), \
         "a map click is still swallowed"
     _frame(app)
@@ -933,7 +944,7 @@ def _skarn_attack_armed(app):
         assert app.prompts.submit(weapon.id, Response(option=weapon.options[0].id),
                                   DM_PRINCIPAL_ID).ok
     _frame(app)
-    assert (app.pending_attack_slot, app.action_used) == ("action", False), _attack_fields(app)
+    assert (app._armed_slot(pending.Attack), app.action_used) == ("action", False), _attack_fields(app)
     return skarn
 
 
@@ -945,9 +956,9 @@ def test_a_spell_after_an_unswung_attack_undoes_the_arm():
     _skarn_attack_armed(app)
     assert app.perform("spell_action", DM_PRINCIPAL_ID), "Cast a Spell was refused"
     _frame(app)
-    assert (app.pending_attack_slot, app.attacks_remaining, app._attack_sequence_slot) \
+    assert (app._armed_slot(pending.Attack), app.attack_seq.remaining, app.attack_seq.slot) \
         == ("", 0, ""), _attack_fields(app)
-    assert app.pending_spell_slot == "action", app.pending_spell_slot
+    assert app._armed_slot(pending.Spell) == "action", app._armed_slot(pending.Spell)
     print("✅ test_a_spell_after_an_unswung_attack_undoes_the_arm")
 
 
@@ -959,7 +970,7 @@ def test_a_cancelled_spell_after_an_unswung_attack_leaves_the_attack_open():
     assert app.perform("spell_action", DM_PRINCIPAL_ID)
     _esc(app)                      # the spell arm's cancel is M5e.1's; Esc is the console's
     _frame(app)
-    assert (app.pending_spell_slot, app.pending_attack_slot, app.attacks_remaining,
+    assert (app._armed_slot(pending.Spell), app._armed_slot(pending.Attack), app.attack_seq.remaining,
             app.action_used) == ("", "", 0, False), _attack_fields(app)
     atk = app._action_menu.get("atk_action")
     assert atk is not None and atk.enabled, "Attack is gone after a cancelled spell"
@@ -1179,7 +1190,7 @@ def test_a_single_target_spell_picked_over_the_bus():
     assert net_picks.spell_shape(app) == net_picks.SINGLE
     new = _record(app)
     _tap(app, kira, _pos(app, skarn))
-    assert app.pending_spell_slot == "" and app.action_used, app.pending_spell_slot
+    assert app._armed_slot(pending.Spell) == "" and app.action_used, app._armed_slot(pending.Spell)
     assert any("Fire Bolt" in line for line in new), new
     assert _offer(app) is not None, "the offer did not come back"
     print("✅ test_a_single_target_spell_picked_over_the_bus")
@@ -1198,7 +1209,7 @@ def test_a_multi_target_spell_counts_its_picks():
         assert (pick.kind, pick.title) == ("target", f"Magic Missile: choose a target ({k} of 3)"), \
             pick.title
         _tap(app, kira, _pos(app, skarn))
-    assert app.pending_spell_slot == "" and _slots(app, aria, 1) == before - 1
+    assert app._armed_slot(pending.Spell) == "" and _slots(app, aria, 1) == before - 1
     print("✅ test_a_multi_target_spell_counts_its_picks")
 
 
@@ -1217,7 +1228,7 @@ def test_a_multi_target_spell_finishes_early_from_the_phone():
     assert net_picks.DONE_ID in [o.id for o in second.options], second.options
     assert app.prompts.submit(second.id, Response(option=net_picks.DONE_ID), kira.id).ok
     _frame(app)
-    assert app.pending_spell_slot == "" and _slots(app, aria, 1) == before - 1
+    assert app._armed_slot(pending.Spell) == "" and _slots(app, aria, 1) == before - 1
     print("✅ test_a_multi_target_spell_finishes_early_from_the_phone")
 
 
@@ -1230,11 +1241,11 @@ def test_a_multi_target_spell_finishes_early_from_the_dm_console():
     _choose(app, kira, "spell_action")
     _until_pick(app, kira)
     app._finish_multi_target_spell()
-    assert app.pending_spell_slot != "", "Enter with no targets cast the spell"
+    assert app._armed_slot(pending.Spell) != "", "Enter with no targets cast the spell"
     app.resolve_pick(rpg.Cell(*_pos(app, aria)))
     app._finish_multi_target_spell()
     _frame(app)
-    assert app.pending_spell_slot == "" and _slots(app, aria, 1) == before - 1
+    assert app._armed_slot(pending.Spell) == "" and _slots(app, aria, 1) == before - 1
     print("✅ test_a_multi_target_spell_finishes_early_from_the_dm_console")
 
 
@@ -1249,7 +1260,7 @@ def test_an_area_spell_is_a_cell_pick():
     assert (pick.kind, pick.title) == ("cell", "Fireball: choose the center"), pick
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
     _cast_here(app, kira)
-    assert app.pending_spell_slot == "" and _slots(app, aria, 3) == before - 1
+    assert app._armed_slot(pending.Spell) == "" and _slots(app, aria, 3) == before - 1
     print("✅ test_an_area_spell_is_a_cell_pick")
 
 
@@ -1277,7 +1288,7 @@ def test_an_area_tap_aims_and_asks_to_confirm():
     app, kira, wen = _aria_turn()
     aria, center, confirm = _fireball_aimed(app, kira)
     three = _slots(app, aria, 3)
-    assert app.pending_spell_slot and not app.action_used and _slots(app, aria, 3) == three
+    assert app._armed_slot(pending.Spell) and not app.action_used and _slots(app, aria, 3) == three
     assert confirm is not None, app.prompts.live
     assert (confirm.kind, confirm.expects, confirm.title, confirm.owner, confirm.render) == \
         ("confirm", "choice", "Fireball: cast here?", kira.id, net_picks.PICK_RENDER), confirm
@@ -1298,11 +1309,11 @@ def test_an_area_tap_aims_and_asks_to_confirm():
     pick = _pick(app)
     assert (pick.kind, pick.title) == ("cell", "Fireball: choose the center"), pick
     assert "aoe" not in net_view.build_view(app, kira)["you"]
-    assert app.pending_spell_slot and _slots(app, aria, 3) == three
+    assert app._armed_slot(pending.Spell) and _slots(app, aria, 3) == three
 
     _tap(app, kira, center)
     _cast_here(app, kira)
-    assert app.pending_spell_slot == "" and app.action_used and _slots(app, aria, 3) == three - 1
+    assert app._armed_slot(pending.Spell) == "" and app.action_used and _slots(app, aria, 3) == three - 1
     assert app._aoe_aim is None and "aoe" not in net_view.build_view(app, kira)["you"]
     assert _offer(app) is not None, app.prompts.live
     print("✅ test_an_area_tap_aims_and_asks_to_confirm")
@@ -1320,8 +1331,8 @@ def test_a_cancelled_confirm_cancels_the_cast():
         else:
             _esc(app)
         _frame(app)
-        assert (app.pending_spell_slot, app._aoe_aim, app.action_used) == ("", None, False), \
-            (remote, app.pending_spell_slot, app._aoe_aim)
+        assert (app._armed_slot(pending.Spell), app._aoe_aim, app.action_used) == ("", None, False), \
+            (remote, app._armed_slot(pending.Spell), app._aoe_aim)
         assert _slots(app, aria, 3) == three
         offer = _offer(app)
         assert offer is not None and any(o.id == "spell_action" and o.enabled
@@ -1345,7 +1356,7 @@ def test_a_dm_click_during_the_confirm_casts_where_the_dm_clicked():
     late = app.prompts.submit(confirm.id, Response(option=net_picks.CAST_ID), kira.id)
     assert not late.ok and late.error == "not_live", late
     assert seen == [elsewhere], seen
-    assert app.pending_spell_slot == "" and app._aoe_aim is None
+    assert app._armed_slot(pending.Spell) == "" and app._aoe_aim is None
     assert _slots(app, aria, 3) == three - 1
     print("✅ test_a_dm_click_during_the_confirm_casts_where_the_dm_clicked")
 
@@ -1383,13 +1394,13 @@ def test_a_wall_takes_two_picks_and_cancel_clears_the_anchor():
     pick = _pick(app)
     assert pick.title == "Wall of Fire: choose the end point", pick.title
     assert app.prompts.cancel_as(pick.id, kira.id).ok
-    assert app.pending_spell_slot and app.spell_anchor_cell is None, \
-        (app.pending_spell_slot, app.spell_anchor_cell)
+    assert app._armed_slot(pending.Spell) and app.spell_anchor_cell is None, \
+        (app._armed_slot(pending.Spell), app.spell_anchor_cell)
     _frame(app)
     assert _pick(app).title == "Wall of Fire: choose the start point", _pick(app).title
     _tap(app, kira, start)
     _tap(app, kira, (start[0], start[1] + 2))
-    assert app.pending_spell_slot == "" and _slots(app, aria, 4) == before - 1
+    assert app._armed_slot(pending.Spell) == "" and _slots(app, aria, 4) == before - 1
     print("✅ test_a_wall_takes_two_picks_and_cancel_clears_the_anchor")
 
 
@@ -1404,7 +1415,7 @@ def test_a_teleport_spell_from_the_bonus_row():
     dest = _free_cell(app, aria, 6, beyond=2)
     _tap(app, kira, dest)
     assert _pos(app, aria) == dest and app.bonus_used, (_pos(app, aria), app.bonus_used)
-    assert app.pending_spell_slot == ""
+    assert app._armed_slot(pending.Spell) == ""
     print("✅ test_a_teleport_spell_from_the_bonus_row")
 
 
@@ -1428,7 +1439,7 @@ def test_a_corpse_spell_picks_a_body():
     assert net_picks.spell_shape(app) == net_picks.CORPSE
     new = _record(app)
     _tap(app, kira, _pos(app, body))
-    assert app.pending_spell_slot == "", app.pending_spell_slot
+    assert app._armed_slot(pending.Spell) == "", app._armed_slot(pending.Spell)
     assert any("Revivify" in line for line in new), new
     print("✅ test_a_corpse_spell_picks_a_body")
 
@@ -1455,7 +1466,7 @@ def test_animate_dead_raises_an_undead():
     assert app.bm.placed_agents[skarn].removed_from_play, "the corpse is still on the board"
     assert len(app.bm.placed_agents) == n + 1, "no undead was raised"
     assert _pos(app, len(app.bm.placed_agents) - 1) == spot, "not raised on the corpse"
-    assert app.pending_spell_slot == "" and _slots(app, aria, 3) == before - 1
+    assert app._armed_slot(pending.Spell) == "" and _slots(app, aria, 3) == before - 1
     print("✅ test_animate_dead_raises_an_undead")
 
 
@@ -1468,7 +1479,7 @@ def test_a_binding_spell_picks_a_creature():
     pick = _until_pick(app, kira)
     assert (pick.kind, pick.title) == ("target", "Planar Binding: choose a creature to bind"), pick
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
-    assert app.pending_spell_slot == "" and _slots(app, aria, 5) == before - 1
+    assert app._armed_slot(pending.Spell) == "" and _slots(app, aria, 5) == before - 1
     print("✅ test_a_binding_spell_picks_a_creature")
 
 
@@ -1482,7 +1493,7 @@ def test_knock_picks_a_door():
     pick = _until_pick(app, kira)
     assert (pick.kind, pick.title) == ("cell", "Knock: choose a door"), pick
     _tap(app, kira, spot)
-    assert app.pending_spell_slot == "", app.pending_spell_slot
+    assert app._armed_slot(pending.Spell) == "", app._armed_slot(pending.Spell)
     assert not app.bm.doors[app.bm.door_at(rpg.Cell(*spot))].locked, "Knock did not unlock it"
     print("✅ test_knock_picks_a_door")
 
@@ -1499,7 +1510,7 @@ def test_knock_picks_an_edge_door():
     pick = _until_pick(app, kira)
     assert (pick.kind, pick.title) == ("cell", "Knock: choose a door"), pick
     _tap(app, kira, spot)
-    assert app.pending_spell_slot == "", app.pending_spell_slot
+    assert app._armed_slot(pending.Spell) == "", app._armed_slot(pending.Spell)
     door = app.bm.doors[app.bm.door_at_edge(rpg.Cell(c, r), rpg.EdgeSide.East)]
     assert not door.locked and door.open, "Knock did not open the edge door"
     print("✅ test_knock_picks_an_edge_door")
@@ -1516,9 +1527,9 @@ def test_dispel_on_nothing_keeps_the_pick():
     assert (pick.kind, pick.title) == ("target", "Dispel Magic: choose a creature or a spot"), pick
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
     again = _pick(app)
-    assert again is not None and again.id != pick.id and app.pending_spell_slot
+    assert again is not None and again.id != pick.id and app._armed_slot(pending.Spell)
     assert app.prompts.cancel_as(again.id, kira.id).ok
-    assert app.pending_spell_slot == "" and _slots(app, aria, 3) == before
+    assert app._armed_slot(pending.Spell) == "" and _slots(app, aria, 3) == before
     print("✅ test_dispel_on_nothing_keeps_the_pick")
 
 
@@ -1544,7 +1555,7 @@ def test_chromatic_orb_done_casts_the_chain():
         app.prompts.live
     assert [o.id for o in chain.options] == [net_picks.DONE_ID], chain.options
     assert app.prompts.submit(chain.id, Response(option=net_picks.DONE_ID), kira.id).ok
-    assert not app._picking("chromatic") and app.pending_spell_slot == ""
+    assert not app._picking("chromatic") and app._armed_slot(pending.Spell) == ""
     assert _slots(app, aria, 1) == before - 1, "Done did not cast"
     print("✅ test_chromatic_orb_done_casts_the_chain")
 
@@ -1559,14 +1570,13 @@ def test_a_summon_placed_over_the_bus():
     pick = _until_pick(app, kira)
     assert pick.kind == "cell" and pick.title.startswith("Summon: choose where to place "), pick
     assert app.prompts.cancel_as(pick.id, kira.id).ok
-    assert (app.pending_summon_slot, app.pending_summon_monster) == ("", ""), \
-        (app.pending_summon_slot, app.pending_summon_monster)
+    assert app._armed(pending.Summon) is None, app.pending
     _frame(app)
     n = len(app.bm.placed_agents)
     _choose(app, kira, "spell_action")
     _until_pick(app, kira)
     _tap(app, kira, _free_cell(app, aria, 3, beyond=1))
-    assert app.pending_summon_slot == "" and len(app.bm.placed_agents) == n + 1
+    assert app._armed_slot(pending.Summon) == "" and len(app.bm.placed_agents) == n + 1
     print("✅ test_a_summon_placed_over_the_bus")
 
 
@@ -1586,7 +1596,7 @@ def test_mantle_of_majesty_from_the_offer():
     pick = _until_pick(app, kira)
     assert pick.kind == "target" and pick.title.startswith("Command: choose a target"), pick
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
-    assert app.pending_spell_slot == "" and app.bonus_used and _slots(app, aria, 1) == before
+    assert app._armed_slot(pending.Spell) == "" and app.bonus_used and _slots(app, aria, 1) == before
     print("✅ test_mantle_of_majesty_from_the_offer")
 
 
@@ -1596,11 +1606,11 @@ def test_mantle_command_does_not_inherit_a_forcecage_box():
     app, kira, _ = _aria_turn()
     _caster(app, rpg.CharacterClass.Bard, 6, ["Command"],
             bard_subclass=rpg.BardCollege.Glamour)
-    app.pending_forcecage_sealed = True                     # an earlier Forcecage's Box
+    app.cast_setup.forcecage_sealed = True                     # an earlier Forcecage's Box
     _choose(app, kira, "mantle_majesty")
     _answer(app, kira, "choose a word")
-    assert app.pending_spell_slot == "bonus", app.pending_spell_slot
-    assert app.pending_forcecage_sealed is False, "the Box choice leaked into Command"
+    assert app._armed_slot(pending.Spell) == "bonus", app._armed_slot(pending.Spell)
+    assert app.cast_setup.forcecage_sealed is False, "the Box choice leaked into Command"
     print("✅ test_mantle_command_does_not_inherit_a_forcecage_box")
 
 
@@ -1634,8 +1644,8 @@ def test_bless_refuses_the_same_creature_twice():
     _until_pick(app, kira)
     _tap(app, kira, _pos(app, aria))
     _tap(app, kira, _pos(app, aria))
-    assert app.pending_spell_targets == [aria], app.pending_spell_targets
-    assert app.pending_spell_slot != "", "a refused repeat must keep the cast armed"
+    assert app.pending.targets == [aria], app.pending
+    assert app._armed_slot(pending.Spell) != "", "a refused repeat must keep the cast armed"
     assert _pick(app) is not None, "the pick must be posted again after a refused repeat"
 
     app, kira, _ = _aria_turn()
@@ -1645,7 +1655,7 @@ def test_bless_refuses_the_same_creature_twice():
     _until_pick(app, kira)
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
-    assert app.pending_spell_targets == [_idx(app, "Skarn")] * 2, app.pending_spell_targets
+    assert app.pending.targets == [_idx(app, "Skarn")] * 2, app.pending
     print("✅ test_bless_refuses_the_same_creature_twice")
 
 
@@ -1674,7 +1684,7 @@ def test_beguiling_rides_on_a_players_spell():
 
 
 def test_radiance_leaves_nothing_armed():
-    """The M5d handoff said `radiance` leaves `pending_spell_slot` armed. It does not: its
+    """The M5d handoff said `radiance` leaves its spell armed. It does not: its
     dispatch resolves at once through `_resolve_spell_cast_aoe`, which disarms before
     `begin_cast`. From the offer, the Channel Divinity is spent, nothing is armed, and the
     offer comes back."""
@@ -1686,7 +1696,7 @@ def test_radiance_leaves_nothing_armed():
     cd = _res(app, aria, "Channel Divinity")
     _frame(app)
     _choose(app, kira, "radiance")
-    assert app.pending_spell_slot == "" and not app._target_pick_armed()
+    assert app._armed_slot(pending.Spell) == "" and not app._target_pick_armed()
     assert _res(app, aria, "Channel Divinity") == cd - 1 and app.action_used
     _frame(app)
     assert _offer(app) is not None, app.prompts.live
@@ -1705,9 +1715,8 @@ def test_esc_and_the_remote_spell_cancel_agree():
             assert app.prompts.cancel_as(pick.id, kira.id).ok
         else:
             _esc(app)
-        states.append((app.pending_spell_slot, app.pending_spell_is_aoe, app.spell_anchor_cell,
-                       app.action_used, app.combat_log[0]))
-    assert states[0] == states[1] == ("", False, None, False, "Spell cast cancelled."), states
+        states.append((app.pending, app.spell_anchor_cell, app.action_used, app.combat_log[0]))
+    assert states[0] == states[1] == (None, None, False, "Spell cast cancelled."), states
     print("✅ test_esc_and_the_remote_spell_cancel_agree")
 
 
@@ -1761,7 +1770,7 @@ def test_wish_is_one_choice_prompt_over_the_bus():
     assert _slots(app, aria, 9) == nine - 1, "Wish's own slot was not spent"
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
     _cast_here(app, kira)
-    assert app.pending_spell_slot == "" and app.action_used
+    assert app._armed_slot(pending.Spell) == "" and app.action_used
     assert _slots(app, aria, 3) == three, "the duplicated Fireball spent a slot"
     print("✅ test_wish_is_one_choice_prompt_over_the_bus")
 
@@ -1775,7 +1784,7 @@ def test_a_cancelled_wish_spends_nothing():
     assert app.prompts.cancel_as(browser.id, kira.id).ok
     _frame(app)
     assert _slots(app, aria, 9) == nine and not app.action_used
-    assert app.pending_spell_slot == "" and not app.spell_selection_dialog.visible
+    assert app._armed_slot(pending.Spell) == "" and not app.spell_selection_dialog.visible
     offer = _offer(app)
     assert offer is not None and any(o.id == "spell_action" and o.enabled
                                      for o in offer.options), offer
@@ -1804,7 +1813,7 @@ def test_divine_intervention_from_the_offer():
     assert pick.title == "Guiding Bolt: choose a target", pick.title
     new = _record(app)
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
-    assert app.pending_spell_slot == "" and _slots(app, aria, 1) == one
+    assert app._armed_slot(pending.Spell) == "" and _slots(app, aria, 1) == one
     assert any("Guiding Bolt" in line for line in new), new
     print("✅ test_divine_intervention_from_the_offer")
 
@@ -1842,7 +1851,7 @@ def test_greater_divine_intervention_offers_wish():
     _until_pick(app, kira)
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
     _cast_here(app, kira)
-    assert app.pending_spell_slot == "" and not app._di_wish_free
+    assert app._armed_slot(pending.Spell) == "" and not app._di_wish_free
     assert (_slots(app, aria, 9), _slots(app, aria, 3)) == (nine, three), \
         (_slots(app, aria, 9), _slots(app, aria, 3))
     print("✅ test_greater_divine_intervention_offers_wish")
@@ -1952,7 +1961,7 @@ def test_the_ward_is_a_toggle_loop_over_the_bus():
     assert _slots(app, aria, 3) == three and not _wards(app)
     _tap(app, kira, _pos(app, _idx(app, "Skarn")))
     _cast_here(app, kira)
-    assert app.pending_spell_slot == "" and _slots(app, aria, 3) == three - 1
+    assert app._armed_slot(pending.Spell) == "" and _slots(app, aria, 3) == three - 1
     assert _wards(app) == [(int(rpg.CreatureType.Fiend) | int(rpg.CreatureType.Undead), True)], \
         _wards(app)
     print("✅ test_the_ward_is_a_toggle_loop_over_the_bus")
@@ -1993,7 +2002,7 @@ def test_a_cancelled_ward_spends_nothing():
         _frame(app)
         assert not ward.is_live, ward.state
         assert _slots(app, aria, 3) == three and not app.action_used
-        assert app.pending_spell_slot == "" and not _wards(app)
+        assert app._armed_slot(pending.Spell) == "" and not _wards(app)
         offer = _offer(app)
         assert offer is not None and any(o.id == "spell_action" and o.enabled
                                          for o in offer.options), offer
@@ -2029,7 +2038,7 @@ def test_an_attack_over_the_wire():
             again = _action_prompt(kira, exclude=(offer["id"],))
             _drain(kira, 0.2)
         t.stop()
-        assert app.action_used and app.attacks_remaining == 1, _attack_fields(app)
+        assert app.action_used and app.attack_seq.remaining == 1, _attack_fields(app)
         assert any(o["id"] == "atk_action" and o["enabled"] for o in again["options"])
     print("✅ test_an_attack_over_the_wire")
 

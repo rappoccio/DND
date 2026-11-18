@@ -38,6 +38,7 @@ sys.path.insert(0, os.path.join(ROOT, "tests"))
 import pygame
 from PIL import ImageGrab
 import rpg_battle_map as rpg
+import pending
 
 from constants import COL_BG, PANEL_W
 from menus import panel
@@ -110,17 +111,17 @@ def main():
     shot(app, "02_7b_twoup_both_columns")
     _goto(app, "Aria")
     app.bonus_used = True
-    app.attacks_remaining = 2
-    app._attack_sequence_slot = "bonus"
+    app.attack_seq.remaining = 2
+    app.attack_seq.slot = "bonus"
     shot(app, "03_7b_twoup_mid_bonus_sequence")
     # F14, in the app: the header says how many swings are left and the click does
     # nothing, because both handlers sit inside the `not self.bonus_used` block.
     frame(app)
-    before = (app.pending_attack_slot, app.pending_spell_slot)
+    before = (app._armed_slot(pending.Attack), app._armed_slot(pending.Spell))
     click(app, "atk_bonus")
     click(app, "spell_bonus")
     print("  F14 dead click: pending before", before,
-          "after", (app.pending_attack_slot, app.pending_spell_slot))
+          "after", (app._armed_slot(pending.Attack), app._armed_slot(pending.Spell)))
     app.combat.set_agent_spells(app.bm, aria, [])
 
     # ── 7d: the nine toggles, armed, incarnate, and the caption alone ──
@@ -172,20 +173,20 @@ def main():
     app.combat.set_agent_stats(app.bm, cyra_f10, s)
     shot(app, "10_F10_two_widgets_two_labels")
 
-    app.pending_shove_type = ""
+    app._disarm(pending.Shove)
     app._drop_pick("telekinetic")
     frame(app)
     click(app, "telekinetic_psi")
     print("  after clicking Movement: pending_telekinetic =", app._picking("telekinetic"),
-          " pending_shove_type =", repr(app.pending_shove_type))
+          " shove type =", repr(getattr(app._armed(pending.Shove), "type", "")))
     shot(app, "11_F10_psi_click_arms_only_psi")
     app._drop_pick("telekinetic")
     frame(app)
     click(app, "telekinetic_feat")
     print("  after clicking Shove:    pending_telekinetic =", app._picking("telekinetic"),
-          " pending_shove_type =", repr(app.pending_shove_type))
+          " shove type =", repr(getattr(app._armed(pending.Shove), "type", "")))
     shot(app, "12_F10_feat_click_arms_only_feat")
-    app.pending_shove_type = ""
+    app._disarm(pending.Shove)
     app._drop_pick("telekinetic")
     s = app.combat.get_agent_stats(app.bm, cyra_f10)
     s.feats = []

@@ -351,8 +351,8 @@ def _goto(app, name):
     app.turn_idx = _slot(app, name)
     app.action_used = False
     app.bonus_used = False          # property → reset_bonus_actions on the current agent
-    app.attacks_remaining = 0
-    app._attack_sequence_slot = ""
+    app.attack_seq.remaining = 0
+    app.attack_seq.slot = ""
     app.combat_panel_scroll = 0
     app._reset_movement(idx)
     return idx
@@ -518,20 +518,20 @@ def build_output():
     _set_conditions(app, aria, grappled=False)
 
     # 08 — 7b, the hard half: mid-attack-sequence. Both economy-band headers take
-    # their LABEL from `attacks_remaining` and their band from `_attack_sequence_slot`
+    # their LABEL from `attack_seq.remaining` and their band from `attack_seq.slot`
     # (Step 0.3 F3), and `action_used` is deliberately still True while the sequence
     # runs, so this is also the branch where "[Action used]" must NOT appear.
     _goto(app, "Aria")
     app.action_used = True
-    app.attacks_remaining = 2
-    app._attack_sequence_slot = "action"
+    app.attack_seq.remaining = 2
+    app.attack_seq.slot = "action"
     out += cap.capture("08 mid attack sequence (action slot) — Aria (bucket 7b)")
 
     # 08b — the same sequence parked in the bonus band.
     _goto(app, "Aria")
     app.bonus_used = True
-    app.attacks_remaining = 1
-    app._attack_sequence_slot = "bonus"
+    app.attack_seq.remaining = 1
+    app.attack_seq.slot = "bonus"
     out += cap.capture("08b mid attack sequence (bonus slot) — Aria (bucket 7b)")
 
     # 09 — 7e: the Channel Divinity cluster (Turn Undead + Radiance of the Dawn).
@@ -997,8 +997,8 @@ def build_output():
     # that pair in the one-up; this is the only block that pins it in the two-up.
     _goto(app, "Aria")
     app.bonus_used = True
-    app.attacks_remaining = 2
-    app._attack_sequence_slot = "bonus"
+    app.attack_seq.remaining = 2
+    app.attack_seq.slot = "bonus"
     out += cap.capture("65 dual-wield caster mid bonus sequence — Aria (bucket 7b)")
     app.combat.set_agent_spells(app.bm, aria_sb, [])
 

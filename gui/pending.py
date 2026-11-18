@@ -7,7 +7,7 @@ one-flag-per-feature `pending_*` arms (`pending_shadow_step`, `pending_cleave`, 
 were never armed two at a time (checked over the whole suite before the move).
 
 The action being built underneath a pick (an attack, a spell, a shove, a summon) is the
-other slot, `app.pending` (A2b). A pick can sit on top of one: Chromatic Orb's leap chain
+other slot, `app.pending` (A2b, the dataclasses at the end of this file). A pick can sit on top of one: Chromatic Orb's leap chain
 over its spell, Cleave over the next Extra Attack.
 
 `data` is what the old field held while armed: True for a plain flag, the Cleave/Sweep info
@@ -18,7 +18,7 @@ at, which `App._pick_data` returns while that kind is not armed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # The kinds, with the field each replaces and what it awaits:
 #   arcane_charge        arcane_charge_pending          Eldritch Knight L15: teleport after Action Surge
@@ -80,3 +80,78 @@ def idle(kind: str):
 class Pick:
     kind: str
     data: object = True
+
+
+# ── The base modes: `app.pending` (A2b) ──────────────────────────────────────────────────
+# At most one is armed (checked over the whole suite before the move), and `app.pending` is
+# None when none is. Each replaces the `pending_*` fields named beside it, field for field.
+
+@dataclass
+class Attack:
+    """A weapon attack awaiting its target. Was `pending_attack_slot`."""
+    slot: str                                   # "action" | "bonus"
+
+
+@dataclass
+class Spell:
+    """A spell awaiting its target(s) or place. Was `pending_spell_slot` and companions."""
+    slot: str                                   # "action" | "bonus"
+    idx: int = 0                                # the caster's spell index
+    slot_level: int = 0                         # slot level chosen for this cast
+    is_aoe: bool = False
+    num_targets: int = 0                        # Multiple geometry: the targets to collect
+    targets: list = field(default_factory=list) # Multiple geometry: those collected
+
+
+@dataclass
+class Shove:
+    """A Shove awaiting its creature. Was `pending_shove_slot` / `pending_shove_type`."""
+    slot: str                                   # "bonus"
+    type: str                                   # "push" | "prone" | "telekinetic"
+
+
+@dataclass
+class Unarmed:
+    """An Unarmed Strike option awaiting its creature. Was `pending_unarmed_type`. The
+    Damage option goes through `Attack` instead."""
+    type: str                                   # "grapple" | "push"
+
+
+@dataclass
+class Summon:
+    """A summon awaiting the cell it appears in. Was `pending_summon_*`."""
+    slot: str                                   # "action" | "bonus"
+    idx: int = 0                                # spell index of the summon spell
+    slot_level: int = 0
+    monster: str = ""                           # monster-JSON key to spawn
+    spirit: object = None                       # scaling spirit block (summons.json) or None
+    free_cast: bool = False                     # Wish-duplicated: charge no slot of its own
+    no_conc: bool = False                       # Fey Wanderer L11: Summon Fey without Concentration
+
+
+# ── State beside `app.pending`, which outlives a single arm ──────────────────────────────
+
+@dataclass
+class AttackSequence:
+    """The Attack action's sequence across its swings (`app.attack_seq`). It outlives each
+    `Attack` arm: `cancel_attack` restores it from the arm's snapshot while nothing is armed.
+    Was `attacks_remaining`, `_attack_sequence_slot`, `pending_weapon_idx`,
+    `pending_attack_offhand` and `pending_attack_resource`. Saves keep the old two names."""
+    remaining: int = 0                          # attacks left in the sequence
+    slot: str = ""                              # "action" | "bonus" | "" — the sequence's slot
+    weapon_idx: int = 0
+    offhand: object = None                      # None = derive from slot; True/False overrides
+    resource: object = None                     # resource spent on a valid attack ("War Priest")
+
+
+@dataclass
+class CastSetup:
+    """Choices the cast menu makes before the `Spell` or `Summon` arms, read when it resolves
+    (`app.cast_setup`). Was `pending_spell_damage_type`, `_free_cast`, `_command_word`,
+    `_curse_choice`, `pending_forcecage_sealed` and `pending_summon_fey_reinforcements`."""
+    damage_type: int = -1                       # Chromatic Orb / Sorcerous Burst; -1 = stored type
+    free_cast: bool = False                     # Mantle of Majesty Command, Wish: no slot
+    command_word: int = -1                      # Command word (0=Drop..4=Approach); -1 = n/a
+    curse_choice: int = -1                      # Vistani Curse sub-choice; -1 = n/a
+    forcecage_sealed: bool = False              # Forcecage: False = Cage, True = Box
+    fey_reinforcements: bool = False            # the slotless Summon Fey spends "Fey Reinforcements"

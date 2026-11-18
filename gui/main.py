@@ -938,22 +938,17 @@ class App:
         self.turn_idx             = 0     # index into initiative_order
         self.action_used          = False
         self.bonus_used           = False
-        self.pending_attack_slot      = ""    # "" | "action" | "bonus"
-        self.pending_weapon_idx       = 0
-        # Generic extra-attack knobs (War Priest, Great Weapon Master, Nick, …). Reset per attack.
-        self.pending_attack_offhand   = None  # None = derive from slot; True/False overrides proficiency
-        self.pending_attack_resource  = None  # resource name to spend on a valid attack (e.g. "War Priest")
+        # The action being built, awaiting a click (pending.py: Attack / Spell / Shove /
+        # Unarmed / Summon), or None. A click pick (`self.pick`) can sit on top of it.
+        self.pending              = None
+        # The Attack action's sequence across its swings, and the cast menu's staged choices:
+        # both outlive a single arm (pending.py).
+        self.attack_seq           = pending.AttackSequence()
+        self.cast_setup           = pending.CastSetup()
         self.pending_horde_breaker_targets = []  # Horde Breaker: the only creatures the armed attack may strike
         self.pending_sudden_strike_targets = []  # Sudden Strike (Gloom Stalker L11): likewise
         self.pending_beasts_strike_targets = []  # Beast's Strike (Beast Master): the companion's legal targets
         self._beasts_strike_paid_now = False     # ...and whether arming it just paid an attack (cancel refunds it)
-        self.attacks_remaining        = 0     # attacks left in current pending slot
-        self._attack_sequence_slot    = ""    # "action" | "bonus" | "" — which slot the sequence belongs to
-        self.pending_spell_slot        = ""    # "" | "action" | "bonus"
-        self.pending_spell_idx         = 0
-        self.pending_spell_is_aoe      = False
-        self.pending_spell_num_targets = 0     # For Multiple geometry: number of targets to select
-        self.pending_spell_targets     = []    # For Multiple geometry: collected targets
         # Dispel Magic picker: the DM-chosen effect's structure ids (dict of three id lists) to end
         # on the next cast, or None to dispel everything at the target (NPC/RL default). See
         # _begin_dispel_pick / _cast_dispel_selection.
@@ -961,15 +956,6 @@ class App:
         # Chromatic Orb leap chain (the "chromatic" pick): the primary target and the hops chosen.
         self.pending_chromatic_primary = -1
         self.pending_chromatic_chain   = []
-        # Summoning: awaiting a cell click to place a summoned creature.
-        self.pending_summon_slot       = ""    # "" | "action" | "bonus"
-        self.pending_summon_idx        = 0     # spell index of the summon spell being cast
-        self.pending_summon_slot_level = 0     # chosen slot level
-        self.pending_summon_monster    = ""    # monster-JSON key to spawn
-        self.pending_summon_spirit     = None  # scaling spirit block (summons.json) or None
-        self.pending_summon_free_cast  = False # Wish-duplicated summon: charge no slot of its own
-        self.pending_summon_no_conc    = False # Fey Wanderer L11: Summon Fey without Concentration (1 min)
-        self.pending_summon_fey_reinforcements = False # the slotless cast spends "Fey Reinforcements"
         self._summon_conc_chosen       = False # Summon Fey's Concentration question already answered
         self.summon_hover_cell         = None  # cell under mouse while choosing a summon spot
         # Wish: spells duplicated by Wish are injected into the caster's own spell list (the engine
@@ -988,10 +974,6 @@ class App:
         self.pending_duplicity_remaining = 0   # duplicates still to place this activation (L17 → up to 4)
         self._duplicity_cd_pending     = False # spend Channel Divinity on the FIRST placement of an activation
         self.move_duplicity_idx        = -1    # selected duplicate to move/swap (-1 = pick one first)
-        self.pending_shove_slot        = ""    # "" | "bonus" for shove actions
-        self.pending_shove_type        = ""    # "push" | "prone"
-        self.pending_grapple_slot      = ""
-        self.pending_unarmed_type      = ""    # "" | "grapple" | "push" (Damage routes via pending_attack_slot)
         self.pending_bastion_sp        = 0     # SP chosen for the pending Bastion of Law ward (1-5)
         self.pending_mantle_targets    = []    # chosen recipient indices (capped to CHA mod on resolve)
         self.pending_beguiling_bard    = -1    # the Glamour bard who cast the qualifying Enchantment/Illusion spell
@@ -1066,13 +1048,6 @@ class App:
         self._spell_metadata: dict = {} # {(agent_idx, spell_idx): {"terrain_effect": dict, "hatch_pattern": str, "level", "upcast_dice_bonus"}}
 
         # ── Spell slot economy (class-based caster tracking) ────────────────
-        self.pending_spell_slot_level: int = 0          # slot level chosen for current spell cast
-        self.pending_spell_damage_type: int = -1        # cast-time element choice (Chromatic Orb / Sorcerous
-                                                        # Burst); -1 = use the spell's stored type
-        self.pending_spell_free_cast: bool = False      # Mantle of Majesty: cast Command with no slot
-        self.pending_spell_command_word: int = -1       # Command word (0=Drop..4=Approach); -1 = n/a
-        self.pending_spell_curse_choice: int = -1       # Vistani Curse sub-choice (see CURSE_CHOICE_SPELLS); -1 = n/a
-        self.pending_forcecage_sealed: bool = False     # Forcecage form: False = Cage, True = Box (F-M5e-10)
 
         # ── Agent config GUI state ────────────────────────────────────────
         # Combat panel first: it creates btn_show_terrain, the in-combat Show/Hide
@@ -3973,14 +3948,14 @@ class App:
             self._resolve_legendary_spell(hit, cell)
         elif self._pick_data("lair"):
             lair.resolve_click(self, hit, cell, anchor)
-        elif self.pending_attack_slot and hit >= 0:
+        elif self._armed(pending.Attack) and hit >= 0:
             features.confirm_friendly_harm(self, hit, lambda h=hit: self._resolve_combat_attack(h))
-        elif self.pending_summon_slot:
+        elif self._armed(pending.Summon):
             self._resolve_summon(cell)
-        elif self._picking("chromatic") and self.pending_spell_slot:
+        elif self._picking("chromatic") and self._armed(pending.Spell):
             # Collecting Chromatic Orb's leap chain: each click adds a hop.
             self._chromatic_add_leap(hit)
-        elif self.pending_spell_slot:
+        elif self._armed(pending.Spell):
             if self._pending_spell_targets_corpse():
                 # Raise Dead / Revivify / Animate Dead: click a true-dead body
                 # (invisible to _agent_at). Routed through _corpse_at.
@@ -4001,7 +3976,7 @@ class App:
                 # creature and/or cell (buff vs debuff, or one of several AoEs) — the
                 # chosen effect is cast via _cast_dispel_selection.
                 features.begin_dispel_pick(self, hit, cell, anchor)
-            elif self.pending_spell_is_aoe:
+            elif self.pending.is_aoe:
                 if self._pending_spell_is_wall():
                     if self.spell_anchor_cell is None:
                         # First click: anchor the wall (must be in range).
@@ -4049,9 +4024,9 @@ class App:
                 self._combat_log_add(
                     f"No creature on that cell to target — click directly on the "
                     f"target (cell {cell.col},{cell.row}).")
-        elif self.pending_shove_slot and hit >= 0:
+        elif self._armed(pending.Shove) and hit >= 0:
             self._resolve_shove(hit)
-        elif self.pending_unarmed_type and hit >= 0:
+        elif self._armed(pending.Unarmed) and hit >= 0:
             self._resolve_unarmed_option(hit)
         elif self._picking("heal_light") and hit >= 0:
             self._resolve_healing_light(hit)
@@ -4102,21 +4077,16 @@ class App:
         self._duplicity_cd_pending       = False
         self.pending_mantle_targets      = []
         # The summon placement (F-M5e-4). Left armed, the next combatant's click would spawn
-        # it with them as the caster, from the previous caster's spell index.
-        self.pending_summon_slot         = ""
-        self.pending_summon_idx          = 0
-        self.pending_summon_slot_level   = 0
-        self.pending_summon_monster      = ""
-        self.pending_summon_spirit       = None
-        self.pending_summon_free_cast    = False
-        self.pending_summon_no_conc      = False
-        self.pending_summon_fey_reinforcements = False
+        # it with them as the caster, from the previous caster's spell index. The other base
+        # modes (attack, spell, shove, unarmed) are not reset here.
+        self._disarm(pending.Summon)
+        self.cast_setup.fey_reinforcements = False
         self.summon_hover_cell           = None
         self._aoe_aim                    = None   # M5e E-8: an unconfirmed aim
         self._di_wish_free               = False  # F-M5e-12: an unused Greater DI Wish
-        self.pending_horde_breaker_targets = []   # rides along with pending_attack_slot
-        self.pending_sudden_strike_targets = []   # rides along with pending_attack_slot
-        self.pending_beasts_strike_targets = []   # rides along with pending_attack_slot
+        self.pending_horde_breaker_targets = []   # rides along with the Attack arm
+        self.pending_sudden_strike_targets = []   # rides along with the Attack arm
+        self.pending_beasts_strike_targets = []   # rides along with the Attack arm
         self._beasts_strike_paid_now     = False
 
     # Besides `self.pick` (any armed pick holds the offer back), the arms `_target_pick_armed`
@@ -4124,22 +4094,21 @@ class App:
     # resets is `pick`, one of these, or in `_TARGET_PICK_COMPANIONS`; tests/test_offer.py
     # holds the lists to that function's body.
     _TARGET_PICK_ARMS = (
-        ("pending_beguiling_bard", -1), ("pending_summon_slot", ""),
-        # Not reset at a turn boundary, but armed the same way: the attack, shove and
-        # spell picks, and the jump overlay.
-        ("pending_attack_slot", ""), ("pending_shove_slot", ""),
-        ("pending_spell_slot", ""), ("jump_overlay_active", False),
+        ("pending_beguiling_bard", -1),
+        # Not reset at a turn boundary, but armed the same way: the jump overlay.
+        ("jump_overlay_active", False),
     )
+    # The base modes (`self.pending`) that hold the offer back too. The turn boundary disarms
+    # only the Summon; the others are not reset there. An armed Unarmed option never held
+    # the offer back, and still does not.
+    _TARGET_PICK_MODES = (pending.Summon, pending.Attack, pending.Shove, pending.Spell)
     # Reset beside the arms, but state that rides along with one rather than arming a
     # click itself. Some of them can rest off their idle value after the pick resolves,
     # which is why they must not hold the offer back.
     _TARGET_PICK_COMPANIONS = (
         "move_duplicity_idx", "_vitality_option_index", "pending_flurry_atk_idx",
         "pending_flurry_rider_option", "pending_bastion_sp", "pending_duplicity_remaining",
-        "_duplicity_cd_pending", "pending_mantle_targets",
-        "pending_summon_idx", "pending_summon_slot_level", "pending_summon_monster",
-        "pending_summon_spirit", "pending_summon_free_cast", "summon_hover_cell",
-        "pending_summon_no_conc", "pending_summon_fey_reinforcements",
+        "_duplicity_cd_pending", "pending_mantle_targets", "summon_hover_cell",
         "_aoe_aim", "_di_wish_free", "pending_horde_breaker_targets",
         "pending_sudden_strike_targets", "pending_beasts_strike_targets", "_beasts_strike_paid_now",
     )
@@ -4152,7 +4121,23 @@ class App:
         prompt instead (net/picks.py, M5d); any other is resolved by the DM on the map, or
         cleared by the turn boundary's `_clear_pending_target_picks()`."""
         return (self.pick is not None
+                or self._armed(*self._TARGET_PICK_MODES) is not None
                 or any(getattr(self, name, idle) != idle for name, idle in self._TARGET_PICK_ARMS))
+
+    # ── The base mode in progress (pending.py), under any click pick.
+    def _armed(self, *modes):
+        """The armed base mode if it is one of `modes` (pending.Attack, …), else None."""
+        return self.pending if isinstance(self.pending, modes) else None
+
+    def _armed_slot(self, mode) -> str:
+        """The armed `mode`'s slot ("action" | "bonus"), or "" while none is armed: the value
+        its old `pending_*_slot` field rested at."""
+        return self.pending.slot if isinstance(self.pending, mode) else ""
+
+    def _disarm(self, *modes):
+        """Disarm the base mode if it is one of `modes`. Another mode is left alone."""
+        if isinstance(self.pending, modes):
+            self.pending = None
 
     # ── The click pick in progress (pending.py). `kind` names the arm; see its docstring.
     def _picking(self, kind: str) -> bool:
@@ -4183,17 +4168,10 @@ class App:
         turn and must not inherit what the abandoned turn had armed."""
         self.action_used           = False
         self.bonus_used            = False
-        self.pending_attack_slot       = ""
-        self.attacks_remaining         = 0
-        self._attack_sequence_slot     = ""
-        self.pending_spell_slot        = ""
-        self.pending_spell_is_aoe      = False
-        self.pending_spell_num_targets = 0
-        self.pending_spell_targets     = []
-        self.pending_shove_slot        = ""
-        self.pending_shove_type        = ""
-        self.pending_grapple_slot      = ""
-        self.pending_unarmed_type      = ""
+        self.attack_seq.remaining  = 0
+        self.attack_seq.slot       = ""
+        # Every base mode but a Summon, which the turn boundary's clear disarms.
+        self._disarm(pending.Attack, pending.Spell, pending.Shove, pending.Unarmed)
         self._reaction_mover_idx       = -1
         self._attack_arm_snapshot      = None
 
@@ -4930,13 +4908,14 @@ class App:
 
         Knock is a Single-geometry spell, but it targets a doorway CELL (no creature),
         so the cast must route through the cell-targeting path instead of requiring a hit."""
-        if not self.pending_spell_slot:
+        ps = self._armed(pending.Spell)
+        if ps is None:
             return False
         ci = self._current_agent_idx()
         if ci < 0:
             return False
         try:
-            sp = self.combat.get_agent_spells(self.bm, ci)[self.pending_spell_idx]
+            sp = self.combat.get_agent_spells(self.bm, ci)[ps.idx]
             return getattr(sp, "opens_doors", False)
         except Exception:
             return False
@@ -4947,13 +4926,14 @@ class App:
         Dispel Magic is a Single-geometry spell that normally targets a creature, but it can
         also be aimed at a map CELL holding an ongoing area effect (Hunger of Hadar, Web, …) —
         that cell cast routes through the aoe path so the engine reads aoe_col/aoe_row."""
-        if not self.pending_spell_slot:
+        ps = self._armed(pending.Spell)
+        if ps is None:
             return False
         ci = self._current_agent_idx()
         if ci < 0:
             return False
         try:
-            sp = self.combat.get_agent_spells(self.bm, ci)[self.pending_spell_idx]
+            sp = self.combat.get_agent_spells(self.bm, ci)[ps.idx]
             return getattr(sp, "dispels_magic", False)
         except Exception:
             return False
@@ -5114,16 +5094,16 @@ class App:
     def _continue_attack_sequence_after_rider(self, atk_idx: int):
         """After a rider effect (Stunning Strike, etc.) is applied, check if more attacks remain
         and either re-prompt or end the attack sequence. Called from rider callbacks."""
-        # Determine if more attacks remain. Key on the DURABLE _attack_sequence_slot (not the
-        # transient pending_attack_slot, which _finish_attack disarms centrally so the player can
+        # Determine if more attacks remain. Key on the DURABLE attack_seq.slot (not the
+        # transient Attack arm, which _finish_attack disarms centrally so the player can
         # move between attacks — see the "central disarm" note there).
-        seq_slot = self._attack_sequence_slot
+        seq_slot = self.attack_seq.slot
         has_more_attacks = False
         if seq_slot == "bonus":
             stats = self.combat.get_agent_stats(self.bm, atk_idx)
             has_more_attacks = stats.bonus_attacks_remaining > 0
         elif seq_slot == "action":
-            has_more_attacks = self.attacks_remaining > 0
+            has_more_attacks = self.attack_seq.remaining > 0
 
         if has_more_attacks:
             atk_name = self.bm.placed_agents[atk_idx].name
@@ -5131,25 +5111,25 @@ class App:
                 # Bonus multi-attack (Flurry, etc.): single target — keep auto-targeting (unchanged).
                 stats = self.combat.get_agent_stats(self.bm, atk_idx)
                 rem = stats.bonus_attacks_remaining
-                self.pending_attack_slot = ""  # Clear to let _start_attack re-seed
-                self._start_attack(self._attack_sequence_slot)
+                self._disarm(pending.Attack)  # Clear to let _start_attack re-seed
+                self._start_attack(self.attack_seq.slot)
                 self._combat_log_add(
                     f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — click a target.")
             else:
                 # Action Extra-Attack sequence: DISARM between attacks so the player can move; the
                 # standing "⚔ Attack (N)" button resumes (count preserved, no re-seed). Mirrors the
                 # non-rider path in _finish_attack.
-                rem = self.attacks_remaining
-                self.pending_attack_slot = ""
+                rem = self.attack_seq.remaining
+                self._disarm(pending.Attack)
                 self._combat_log_add(
                     f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — "
                     f"move if you wish, then click Attack to continue.")
         else:
             # Attacks exhausted
-            self.pending_attack_slot = ""
-            self._attack_sequence_slot = ""
-            self.pending_attack_offhand = None
-            self.pending_attack_resource = None
+            self._disarm(pending.Attack)
+            self.attack_seq.slot = ""
+            self.attack_seq.offhand = None
+            self.attack_seq.resource = None
             # Boon of Dimensional Travel — arm Blink Steps once the Attack action is fully spent (this is
             # the rider-path twin of the exhausted branch in _finish_attack).
             if seq_slot == "action":
@@ -5209,12 +5189,12 @@ class App:
                             options, anchor=(self._panel_x() + self._PANEL_PAD, 290))
             return
 
-        # Only seed attacks_remaining when starting a fresh sequence (== 0).
+        # Only seed attack_seq.remaining when starting a fresh sequence (== 0).
         # If mid-sequence and same slot, don't reset. If mid-sequence and different slot, reject.
-        if self.attacks_remaining == 0:
+        if self.attack_seq.remaining == 0:
             # Fresh start
             if slot == "action":
-                self.attacks_remaining = stats.num_attacks
+                self.attack_seq.remaining = stats.num_attacks
                 # War Magic gates once per Attack action; a fresh Attack action (including the
                 # second one granted by Action Surge) re-enables the substitution.
                 if conds.war_magic_used:
@@ -5222,30 +5202,30 @@ class App:
                     self.combat.set_agent_conditions(self.bm, idx, conds)
             else:
                 # Bonus slot: check C++ bonus_attacks_remaining (Flurry, Martial Arts, etc.)
-                self.attacks_remaining = stats.bonus_attacks_remaining if stats.bonus_attacks_remaining > 0 else 1
-            self._attack_sequence_slot = slot
+                self.attack_seq.remaining = stats.bonus_attacks_remaining if stats.bonus_attacks_remaining > 0 else 1
+            self.attack_seq.slot = slot
             # A normal attack uses default (slot-derived) proficiency and no resource cost.
-            self.pending_attack_offhand = None
-            self.pending_attack_resource = None
-        elif slot != self._attack_sequence_slot:
+            self.attack_seq.offhand = None
+            self.attack_seq.resource = None
+        elif slot != self.attack_seq.slot:
             # Can't start a different slot while attacks are pending
             return
-        elif slot == "action" and self.pending_attack_offhand is True:
+        elif slot == "action" and self.attack_seq.offhand is True:
             # Nick's relocated off-hand swing is the one attack owed (only Nick arms an off-hand
             # swing in the action slot), so "⚔ Attack (1)" resumes THAT swing with the off-hand
             # weapon. The weapon picker let it become a main-hand attack that kept the off-hand flag
             # and never spent the off-hand attack, so Nick came back on offer after it.
             wi = self._nick_offhand_idx(idx)
             if wi >= 0:
-                self.pending_attack_slot = slot
-                self.pending_weapon_idx  = wi
+                self.pending = pending.Attack(slot)
+                self.attack_seq.weapon_idx  = wi
                 self._combat_log_add("Nick: off-hand attack (part of Attack action) — click a target.")
                 return
 
         def _activate(s, wi_):
-            self.pending_attack_slot = s
-            self.pending_weapon_idx  = wi_
-            rem = self.attacks_remaining
+            self.pending = pending.Attack(s)
+            self.attack_seq.weapon_idx  = wi_
+            rem = self.attack_seq.remaining
             suffix = f" ({rem} attack{'s' if rem != 1 else ''} remaining)"
             self._combat_log_add(f"Click a target on the map.{suffix}")
 
@@ -5263,8 +5243,8 @@ class App:
         if (slot == "action" and self.combat.can_use_war_magic(self.bm, idx)
                 and self.combat.available_war_magic_spells(self.bm, idx)):
             def _pick_war_magic():
-                self.pending_attack_slot = ""   # leave attack-target mode; enter spell-target mode
-                self.pending_weapon_idx  = 0
+                self._disarm(pending.Attack)   # leave attack-target mode; enter spell-target mode
+                self.attack_seq.weapon_idx  = 0
                 self._start_cast_spell("war_magic")
             war_magic_option = ("War Magic: cast spell (replaces an attack)", _pick_war_magic)
 
@@ -5314,18 +5294,18 @@ class App:
         idx = self._current_agent_idx()
         if idx < 0:
             return
-        self._attack_sequence_slot = slot
-        # Only set attacks_remaining if not already set (e.g., by Flurry of Blows which queues multiple)
-        if self.attacks_remaining == 0:
+        self.attack_seq.slot = slot
+        # Only set attack_seq.remaining if not already set (e.g., by Flurry of Blows which queues multiple)
+        if self.attack_seq.remaining == 0:
             if slot == "bonus":
                 stats = self.combat.get_agent_stats(self.bm, idx)
-                self.attacks_remaining = stats.bonus_attacks_remaining if stats.bonus_attacks_remaining > 0 else 1
+                self.attack_seq.remaining = stats.bonus_attacks_remaining if stats.bonus_attacks_remaining > 0 else 1
             else:
-                self.attacks_remaining = 1   # a single extra Attack-action attack (Nick)
-        self.pending_attack_slot = slot
-        self.pending_weapon_idx = weapon_idx
-        self.pending_attack_offhand = offhand     # proficient (not an off-hand strike) when False
-        self.pending_attack_resource = resource   # spent on a valid attack (e.g. "War Priest")
+                self.attack_seq.remaining = 1   # a single extra Attack-action attack (Nick)
+        self.pending = pending.Attack(slot)
+        self.attack_seq.weapon_idx = weapon_idx
+        self.attack_seq.offhand = offhand     # proficient (not an off-hand strike) when False
+        self.attack_seq.resource = resource   # spent on a valid attack (e.g. "War Priest")
         self._combat_log_add(f"{label} — click a target.")
 
     def _offhand_bonus_available(self, idx: int) -> bool:
@@ -5387,13 +5367,16 @@ class App:
         """True if the spell currently being aimed is a Harm spell (so a friendly-fire
         confirm is warranted). Heal/Transport spells return False — healing an ally
         must never prompt."""
+        ps = self._armed(pending.Spell)
+        if ps is None:
+            return False
         ci = self._current_agent_idx()
         if ci < 0:
             return False
         spells = self.combat.get_agent_spells(self.bm, ci)
-        if not (0 <= self.pending_spell_idx < len(spells)):
+        if not (0 <= ps.idx < len(spells)):
             return False
-        return spells[self.pending_spell_idx].type == rpg.SpellType.Harm
+        return spells[ps.idx].type == rpg.SpellType.Harm
 
     def _pending_spell_targets_corpse(self) -> bool:
         """True if the spell currently being aimed selects a true-dead body — either a revive
@@ -5413,15 +5396,16 @@ class App:
 
     def _pending_spell_obj(self):
         """The rpg.Spell currently being aimed (pending single-target cast), or None."""
-        if not self.pending_spell_slot or self.pending_spell_is_aoe:
+        ps = self._armed(pending.Spell)
+        if ps is None or ps.is_aoe:
             return None
         ci = self._current_agent_idx()
         if ci < 0:
             return None
         spells = self.combat.get_agent_spells(self.bm, ci)
-        if not (0 <= self.pending_spell_idx < len(spells)):
+        if not (0 <= ps.idx < len(spells)):
             return None
-        return spells[self.pending_spell_idx]
+        return spells[ps.idx]
 
 
     def _attack_is_a_throw(self, atk_idx: int, target_idx: int, weapon_idx: int) -> bool:
@@ -5453,7 +5437,7 @@ class App:
         (Completed). _finish_attack runs the post-resolution rider chain + logging in both cases,
         reading the result from last_attack_result()."""
         atk_idx = self._current_agent_idx()
-        slot    = self.pending_attack_slot
+        slot    = self._armed_slot(pending.Attack)
         if atk_idx < 0 or not slot:
             return
         if self.pending_beasts_strike_targets:
@@ -5463,7 +5447,7 @@ class App:
                 return
             self.pending_beasts_strike_targets = []
             self._beasts_strike_paid_now = False
-            self.pending_attack_slot = ""
+            self._disarm(pending.Attack)
             self._reaction_finish = lambda i=atk_idx: self._finish_beasts_strike(i)
             status = self.combat.beasts_strike(self.bm, atk_idx, target_idx)
             self._flush_combat_log()
@@ -5493,10 +5477,10 @@ class App:
             ss = self.combat.get_agent_conditions(self.bm, atk_idx)
             ss.sudden_strike_available = False   # spent with this swing
             self.combat.set_agent_conditions(self.bm, atk_idx, ss)
-        action = rpg.Attack(atk_idx, target_idx, self.pending_weapon_idx)
-        action.is_offhand = (slot == "bonus") if self.pending_attack_offhand is None else self.pending_attack_offhand
+        action = rpg.Attack(atk_idx, target_idx, self.attack_seq.weapon_idx)
+        action.is_offhand = (slot == "bonus") if self.attack_seq.offhand is None else self.attack_seq.offhand
         action.attack_slot = slot  # Pass the slot type to C++ ("action" or "bonus")
-        action.thrown = self._attack_is_a_throw(atk_idx, target_idx, self.pending_weapon_idx)
+        action.thrown = self._attack_is_a_throw(atk_idx, target_idx, self.attack_seq.weapon_idx)
         action.bite_empower = self.pending_bite_empower   # read only for the "Vampiric Bite" weapon
 
         # Stash what _finish_attack needs (the self.pending_* attrs stay set across the suspend) and
@@ -5548,9 +5532,9 @@ class App:
         result     = self.combat.last_attack_result()
 
         # Generic extra-attack cost (War Priest, etc.): spend the resource once, only on a valid attack.
-        if result.valid and self.pending_attack_resource:
-            self.combat.spend_resource(self.bm, atk_idx, self.pending_attack_resource)
-            self.pending_attack_resource = None
+        if result.valid and self.attack_seq.resource:
+            self.combat.spend_resource(self.bm, atk_idx, self.attack_seq.resource)
+            self.attack_seq.resource = None
 
         # Spend the single per-turn off-hand extra attack when this strike used the off-hand weapon
         # (base bonus off-hand, Nick relocation, or Dual Wielder's bonus). Once spent, the base
@@ -5572,18 +5556,18 @@ class App:
             # Check if attack failed because agent slipped
             if atk_idx >= 0 and atk_idx < len(agents) and agents[atk_idx].conditions.slipped_this_turn:
                 self._combat_log_add(f"{atk_name} slipped and cannot act — turn ends.")
-                self.pending_attack_slot = ""
-                self.attacks_remaining   = 0
+                self._disarm(pending.Attack)
+                self.attack_seq.remaining   = 0
                 self._advance_turn()
             else:
                 # Out of range / invalid target: this is a misclick, NOT a spent attack. Do not
                 # decrement (the decrement is below this return) and — critically — do not zero
-                # attacks_remaining. _start_attack re-seeds the count only when it is 0, so zeroing
+                # attack_seq.remaining. _start_attack re-seeds the count only when it is 0, so zeroing
                 # here would let the next Attack click re-seed to num_attacks and hand out a bonus
                 # attack (e.g. after a Forceful Blow / Push knocks the target out of reach mid-
-                # sequence). Just clear pending_attack_slot so the player can reposition (drag-to-
+                # sequence). Just disarm the Attack so the player can reposition (drag-to-
                 # move); clicking Attack again resumes the SAME sequence with the remaining count.
-                rem = self.attacks_remaining
+                rem = self.attack_seq.remaining
                 tail = (f" ({rem} attack{'s' if rem != 1 else ''} remaining)" if rem > 0 else "")
                 if not self.combat.can_perceive_target(self.bm, atk_idx, target_idx):
                     self._combat_log_add(
@@ -5591,7 +5575,7 @@ class App:
                 else:
                     self._combat_log_add(
                         f"{atk_name}: out of range — move closer or click Attack to retry{tail}")
-                self.pending_attack_slot = ""
+                self._disarm(pending.Attack)
             return
 
         # Check if attacker has exhaustion for potential penalty note
@@ -5640,7 +5624,7 @@ class App:
                 has_cunning_strike = True
             elif result.hit and atk_cond and atk_cond.brutal_strike_available:
                 has_brutal_strike = True
-            elif result.hit and atk_cond and atk_cond.stunning_strike_available and self.pending_attack_slot == "action":
+            elif result.hit and atk_cond and atk_cond.stunning_strike_available and self._armed_slot(pending.Attack) == "action":
                 has_stunning_strike = True
             elif result.hit and atk_cond and atk_cond.open_hand_rider_available:
                 has_open_hand_rider = True
@@ -5746,36 +5730,36 @@ class App:
         if result.hit:
             self._apply_chaos_staff_rider(atk_idx, target_idx, action.weapon_idx, tgt_name)
 
-        # Decrement attack counter: action attacks use Python attacks_remaining,
+        # Decrement attack counter: action attacks use Python attack_seq.remaining,
         # bonus-action attacks use C++ bonus_attacks_remaining
         has_more_attacks = False
-        if self.pending_attack_slot == "bonus":
+        if self._armed_slot(pending.Attack) == "bonus":
             has_more_attacks = self.combat.consume_bonus_attack(self.bm, atk_idx)
-        elif self.pending_attack_slot == "action":
-            self.attacks_remaining -= 1
-            has_more_attacks = self.attacks_remaining > 0
+        elif self._armed_slot(pending.Attack) == "action":
+            self.attack_seq.remaining -= 1
+            has_more_attacks = self.attack_seq.remaining > 0
 
-        # Central disarm for the ACTION sequence: clear pending_attack_slot NOW, before any rider
+        # Central disarm for the ACTION sequence: disarm the Attack NOW, before any rider
         # menu, so the map leaves target-selection between attacks regardless of which rider (if any)
         # fires. Without this, the many on-hit riders that don't re-prompt (brutal/cunning/divine/
         # push/topple/…) left the map armed → clicking your own sprite resolved as a self-attack
         # ("out of range"). The standing "⚔ Attack (N)" button resumes the sequence; the count is
         # preserved. Bonus sequences keep their own armed auto-target flow (single target). The
-        # rider continuations and the no-rider block below key on _attack_sequence_slot, not this
+        # rider continuations and the no-rider block below key on attack_seq.slot, not this
         # field, so the early clear is safe. Also commit the Action here (and end the sequence when
         # the last attack is spent) so it happens even for the many riders that skip the no-rider
         # block — otherwise a rider on the LAST attack would leave action_used False + a stale
-        # _attack_sequence_slot, and the next Attack click would re-seed a fresh full set of attacks.
+        # attack_seq.slot, and the next Attack click would re-seed a fresh full set of attacks.
         # action_used True mid-sequence is fine: mid_sequence_action keeps the "⚔ Attack (N)" button
         # alive (and the handler lets it fire). Frenzy / unarmed-weapon restore stay in the no-rider
         # block (rider-laden actions skip them — a pre-existing edge, see known_limitations.md).
-        if self._attack_sequence_slot == "action":
-            self.pending_attack_slot = ""
+        if self.attack_seq.slot == "action":
+            self._disarm(pending.Attack)
             self.action_used = True
             if not has_more_attacks:
-                self._attack_sequence_slot = ""
-                self.pending_attack_offhand = None
-                self.pending_attack_resource = None
+                self.attack_seq.slot = ""
+                self.attack_seq.offhand = None
+                self.attack_seq.resource = None
 
         # FLAG: Move to C++
         # A weapon grants at most one Mastery, but it stacks with a class on-hit rider (e.g. a
@@ -5881,12 +5865,12 @@ class App:
                 # Check if more attacks are queued (action or bonus)
                 if has_more_attacks:
                     # More attacks left in this sequence.
-                    if self._attack_sequence_slot == "bonus":
+                    if self.attack_seq.slot == "bonus":
                         # Bonus multi-attack (e.g. Flurry of Blows): single target, no standing
                         # mid-sequence button, so keep auto-targeting the next strike (unchanged).
                         stats = self.combat.get_agent_stats(self.bm, atk_idx)
                         rem = stats.bonus_attacks_remaining
-                        self.pending_attack_slot = ""  # Clear to let _start_attack re-seed
+                        self._disarm(pending.Attack)  # Clear to let _start_attack re-seed
                         self._start_attack("bonus")
                         self._combat_log_add(
                             f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — click a target.")
@@ -5895,20 +5879,20 @@ class App:
                         # player can move (clicking your own sprite no longer reads as a self-attack).
                         # The standing "⚔ Attack (N)" button (mid_sequence_action) resumes the sequence;
                         # the count is preserved, so re-clicking does NOT re-seed to a fresh full set
-                        # (see _start_attack's `attacks_remaining == 0` guard). Requested by the user as
+                        # (see _start_attack's `attack_seq.remaining == 0` guard). Requested by the user as
                         # the general fix for "allow movement mid-attack-sequence".
-                        rem = self.attacks_remaining
-                        self.pending_attack_slot = ""
+                        rem = self.attack_seq.remaining
+                        self._disarm(pending.Attack)
                         self._combat_log_add(
                             f"{atk_name}: {rem} attack{'s' if rem != 1 else ''} remaining — "
                             f"move if you wish, then click Attack to continue.")
                 else:
                     # Attacks exhausted — mark action used and clear sequence state
-                    self.pending_attack_slot = ""
-                    self._attack_sequence_slot = ""
+                    self._disarm(pending.Attack)
+                    self.attack_seq.slot = ""
                     # Clear the generic extra-attack knobs so they don't leak to the next attack.
-                    self.pending_attack_offhand = None
-                    self.pending_attack_resource = None
+                    self.attack_seq.offhand = None
+                    self.attack_seq.resource = None
                     # Boon of Dimensional Travel — arm Blink Steps: the Attack action is fully spent.
                     if slot == "action":
                         self._arm_blink_steps(atk_idx)
@@ -6106,7 +6090,7 @@ class App:
             self._beasts_strike_paid_now = True
             self._flush_combat_log()
         self.pending_beasts_strike_targets = targets
-        self.pending_attack_slot = "action"
+        self.pending = pending.Attack("action")
         self._combat_log_add("Beast's Strike — click a creature the companion can reach.")
         self._update_attack_overlay()
 
@@ -6688,17 +6672,18 @@ class App:
         self.combat.set_agent_weapons(self.bm, idx, new_weapons)
         self._unarmed_strike_original_weapons = (idx, orig_weapons)
         # Seed the Attack-action budget on a fresh action, then arm a normal attack with the
-        # unarmed weapon (slot 0). The standard attack dispatch (pending_attack_slot) +
+        # unarmed weapon (slot 0). The standard attack dispatch (the Attack arm) +
         # _finish_attack handle decrementing the count and restoring the weapons.
-        if self.attacks_remaining == 0:
+        if self.attack_seq.remaining == 0:
             stats = self.combat.get_agent_stats(self.bm, idx)
-            self.attacks_remaining = max(1, stats.num_attacks)
-            self._attack_sequence_slot = "action"
-        self.pending_attack_slot     = "action"
-        self.pending_weapon_idx      = 0
-        self.pending_attack_offhand  = None
-        self.pending_attack_resource = None
-        self.pending_unarmed_type    = ""   # routed through the normal attack path, not _resolve_unarmed_option
+            self.attack_seq.remaining = max(1, stats.num_attacks)
+            self.attack_seq.slot = "action"
+        self.pending = pending.Attack("action")
+        self.attack_seq.weapon_idx      = 0
+        self.attack_seq.offhand  = None
+        self.attack_seq.resource = None
+        # (the Attack arm replaces any armed Unarmed option: the Damage option goes through the
+        # normal attack path, not _resolve_unarmed_option)
         if is_punch:
             self._combat_log_add("Click a target to strike (Unarmed Strike — Damage).")
 
@@ -6706,28 +6691,29 @@ class App:
         """Grapple option of an Unarmed Strike (requires target selection)."""
         if self._current_agent_idx() < 0:
             return
-        self.pending_unarmed_type = "grapple"
+        self.pending = pending.Unarmed("grapple")
         self._combat_log_add("Click a target to grapple (Unarmed Strike — counts as one attack).")
 
     def _start_unarmed_push(self):
         """Shove (push 5 ft) option of an Unarmed Strike (requires target selection)."""
         if self._current_agent_idx() < 0:
             return
-        self.pending_unarmed_type = "push"
+        self.pending = pending.Unarmed("push")
         self._combat_log_add("Click a target to shove 5 ft (Unarmed Strike — counts as one attack).")
 
     def _resolve_unarmed_option(self, target_idx: int):
         """Route an Unarmed Strike option to its resolver. The Damage option is handled through the
-        normal attack path (pending_attack_slot); only Grapple and Shove land here."""
-        if not self.pending_unarmed_type:
+        normal attack path (the Attack arm); only Grapple and Shove land here."""
+        unarmed = self._armed(pending.Unarmed)
+        if unarmed is None:
             return
 
-        if self.pending_unarmed_type == "grapple":
+        if unarmed.type == "grapple":
             self._resolve_unarmed_grapple(target_idx)
-        elif self.pending_unarmed_type == "push":
+        elif unarmed.type == "push":
             self._resolve_unarmed_push(target_idx)
 
-        self.pending_unarmed_type = ""
+        self._disarm(pending.Unarmed)
 
     def _spend_unarmed_attack(self, atk_idx: int) -> bool:
         """Charge an Unarmed Strike option (Grapple / Push) against the Attack action's attack
@@ -6735,20 +6721,20 @@ class App:
         Attack action), spends one attack, and commits the Action. Returns True if attacks remain
         (Extra Attack) so the caller can let the player continue — the standing "⚔ Attack (N)" and
         Unarmed buttons resume the sequence."""
-        if self.attacks_remaining == 0:
+        if self.attack_seq.remaining == 0:
             stats = self.combat.get_agent_stats(self.bm, atk_idx)
-            self.attacks_remaining = max(1, stats.num_attacks)
-            self._attack_sequence_slot = "action"
-        self.attacks_remaining -= 1
+            self.attack_seq.remaining = max(1, stats.num_attacks)
+            self.attack_seq.slot = "action"
+        self.attack_seq.remaining -= 1
         self.action_used = True
-        if self.attacks_remaining > 0:
+        if self.attack_seq.remaining > 0:
             atk_name = self.bm.placed_agents[atk_idx].name
             self._combat_log_add(
-                f"{atk_name}: {self.attacks_remaining} attack"
-                f"{'s' if self.attacks_remaining != 1 else ''} remaining — "
+                f"{atk_name}: {self.attack_seq.remaining} attack"
+                f"{'s' if self.attack_seq.remaining != 1 else ''} remaining — "
                 f"move if you wish, then click Attack or Unarmed to continue.")
             return True
-        self._attack_sequence_slot = ""
+        self.attack_seq.slot = ""
         return False
 
     def _resolve_unarmed_grapple(self, target_idx: int):
@@ -6921,7 +6907,7 @@ class App:
         if si < 0 or not (fr and fr.current > 0):
             self._combat_log_add(f"{self.bm.placed_agents[agent_idx].name}: no Fey Reinforcements use.")
             return
-        self.pending_summon_fey_reinforcements = True
+        self.cast_setup.fey_reinforcements = True
         self._activate_spell("action", si, spells[si].level, agent_idx, spells, stats, free_cast=True)
 
     def _use_natures_veil(self, agent_idx: int):
@@ -7617,9 +7603,9 @@ class App:
     def _can_replace_attack(self, idx: int) -> bool:
         """True if this actor still has a weapon attack a thrown item could replace — either one
         left in an Attack action already under way, or an unspent Attack action to start."""
-        if self._attack_sequence_slot == "bonus":
+        if self.attack_seq.slot == "bonus":
             return False                      # finish the bonus-action attacks first
-        if self._attack_sequence_slot == "action" and self.attacks_remaining > 0:
+        if self.attack_seq.slot == "action" and self.attack_seq.remaining > 0:
             return True
         return not self.action_used
 
@@ -7628,25 +7614,25 @@ class App:
         spends one swing out of the attack budget — seeding a fresh Attack action if the actor had
         not started one. Mirrors _consume_cast_slot's War Magic branch, including the disarm that
         lets the player move between attacks and resume with the standing "⚔ Attack (N)" button."""
-        if self._attack_sequence_slot != "action" or self.attacks_remaining <= 0:
+        if self.attack_seq.slot != "action" or self.attack_seq.remaining <= 0:
             stats = self.combat.get_agent_stats(self.bm, user_idx)
-            self.attacks_remaining     = max(1, stats.num_attacks)
-            self._attack_sequence_slot = "action"
+            self.attack_seq.remaining     = max(1, stats.num_attacks)
+            self.attack_seq.slot = "action"
 
         # The Attack action itself is spent the moment it is taken — exactly as _finish_attack marks
         # it on the first swing. Any swings still owed stay live through mid_sequence_action, which
         # keeps the standing "⚔ Attack (N)" button (and its handler) working while action_used is set.
-        self.attacks_remaining -= 1
+        self.attack_seq.remaining -= 1
         self.action_used = True
-        if self.attacks_remaining > 0:
-            self.pending_attack_slot = ""
-            rem = self.attacks_remaining
+        if self.attack_seq.remaining > 0:
+            self._disarm(pending.Attack)
+            rem = self.attack_seq.remaining
             nm  = self.bm.placed_agents[user_idx].name
             self._combat_log_add(
                 f"{nm}: {rem} attack{'s' if rem != 1 else ''} remaining — "
                 f"move if you wish, then click Attack to continue.")
         else:
-            self._attack_sequence_slot = ""
+            self.attack_seq.slot = ""
 
 
     def _resolve_use_item(self, target_idx: int):
@@ -7955,8 +7941,7 @@ class App:
         """Start a shove action (requires target selection)."""
         if self.bonus_used:
             return
-        self.pending_shove_slot = "bonus"
-        self.pending_shove_type = shove_type
+        self.pending = pending.Shove("bonus", shove_type)
         hint = f"shove and {'knock prone' if shove_type == 'prone' else 'push 5ft'}"
         self._combat_log_add(f"Click a target to {hint}.")
 
@@ -7964,24 +7949,23 @@ class App:
         """Telekinetic feat — Telekinetic Shove (bonus action, 30 ft, STR save or pushed 5 ft)."""
         if self.bonus_used:
             return
-        self.pending_shove_slot = "bonus"
-        self.pending_shove_type = "telekinetic"
+        self.pending = pending.Shove("bonus", "telekinetic")
         self._combat_log_add("Click a target within 30 ft to telekinetically shove (STR save or pushed 5 ft).")
 
     def _resolve_shove(self, target_idx: int):
         """Execute the pending shove action."""
-        if not self.pending_shove_slot or not self.pending_shove_type:
+        shove = self._armed(pending.Shove)
+        if shove is None or not shove.type:
             return
 
         atk_idx = self._current_agent_idx()
         if atk_idx < 0:
-            self.pending_shove_slot = ""
-            self.pending_shove_type = ""
+            self._disarm(pending.Shove)
             return
 
         # Telekinetic Shove is a STR-save shove at 30 ft (reuses the C++ Thunderwave knockback);
         # the ordinary push/prone shove is a contested Athletics check at 5 ft.
-        if self.pending_shove_type == "telekinetic":
+        if shove.type == "telekinetic":
             result = self.combat.apply_telekinetic_shove(self.bm, atk_idx, target_idx)
             if result.valid:
                 self._combat_log_add(result.log_message)
@@ -7990,8 +7974,7 @@ class App:
                     self._update_attack_overlay()
             else:
                 self._combat_log_add(f"Telekinetic Shove failed: {result.log_message}")
-            self.pending_shove_slot = ""
-            self.pending_shove_type = ""
+            self._disarm(pending.Shove)
             self.bonus_used = True
             return
 
@@ -7999,7 +7982,7 @@ class App:
         action = rpg.ShoveAction()
         action.attacker_idx = atk_idx
         action.target_idx = target_idx
-        action.knock_prone = (self.pending_shove_type == "prone")
+        action.knock_prone = (shove.type == "prone")
 
         # Execute shove
         result = self.combat.execute_shove(self.bm, action)
@@ -8014,8 +7997,7 @@ class App:
             self._combat_log_add(f"Shove failed: {result.log_message}")
 
         # Mark bonus action as used
-        self.pending_shove_slot = ""
-        self.pending_shove_type = ""
+        self._disarm(pending.Shove)
         self.bonus_used = True
 
     # FLAG: Move to C++
@@ -8489,11 +8471,11 @@ class App:
         sp_ = spells[si_]
         # Cleared for every fresh cast; only the element-choice branch below sets it. free_cast is
         # normally False (a normal cast expends a slot); the Wish flow passes True.
-        self.pending_spell_damage_type = -1
-        self.pending_spell_free_cast    = free_cast
-        self.pending_spell_command_word = -1
-        self.pending_spell_curse_choice = -1
-        self.pending_forcecage_sealed   = False   # Forcecage form: False = Cage (20 ft), True = Box (10 ft)
+        self.cast_setup.damage_type = -1
+        self.cast_setup.free_cast    = free_cast
+        self.cast_setup.command_word = -1
+        self.cast_setup.curse_choice = -1
+        self.cast_setup.forcecage_sealed   = False   # Forcecage form: False = Cage (20 ft), True = Box (10 ft)
         # A new cast always starts with no leftover Chromatic Orb leap chain (e.g. if a prior
         # chain was abandoned by a turn change), so stale hops can't hijack this cast's clicks.
         self._drop_pick("chromatic")
@@ -8522,14 +8504,10 @@ class App:
         elem_opts = ELEMENT_CHOICE_SPELLS.get(sp_.name)
         if elem_opts is not None:
             def _on_elem(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_, elem_opts=elem_opts):
-                self.pending_spell_damage_type = chosen[0] if chosen else -1
-                self.pending_spell_is_aoe     = False
-                self.pending_spell_targets    = []
-                self.pending_spell_slot       = s
-                self.pending_spell_idx        = si_
-                self.pending_spell_slot_level = slot_level_
+                self.cast_setup.damage_type = chosen[0] if chosen else -1
+                self.pending = pending.Spell(s, si_, slot_level_)
                 type_name = next((lbl for lbl, val in elem_opts
-                                  if val == self.pending_spell_damage_type), "?")
+                                  if val == self.cast_setup.damage_type), "?")
                 self._combat_log_add(f"Casting {sp_.name} ({type_name}) — click a target.")
             # Cancel here casts with the default (F-M5e-3), so a remote client is told not to
             # draw a Cancel that would cast the spell (E-3). The same holds for the curse,
@@ -8547,14 +8525,10 @@ class App:
         curse_opts = CURSE_CHOICE_SPELLS.get(sp_.name)
         if curse_opts is not None:
             def _on_curse(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_, curse_opts=curse_opts):
-                self.pending_spell_curse_choice = chosen[0] if chosen else -1
-                self.pending_spell_is_aoe     = False
-                self.pending_spell_targets    = []
-                self.pending_spell_slot       = s
-                self.pending_spell_idx        = si_
-                self.pending_spell_slot_level = slot_level_
+                self.cast_setup.curse_choice = chosen[0] if chosen else -1
+                self.pending = pending.Spell(s, si_, slot_level_)
                 choice_name = next((lbl for lbl, val in curse_opts
-                                    if val == self.pending_spell_curse_choice), "?")
+                                    if val == self.cast_setup.curse_choice), "?")
                 self._combat_log_add(f"Casting {sp_.name} ({choice_name}) — click a target.")
             self._ask_actor(idx, "action", f"{sp_.name}: choose",
                             [(lbl, (lambda v=val: _on_curse([v]))) for lbl, val in curse_opts],
@@ -8570,7 +8544,7 @@ class App:
         if sp_.name == "Command":
             def _on_word(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_):
                 word = chosen[0] if chosen else 3   # default Halt (matches applyCommandEffect)
-                self.pending_spell_command_word = word
+                self.cast_setup.command_word = word
                 word_name = next((lbl for lbl, val in features.COMMAND_WORD_OPTIONS if val == word), "?")
                 self._combat_log_add(f"Command word: {word_name}.")
                 self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
@@ -8591,9 +8565,9 @@ class App:
                 ("Box — 10 ft (solid: sealed in; only a teleport escapes)", 1),
             ]
             def _on_forcecage(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_):
-                self.pending_forcecage_sealed = bool(chosen and chosen[0] == 1)
+                self.cast_setup.forcecage_sealed = bool(chosen and chosen[0] == 1)
                 self._combat_log_add(
-                    f"Forcecage form: {'Box (10 ft, sealed)' if self.pending_forcecage_sealed else 'Cage (20 ft)'}"
+                    f"Forcecage form: {'Box (10 ft, sealed)' if self.cast_setup.forcecage_sealed else 'Cage (20 ft)'}"
                     " — click a target.")
                 self._dispatch_spell_geometry(s, si_, sp_, slot_level_, idx)
             self._ask_actor(idx, "action", "Forcecage: choose a form",
@@ -8622,22 +8596,15 @@ class App:
                                              free_cast=free_cast)
                     finally:
                         self._summon_conc_chosen = False
-                    self.pending_summon_no_conc = no_conc
+                    if self._armed(pending.Summon):
+                        self.pending.no_conc = no_conc
                 self._ask_actor(idx, "action", "Summon Fey: Concentration?",
                                 [("Concentration (1 hour)", lambda: _on_conc(False)),
                                  ("No Concentration (1 minute)", lambda: _on_conc(True))],
                                 render="picker",
                                 on_cancel=lambda: net_picks.cancel_summon(self))
                 return
-            fey_free = self.pending_summon_fey_reinforcements
-            self.pending_summon_slot       = s
-            self.pending_summon_idx        = si_
-            self.pending_summon_slot_level = slot_level_
-            self.pending_summon_free_cast  = free_cast
-            self.pending_summon_monster    = ""
-            self.pending_summon_spirit     = None
-            self.pending_summon_no_conc    = False
-            self.pending_summon_fey_reinforcements = fey_free
+            self.pending = pending.Summon(s, si_, slot_level_, free_cast=free_cast)
             items = [(f"✨ {form}",
                       lambda b=block, n=sp_.name: self._choose_summon_form(n, b))
                      for form, block in spirit_forms.items()]
@@ -8650,12 +8617,7 @@ class App:
             self._combat_log_add(f"Casting {sp_.name} — choose a form.")
             return
         if monster:
-            self.pending_summon_slot       = s
-            self.pending_summon_idx        = si_
-            self.pending_summon_slot_level = slot_level_
-            self.pending_summon_free_cast  = free_cast
-            self.pending_summon_monster    = monster
-            self.pending_summon_spirit     = None
+            self.pending = pending.Summon(s, si_, slot_level_, monster=monster, free_cast=free_cast)
             self._combat_log_add(
                 f"Casting {sp_.name} — click an empty cell within range to place the {monster}.")
             return
@@ -8693,9 +8655,7 @@ class App:
         # Emanation (a moves_with_caster Sphere) is always centered on the caster,
         # so there is no placement to choose — cast immediately on the caster's cell.
         if getattr(sp_, "moves_with_caster", False) and sp_.geometry == rpg.SpellGeometry.Sphere:
-            self.pending_spell_slot       = s
-            self.pending_spell_idx        = si_
-            self.pending_spell_slot_level = slot_level_
+            self.pending = pending.Spell(s, si_, slot_level_)
             ci = self._current_agent_idx()
             origin = self.bm.placed_agents[ci].origin
             self._combat_log_add(f"Casting {sp_.name} — centered on caster.")
@@ -8704,11 +8664,7 @@ class App:
 
         # Teleportation spells: select a destination, then optionally select additional targets
         if getattr(sp_, "teleportation_spell", False):
-            self.pending_spell_is_aoe = True
-            self.pending_spell_slot       = s
-            self.pending_spell_idx        = si_
-            self.pending_spell_slot_level = slot_level_
-            self.pending_spell_targets    = []
+            self.pending = pending.Spell(s, si_, slot_level_, is_aoe=True)
             hint = f"click a destination ({sp_.teleport_range_ft} ft away)"
             self._combat_log_add(f"Casting {sp_.name} — {hint}.")
             return
@@ -8721,44 +8677,42 @@ class App:
         # AFTER their choice. The target count for Multiple geometry comes from the C++
         # engine (get_num_targets_for_spell), which is also the authority that caps the list
         # at resolution — so no spell-specific target math lives here.
+        num_targets = 0
         if sp_.geometry == rpg.SpellGeometry.Single:
-            self.pending_spell_is_aoe = False
-            self.pending_spell_targets = []
+            is_aoe = False
             # Twinned Spell (Sorcerer Metamagic): a Single-geometry spell gets one ADDITIONAL
             # target. Collect two clicks (like Multiple geometry). The engine still validates
             # affordability and only actually hits the 2nd target if it pays the SP.
             if self._twinned_single_armed(sp_, idx):
-                self.pending_spell_num_targets = 2
+                num_targets = 2
                 hint = "click 2 targets (0/2) — Twinned"
             elif self._enhanced_necromancy_armed_for(sp_, idx, slot_level_):
                 # Enhanced Necromancy (Grave Cleric L17): the same 2-click collection as Twinned;
                 # the engine spends the Channel Divinity use only if the 2nd target lands.
-                self.pending_spell_num_targets = 2
+                num_targets = 2
                 hint = "click 2 targets (0/2) — Enhanced Necromancy"
             elif getattr(sp_, "revives_dead", False):
                 # Raise Dead / Revivify: the target is a corpse, picked via _corpse_at.
-                self.pending_spell_num_targets = 0
+                num_targets = 0
                 hint = "click a dead body within range"
             elif getattr(sp_, "animates_dead", False):
                 # Animate Dead: the target is a corpse to raise as an undead — same corpse-pick.
-                self.pending_spell_num_targets = 0
+                num_targets = 0
                 hint = "click a corpse within range to animate"
             else:
-                self.pending_spell_num_targets = 0
+                num_targets = 0
                 hint = "click a target"
         elif sp_.geometry == rpg.SpellGeometry.Multiple:
             # Multiple geometry: collect N independent targets
             caster_level_ = self.combat.get_agent_stats(self.bm, idx).char_level
             num_targets = self.combat.get_num_targets_for_spell(sp_, slot_level_, caster_level_)
-            self.pending_spell_is_aoe = False
-            self.pending_spell_targets = []  # Will collect targets sequentially
-            self.pending_spell_num_targets = num_targets
+            is_aoe = False   # the targets are collected one click at a time
             hint = f"click {num_targets} target{'s' if num_targets != 1 else ''} ({0}/{num_targets})"
             if num_targets > 1:
                 hint += ", or Enter to cast on fewer"
         else:
             # AoE (Line, Cone, Sphere, Square, Rectangle)
-            self.pending_spell_is_aoe = True
+            is_aoe = True
             self.spell_anchor_cell    = None
             if sp_.geometry == rpg.SpellGeometry.Rectangle:
                 # Oriented wall: click an anchor, then click again to set
@@ -8767,9 +8721,7 @@ class App:
             else:
                 hint = "click a map location"
 
-        self.pending_spell_slot       = s
-        self.pending_spell_idx        = si_
-        self.pending_spell_slot_level = slot_level_
+        self.pending = pending.Spell(s, si_, slot_level_, is_aoe=is_aoe, num_targets=num_targets)
         self._combat_log_add(f"Casting {sp_.name} — {hint}.")
 
     def _on_wish_duplicate(self, caster_idx: int, slot: str, wish_slot_level: int, spell_dict: dict):
@@ -8998,7 +8950,7 @@ class App:
                                     ok = self.combat.spend_sorcery_points_for_spell(self.bm, idx, sl)
                                     if ok:
                                         _activate(s, si_, sl)
-                                        self.pending_spell_free_cast = True
+                                        self.cast_setup.free_cast = True
                                 level_options.append(
                                     (f"@ {_ordinal(psi_lvl)} — {psi_lvl} SP (no slot)", _pick_psionic))
 
@@ -9855,23 +9807,23 @@ class App:
         attack(s) or end the action."""
         if slot == "war_magic":
             self.combat.mark_war_magic_used(self.bm, caster_idx)
-            self.attacks_remaining -= 1
-            if self.attacks_remaining > 0:
+            self.attack_seq.remaining -= 1
+            if self.attack_seq.remaining > 0:
                 # War Magic replaced one attack; DISARM between attacks so the player can move. The
                 # standing "⚔ Attack (N)" button resumes the remaining attack(s) — count preserved,
                 # and war_magic_used stays set (only a fresh Attack-action seed clears it) so the
                 # substitution option won't reappear.
-                self.pending_attack_slot = ""
-                rem = self.attacks_remaining
+                self._disarm(pending.Attack)
+                rem = self.attack_seq.remaining
                 nm = (self.bm.placed_agents[caster_idx].name
                       if 0 <= caster_idx < len(self.bm.placed_agents) else "?")
                 self._combat_log_add(
                     f"{nm}: {rem} attack{'s' if rem != 1 else ''} remaining — "
                     f"move if you wish, then click Attack to continue.")
             else:
-                self.attacks_remaining     = 0
+                self.attack_seq.remaining     = 0
                 self.action_used           = True
-                self._attack_sequence_slot = ""
+                self.attack_seq.slot = ""
         elif slot == "action":
             self.action_used = True
             if spell is not None and self._spell_costs_action_and_bonus(spell) and not self.bonus_used:
@@ -9883,8 +9835,10 @@ class App:
         """A scaling-summon FORM was picked from the context menu — stash the spirit `block`
         and prompt for the placement cell. The spawn happens in _resolve_summon on click; the
         block is scaled to the slot level there (compute_summon_loadout)."""
-        self.pending_summon_spirit  = block
-        self.pending_summon_monster = block.get("name", spell_name)
+        summon = self._armed(pending.Summon)
+        if summon is not None:
+            summon.spirit  = block
+            summon.monster = block.get("name", spell_name)
         self._combat_log_add(
             f"{spell_name} — click an empty cell within range to place the "
             f"{block.get('name', 'spirit')}.")
@@ -9899,14 +9853,15 @@ class App:
         state is disturbed. The spawn itself is _spawn_summon, shared with the automated Summon
         Fey cast (features.auto_summon_fey)."""
         caster_idx = self._current_agent_idx()
-        slot       = self.pending_summon_slot
-        monster    = self.pending_summon_monster
-        spirit     = self.pending_summon_spirit
-        spell_idx  = self.pending_summon_idx
-        slot_level = self.pending_summon_slot_level
-        free_summon = self.pending_summon_free_cast  # Wish-duplicated summon: charge no slot
-        if caster_idx < 0 or not slot or not monster:
+        summon     = self._armed(pending.Summon)
+        if caster_idx < 0 or summon is None or not summon.monster:
             return
+        slot       = summon.slot
+        monster    = summon.monster
+        spirit     = summon.spirit
+        spell_idx  = summon.idx
+        slot_level = summon.slot_level
+        free_summon = summon.free_cast  # Wish-duplicated summon: charge no slot
         spells = self.combat.get_agent_spells(self.bm, caster_idx)
         sp = spells[spell_idx] if 0 <= spell_idx < len(spells) else None
         if spirit is not None:
@@ -9936,7 +9891,7 @@ class App:
             return
 
         new_idx = self._spawn_summon(caster_idx, sp, monster, spirit, slot_level, cell,
-                                     no_conc=self.pending_summon_no_conc)
+                                     no_conc=summon.no_conc)
         if new_idx < 0:
             self._combat_log_add("Summon failed: could not place the creature.")
             return
@@ -9945,9 +9900,9 @@ class App:
         # Wish-duplicated summon is free (Wish already paid its 9th-level slot); a Fey
         # Reinforcements cast spends its use instead.
         cstats = self.combat.get_agent_stats(self.bm, caster_idx)
-        if self.pending_summon_fey_reinforcements:
+        if self.cast_setup.fey_reinforcements:
             self.combat.spend_resource(self.bm, caster_idx, "Fey Reinforcements", 1)
-        elif not cstats.is_npc and slot_level >= 1 and not self.pending_summon_free_cast:
+        elif not cstats.is_npc and slot_level >= 1 and not summon.free_cast:
             slots = list(cstats.spell_slots_remaining)
             if slots[slot_level - 1] > 0:
                 slots[slot_level - 1] -= 1
@@ -9970,15 +9925,9 @@ class App:
         self._combat_log_add(f"{caster.name} summons a {monster}!")
 
         # Clear pending state + consume the action economy.
-        fey_free = self.pending_summon_fey_reinforcements
-        self.pending_summon_slot       = ""
-        self.pending_summon_idx        = 0
-        self.pending_summon_slot_level = 0
-        self.pending_summon_monster    = ""
-        self.pending_summon_spirit     = None
-        self.pending_summon_free_cast  = False
-        self.pending_summon_no_conc    = False
-        self.pending_summon_fey_reinforcements = False
+        fey_free = self.cast_setup.fey_reinforcements
+        self._disarm(pending.Summon)
+        self.cast_setup.fey_reinforcements = False
         self.summon_hover_cell         = None
         self.sprites.clear()
         self._consume_cast_slot(slot, caster_idx)
@@ -10582,8 +10531,7 @@ class App:
         self._drop_pick("chromatic")
         self.pending_chromatic_primary = -1
         self.pending_chromatic_chain   = []
-        self.pending_spell_slot        = ""
-        self.pending_spell_is_aoe      = False
+        self._disarm(pending.Spell)
         self.spell_hover_cell          = None
         self._combat_log_add("Chromatic Orb cancelled.")
 
@@ -10658,7 +10606,7 @@ class App:
         # Quickened only makes sense on a Bonus-Action cast (it IS the bonus-action cast). If the
         # spell is going out with the Action, drop Quickened so it neither spends Sorcery Points
         # nor mislabels the economy — the player simply casts it normally with their Action.
-        if self.pending_spell_slot != "bonus":
+        if self._armed_slot(pending.Spell) != "bonus":
             opts = [o for o in opts if o != rpg.MetamagicOption.Quickened]
         if not opts:
             return
@@ -10678,15 +10626,16 @@ class App:
         _corpse_at instead. Validate that a true-dead body sits under the click and lies
         within the spell's range, then hand the corpse index to the normal cast path — the
         engine's revives_dead heal clears the `dead` condition and restores the creature."""
+        ps = self._armed(pending.Spell)
         caster_idx = self._current_agent_idx()
-        if caster_idx < 0 or not self.pending_spell_slot:
+        if caster_idx < 0 or ps is None:
             return
         corpse = self._corpse_at(cell)
         if corpse < 0:
             self._combat_log_add("No corpse there — click a dead body within range.")
             return
         spells = self.combat.get_agent_spells(self.bm, caster_idx)
-        sp = spells[self.pending_spell_idx]
+        sp = spells[ps.idx]
         dist_ft = self._footprint_dist_ft(caster_idx, corpse)
         if dist_ft < 0 or dist_ft > sp.range:
             self._combat_log_add(
@@ -10770,8 +10719,8 @@ class App:
                 slots[slot_level - 1] -= 1
                 cstats.spell_slots_remaining = slots
                 self.combat.set_agent_stats(self.bm, caster_idx, cstats)
-        self.pending_spell_slot      = ""
-        self.pending_spell_free_cast = False
+        self._disarm(pending.Spell)
+        self.cast_setup.free_cast = False
         self._consume_cast_slot(slot, caster_idx)
 
     def _resolve_planar_binding(self, target_idx):
@@ -10781,13 +10730,14 @@ class App:
         has no timed team-revert; it holds until re-factioned or the encounter ends). No
         summoner_idx is set (Planar Binding is not Concentration), and is_npc_automated is
         cleared so the player controls the bound creature."""
+        ps = self._armed(pending.Spell)
         caster_idx = self._current_agent_idx()
-        if caster_idx < 0 or not self.pending_spell_slot:
+        if caster_idx < 0 or ps is None:
             return
         if not (0 <= target_idx < len(self.bm.placed_agents)):
             return
         spells = self.combat.get_agent_spells(self.bm, caster_idx)
-        sp = spells[self.pending_spell_idx]
+        sp = spells[ps.idx]
         dist_ft = self._footprint_dist_ft(caster_idx, target_idx)
         if dist_ft < 0 or dist_ft > sp.range:
             self._combat_log_add(
@@ -10818,25 +10768,26 @@ class App:
                 f"bound to {caster.name}'s service!")
 
         # Spend the slot (PC only, non-free) and the action, then clear pending state.
-        if not cstats.is_npc and sp.level >= 1 and not self.pending_spell_free_cast:
-            slot_level = self.pending_spell_slot_level
+        if not cstats.is_npc and sp.level >= 1 and not self.cast_setup.free_cast:
+            slot_level = ps.slot_level
             slots = list(cstats.spell_slots_remaining)
             if 1 <= slot_level <= len(slots) and slots[slot_level - 1] > 0:
                 slots[slot_level - 1] -= 1
                 cstats.spell_slots_remaining = slots
                 self.combat.set_agent_stats(self.bm, caster_idx, cstats)
-        slot = self.pending_spell_slot
-        self.pending_spell_slot      = ""
-        self.pending_spell_free_cast = False
+        slot = ps.slot if ps else ""
+        self._disarm(pending.Spell)
+        self.cast_setup.free_cast = False
         self._consume_cast_slot(slot, caster_idx)
 
     def _multi_target_finishable(self) -> bool:
         """A multi-target spell with at least one target picked can be cast early (Enter / Done)
         on fewer than its maximum — Mass Suggestion need not find all twelve."""
+        ps = self._armed(pending.Spell)
         sp = self._pending_spell()
-        return (sp is not None and not self.pending_spell_is_aoe
-                and self.pending_spell_num_targets > 0
-                and 0 < len(self.pending_spell_targets) < self.pending_spell_num_targets)
+        return (sp is not None and not ps.is_aoe
+                and ps.num_targets > 0
+                and 0 < len(ps.targets) < ps.num_targets)
 
     def _finish_multi_target_spell(self):
         """Cast the armed multi-target spell on the targets collected so far."""
@@ -10846,22 +10797,23 @@ class App:
     def _resolve_spell_cast(self, target_idx: int | None):
         """`target_idx` None finishes a multi-target collection early (see
         `_finish_multi_target_spell`)."""
+        ps = self._armed(pending.Spell)
         caster_idx = self._current_agent_idx()
-        slot       = self.pending_spell_slot
+        slot       = ps.slot if ps else ""
         if caster_idx < 0 or not slot:
             return
 
         spells_orig = self.combat.get_agent_spells(self.bm, caster_idx)
-        sp = spells_orig[self.pending_spell_idx]
+        sp = spells_orig[ps.idx]
 
         # Multiple-geometry spells (and a Twinned Single-geometry spell) collect several targets
         # across successive clicks before the cast resolves.
         multi_target = (sp.geometry == rpg.SpellGeometry.Multiple or
                         self._twinned_single_armed(sp, caster_idx) or
                         self._enhanced_necromancy_armed_for(sp, caster_idx,
-                                                            self.pending_spell_slot_level))
+                                                            ps.slot_level))
         if multi_target and target_idx is None:
-            if not self.pending_spell_targets:
+            if not ps.targets:
                 return
             # Finishing early: cast on the targets collected so far.
         elif target_idx is None:
@@ -10869,16 +10821,16 @@ class App:
         elif multi_target:
             # Only darts, rays and beams may land on one creature more than once; every other
             # multi-target spell (Bless, Bane, Hold Person, a Twinned spell, …) needs distinct ones.
-            if (target_idx in self.pending_spell_targets
+            if (target_idx in ps.targets
                     and sp.name not in _REPEAT_TARGET_SPELLS):
                 self._combat_log_add(
                     f"{self.bm.placed_agents[target_idx].name} is already a target of "
                     f"{sp.name} — choose a different creature.")
                 return
-            self.pending_spell_targets.append(target_idx)
+            ps.targets.append(target_idx)
 
-            targets_collected = len(self.pending_spell_targets)
-            targets_needed = self.pending_spell_num_targets
+            targets_collected = len(ps.targets)
+            targets_needed = ps.num_targets
 
             if targets_collected < targets_needed:
                 # Still collecting targets
@@ -10889,15 +10841,15 @@ class App:
 
         action = rpg.SpellAction()
         action.caster_idx     = caster_idx
-        action.spell_idx      = self.pending_spell_idx
-        action.slot_level     = self.pending_spell_slot_level
-        action.target_indices = self.pending_spell_targets if multi_target else [target_idx]
-        action.damage_type_override = self.pending_spell_damage_type  # cast-time element choice (-1 = none)
+        action.spell_idx      = ps.idx
+        action.slot_level     = ps.slot_level
+        action.target_indices = ps.targets if multi_target else [target_idx]
+        action.damage_type_override = self.cast_setup.damage_type  # cast-time element choice (-1 = none)
         # Mantle of Majesty: free Command cast (no slot) + the chosen Command word.
-        action.free_cast      = self.pending_spell_free_cast
-        action.command_word   = self.pending_spell_command_word
-        action.curse_choice   = self.pending_spell_curse_choice  # Vistani Curse sub-choice (-1 = n/a)
-        action.forcecage_sealed = self.pending_forcecage_sealed   # Forcecage form (Box seals the occupant)
+        action.free_cast      = self.cast_setup.free_cast
+        action.command_word   = self.cast_setup.command_word
+        action.curse_choice   = self.cast_setup.curse_choice  # Vistani Curse sub-choice (-1 = n/a)
+        action.forcecage_sealed = self.cast_setup.forcecage_sealed   # Forcecage form (Box seals the occupant)
         # Chromatic Orb's player-chosen leap chain (empty for every other spell / an un-chained cast).
         action.chromatic_leap_targets = list(self.pending_chromatic_chain)
         action.overchannel   = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
@@ -10911,20 +10863,17 @@ class App:
         # offered (Completed) or parks at the reaction checkpoint (AwaitingDecision); _finish_cast does
         # the post-resolution logging in both cases.
         # (Beast Master L15 Share Spells is the engine's: executeSpell adds the companion as a target.)
-        self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=self.pending_spell_idx,
+        self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=ps.idx,
                                aoe=False,
-                               slot_level=self.pending_spell_slot_level,
+                               slot_level=ps.slot_level,
                                free_cast=action.free_cast)
         self._reaction_finish = self._finish_cast
 
-        self.pending_spell_slot        = ""
-        self.pending_spell_is_aoe      = False
-        self.pending_spell_num_targets = 0
-        self.pending_spell_targets     = []
-        self.pending_spell_damage_type = -1
-        self.pending_spell_free_cast   = False
-        self.pending_spell_command_word = -1
-        self.pending_spell_curse_choice = -1
+        self._disarm(pending.Spell)
+        self.cast_setup.damage_type = -1
+        self.cast_setup.free_cast   = False
+        self.cast_setup.command_word = -1
+        self.cast_setup.curse_choice = -1
         self.spell_hover_cell          = None
         self._drop_pick("chromatic")
         self.pending_chromatic_primary = -1
@@ -11054,12 +11003,13 @@ class App:
 
     def _pending_spell(self):
         """The Spell object currently being aimed, or None."""
+        ps = self._armed(pending.Spell)
         caster_idx = self._current_agent_idx()
-        if caster_idx < 0 or not self.pending_spell_slot:
+        if caster_idx < 0 or ps is None:
             return None
         spells = self.combat.get_agent_spells(self.bm, caster_idx)
-        if 0 <= self.pending_spell_idx < len(spells):
-            return spells[self.pending_spell_idx]
+        if 0 <= ps.idx < len(spells):
+            return spells[ps.idx]
         return None
 
     def _pending_spell_is_wall(self) -> bool:
@@ -11091,13 +11041,14 @@ class App:
 
     # FLAG: Move to C++
     def _resolve_spell_cast_aoe(self, cell):
+        ps = self._armed(pending.Spell)
         caster_idx = self._current_agent_idx()
-        slot       = self.pending_spell_slot
+        slot       = ps.slot if ps else ""
         if caster_idx < 0 or not slot:
             return
 
         spells_orig = self.combat.get_agent_spells(self.bm, caster_idx)
-        sp = spells_orig[self.pending_spell_idx]
+        sp = spells_orig[ps.idx]
 
         # Handle teleportation spells separately
         if getattr(sp, "teleportation_spell", False):
@@ -11106,10 +11057,10 @@ class App:
 
         action = rpg.SpellAction()
         action.caster_idx     = caster_idx
-        action.spell_idx      = self.pending_spell_idx
-        action.slot_level     = self.pending_spell_slot_level
+        action.spell_idx      = ps.idx
+        action.slot_level     = ps.slot_level
         action.target_indices = []
-        action.free_cast      = self.pending_spell_free_cast  # Wish-duplicated AoE: no slot of its own
+        action.free_cast      = self.cast_setup.free_cast  # Wish-duplicated AoE: no slot of its own
         action.overchannel    = self.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
         self._apply_dispel_selection(action)  # Dispel Magic picker (cell-aimed dispel of an AoE)
         self._apply_armed_metamagic(action, caster_idx)  # Sorcerer Metamagic (engine no-ops if inapplicable)
@@ -11131,15 +11082,13 @@ class App:
         # Cast through the OnDeclareCast window (begin_cast) so a targeted creature can react before
         # the spell resolves; _finish_cast does the post-resolution logging (incl. AoE no-targets and
         # slip handling) whether the cast resolves inline or after a parked reaction.
-        self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=self.pending_spell_idx,
+        self._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=ps.idx,
                                aoe=True, free_cast=action.free_cast,
-                               slot_level=self.pending_spell_slot_level)
+                               slot_level=ps.slot_level)
         self._reaction_finish = self._finish_cast
 
-        self.pending_spell_slot       = ""
-        self.pending_spell_is_aoe     = False
-        self.pending_spell_num_targets = 0
-        self.pending_spell_free_cast  = False
+        self._disarm(pending.Spell)
+        self.cast_setup.free_cast  = False
         self.spell_hover_cell         = None
         self.spell_anchor_cell        = None
 
@@ -11152,13 +11101,14 @@ class App:
 
     def _resolve_teleport_spell(self, destination_cell):
         """Handle teleportation spell casting. Teleports caster + additional targets to destination."""
+        ps = self._armed(pending.Spell)
         caster_idx = self._current_agent_idx()
-        slot       = self.pending_spell_slot
+        slot       = ps.slot if ps else ""
         if caster_idx < 0 or not slot:
             return
 
         spells_orig = self.combat.get_agent_spells(self.bm, caster_idx)
-        sp = spells_orig[self.pending_spell_idx]
+        sp = spells_orig[ps.idx]
 
         # Validate destination is in range and not blocked
         if not self.combat.is_valid_teleport_destination(self.bm, destination_cell.col, destination_cell.row):
@@ -11183,10 +11133,7 @@ class App:
                              if caster_idx < len(self.bm.placed_agents) else "?")
                 self._combat_log_add(
                     f"{cast_name}'s {sp.name} fails to breach the Forcecage — the spell is wasted.")
-                self.pending_spell_slot        = ""
-                self.pending_spell_is_aoe      = False
-                self.pending_spell_num_targets = 0
-                self.pending_spell_targets     = []
+                self._disarm(pending.Spell)
                 self.spell_hover_cell          = None
                 self._consume_cast_slot(slot, caster_idx)
                 return
@@ -11199,16 +11146,14 @@ class App:
         self._combat_log_add(f"{cast_name} casts {sp.name} and teleports to ({destination_cell.col}, {destination_cell.row}).")
 
         # Clean up pending spell state
-        self.pending_spell_slot        = ""
-        self.pending_spell_is_aoe      = False
-        self.pending_spell_num_targets = 0
-        self.pending_spell_targets     = []
+        self._disarm(pending.Spell)
         self.spell_hover_cell          = None
 
         # Mark action/bonus as used
         self._consume_cast_slot(slot, caster_idx)
         # Wild Magic Surge: a teleport spell (e.g. Misty Step) cast with a spell slot triggers a surge.
-        if self.pending_spell_slot_level >= 1:
+        # `ps` was taken before the disarm above, so its slot level is still the cast's.
+        if ps.slot_level >= 1:
             features.maybe_wild_magic_surge(self, caster_idx)
 
     # FLAG: Move to C++
@@ -15461,10 +15406,11 @@ class App:
         Same rule (helpers.summon_cell_placeable) that _resolve_summon enforces; used to
         colour the placement preview."""
         caster_idx = self._current_agent_idx()
-        if caster_idx < 0:
+        summon     = self._armed(pending.Summon)
+        if caster_idx < 0 or summon is None:
             return False
         spells = self.combat.get_agent_spells(self.bm, caster_idx)
-        sp = spells[self.pending_summon_idx] if 0 <= self.pending_summon_idx < len(spells) else None
+        sp = spells[summon.idx] if 0 <= summon.idx < len(spells) else None
         if sp is None:
             return False
         caster = self.bm.placed_agents[caster_idx]
@@ -15534,7 +15480,7 @@ class App:
             net_picks.cancel_attack(self)
         return True
 
-    # The rows that can arm `pending_spell_slot` (F-M5e-5). The Bonus Action ones are here
+    # The rows that can arm a `pending.Spell` (F-M5e-5). The Bonus Action ones are here
     # too: the chain order that lets the attack take the spell's click is the same.
     _ARMS_A_SPELL = frozenset({"spell_action", "spell_bonus", "divine_intervention",
                                "mantle_majesty", "wild_magic_bonus_cast"})
@@ -15544,17 +15490,17 @@ class App:
         Action, the Action is unspent (the first swing spends it), and the snapshot from
         before the Attack is held (a resolved pick drops it)."""
         return (self._attack_arm_snapshot is not None
-                and self._attack_sequence_slot == "action"
-                and self.attacks_remaining > 0 and not self.action_used)
+                and self.attack_seq.slot == "action"
+                and self.attack_seq.remaining > 0 and not self.action_used)
 
     def _snapshot_attack_arm(self, actor: int) -> None:
         """Keep what an attack arm may change, for `net/picks.cancel_attack` (M5d Step 0)."""
         hew = False
         if 0 <= actor < len(self.bm.placed_agents):
             hew = bool(self.combat.get_agent_conditions(self.bm, actor).gwm_hew_available)
-        self._attack_arm_snapshot = (actor, self.attacks_remaining, self._attack_sequence_slot,
-                                     self.pending_attack_offhand, self.pending_attack_resource,
-                                     self.pending_weapon_idx, hew)
+        self._attack_arm_snapshot = (actor, self.attack_seq.remaining, self.attack_seq.slot,
+                                     self.attack_seq.offhand, self.attack_seq.resource,
+                                     self.attack_seq.weapon_idx, hew)
 
     def _perform_action(self, action_id: str, anchor):
         """`perform`'s dispatch: the bodies that stood under `_action_clicked` in
@@ -15631,7 +15577,7 @@ class App:
         # Long Jump costs a Bonus Action (and movement) — available regardless of the
         # Action, but only while the bonus action is unspent.
         if action_id == "long_jump":
-            if not self.pending_spell_slot:  # Don't allow jump while casting spell
+            if not self._armed_slot(pending.Spell):  # Don't allow jump while casting spell
                 self._toggle_jump_overlay()
         # Stand up doesn't use an action, so it's available regardless of action_used
         if action_id == "standup":
@@ -15664,7 +15610,7 @@ class App:
         # or Flurry sequence is parked in the bonus slot, so the header the menu
         # labels "⚔ Bonus (N)" used to be a button that counted the swings it
         # could not take; `_start_attack` re-arms the parked sequence rather
-        # than seeding a new one (`attacks_remaining != 0` skips the seed).
+        # than seeding a new one (`attack_seq.remaining != 0` skips the seed).
         if action_id == "atk_bonus":
             self._start_attack("bonus")
         if not self.bonus_used:
@@ -15821,9 +15767,7 @@ class App:
                     ridx = next((i for i, sp in enumerate(spells)
                                  if sp.name == "Radiance of the Dawn"), -1)
                     if ridx >= 0:
-                        self.pending_spell_slot = "action"
-                        self.pending_spell_idx = ridx
-                        self.pending_spell_slot_level = 0
+                        self.pending = pending.Spell("action", ridx, 0)
                         origin = self.bm.placed_agents[idx].origin
                         self._resolve_spell_cast_aoe(rpg.Cell(origin.col, origin.row))
                     else:
@@ -16665,7 +16609,7 @@ class App:
         y += 16
 
         # Check if mid-sequence (attacks remaining, but action_used not yet set)
-        mid_sequence_action = (self.attacks_remaining > 0 and self._attack_sequence_slot == "action")
+        mid_sequence_action = (self.attack_seq.remaining > 0 and self.attack_seq.slot == "action")
 
         # Check current conditions for the active combatant.
         cur_cond = self.combat.get_agent_conditions(self.bm, cur_idx) if 0 <= cur_idx < len(agents) else None
@@ -16784,7 +16728,7 @@ class App:
         y += 16
 
         # Check if mid-sequence for bonus action
-        mid_sequence_bonus = (self.attacks_remaining > 0 and self._attack_sequence_slot == "bonus")
+        mid_sequence_bonus = (self.attack_seq.remaining > 0 and self.attack_seq.slot == "bonus")
 
         if _is_incapacitated:
             pass  # already shown "[Cannot act]" in the Action section; skip bonus section entirely
@@ -16960,30 +16904,30 @@ class App:
         y += rows_used * (B + gap)
 
         # Pending action hints
-        if self.pending_attack_slot:
-            rem = self.attacks_remaining
+        if self._armed_slot(pending.Attack):
+            rem = self.attack_seq.remaining
             _atk_hint = "→ Click a target on the map" + (f" ({rem} left)" if rem > 1 else "")
             txt(_atk_hint, lx, y, COL_INITIATIVE_CUR)
             y += 14
-        elif self.pending_spell_slot:
+        elif self._armed_slot(pending.Spell):
             if self._pending_spell_is_wall():
                 hint = ("Click the wall's end (sets direction & length)"
                         if self.spell_anchor_cell is not None
                         else "Click the wall's start point")
-            elif self.pending_spell_is_aoe:
+            elif self.pending.is_aoe:
                 hint = "Click a map location"
             else:
                 hint = "Click a target"
             txt(f"→ {hint} to cast spell", lx, y, (190, 150, 255))
             y += 14
-        elif self.pending_shove_slot:
+        elif self._armed(pending.Shove):
             txt("→ Click a target to shove", lx, y, (190, 190, 150))
             y += 14
-        elif self.pending_unarmed_type:
+        elif self._armed(pending.Unarmed):
             hint_text = {
                 "grapple": "→ Click a target to grapple",
                 "push": "→ Click a target to shove 5 ft",
-            }.get(self.pending_unarmed_type, "→ Click a target")
+            }.get(self.pending.type, "→ Click a target")
             txt(hint_text, lx, y, (190, 190, 150))
             y += 14
 
@@ -17726,7 +17670,7 @@ class App:
                     self._combat_log_add("Move item cancelled.")
                     continue
                 # Esc cancels a pending summon placement (no slot/action spent yet).
-                if event.key == pygame.K_ESCAPE and self.pending_summon_slot:
+                if event.key == pygame.K_ESCAPE and self._armed(pending.Summon):
                     net_picks.cancel_summon(self)
                     continue
                 # Esc cancels a pending Invoke Duplicity placement / move / swap (no Channel Divinity
@@ -17737,17 +17681,17 @@ class App:
                     continue
                 # Enter casts Chromatic Orb with the leap chain collected so far (may be empty —
                 # the orb still leaps to the nearest foe on a match). Esc cancels the whole cast.
-                if self._picking("chromatic") and self.pending_spell_slot \
+                if self._picking("chromatic") and self._armed_slot(pending.Spell) \
                         and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     self._finalize_chromatic_cast()
                     continue
-                if self._picking("chromatic") and self.pending_spell_slot \
+                if self._picking("chromatic") and self._armed_slot(pending.Spell) \
                         and event.key == pygame.K_ESCAPE:
                     self._cancel_chromatic_chain()
                     continue
                 # Enter casts a multi-target spell (Mass Suggestion, Bless, …) on the targets picked
                 # so far, short of its maximum.
-                if self.pending_spell_slot and self._multi_target_finishable() \
+                if self._armed_slot(pending.Spell) and self._multi_target_finishable() \
                         and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     self._finish_multi_target_spell()
                     continue
@@ -17795,7 +17739,7 @@ class App:
                 # Esc cancels a pending spell cast. For an anchored wall, the first
                 # Esc drops back to anchor selection; a second Esc cancels the cast. The
                 # body is the spell arm's cancel, the one a player's remote cancel runs.
-                if event.key == pygame.K_ESCAPE and self.pending_spell_slot:
+                if event.key == pygame.K_ESCAPE and self._armed_slot(pending.Spell):
                     net_picks.cancel_spell(self)
                     continue
                 # M5d: every other armed pick cancels through its arm's own cancel, the one a
@@ -17933,8 +17877,8 @@ class App:
                     # no targeting/editing flow is active. The release decides move vs. pickup.
                     if hit < 0 and self.drag_item_id < 0 and not self.context_menu.visible \
                             and self.safe_target_edit_idx < 0 \
-                            and not self.pending_attack_slot and not self.pending_spell_slot \
-                            and not self.pending_shove_slot and not self.pending_grapple_slot \
+                            and not self._armed_slot(pending.Attack) and not self._armed_slot(pending.Spell) \
+                            and not self._armed(pending.Shove) \
                             and not self._pick_data("cleave") and not self._pick_data("sweep") \
                             and not self._pick_data("rally") and not self._pick_data("feint"):
                         items_here = self.bm.get_items_at_cell(cell)
@@ -18024,13 +17968,13 @@ class App:
                             self._attack_cells_rnorm = []
                             self._attack_cells_rlong = []
 
-            if event.type == pygame.MOUSEMOTION and self.pending_spell_is_aoe:
+            if event.type == pygame.MOUSEMOTION and self._armed(pending.Spell) and self.pending.is_aoe:
                 if on_map:
                     self.spell_hover_cell = self._screen_to_cell(*event.pos)
                 else:
                     self.spell_hover_cell = None
 
-            if event.type == pygame.MOUSEMOTION and self.pending_summon_slot:
+            if event.type == pygame.MOUSEMOTION and self._armed(pending.Summon):
                 self.summon_hover_cell = self._screen_to_cell(*event.pos) if on_map else None
 
             # Dragging a dropped weapon: track the cursor cell for the ghost icon.
@@ -18299,8 +18243,8 @@ class App:
                 # Item pickup: click a cell with items
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and on_map \
                         and not self.context_menu.visible \
-                        and not self.pending_attack_slot and not self.pending_spell_slot \
-                        and not self.pending_shove_slot and not self.pending_grapple_slot \
+                        and not self._armed_slot(pending.Attack) and not self._armed_slot(pending.Spell) \
+                        and not self._armed(pending.Shove) \
                         and not self._pick_data("cleave") and not self._pick_data("sweep") \
                         and not self._pick_data("rally") and not self._pick_data("feint"):
                     items_at_cell = self.bm.get_items_at_cell(cell) if cell is not None else []

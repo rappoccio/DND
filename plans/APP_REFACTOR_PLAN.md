@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) done, uncommitted, 263/0. Drag & Cancel and Special Attacks next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -117,6 +117,13 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   `pending_spell_slot_level` after the slot clears. A2b has to settle each of those before
   `app.pending` can be None when idle. Split: **A2a** picks, **A2b** base modes, then
   Drag & Cancel and Special Attacks.
+  **A2b companions settled 2026-11-18 (user):** (1) attack-sequence state
+  (`attacks_remaining`, `_attack_sequence_slot`, offhand, weapon_idx, resource) becomes
+  one `AttackSequence` at `app.attack_seq`, beside `app.pending`, lifetime unchanged;
+  (2) cast-menu staging (damage type, curse choice, command word, Forcecage form,
+  free_cast, `pending_summon_fey_reinforcements`) becomes one `CastSetup` at
+  `app.cast_setup`, reset per cast, lifetime unchanged; (3) `_resolve_teleport_spell`
+  reads the slot level into a local before clearing the slot.
 - **D5. Turn mirrors (A3) are a behavior change.** They are a separate step with its own
   sign-off, not folded into a move. Leave them alone until A2 lands.
 - **D6. One cluster per commit**, each green on `./test.sh` with goldens byte-identical.
@@ -193,10 +200,23 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   a look as its own fix). Companion fields (`pending_mantle_targets`, `pending_bastion_sp`,
   `pending_beguiling_bard`, `pending_flurry_*`, `move_duplicity_idx`, …) stay on `app` for
   now. 263/0, goldens unchanged.
-  **A2b next:** the base modes (`pending_attack_slot`, `pending_spell_slot`,
-  `pending_shove_slot`/`_type`, `pending_grapple_slot`, `pending_unarmed_type`,
-  `pending_summon_*`) into `app.pending`, after settling the out-of-lifetime companions
-  listed under D4.
+  **A2b done 2026-11-18 (uncommitted, 263/0, goldens unchanged):** the base modes became
+  `app.pending: pending.Attack | Spell | Shove | Unarmed | Summon | None`, with companions
+  inside their mode (spell idx/slot_level/is_aoe/targets, summon monster/spirit/…, shove
+  type). `App._armed(*modes)`, `_armed_slot(mode)` (the old "" when idle) and
+  `_disarm(*modes)` replace the fields. Settled companions per D4: `app.attack_seq`
+  (`pending.AttackSequence`) and `app.cast_setup` (`pending.CastSetup`); spell resolvers
+  take a local `ps` before disarming, which fixes the teleport slot-level read. Kept as
+  they were: the turn-boundary clear disarms only a Summon; `_reset_turn_economy` disarms
+  every mode but Summon; an armed Unarmed option still does not hold the offer back
+  (`_TARGET_PICK_MODES`). `pending_grapple_slot` was never armed and is gone. Save files
+  keep the `attacks_remaining` / `_attack_sequence_slot` keys (`saves._ECONOMY` maps
+  them). `net/picks.py` base arms are named `attack` / `summon` / `spell` / `shove` /
+  `unarmed` with the mode class as `idle`. A pre-move probe over the whole suite found no
+  two base modes armed at once. Still on `app`: the Attack arm's riders
+  (`pending_horde_breaker_targets`, …), `pending_ward_*`, `pending_dispel_selection` and
+  the Chromatic chain state.
+  **Next:** Drag & Cancel and Special Attacks out of `App`.
 - **A3. Turn mirrors** (D5, behavior change, separate sign-off): read budgets/action state
   from the engine instead of copying them.
 - **A4. Spell Activation UI** last, once its callers go through `app.pending`.

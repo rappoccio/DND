@@ -43,6 +43,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(_ROOT, "gui"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import pending
 from menus import panel
 from net import link as net_link, offer as net_offer
 from net.roster import Role
@@ -216,6 +217,12 @@ def test_the_pick_predicate_covers_the_clear():
         setattr(app, name, True if idle in (False, None) else ("action" if idle == "" else 1))
         assert app._target_pick_armed(), f"{name} armed is not seen"
         setattr(app, name, saved)
+    for mode in App._TARGET_PICK_MODES:
+        app.pending = mode("bonus", "push") if mode is pending.Shove else mode("action")
+        assert app._target_pick_armed(), f"{mode.__name__} armed is not seen"
+    app.pending = pending.Unarmed("grapple")
+    assert not app._target_pick_armed(), "an Unarmed option now holds the offer back"
+    app.pending = None
     app._arm_pick("shadow_step")
     assert app._target_pick_armed(), "an armed click pick is not seen"
     app._drop_pick("shadow_step")
@@ -445,7 +452,7 @@ def _check_unwired_rows_are_refused():
             ack = _next(kira, "submit_ack")
         t.stop()
         assert ack["ok"] is False and ack["error"] == "bad_option", ack
-        assert t.app.pending_attack_slot == "", "a refused attack armed its pick"
+        assert t.app._armed_slot(pending.Attack) == "", "a refused attack armed its pick"
 
 
 def test_a_remote_dodge_then_a_fresh_offer():

@@ -950,7 +950,7 @@ def offer_bonus_maneuver(app, idx: int):
         if app.combat.prepare_quick_toss(app.bm, idx):
             app.bonus_used = True
             app._flush_combat_log()
-            app._start_extra_attack(weapon_idx=app.pending_weapon_idx, offhand=False,
+            app._start_extra_attack(weapon_idx=app.attack_seq.weapon_idx, offhand=False,
                                      resource=None, label="Quick Toss (thrown weapon)")
         else:
             app._combat_log_add("Quick Toss: no Superiority Dice left.")

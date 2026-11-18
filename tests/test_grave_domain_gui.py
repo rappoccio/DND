@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(_ROOT, "gui"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import rpg_battle_map as rpg
+import pending
 
 from test_combat_panel import (App, MAP_PATH, SEED, _build_scene, _idx, _goto, _reclass,
                                _set_res, _snapshot_baseline, _spell)
@@ -44,10 +45,10 @@ def _swing(app, attacker, target):
     app.combat.set_agent_stats(app.bm, target, s)
     for _ in range(20):
         _goto(app, app.bm.placed_agents[attacker].name)
-        app.pending_attack_slot = "action"
-        app._attack_sequence_slot = "action"
-        app.pending_weapon_idx = 0
-        app.attacks_remaining = 2
+        app.pending = pending.Attack("action")
+        app.attack_seq.slot = "action"
+        app.attack_seq.weapon_idx = 0
+        app.attack_seq.remaining = 2
         app._resolve_combat_attack(target)
         if app.combat.last_attack_result().hit:
             return app.combat.last_attack_result()
@@ -90,7 +91,7 @@ def test_ally_hit_offers_the_detonation_first():
     assert lost == lost_before + 5, f"+cleric level (5) Radiant: {lost_before} -> {lost}"
     assert app.combat.get_agent_conditions(app.bm, skarn).grave_cursed_by == -1
     # The attack's own chain resumed: the Action's second attack is still owed.
-    assert app.attacks_remaining == 1, app.attacks_remaining
+    assert app.attack_seq.remaining == 1, app.attack_seq.remaining
     assert app.prompts.live is None or not _labels(app)[0].startswith("Path to the Grave")
     print("✅ test_ally_hit_offers_the_detonation_first passed")
 
@@ -103,7 +104,7 @@ def test_keeping_the_curse_leaves_it():
     _swing(app, aria, skarn)
     assert app.prompts.choose_label("Keep the curse").ok
     assert app.combat.get_agent_conditions(app.bm, skarn).grave_cursed_by == brannor
-    assert app.attacks_remaining == 1
+    assert app.attack_seq.remaining == 1
     print("✅ test_keeping_the_curse_leaves_it passed")
 
 
@@ -136,9 +137,9 @@ def test_spare_the_dying_in_the_bonus_menu():
     _goto(app, "Brannor")
     app._start_cast_spell("bonus")
     # One castable spell: the menu skips the list and arms it straight away, in the bonus slot.
-    assert app.pending_spell_slot == "bonus" or any(
-        l.startswith("Spare the Dying") for l in _labels(app)), (app.pending_spell_slot, _labels(app))
-    app.pending_spell_slot = ""
+    assert app._armed_slot(pending.Spell) == "bonus" or any(
+        l.startswith("Spare the Dying") for l in _labels(app)), (app._armed_slot(pending.Spell), _labels(app))
+    app._disarm(pending.Spell)
     while app.prompts.live is not None:
         app.prompts.cancel_as(app.prompts.live.id, "dm")
     # Any other domain: Spare the Dying stays an Action.
@@ -147,8 +148,8 @@ def test_spare_the_dying_in_the_bonus_menu():
     app.combat.set_agent_spells(app.bm, brannor, [_spell(app, "Spare the Dying")])
     _goto(app, "Brannor")
     app._start_cast_spell("bonus")
-    assert app.pending_spell_slot != "bonus" and not any(
-        l.startswith("Spare the Dying") for l in _labels(app)), (app.pending_spell_slot, _labels(app))
+    assert app._armed_slot(pending.Spell) != "bonus" and not any(
+        l.startswith("Spare the Dying") for l in _labels(app)), (app._armed_slot(pending.Spell), _labels(app))
     print("✅ test_spare_the_dying_in_the_bonus_menu passed")
 
 
@@ -160,10 +161,10 @@ def test_sentinel_through_the_reaction_menu():
     app.combat.set_agent_stats(app.bm, aria, s)
     for _ in range(20):
         _goto(app, "Skarn")
-        app.pending_attack_slot = "action"
-        app._attack_sequence_slot = "action"
-        app.pending_weapon_idx = 0
-        app.attacks_remaining = 1
+        app.pending = pending.Attack("action")
+        app.attack_seq.slot = "action"
+        app.attack_seq.weapon_idx = 0
+        app.attack_seq.remaining = 1
         app._resolve_combat_attack(aria)
         if app.combat.pending_decision().active:
             break

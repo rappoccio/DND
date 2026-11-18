@@ -267,12 +267,12 @@ def test_mid_turn_economy():
         app = s.app
         _fight(app)
         app.action_used = True
-        app.attacks_remaining = 1
+        app.attack_seq.remaining = 1
         saved = saves.save_game(app)
         app._advance_turn()
         assert not app.action_used
         assert saves.load(app, saved["seq"]), app._status_msg
-        assert app.action_used and app.attacks_remaining == 1 and not app.bonus_used
+        assert app.action_used and app.attack_seq.remaining == 1 and not app.bonus_used
     print("  ✅ a mid-turn Save Game keeps the turn's action economy")
 
 

@@ -369,8 +369,8 @@ class ActionMenu:
         # Attack sequence still owes swings; `mid_sequence` is what keeps the band
         # open for them, and it is why "[Action used]" and `action_used` are not the
         # same question.
-        mid_sequence = (app.attacks_remaining > 0 and
-                        app._attack_sequence_slot == "action")
+        mid_sequence = (app.attack_seq.remaining > 0 and
+                        app.attack_seq.slot == "action")
 
         if app.action_used and not mid_sequence:
             # arm 2 — spent. Exactly one thing can still be offered: Nick relocating
@@ -401,7 +401,7 @@ class ActionMenu:
         # Step 0.3's **F3**, deleted here by construction.
         if len(app.combat.get_agent_weapons(app.bm, agent_idx)) > 0:
             out.append(Action("atk_action",
-                              f"⚔ Attack ({app.attacks_remaining})" if mid_sequence
+                              f"⚔ Attack ({app.attack_seq.remaining})" if mid_sequence
                               else "⚔ Attack",
                               GROUP_ACTION, economy=ECONOMY_ACTION))
         out.append(Action("unarmed", "👊 Unarmed", GROUP_ACTION,
@@ -557,12 +557,12 @@ class ActionMenu:
         # then drew the widget only `if _cur_has_offhand or mid_sequence_bonus`, so a
         # click in that space fired the handler on an option it was deliberately not
         # offering. An action the menu does not build gets no rect at all.
-        mid_sequence_bonus = (app.attacks_remaining > 0
-                              and app._attack_sequence_slot == "bonus")
+        mid_sequence_bonus = (app.attack_seq.remaining > 0
+                              and app.attack_seq.slot == "bonus")
         if not app.bonus_used or mid_sequence_bonus:
             if app._offhand_bonus_available(agent_idx) or mid_sequence_bonus:
                 out.append(Action("atk_bonus",
-                                  f"⚔ Bonus ({app.attacks_remaining})"
+                                  f"⚔ Bonus ({app.attack_seq.remaining})"
                                   if mid_sequence_bonus else "⚔ Bonus Atk",
                                   GROUP_BONUS))
             if len(app.combat.get_agent_spells(app.bm, agent_idx)) > 0:
@@ -621,12 +621,12 @@ class ActionMenu:
         # weapon, against a creature within 5 ft of its target. Free, so outside the band. Held
         # back while an Attack sequence still has swings left: those swings are the Action's,
         # and the extra attack is armed into the same pending-attack state.
-        if app.attacks_remaining == 0 and app.combat.horde_breaker_targets(app.bm, agent_idx):
+        if app.attack_seq.remaining == 0 and app.combat.horde_breaker_targets(app.bm, agent_idx):
             out.append(Action("horde_breaker", "Horde Breaker (Extra Attack)", GROUP_BONUS))
         # Sudden Strike (Gloom Stalker L11): chosen as Dreadful Strike's Stalker's Flurry effect, it
         # armed one free attack with the same weapon vs a creature within 5 ft of that target. Same
         # placement and hold-back as Horde Breaker.
-        if app.attacks_remaining == 0 and app.combat.sudden_strike_targets(app.bm, agent_idx):
+        if app.attack_seq.remaining == 0 and app.combat.sudden_strike_targets(app.bm, agent_idx):
             out.append(Action("sudden_strike", "Sudden Strike (Extra Attack)", GROUP_BONUS))
         # Beast's Strike (Beast Master, D9): give up one attack of the Attack action and the
         # Primal Companion strikes at once (twice from L11). Paid out of the attacks, so outside
@@ -880,8 +880,8 @@ class ActionMenu:
         # the one-click version of picking that weapon and that target by hand. Offered
         # while the Attack action is unspent OR mid-multiattack, which is the common
         # case — a claw grapples, and the trailing Bite fires.
-        mid_sequence_action = (app.attacks_remaining > 0
-                               and app._attack_sequence_slot == "action")
+        mid_sequence_action = (app.attack_seq.remaining > 0
+                               and app.attack_seq.slot == "action")
         if not app.action_used or mid_sequence_action:
             wslot, victim = app.combat.pending_auto_grapple_strike(app.bm, agent_idx)
             if wslot >= 0 and victim >= 0:

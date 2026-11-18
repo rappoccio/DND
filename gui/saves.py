@@ -43,8 +43,19 @@ BEFORE_RESET = "before reset"
 BEFORE_UNDO = "before undo"           # Undo Reset's way back, as BEFORE_RESET is a reset's
 
 # What a mid-turn Save Game keeps of the turn: the panel's own copy of the action economy.
-# Half-finished picks are dropped. A turn save has these all fresh anyway.
-_ECONOMY = ("action_used", "bonus_used", "attacks_remaining", "_attack_sequence_slot")
+# Half-finished picks are dropped. A turn save has these all fresh anyway. Each key is the
+# name on disk, mapped to (the object on the app, its attribute): the attack sequence's two
+# keep their names from before `app.attack_seq` (APP_REFACTOR_PLAN.md A2b).
+_ECONOMY = {
+    "action_used":           (None, "action_used"),
+    "bonus_used":            (None, "bonus_used"),
+    "attacks_remaining":     ("attack_seq", "remaining"),
+    "_attack_sequence_slot": ("attack_seq", "slot"),
+}
+
+
+def _economy_owner(app, holder):
+    return app if holder is None else getattr(app, holder)
 
 
 # ── The files ────────────────────────────────────────────────────────────────
@@ -205,7 +216,8 @@ def write(app, kind: str) -> dict:
         "map":       app.dungeon_page.id,
         "timestamp": time.time(),
     }
-    economy = {k: getattr(app, k) for k in _ECONOMY} if app.combat_active else None
+    economy = ({k: getattr(_economy_owner(app, h), a) for k, (h, a) in _ECONOMY.items()}
+               if app.combat_active else None)
     _write_doc(_save_path(directory, seq),
                {"version": SAVE_VERSION, "meta": meta, "run": run, "combat": combat,
                 "economy": economy, "effects": _read_effects(store)})
@@ -334,7 +346,8 @@ def load(app, seq: int, reload_map: bool = False) -> bool:
         autosave.settle_turn(app)
         for k, v in (doc.get("economy") or {}).items():
             if k in _ECONOMY:
-                setattr(app, k, v)
+                holder, attr = _ECONOMY[k]
+                setattr(_economy_owner(app, holder), attr, v)
         app._fight_started = meta.get("fight")
         app._save_combat_state()          # the run on disk and its fight agree again
     autosave.resync_players(app)

@@ -1,7 +1,7 @@
 """Agent and cell picks from the browser (MULTIPLAYER_PLAN.md D-M5-3, slice M5d).
 
 An action that needs a creature or a place arms a pick (`app.pick`, pending.py) or a
-`pending_*` slot, and the DM's next map click resolves it through `App.resolve_pick`.
+base mode (`app.pending`: an attack, a spell, a summon, …), and the DM's next map click resolves it through `App.resolve_pick`.
 Those stay the state. When one is armed
 for a token a player controls, `offer.ensure` posts this module's prompt as its projection:
 
@@ -36,6 +36,8 @@ from typing import Callable
 
 import rpg_battle_map as rpg
 
+import pending
+
 from net import move as net_move
 from net.roster import DM_PRINCIPAL_ID
 from prompts import Option
@@ -57,12 +59,10 @@ def _say(app, line: str) -> None:
     app._flush_combat_log()
 
 
-def _flag(attr: str, idle, label: str, *companions: tuple[str, object]):
-    """The plain cancel: the flag and its companions back to idle, and a log line."""
+def _disarm(mode: type, label: str):
+    """The plain cancel of a base mode (pending.py): disarm it, and a log line."""
     def cancel(app) -> None:
-        setattr(app, attr, idle)
-        for name, value in companions:
-            setattr(app, name, value)
+        app._disarm(mode)
         _say(app, f"{label} cancelled.")
     return cancel
 
@@ -133,7 +133,7 @@ def cancel_attack(app) -> None:
     arm, and putting the fields back is exact: a fresh Attack leaves no seeded count
     behind, and a resumed one keeps its count. Hew's flag, cleared when Hew arms, comes back
     with them. A punch that was armed swaps its weapon back."""
-    app.pending_attack_slot = ""
+    app._disarm(pending.Attack)
     app.pending_horde_breaker_targets = []
     app.pending_sudden_strike_targets = []
     ranger = app._current_agent_idx()
@@ -148,8 +148,8 @@ def cancel_attack(app) -> None:
     snap = app._attack_arm_snapshot
     app._attack_arm_snapshot = None
     if snap is not None:
-        (actor, app.attacks_remaining, app._attack_sequence_slot, app.pending_attack_offhand,
-         app.pending_attack_resource, app.pending_weapon_idx, hew) = snap
+        (actor, app.attack_seq.remaining, app.attack_seq.slot, app.attack_seq.offhand,
+         app.attack_seq.resource, app.attack_seq.weapon_idx, hew) = snap
         if hew and 0 <= actor < len(app.bm.placed_agents):
             cond = app.combat.get_agent_conditions(app.bm, actor)
             if not cond.gwm_hew_available:
@@ -184,14 +184,8 @@ def cancel_shadowy_dodge(app) -> None:
 def cancel_summon(app) -> None:
     """Nothing is spent until the creature is placed, so a cancel only disarms. It is also
     what a cancelled form menu runs: the summon is armed before its form is chosen."""
-    app.pending_summon_slot       = ""
-    app.pending_summon_idx        = 0
-    app.pending_summon_slot_level = 0
-    app.pending_summon_monster    = ""
-    app.pending_summon_spirit     = None
-    app.pending_summon_free_cast  = False
-    app.pending_summon_no_conc    = False
-    app.pending_summon_fey_reinforcements = False
+    app._disarm(pending.Summon)
+    app.cast_setup.fey_reinforcements = False
     app.summon_hover_cell         = None
     app._combat_log_add("Summon cancelled.")
 
@@ -206,8 +200,7 @@ def cancel_spell(app) -> None:
         app.spell_anchor_cell = None
         app._combat_log_add("Wall anchor cleared — click a new start point.")
         return
-    app.pending_spell_slot   = ""
-    app.pending_spell_is_aoe = False
+    app._disarm(pending.Spell)
     app.spell_anchor_cell    = None
     app.spell_hover_cell     = None
     app._combat_log_add("Spell cast cancelled.")
@@ -245,7 +238,8 @@ class Arm:
     """One arm of the click chain.
 
     `name` is what the chain tests first: a click pick's kind (`app.pick`, pending.py) when
-    `idle` is `PICK`, else an attribute of the app and `idle` the value it rests at. `title`
+    `idle` is `PICK`; a base mode (`app.pending`) when `idle` is its class (pending.Attack,
+    …); else an attribute of the app and `idle` the value it rests at. `title`
     is a function so a multi-pick can count. `kind` is a string, or a function of the app
     where one arm takes more than one shape (the spell arm, M5e E-1); read it through
     `kind_for`. `in_window` is the one arm armed inside a
@@ -267,6 +261,8 @@ class Arm:
     def armed(self, app) -> bool:
         if self.idle is PICK:
             return app._picking(self.name)
+        if isinstance(self.idle, type):
+            return app._armed(self.idle) is not None
         return getattr(app, self.name, self.idle) != self.idle
 
     def kind_for(self, app) -> str:
@@ -278,7 +274,7 @@ def _t(text: str) -> Callable[[object], str]:
 
 
 def _attack_title(app) -> str:
-    rem = app.attacks_remaining
+    rem = app.attack_seq.remaining
     return f"Attack: choose a target ({rem} left)" if rem > 0 else "Attack: choose a target"
 
 
@@ -329,7 +325,7 @@ def spell_shape(app) -> str:
     if app._pending_spell_dispels_magic():
         return DISPEL
     sp = app._pending_spell()
-    if app.pending_spell_is_aoe:
+    if app.pending.is_aoe:
         if app._pending_spell_is_wall():
             return WALL
         if sp is not None and getattr(sp, "teleportation_spell", False):
@@ -349,8 +345,8 @@ def _spell_title(app) -> str:
     name = sp.name if sp is not None else "Spell"
     shape = spell_shape(app)
     if shape == MULTI:
-        n = app.pending_spell_num_targets
-        k = len(app.pending_spell_targets) + 1
+        n = app.pending.num_targets
+        k = len(app.pending.targets) + 1
         return f"{name}: choose a target ({k} of {n})" if n > 0 else f"{name}: choose a target"
     if shape == WALL:
         step = "start" if app.spell_anchor_cell is None else "end"
@@ -374,7 +370,7 @@ def _chromatic_title(app) -> str:
 
 
 def _summon_title(app) -> str:
-    what = app.pending_summon_monster or "the creature"
+    what = app.pending.monster or "the creature"
     return f"Summon: choose where to place {what}"
 
 
@@ -453,18 +449,18 @@ ARMS: tuple[Arm, ...] = (
                      "apparition": "Lair Apparition: choose a hostile creature",
                      "shadow": "Lair Shadow Theft: choose a creature"}.get(app._pick_data("lair"), "Lair"),
         None, actor=lambda app: app._lair_actor),
-    Arm("pending_attack_slot", "", TARGET, _attack_title, cancel_attack),
-    Arm("pending_summon_slot", "", CELL, _summon_title, cancel_summon),
+    Arm("attack", pending.Attack, TARGET, _attack_title, cancel_attack),
+    Arm("summon", pending.Summon, CELL, _summon_title, cancel_summon),
     Arm("chromatic", PICK, TARGET, _chromatic_title,
         lambda app: app._cancel_chromatic_chain(),
         done=lambda app: True, finish=lambda app: app._finalize_chromatic_cast()),
-    Arm("pending_spell_slot", "", _spell_kind, _spell_title, cancel_spell,
+    Arm("spell", pending.Spell, _spell_kind, _spell_title, cancel_spell,
         done=lambda app: spell_shape(app) == MULTI and app._multi_target_finishable(),
         finish=lambda app: app._finish_multi_target_spell()),
-    Arm("pending_shove_slot", "", TARGET, _t("Shove: choose a creature"),
-        _flag("pending_shove_slot", "", "Shove", ("pending_shove_type", ""))),
-    Arm("pending_unarmed_type", "", TARGET, _t("Unarmed Strike: choose a creature"),
-        _flag("pending_unarmed_type", "", "Unarmed Strike")),
+    Arm("shove", pending.Shove, TARGET, _t("Shove: choose a creature"),
+        _disarm(pending.Shove, "Shove")),
+    Arm("unarmed", pending.Unarmed, TARGET, _t("Unarmed Strike: choose a creature"),
+        _disarm(pending.Unarmed, "Unarmed Strike")),
     Arm("heal_light", PICK, TARGET, _t("Healing Light: choose a creature"),
         _drop("heal_light", "Healing Light")),
     Arm("lay_on_hands", PICK, TARGET, _t("Lay on Hands: choose a creature"),
@@ -499,8 +495,8 @@ BY_NAME = {a.name: a for a in ARMS}
 # them on the map. The `legendary_target`, `legendary_spell` and `lair` picks are NPC-only.
 WIRED = frozenset({
     # M5d.1 — weapon attacks and the picks that follow them
-    "pending_attack_slot", "cleave", "sweep", "rally",
-    "feint", "pending_shove_slot", "pending_unarmed_type", "flurry_target",
+    "attack", "cleave", "sweep", "rally",
+    "feint", "shove", "unarmed", "flurry_target",
     # M5d.2 — single-creature picks
     "heal_light", "lay_on_hands", "bastion_of_law",
     "hand_of_healing", "use_item", "escape_net",
@@ -520,7 +516,7 @@ WIRED = frozenset({
     "mantle", "invoke_duplicity", "move_duplicity",
     "swap_duplicity",
     # M5e.1 — the spell pipeline, and the two riders a player's own spell can arm
-    "pending_spell_slot", "chromatic", "pending_summon_slot",
+    "spell", "chromatic", "summon",
     "beguiling", "bewitching_misty",
 })
 
@@ -613,7 +609,7 @@ def post(app, arm: Arm, actor: int, owner: str, parent):
 def aiming(app, arm: Arm) -> bool:
     """True when a tap on this arm aims rather than resolves: the spell arm, in its area
     shape. A wall, a teleport and a door resolve on the tap, as before."""
-    return arm.name == "pending_spell_slot" and spell_shape(app) == AREA
+    return arm.name == "spell" and spell_shape(app) == AREA
 
 
 def aim(app, arm: Arm) -> tuple[int, int] | None:

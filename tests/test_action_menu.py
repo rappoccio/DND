@@ -29,6 +29,7 @@ from actions import (ActionMenu, Action, BUILT_GROUPS, GROUP_SESSION, GROUP_TURN
                      ECONOMY, METAMAGIC_OPTIONS, METAMAGIC_ID_BY_VALUE)
 import pygame
 import rpg_battle_map as rpg
+import pending
 
 from menus import panel
 
@@ -185,12 +186,12 @@ def test_build_does_not_mutate_the_app():
     app = _app()
     aria = _goto(app, "Aria")
     before = (app.action_used, app.bonus_used, app.turn_idx,
-              app.combat_paused, app.attacks_remaining,
+              app.combat_paused, app.attack_seq.remaining,
               [a.name for a in app.bm.placed_agents])
     first = [(a.id, a.label) for a in ActionMenu.build(app, aria)]
     second = [(a.id, a.label) for a in ActionMenu.build(app, aria)]
     after = (app.action_used, app.bonus_used, app.turn_idx,
-             app.combat_paused, app.attacks_remaining,
+             app.combat_paused, app.attack_seq.remaining,
              [a.name for a in app.bm.placed_agents])
     assert first == second, "build is not idempotent"
     assert before == after, "build mutated the app"
@@ -251,15 +252,15 @@ def test_attack_after_nick_resumes_the_nick_swing():
     asked = []
     app._ask_actor = lambda *a, **kw: asked.append(a)
     app._perform_action("nick", (0, 0))
-    assert (app.pending_attack_slot, app.pending_weapon_idx, app.attacks_remaining) == ("action", 1, 1)
-    app.pending_attack_slot = ""           # a misclick disarms the swing
+    assert (app._armed_slot(pending.Attack), app.attack_seq.weapon_idx, app.attack_seq.remaining) == ("action", 1, 1)
+    app._disarm(pending.Attack)           # a misclick disarms the swing
     assert "atk_action" in _group(app, aria, GROUP_ACTION)
     app._perform_action("atk_action", (0, 0))
     assert not asked, "no weapon picker for the Nick swing"
-    assert app.pending_attack_slot == "action"
-    assert app.pending_weapon_idx == 1, "the Nick swing stays on the off-hand Dagger"
-    assert app.pending_attack_offhand is True
-    assert app.attacks_remaining == 1
+    assert app._armed_slot(pending.Attack) == "action"
+    assert app.attack_seq.weapon_idx == 1, "the Nick swing stays on the off-hand Dagger"
+    assert app.attack_seq.offhand is True
+    assert app.attack_seq.remaining == 1
     print("✅ test_attack_after_nick_resumes_the_nick_swing passed")
 
 
@@ -342,14 +343,14 @@ def test_mid_sequence_keeps_the_band_open_and_counts_the_attacks():
     assert _by_id(app, aria)["atk_action"].label == "⚔ Attack"
 
     app.action_used = True
-    app.attacks_remaining = 2
-    app._attack_sequence_slot = "action"
+    app.attack_seq.remaining = 2
+    app.attack_seq.slot = "action"
     ids = _group(app, aria, GROUP_ACTION)
     assert "atk_action" in ids and "unarmed" in ids, ids
     assert _by_id(app, aria)["atk_action"].label == "⚔ Attack (2)"
 
     # A sequence parked in the BONUS band is not this one, and does not reopen §4.
-    app._attack_sequence_slot = "bonus"
+    app.attack_seq.slot = "bonus"
     assert _group(app, aria, GROUP_ACTION) == [], "the bonus slot reopened the Action band"
     print("✅ test_mid_sequence_keeps_the_band_open_and_counts_the_attacks passed")
 
@@ -545,8 +546,8 @@ def test_dash_is_drawn_mid_sequence_but_the_click_is_refused():
     app = _app()
     aria = _goto(app, "Aria")
     app.action_used = True
-    app.attacks_remaining = 2
-    app._attack_sequence_slot = "action"
+    app.attack_seq.remaining = 2
+    app.attack_seq.slot = "action"
 
     _draw(app)
     assert "dash" in app._action_menu, "the mid-sequence band should still draw Dash"
@@ -745,14 +746,14 @@ def test_the_bonus_band_stays_open_for_a_bonus_slot_sequence():
     assert "atk_bonus" not in _bonus(app, aria), "spent, and no sequence running"
     assert "second_wind" not in _bonus(app, aria), "the rest of the band went with it"
 
-    app.attacks_remaining = 2
-    app._attack_sequence_slot = "bonus"
+    app.attack_seq.remaining = 2
+    app.attack_seq.slot = "bonus"
     got = _by_id(app, aria)
     assert got["atk_bonus"].label == "⚔ Bonus (2)", got["atk_bonus"]
     assert "second_wind" not in got, "only the header row comes back"
 
     # The ACTION slot's sequence is a different field and must not reopen this band.
-    app._attack_sequence_slot = "action"
+    app.attack_seq.slot = "action"
     assert "atk_bonus" not in _bonus(app, aria), _bonus(app, aria)
     print("✅ test_the_bonus_band_stays_open_for_a_bonus_slot_sequence passed")
 
@@ -766,7 +767,7 @@ def test_the_bonus_attack_header_is_clickable_mid_sequence():
 
     It is dispatched ungated now, exactly as `atk_action` is on the Action side, because
     the offer is the menu's to make and `_action_clicked` consults it. `_start_attack`
-    re-arms the parked sequence rather than seeding a new one (`attacks_remaining != 0`
+    re-arms the parked sequence rather than seeding a new one (`attack_seq.remaining != 0`
     skips the seed), which is what makes the click a RESUME and not a second sequence.
 
     `spell_bonus` is the other half and deliberately stays refused — see the check below.
@@ -774,29 +775,29 @@ def test_the_bonus_attack_header_is_clickable_mid_sequence():
     app = _app()
     aria = _goto(app, "Aria")           # Fighter 5, longsword + off-hand shortsword
     app.bonus_used = True
-    app.attacks_remaining = 2
-    app._attack_sequence_slot = "bonus"
-    app.pending_attack_slot = ""
-    app.pending_weapon_idx = -1
+    app.attack_seq.remaining = 2
+    app.attack_seq.slot = "bonus"
+    app._disarm(pending.Attack)
+    app.attack_seq.weapon_idx = -1
 
     _draw(app)
     assert app._action_menu["atk_bonus"].label == "⚔ Bonus (2)", app._action_menu["atk_bonus"]
 
     _click_action(app, "atk_bonus")
-    assert app.pending_attack_slot == "bonus", \
+    assert app._armed_slot(pending.Attack) == "bonus", \
         "the header did not reach the handler — F14 has come back"
-    assert app.attacks_remaining == 2, "the parked sequence was reseeded, not resumed"
-    assert app._attack_sequence_slot == "bonus"
+    assert app.attack_seq.remaining == 2, "the parked sequence was reseeded, not resumed"
+    assert app.attack_seq.slot == "bonus"
 
     # And with the Bonus Action merely spent — no sequence owed — the menu does not
     # offer it, so the newly ungated handler still has nothing to fire on.
-    app.attacks_remaining = 0
-    app._attack_sequence_slot = ""
-    app.pending_attack_slot = ""
+    app.attack_seq.remaining = 0
+    app.attack_seq.slot = ""
+    app._disarm(pending.Attack)
     _draw(app)
     assert "atk_bonus" not in app._action_menu, "offered with the Bonus Action spent"
     _click_action(app, "atk_bonus")
-    assert app.pending_attack_slot == "", "a stale rect armed an attack that is not on offer"
+    assert app._armed_slot(pending.Attack) == "", "a stale rect armed an attack that is not on offer"
     print("✅ test_the_bonus_attack_header_is_clickable_mid_sequence passed")
 
 
@@ -813,8 +814,8 @@ def test_the_bonus_spell_header_is_drawn_mid_sequence_but_refused():
     aria = _goto(app, "Aria")
     app.combat.set_agent_spells(app.bm, aria, [_spell(app, "Fire Bolt")])
     app.bonus_used = True
-    app.attacks_remaining = 2
-    app._attack_sequence_slot = "bonus"
+    app.attack_seq.remaining = 2
+    app.attack_seq.slot = "bonus"
 
     _draw(app)
     assert "spell_bonus" in app._action_menu, "the band's header row stays open"
@@ -1455,15 +1456,15 @@ def test_bite_grappled_asks_the_engine_for_the_pairing():
 
     app.action_used = True
     assert "bite_grappled" not in _bonus(app, aria), "the Attack action is spent"
-    app.attacks_remaining = 1
-    app._attack_sequence_slot = "action"
+    app.attack_seq.remaining = 1
+    app.attack_seq.slot = "action"
     assert "bite_grappled" in _bonus(app, aria), "mid-multiattack is the common case"
 
     assert _by_id(app, aria)["bite_grappled"].economy == "attack", \
         "the Bite is paid for out of the Attack action, which is why it survives here"
 
-    app.attacks_remaining = 0
-    app._attack_sequence_slot = ""
+    app.attack_seq.remaining = 0
+    app.attack_seq.slot = ""
     _set_conditions(app, skarn, grappled=False, grappler_idx=-1)
     app.combat.set_agent_weapons(app.bm, aria,
                                  [_weapon(app, "Longsword"),
@@ -1493,16 +1494,16 @@ def test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click():
     assert "horde_breaker" in _bonus(app, aria)
     assert _by_id(app, aria)["horde_breaker"].economy == "free"
 
-    app.attacks_remaining = 1
-    app._attack_sequence_slot = "action"
+    app.attack_seq.remaining = 1
+    app.attack_seq.slot = "action"
     assert "horde_breaker" not in _bonus(app, aria), "the Attack action still has a swing left"
-    app.attacks_remaining = 0
-    app._attack_sequence_slot = ""
+    app.attack_seq.remaining = 0
+    app.attack_seq.slot = ""
 
     _draw(app)                                       # the panel draws the row; perform needs the offer
     assert "horde_breaker" in app._action_menu
     assert app.perform("horde_breaker", DM_PRINCIPAL_ID) is True
-    assert app.pending_attack_slot == "action" and app.pending_horde_breaker_targets == [cyra]
+    assert app._armed_slot(pending.Attack) == "action" and app.pending_horde_breaker_targets == [cyra]
     app._resolve_combat_attack(brannor)              # not a legal Horde Breaker target
     assert not app.combat.get_agent_conditions(app.bm, aria).horde_breaker_used
     assert app.pending_horde_breaker_targets == [cyra], "a refused click keeps the pick armed"
@@ -1511,9 +1512,9 @@ def test_horde_breaker_is_offered_from_the_engine_list_and_checks_the_click():
     assert c.horde_breaker_used and not c.horde_breaker_available
     assert app.pending_horde_breaker_targets == []
 
-    app.pending_attack_slot = ""
-    app.attacks_remaining = 0
-    app._attack_sequence_slot = ""
+    app._disarm(pending.Attack)
+    app.attack_seq.remaining = 0
+    app.attack_seq.slot = ""
     _set_conditions(app, aria, horde_breaker_available=False, horde_breaker_used=False,
                     horde_breaker_origin=-1, horde_breaker_weapon=-1, attacked_this_turn=[])
     app.combat.teleport_agent(app.bm, cyra, *home)
@@ -1549,7 +1550,7 @@ def test_beast_master_command_and_beasts_strike():
     c = app.combat.get_agent_conditions(app.bm, aria)
     assert c.beast_strikes_left == 2, "Bestial Fury: twice"
     assert app.action_used, "the Attack action is under way"
-    assert app.pending_attack_slot == "action" and app.pending_beasts_strike_targets == [skarn]
+    assert app._armed_slot(pending.Attack) == "action" and app.pending_beasts_strike_targets == [skarn]
     app._resolve_combat_attack(brannor)                       # not one the companion can reach
     assert app.combat.get_agent_conditions(app.bm, aria).beast_strikes_left == 2
     app._resolve_combat_attack(skarn)
@@ -1558,7 +1559,7 @@ def test_beast_master_command_and_beasts_strike():
         assert app.pending_beasts_strike_targets == [skarn], "the second strike re-arms"
         app._resolve_combat_attack(skarn)
         assert app.combat.get_agent_conditions(app.bm, aria).beast_strikes_left == 0
-    app.pending_attack_slot = ""
+    app._disarm(pending.Attack)
     app.pending_beasts_strike_targets = []
 
     _draw(app)
@@ -1590,13 +1591,13 @@ def test_sudden_strike_is_offered_from_the_engine_list_and_checks_the_click():
     assert list(app.combat.sudden_strike_targets(app.bm, aria)) == [cyra]
     assert "sudden_strike" in _bonus(app, aria)
     assert _by_id(app, aria)["sudden_strike"].economy == "free"
-    app.attacks_remaining = 1
+    app.attack_seq.remaining = 1
     assert "sudden_strike" not in _bonus(app, aria), "the Attack action still has a swing left"
-    app.attacks_remaining = 0
+    app.attack_seq.remaining = 0
 
     _draw(app)
     assert app.perform("sudden_strike", DM_PRINCIPAL_ID) is True
-    assert app.pending_attack_slot == "action" and app.pending_sudden_strike_targets == [cyra]
+    assert app._armed_slot(pending.Attack) == "action" and app.pending_sudden_strike_targets == [cyra]
     app._resolve_combat_attack(brannor)              # not a legal Sudden Strike target
     assert app.combat.get_agent_conditions(app.bm, aria).sudden_strike_available
     assert app.pending_sudden_strike_targets == [cyra], "a refused click keeps the pick armed"
@@ -1685,7 +1686,7 @@ def test_fey_reinforcements_casts_a_one_minute_summon_without_a_slot():
     app.prompts.choose_label("No Concentration (1 minute)")
     form = next(o.label for o in app.prompts.live.options if "Fuming" in o.label)
     app.prompts.choose_label(form)
-    assert app.pending_summon_slot and app.pending_summon_no_conc and app.pending_summon_fey_reinforcements
+    assert app._armed_slot(pending.Summon) and app.pending.no_conc and app.cast_setup.fey_reinforcements
     app._resolve_summon(rpg.Cell(3, 4))
     assert len(app.bm.placed_agents) == n + 1, "the spirit is on the map"
     spirit = app.bm.placed_agents[n]
@@ -1811,19 +1812,19 @@ def test_the_two_telekinetic_options_are_two_widgets():
 
     # And one click arms one of them. Both handlers used to run on either click,
     # because neither was gated on the feat or on the subclass.
-    app.pending_shove_type = ""
+    app._disarm(pending.Shove)
     app._drop_pick("telekinetic")
     app._draw_combat_panel()
     post_click(app, panel.cbt_btn(app, "telekinetic_psi").rect.center)
     assert app._picking("telekinetic"), "the Psi Warrior's own option did not arm"
-    assert app.pending_shove_type != "telekinetic", "the feat's handler cross-fired"
+    assert getattr(app._armed(pending.Shove), "type", "") != "telekinetic", "the feat's handler cross-fired"
 
     app._drop_pick("telekinetic")
     app._draw_combat_panel()
     post_click(app, panel.cbt_btn(app, "telekinetic_feat").rect.center)
-    assert app.pending_shove_type == "telekinetic", "the feat's option did not arm"
+    assert getattr(app._armed(pending.Shove), "type", "") == "telekinetic", "the feat's option did not arm"
     assert not app._picking("telekinetic"), "the Psi Warrior's handler cross-fired"
-    app.pending_shove_type = ""
+    app._disarm(pending.Shove)
     app._drop_pick("telekinetic")
 
     s = app.combat.get_agent_stats(app.bm, cyra)
@@ -1921,8 +1922,8 @@ def test_divine_smite_is_a_bonus_action_and_keeps_the_attack_action():
 
     assert "atk_action" in _ids(app, aria)
     app._start_attack("action")
-    assert app._attack_sequence_slot == "action" and app.attacks_remaining == 2, \
-        (app._attack_sequence_slot, app.attacks_remaining)
+    assert app.attack_seq.slot == "action" and app.attack_seq.remaining == 2, \
+        (app.attack_seq.slot, app.attack_seq.remaining)
     print("✅ test_divine_smite_is_a_bonus_action_and_keeps_the_attack_action passed")
 
 
@@ -1974,16 +1975,16 @@ def test_searing_and_shining_smite_cost_the_action_and_the_bonus_action():
 
         # The Bonus band never offers it, even with the Action still free.
         app._start_cast_spell("bonus")
-        assert not app.pending_spell_slot, name
+        assert not app._armed_slot(pending.Spell), name
 
         # With the Bonus Action spent, the Action band refuses it too, and nothing is charged.
         app.bonus_used = True
         app._start_cast_spell("action")
-        assert not app.pending_spell_slot and not app.action_used, name
+        assert not app._armed_slot(pending.Spell) and not app.action_used, name
         app.bonus_used = False
 
         app._start_cast_spell("action")      # one castable row casts directly
-        assert app.pending_spell_slot == "action", name
+        assert app._armed_slot(pending.Spell) == "action", name
         app._resolve_spell_cast(skarn)
         assert app.action_used and app.bonus_used, name
     print("✅ test_searing_and_shining_smite_cost_the_action_and_the_bonus_action passed")

@@ -166,7 +166,7 @@ def fingerprint(app) -> dict:
     # The automated NPC's turn runs on the frame AFTER its turn starts (F-M6-4).
     fp["turn.npc_drive"] = int(app._npc_drive_idx)
     fp["turn.economy"] = (bool(app.action_used), bool(app.bonus_used),
-                          int(app.attacks_remaining))
+                          int(app.attack_seq.remaining))
     return fp
 
 

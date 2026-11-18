@@ -71,10 +71,10 @@ def _plain(obj):
     return out
 
 
-_APP_FIELDS = ("action_used", "bonus_used", "attacks_remaining", "_attack_sequence_slot",
+_APP_FIELDS = ("action_used", "bonus_used", "attack_seq",
                "move_remaining_walk", "move_remaining_fly", "move_remaining_swim",
                "move_remaining_burrow", "turn_idx", "round_num", "combat_paused",
-               "combat_active", "pending_spell_slot", "hint")
+               "combat_active", "pending", "hint")
 
 
 def _state(app):
@@ -201,8 +201,8 @@ def test_the_handler_guards_moved_with_their_bodies():
     app = _app()
     aria = _goto(app, "Aria")
     app.action_used = True
-    app.attacks_remaining = 2
-    app._attack_sequence_slot = "action"
+    app.attack_seq.remaining = 2
+    app.attack_seq.slot = "action"
     _draw(app)
     assert "dash" in app._action_menu
     walk = app.bm.placed_agents[aria].walk_remaining

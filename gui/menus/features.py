@@ -16,6 +16,7 @@ choice the bus takes as a hint, not a second kind of prompt.
 """
 
 import pygame
+import pending
 
 import rpg_battle_map as rpg
 
@@ -359,17 +360,12 @@ def start_mantle_majesty(app, bard_idx: int):
             app._flush_combat_log()
         # Free single-target Command cast (bonus action, no slot). The bonus action is charged in
         # _consume_cast_slot; the slot is skipped in C++ via SpellAction.free_cast.
-        app.pending_spell_slot         = "bonus"
-        app.pending_spell_idx          = command_idx
-        app.pending_spell_slot_level   = 0
-        app.pending_spell_is_aoe       = False
-        app.pending_spell_targets      = []
-        app.pending_spell_num_targets  = 0
-        app.pending_spell_damage_type  = -1
-        app.pending_spell_free_cast    = True
-        app.pending_spell_command_word = word
-        app.pending_spell_curse_choice = -1
-        app.pending_forcecage_sealed   = False   # an earlier Forcecage's Box must not seal this
+        app.pending = pending.Spell("bonus", command_idx, 0)
+        app.cast_setup.damage_type  = -1
+        app.cast_setup.free_cast    = True
+        app.cast_setup.command_word = word
+        app.cast_setup.curse_choice = -1
+        app.cast_setup.forcecage_sealed   = False   # an earlier Forcecage's Box must not seal this
         app._drop_pick("chromatic")
         app.pending_chromatic_chain    = []
         word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")
@@ -455,15 +451,16 @@ def resolve_animate_dead(app, corpse_idx):
     duration), and the summoner link would let a later dropConcentration wrongly tombstone
     the undead. Faction inheritance alone makes it a player-controlled ally."""
     caster_idx = app._current_agent_idx()
-    if caster_idx < 0 or not app.pending_spell_slot:
+    ps = app._armed(pending.Spell)
+    if caster_idx < 0 or ps is None:
         return
     if not (0 <= corpse_idx < len(app.bm.placed_agents)):
         return
     corpse = app.bm.placed_agents[corpse_idx]
     cell        = rpg.Cell(corpse.origin.col, corpse.origin.row)
-    slot        = app.pending_spell_slot
-    slot_level  = app.pending_spell_slot_level
-    free_cast   = app.pending_spell_free_cast
+    slot        = ps.slot
+    slot_level  = ps.slot_level
+    free_cast   = app.cast_setup.free_cast
     items = [
         ("💀 Skeleton", lambda: app._finish_animate_dead(
             caster_idx, corpse_idx, cell, "Skeleton", slot, slot_level, free_cast)),

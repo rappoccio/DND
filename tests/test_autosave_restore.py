@@ -33,6 +33,7 @@ import tempfile
 
 import autosave
 from main import App
+import pending
 from menus import dm
 from net import events as net_events
 from net.events import Resync, Sight
@@ -111,14 +112,14 @@ def test_rewind_in_place():
         app._advance_turn()
         app._advance_turn()
         app.action_used = True
-        app.pending_attack_slot = "action"
+        app.pending = pending.Attack("action")
         app._arm_pick("shadow_step")
         assert fingerprint(app) != before, "the two turns changed nothing to rewind"
         assert autosave.restore(app, k)
         gaps = diff(_without_door_ids(before), _without_door_ids(fingerprint(app)))
         _report(gaps)
         assert not gaps, f"the rewind lost: {sorted(gaps)}"
-        assert app.pending_attack_slot == "" and not app._picking("shadow_step")
+        assert app._armed_slot(pending.Attack) == "" and not app._picking("shadow_step")
         assert app.selected_idx == app._current_agent_idx()
         print("✅ test_rewind_in_place")
     finally:

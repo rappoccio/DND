@@ -459,18 +459,10 @@ def begin_combat(app):
     apply_thief_reflexes(app)
     app.action_used          = False
     app.bonus_used           = False
-    app.pending_attack_slot       = ""
-    app.attacks_remaining         = 0
+    app.attack_seq.remaining      = 0
     app._clear_pending_target_picks()   # all armed target-pick flags (L36)
-    app.pending_spell_slot        = ""
-    app.pending_spell_is_aoe      = False
-    app.pending_spell_num_targets = 0
-    app.pending_spell_targets     = []
+    app.pending                   = None   # and whichever base mode is armed
     app.pending_dispel_selection  = None
-    app.pending_shove_slot        = ""
-    app.pending_shove_type        = ""
-    app.pending_grapple_slot      = ""
-    app.pending_unarmed_type      = ""
     app.combat_log                = []
     app.combat_log_wire.clear()
     # Initialize combat log file
@@ -663,18 +655,10 @@ def end_combat(app, award_xp: bool = True):
     app.round_num           = 0
     app.action_used          = False
     app.bonus_used           = False
-    app.pending_attack_slot       = ""
-    app.attacks_remaining         = 0
+    app.attack_seq.remaining      = 0
     app._clear_pending_target_picks()   # all armed target-pick flags (L36)
-    app.pending_spell_slot        = ""
-    app.pending_spell_is_aoe      = False
-    app.pending_spell_num_targets = 0
-    app.pending_spell_targets     = []
+    app.pending                   = None   # and whichever base mode is armed
     app.pending_dispel_selection  = None
-    app.pending_shove_slot        = ""
-    app.pending_shove_type        = ""
-    app.pending_grapple_slot      = ""
-    app.pending_unarmed_type      = ""
     app.selected_idx              = -1
     app._reach_walk         = []
     app._reach_fly          = []

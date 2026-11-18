@@ -23,6 +23,7 @@ import json
 import tempfile
 
 import rpg_battle_map as rpg
+import pending
 from test_helpers import (setup_battle_map, setup_combat_engine, create_test_agent,
                           add_agent_to_battle)
 from helpers import (_dict_to_item, item_dict_summary, item_spell_label, is_item_spell,
@@ -134,8 +135,7 @@ def test_gui_cast_discards_spent_scroll(app):
     real_cur = app._current_agent_idx
     app._current_agent_idx = lambda: 0
     try:
-        app.pending_spell_slot, app.pending_spell_idx, app.pending_spell_slot_level = "action", j, 0
-        app.pending_spell_targets = []
+        app.pending = pending.Spell("action", j, 0)
         app._resolve_spell_cast(0)
     finally:
         app._current_agent_idx = real_cur

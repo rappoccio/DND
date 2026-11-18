@@ -230,7 +230,7 @@ def _run(clock):
             app.turn_idx = i
     app.action_used = False
     app.bonus_used = False
-    app.attacks_remaining = 0
+    app.attack_seq.remaining = 0
     app._reset_movement(aria)
     app.selected_idx = aria
     out += capture(app, "10 combat — Aria on turn, reach overlays")

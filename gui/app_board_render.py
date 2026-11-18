@@ -17,6 +17,7 @@ What stayed on `App`, because code outside this module asks it too:
 """
 
 import os
+import pending
 
 import pygame
 
@@ -150,15 +151,16 @@ def draw_npc_announcement(app):
 # FLAG: Move to C++
 def draw_spell_aoe_preview(app, cpx: int):
     """Translucent AoE highlight while the player is aiming a non-Single spell."""
-    if not app.pending_spell_is_aoe or app.spell_hover_cell is None:
+    ps = app._armed(pending.Spell)
+    if ps is None or not ps.is_aoe or app.spell_hover_cell is None:
         return
     caster_idx = app._current_agent_idx()
     if caster_idx < 0:
         return
     spells = app.combat.get_agent_spells(app.bm, caster_idx)
-    if not (0 <= app.pending_spell_idx < len(spells)):
+    if not (0 <= ps.idx < len(spells)):
         return
-    sp    = spells[app.pending_spell_idx]
+    sp    = spells[ps.idx]
     if sp.geometry == rpg.SpellGeometry.Rectangle:
         # Oriented wall: before the anchor is set there is nothing to preview
         # (the hovered cell is the candidate start point). Once anchored, the
@@ -236,7 +238,7 @@ def draw_spell_aoe_preview(app, cpx: int):
 def draw_chromatic_chain(app, cpx: int):
     """Overlay the orb's leap path while the player builds it: caster → primary → each hop,
     with a numbered ring on every chosen leap target and a white ring on the primary."""
-    if not (app._picking("chromatic") and app.pending_spell_slot):
+    if not (app._picking("chromatic") and app._armed(pending.Spell)):
         return
     agents = app.bm.placed_agents
     caster_idx = app._current_agent_idx()
@@ -1797,16 +1799,17 @@ def draw_agents(app):
                          border_radius=3)
 
     # ── Summon placement preview ───────────────────────────────────────
-    if app.pending_summon_slot and app.summon_hover_cell is not None:
+    summon = app._armed(pending.Summon)
+    if summon is not None and app.summon_hover_cell is not None:
         cell = app.summon_hover_cell
         # Scaling spirits aren't in the bestiary — take the size from the chosen spirit block.
-        mob  = (app.pending_summon_spirit if app.pending_summon_spirit is not None
-                else app.mob_stats_json.get(app.pending_summon_monster, {}))
+        mob  = (summon.spirit if summon.spirit is not None
+                else app.mob_stats_json.get(summon.monster, {}))
         ssize = app._size_category_to_grid_size(mob.get("size", "Medium"))
         valid = app._summon_cell_valid(cell, ssize)
         sx, sy = app._cell_to_screen(cell.col, cell.row)
         size_px = cpx * ssize
-        sprite = app._get_sprite(app._get_mob_sprite_path(app.pending_summon_monster), size_px)
+        sprite = app._get_sprite(app._get_mob_sprite_path(summon.monster), size_px)
         if sprite:
             surf = sprite.copy()
             surf.set_alpha(160)
