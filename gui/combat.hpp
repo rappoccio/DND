@@ -38,6 +38,7 @@
 #include "movement_controller.hpp" // MovementController — per-turn movement budgets (R4b)
 #include "condition_tracker.hpp"   // ConditionTracker — active-condition store + stat snapshots (R4c)
 #include "spell_effect_store.hpp"  // SpellEffectStore — ticking effects, safe targets, zone ledger (R4e)
+#include "npc_state.hpp"           // NpcState — in-flight NPC turn, config cache, models, policy (R4f)
 
 #include <array>
 #include <cstdint>
@@ -551,7 +552,7 @@ public:
     [[nodiscard]] NpcDecision npcDecide(const BattleMap& bm, int agent_idx) const noexcept;
     // The decision behind the latest FRESH runNpcTurn (a parked turn's resume keeps its launch decision).
     // agent_idx == -1 until an automated turn has run.
-    [[nodiscard]] const NpcDecision& lastNpcDecision() const noexcept { return last_npc_decision_; }
+    [[nodiscard]] const NpcDecision& lastNpcDecision() const noexcept { return npc_.lastDecision(); }
 
     // NPC archetype (NPC_LEARNING_PLAN.md Step 4): npcClassifyRole refined. Melee/Ranged carry over; a Caster
     // tallies its combat-relevant known spells by the Level 4 planner each feeds — AoE blast → Blaster,
@@ -609,12 +610,12 @@ public:
     [[nodiscard]] static const std::vector<std::string>& mapObservationFields();
     // The installed policy: consulted at Levels 5/6 (rungs 1-2) and by the Level 0 Policy strategy. Not in
     // a snapshot. With a policy installed, Levels 5/6 no longer clamp to Level 4.
-    void setNpcPolicy(std::shared_ptr<NpcPolicy> policy) noexcept { npc_policy_ = std::move(policy); }
-    void clearNpcPolicy() noexcept { npc_policy_.reset(); }
-    [[nodiscard]] bool npcPolicyLoaded() const noexcept { return npc_policy_ != nullptr; }
+    void setNpcPolicy(std::shared_ptr<NpcPolicy> policy) noexcept { npc_.setPolicy(std::move(policy)); }
+    void clearNpcPolicy() noexcept { npc_.clearPolicy(); }
+    [[nodiscard]] bool npcPolicyLoaded() const noexcept { return npc_.policy() != nullptr; }
     // An exception the policy threw while npcDecide consulted it (npcDecide is noexcept, so it is held here
     // and the chain carries on from rung 3). runNpcTurn rethrows it; npc_decide's binding does too.
-    [[nodiscard]] std::exception_ptr takeNpcPolicyError() const noexcept { return std::exchange(npc_policy_error_, nullptr); }
+    [[nodiscard]] std::exception_ptr takeNpcPolicyError() const noexcept { return npc_.takePolicyError(); }
 
     // Classify the combat role (Melee/Ranged/Caster) the difficulty resolver maps to a strategy. Caster =
     // knows any combat-relevant spell (npcClassificationIgnore filters flavor/utility spells); else Ranged
@@ -2518,30 +2519,12 @@ private:
     [[nodiscard]] bool isCounterspellChoice(const ReactionCtx& ctx, const ReactionResponse& resp) const;
 
     // ── NPC automation internals (combat_turn.cpp, NPC_AUTOMATION_PLAN.md Step 3) ─────────────
-    NpcTurnState npc_turn_{};   // resume point of an in-flight automated turn (parks at reaction windows)
-    // NPC-automation tuning knobs (gui/npc_automation_config.json), loaded ONCE and cached. Mutable so the
-    // const planners can lazy-load on first use. control_priority = DM-authored order PreferControl walks
-    // (Step 8); heal_threshold_fraction = the missing-HP gate PreferHeal casts below (Step 9). Falls back to
-    // baked-in defaults if the file is absent so the planners work without it.
-    mutable bool                     npc_config_loaded_ = false;
-    mutable std::vector<std::string> npc_control_priority_{};
-    mutable double                   npc_heal_threshold_fraction_ = 0.5;
-    mutable std::set<std::string>    npc_classification_ignore_{};  // lowercased names (role classification)
-    void npcLoadConfig() const noexcept;                                   // lazy JSON load into the caches above
+    // All NPC-automation state — the in-flight turn (npc_.turn(), resume point of an automated turn parked
+    // at a reaction window), the npc_automation_config.json cache, the Level 5/6 clamp warning guard, the
+    // archetype models, the latest fresh-turn decision, the installed policy, the forced macro-action
+    // executeMacroAction is running, and the policy's held exception. See npc_state.hpp (R4f).
     // (npcControlPriority / npcHealThreshold / npcClassificationIgnore accessors are public above.)
-    // One-time "Level 5/6 clamps to Level 4" combat-log warning (NN policies not yet trained). Mutable:
-    // resolveStrategy is const.
-    mutable bool npc_nn_level_warned_ = false;
-    // Level 5/6 archetype models (Step 4 stand-in, see setNpcArchetypeModel), indexed by NpcArchetype, and
-    // the latest fresh-turn decision. Neither is gameplay state, so neither is in a snapshot.
-    std::array<std::vector<NpcAutomationStrategy>, kNpcArchetypeCount> npc_models_{};
-    NpcDecision last_npc_decision_{};
-    // Step 5: the installed policy (not in a snapshot), and the macro-action executeMacroAction is running —
-    // set for the duration of the call so runAoeTurn / runCasterTurn plan the forced spell + target.
-    std::shared_ptr<NpcPolicy>    npc_policy_{};
-    std::optional<NpcMacroAction> npc_forced_macro_{};
-    // An exception the policy threw inside the noexcept npcDecide, rethrown by runNpcTurn / the binding.
-    mutable std::exception_ptr    npc_policy_error_{};
+    NpcState npc_;
     // Ask the policy: fill d.strategy = Policy, d.macro and the rung when it ranks a legal candidate.
     bool npcPolicyPick(const BattleMap& bm, int agent_idx, NpcDecision& d) const;
     // The forced macro-action's cast as a plan from the current cell (spell_idx -1 when it can't be cast
@@ -2549,13 +2532,13 @@ private:
     [[nodiscard]] NpcAoePlan  npcForcedAoePlan(const BattleMap& bm, int agent_idx, const NpcMacroAction& a) const;
     [[nodiscard]] NpcCastPlan npcForcedCastPlan(const BattleMap& bm, int agent_idx, const NpcMacroAction& a) const;
     // Move-only macro turns: Dash toward a target, Disengage / Flee away from the enemies, Dodge in place.
-    // Resumable via npc_turn_.flee_move_launched (a parked move ends the turn on resume).
+    // Resumable via npc_.turn().flee_move_launched (a parked move ends the turn on resume).
     FlowStatus runMoveMacroTurn(BattleMap& bm, int agent_idx, const NpcMacroAction& a);
     // The Level 1-4 resolver (difficulty `eff`), split out so the Level 5/6 chain can call it as rung 4.
     [[nodiscard]] NpcAutomationStrategy resolveHeuristicStrategy(const BattleMap& bm, int agent_idx,
                                                                  int eff) const noexcept;
     // Everything runNpcTurn does AFTER the strategy is known (resume routing, NoOp, Bucket-D recharge,
-    // policy dispatch). Split out so runNpcTurn can stamp the resolved strategy onto npc_turn_ when the
+    // policy dispatch). Split out so runNpcTurn can stamp the resolved strategy onto npc_.turn() when the
     // dispatched turn parks — the resume then reuses it instead of re-resolving (see resolveStrategy).
     FlowStatus dispatchNpcTurn(BattleMap& bm, int agent_idx, NpcAutomationStrategy strategy);
     // True when the agent owns any stealth tool PreferHide's conceal routes A-C can use: a castable
@@ -2567,17 +2550,17 @@ private:
     // with target selection, weapon choice, and positioning all driven by `policy` — so Simple (Step 3),
     // PreferTargetCaster (Step 4), and PreferRange (Step 5) are the SAME code with different policies.
     // Resumable: returns AwaitingDecision when a move/attack it attempts parks at a human reaction window;
-    // the GUI resolves it and re-calls run_npc_turn to continue (npc_turn_ holds the resume point).
+    // the GUI resolves it and re-calls run_npc_turn to continue (npc_.turn() holds the resume point).
     FlowStatus runWeaponTurn(BattleMap& bm, int agent_idx, const NpcStrategyPolicy& policy);
     // Command (Flee) turn: a creature commanded to flee spends its whole turn moving away from the fear
     // source (the caster) by the fastest available route and takes no action (Command RAW). Picks the
     // reachable cell that MAXIMISES footprint distance from the fear source; if boxed in and no cell is
     // farther, it holds. Movement runs through the parkable beginMove (an OA on the way out surfaces
-    // normally); resumable via npc_turn_.flee_move_launched. Returns -1 fear source ⇒ caller falls through.
+    // normally); resumable via npc_.turn().flee_move_launched. Returns -1 fear source ⇒ caller falls through.
     FlowStatus runFleeTurn(BattleMap& bm, int agent_idx, int fear_idx);
     // Beast Master: an uncommanded Primal Companion's turn (companionRestricted) — it takes the Dodge
     // action, then moves into reach of the nearest enemy so a Beast's Strike next turn can land.
-    // Resumable via npc_turn_.companion_dodge_done (a park on the move just ends the turn).
+    // Resumable via npc_.turn().companion_dodge_done (a park on the move just ends the turn).
     FlowStatus runCompanionDodgeTurn(BattleMap& bm, int agent_idx);
     // Index of the creature a Command (Flee) condition on agent_idx points its victim away from (the
     // condition's caster), or -1 if agent_idx is not currently under Command (Flee).
@@ -2619,7 +2602,7 @@ private:
     // PreferAOE turn (Step 6). Picks the available area spell + aim cell that maximizes the net enemies
     // caught (npcPlanAoeCast), casts it once through the parkable beginCast (so a human reaction window
     // surfaces identically to a player cast), then ends the turn. With no worthwhile AoE it falls back to
-    // the Simple weapon turn so an AoE caster with nothing to blast still acts. Resumable via npc_turn_.
+    // the Simple weapon turn so an AoE caster with nothing to blast still acts. Resumable via npc_.turn().
     FlowStatus runAoeTurn(BattleMap& bm, int agent_idx);
     // Among the caster's currently-castable AoE blast spells (Sphere/Cone/Line/Square, Harm type), and over
     // candidate aim points (each attackable enemy's cell), choose the spell+aim with the most net enemies
@@ -2652,7 +2635,7 @@ private:
     // Structurally identical to runAoeTurn: plan a spell + target(s), approach if the plan is out of range,
     // cast ONCE through the parkable beginCast, guard the resume via cast_launched/cast_moving, and fall
     // back to a weapon turn when nothing is worth casting (spell_idx < 0 with no approach target). The
-    // intent selects which planner runs; the executor itself is intent-agnostic. Resumable via npc_turn_.
+    // intent selects which planner runs; the executor itself is intent-agnostic. Resumable via npc_.turn().
     FlowStatus runCasterTurn(BattleMap& bm, int agent_idx, CasterIntent intent);
     // Dispatch to the intent's planner. The single seam runCasterTurn plans through.
     [[nodiscard]] NpcCastPlan npcPlanCasterCast(const BattleMap& bm, int agent_idx,

@@ -24,6 +24,8 @@ Covered here:
     ticks / edits are undone                            (test_spell_effects_round_trip)
   · a SUSPENDED reaction window survives and still resumes
                                                         (test_parked_reaction_round_trips)
+  · a PARKED automated NPC turn's resume point survives (NpcState, R4f)
+                                                        (test_parked_npc_turn_round_trips)
   · malformed / future-version payloads are refused rather than half-applied
                                                         (test_bad_payloads_refused)
 """
@@ -341,6 +343,59 @@ def test_parked_reaction_round_trips():
     print("✅ test_parked_reaction_round_trips passed")
 
 
+def test_parked_npc_turn_round_trips():
+    """A parked automated NPC turn's resume point (NpcState::turn(), key "npc_turn")
+    survives a snapshot.
+
+    Before R4f nothing guarded this: test_round_trip_is_stable only checks that the key is
+    present, and its scripted fight never parks an NPC turn, so a restore that dropped the
+    read restored a default turn over a default turn. Here a Command (Flee) NPC parks at the
+    OA its flee provokes — npc_turn is active with flee_move_launched set — then the park is
+    driven to completion (which clears the turn) and the snapshot is restored."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    npc = add_agent_to_battle(engine, bm, create_test_agent("Goblin", 5, 5))
+    foe = add_agent_to_battle(engine, bm, create_test_agent("Hero", 6, 5), hp=30)
+    bm.set_agent_faction(npc, 1)
+    bm.set_agent_faction(foe, 2)
+    for idx in (npc, foe):
+        engine.set_agent_weapons(bm, idx, [_melee_weapon(), rpg.Weapon(), rpg.Weapon()])
+    s = engine.get_agent_stats(bm, npc)
+    s.speed_walk = 30
+    engine.set_agent_stats(bm, npc, s)
+    bm.set_agent_npc_automated(npc, True)
+
+    flee = rpg.ActiveAgentCondition()
+    flee.agent_idx = npc
+    flee.caster_idx = foe
+    flee.condition_name = "CommandFlee"
+    flee.turns_remaining = 1
+    flee.save_repeat_turns = -1   # as the real Command path does (see test_npc_automation.py)
+    engine.add_agent_condition(bm, flee)
+
+    engine.begin_turn(bm, npc)
+    status = engine.run_npc_turn(bm, npc)
+    assert status == rpg.FlowStatus.AwaitingDecision, f"expected the flee to park at the OA, got {status}"
+
+    snap = engine.snapshot_json()
+    parked_turn = json.loads(snap)["npc_turn"]
+    assert parked_turn["active"] and parked_turn["agent_idx"] == npc, "the parked NPC turn was not captured"
+    assert parked_turn["flee_move_launched"], "the flee's resume guard was not captured"
+
+    # Clobber: skip the OA and let the turn finish, which resets the NPC turn state.
+    skip = rpg.ReactionResponse()
+    skip.option = -1
+    engine.submit_decision(bm, skip)
+    assert engine.run_npc_turn(bm, npc) == rpg.FlowStatus.Completed
+    assert not json.loads(engine.snapshot_json())["npc_turn"]["active"], "setup: the turn did not clear"
+
+    assert engine.restore_json(snap)
+    again = json.loads(engine.snapshot_json())["npc_turn"]
+    assert again == parked_turn, f"npc_turn did not round-trip:\n  {parked_turn}\n  {again}"
+    assert engine.pending_decision().active, "the OA the NPC turn is parked on did not come back"
+    print("✅ test_parked_npc_turn_round_trips passed")
+
+
 def test_bad_payloads_refused():
     """Malformed, wrong-shaped and future-version payloads return False, not an
     exception crossing the pybind11 boundary."""
@@ -366,6 +421,7 @@ def main():
         test_conditions_round_trip,
         test_spell_effects_round_trip,
         test_parked_reaction_round_trips,
+        test_parked_npc_turn_round_trips,
         test_bad_payloads_refused,
     ]
     failed = 0

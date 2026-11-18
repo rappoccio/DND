@@ -26,11 +26,12 @@
 //   · NPC visual-event plumbing — ctx_.npc_recording_ / npc_visual_events_.
 //     Transient GUI animation state, drained every turn (CombatContext already
 //     excludes them; noted here because this is where a reader looks).
-//   · The npc_automation_config.json cache (npc_config_loaded_ and friends) and
-//     npc_nn_level_warned_. A lazy file cache and a one-shot log guard — not
-//     gameplay state; both re-derive themselves on demand after a restore.
-//   · The Level 5/6 archetype models (npc_models_) and last_npc_decision_. The
-//     models are loaded policy, like the config; the decision is a per-turn
+//   · The npc_automation_config.json cache (NpcState's config_loaded_ and
+//     friends) and its nn_level_warned_ guard. A lazy file cache and a one-shot
+//     log guard — not gameplay state; both re-derive themselves on demand after
+//     a restore. Only NpcState's turn() is snapshot state (key "npc_turn").
+//   · The Level 5/6 archetype models (NpcState::models_) and its last decision.
+//     The models are loaded policy, like the config; the decision is a per-turn
 //     readout for the trace (NPC_LEARNING_PLAN.md Step 4).
 //
 //  ── What a snapshot is NOT ──────────────────────────────────────────────────
@@ -265,7 +266,7 @@ nlohmann::json CombatEngine::snapshot() const
     j["in_flight_attack"] = in_flight_attack_;
     j["in_flight_turn"]   = in_flight_turn_;
     j["cast_stack"]       = cast_stack_;
-    j["npc_turn"]         = npc_turn_;
+    j["npc_turn"]         = npc_.turn();   // NpcState (R4f), same top-level key
 
     // Last-result readbacks. These are outputs, not inputs to any rule — but the GUI
     // polls them right after a flow finishes, so a restore taken between "the attack
@@ -306,14 +307,14 @@ bool CombatEngine::restore(const nlohmann::json& j)
     in_flight_move_    = {};
     in_flight_attack_  = {};
     in_flight_turn_    = {};
-    npc_turn_          = {};
+    npc_.turn()        = {};
     cast_stack_.clear();
     readMember(j, "pending_decision", pending_decision_);
     readMember(j, "in_flight_move",   in_flight_move_);
     readMember(j, "in_flight_attack", in_flight_attack_);
     readMember(j, "in_flight_turn",   in_flight_turn_);
     readMember(j, "cast_stack",       cast_stack_);
-    readMember(j, "npc_turn",         npc_turn_);
+    readMember(j, "npc_turn",         npc_.turn());
 
     last_attack_result_  = {};
     last_cast_result_    = {};

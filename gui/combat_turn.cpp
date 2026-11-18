@@ -1490,7 +1490,7 @@ NpcDecision CombatEngine::npcDecide(const BattleMap& bm, int agent_idx) const no
     // OVERRIDE"). Level 0 = manual: the per-agent strategy field rules. Levels 1+ IGNORE the field and
     // resolve a strategy from npcClassifyRole + the level, leaving the executors untouched.
     NpcDecision d;
-    npc_policy_error_ = nullptr;   // only this decision's policy error is reported
+    npc_.setPolicyError(nullptr);   // only this decision's policy error is reported
     d.agent_idx = agent_idx;
     d.level     = bm.getAgentNpcAutomationDifficulty(agent_idx);
     d.archetype = npcClassifyArchetype(bm, agent_idx);
@@ -1509,8 +1509,8 @@ NpcDecision CombatEngine::npcDecide(const BattleMap& bm, int agent_idx) const no
     // Levels 5/6 are the learned policies. With no model loaded, clamp to the best heuristic level and
     // say so ONCE per engine so a DM who dialed 5 knows what is actually running.
     if (!npcModelsLoaded()) {
-        if (!npc_nn_level_warned_) {
-            npc_nn_level_warned_ = true;
+        if (!npc_.nnLevelWarned()) {
+            npc_.markNnLevelWarned();
             log_("NPC automation: difficulty Level {} policy is not yet trained — using Level 4 heuristics.",
                  d.level);
         }
@@ -1521,11 +1521,11 @@ NpcDecision CombatEngine::npcDecide(const BattleMap& bm, int agent_idx) const no
     // The fallback chain (NPC_LEARNING_PLAN.md Step 4). Every rung applies the same actionability test.
     const auto ok = [&](NpcAutomationStrategy s) { return npcStrategyActionable(bm, agent_idx, s); };
     // Rungs 1-2: an installed policy ranks the macro-actions (Step 5); it replaces the stand-in models.
-    if (npc_policy_) {
+    if (npc_.policy()) {
         if (npcPolicyPick(bm, agent_idx, d)) return d;
     } else {
         // Rungs 1-2 (Step 4 stand-in): the archetype's model, top choice first, then down its ranking.
-        const auto& ranked = npc_models_[static_cast<std::size_t>(d.archetype)];
+        const auto& ranked = npc_.model(d.archetype);
         for (std::size_t i = 0; i < ranked.size(); ++i) {
             if (!ok(ranked[i])) continue;
             d.rung     = i == 0 ? NpcFallbackRung::TreeTop : NpcFallbackRung::TreeRanked;
@@ -1598,7 +1598,7 @@ int CombatEngine::npcCommandFleeSource(int agent_idx) const noexcept
 
 FlowStatus CombatEngine::runCompanionDodgeTurn(BattleMap& bm, int agent_idx)
 {
-    NpcTurnState& st = npc_turn_;
+    NpcTurnState& st = npc_.turn();
     if (st.active && st.agent_idx == agent_idx && st.companion_dodge_done) {   // resume after an OA
         st = NpcTurnState{};
         return FlowStatus::Completed;
@@ -1657,7 +1657,7 @@ FlowStatus CombatEngine::runFleeTurn(BattleMap& bm, int agent_idx, int fear_idx)
     if (agent_idx < 0 || agent_idx >= n || fear_idx < 0 || fear_idx >= n)
         return FlowStatus::Completed;
 
-    NpcTurnState& st = npc_turn_;
+    NpcTurnState& st = npc_.turn();
     // Resume after a parked OA on the way out: the flee move already resolved during advanceMove, so just
     // end the turn (Command Flee grants no action). Guarded on flee_move_launched (mirrors cast_moving).
     if (st.active && st.agent_idx == agent_idx && st.flee_move_launched) {
@@ -1722,8 +1722,8 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
 
     // A fresh turn forgets the last decision, so a turn that never reaches the strategy resolver (a corpse,
     // Command Flee, a Forcecage escape) reports none rather than its predecessor's.
-    if (!(npc_turn_.active && npc_turn_.agent_idx == agent_idx))
-        last_npc_decision_ = NpcDecision{};
+    if (!(npc_.turnActiveFor(agent_idx)))
+        npc_.lastDecision() = NpcDecision{};
 
     // A dead/downed/removed NPC must NOT act. Initiative can still hand a turn to a creature that was
     // killed earlier this round (or tombstoned/benched), and without this gate that corpse would run a
@@ -1735,8 +1735,8 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
         const auto cond = bm.getAgentConditions(agent_idx);
         if (self.removed_from_play || self.on_deck ||
             bm.getAgentStats(agent_idx).hp_cur <= 0 || cond.dead || cond.unconscious) {
-            if (npc_turn_.active && npc_turn_.agent_idx == agent_idx)
-                npc_turn_ = NpcTurnState{};
+            if (npc_.turnActiveFor(agent_idx))
+                npc_.turn() = NpcTurnState{};
             ctx_.npc_recording_ = false;   // a parked turn's actor died mid-park — stop the event stream too
             return FlowStatus::Completed;
         }
@@ -1747,7 +1747,7 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     // the buffer stays bounded to one turn). Recording stays ON across a park — the parked action
     // resolves inside submitDecision and must record its outcome — and is cleared on every Completed
     // return below. The GUI drains via take_npc_visual_events() after every run_npc_turn return.
-    if (!(npc_turn_.active && npc_turn_.agent_idx == agent_idx))
+    if (!(npc_.turnActiveFor(agent_idx)))
         ctx_.npc_visual_events_.clear();
     ctx_.npc_recording_ = true;
 
@@ -1768,7 +1768,7 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     // the bars or casting a spell the box refuses. npcTeleportEscape spends the teleport and rolls the CHA
     // save inside teleportAgent; on a failure the attempt is still spent (RAW), so the turn ends either way.
     // With no teleport it falls through — the normal dispatch then finds it can't move/act and ends the turn.
-    if (!(npc_turn_.active && npc_turn_.agent_idx == agent_idx)) {
+    if (!(npc_.turnActiveFor(agent_idx))) {
         const auto cond = bm.getAgentConditions(agent_idx);
         if ((cond.forcecaged || cond.forcecage_sealed) && npcTeleportEscape(bm, agent_idx)) {
             ctx_.npc_recording_ = false;
@@ -1791,19 +1791,19 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
     NpcAutomationStrategy strategy;
     bool           hasMacro = false;
     NpcMacroAction macro{};
-    if (npc_turn_.active && npc_turn_.agent_idx == agent_idx && npc_turn_.resolved_strategy >= 0) {
-        strategy = static_cast<NpcAutomationStrategy>(npc_turn_.resolved_strategy);
-        hasMacro = npc_turn_.has_macro;
-        macro    = npc_turn_.macro;
+    if (npc_.turnActiveFor(agent_idx) && npc_.turn().resolved_strategy >= 0) {
+        strategy = static_cast<NpcAutomationStrategy>(npc_.turn().resolved_strategy);
+        hasMacro = npc_.turn().has_macro;
+        macro    = npc_.turn().macro;
     } else {
-        last_npc_decision_ = npcDecide(bm, agent_idx);   // the trace / Playback HUD read it back
+        npc_.lastDecision() = npcDecide(bm, agent_idx);   // the trace / Playback HUD read it back
         if (const std::exception_ptr err = takeNpcPolicyError()) {   // the policy threw: surface it
             ctx_.npc_recording_ = false;
             std::rethrow_exception(err);
         }
-        strategy = last_npc_decision_.strategy;
-        hasMacro = last_npc_decision_.has_macro;
-        macro    = last_npc_decision_.macro;
+        strategy = npc_.lastDecision().strategy;
+        hasMacro = npc_.lastDecision().has_macro;
+        macro    = npc_.lastDecision().macro;
     }
 
     const FlowStatus fs = (strategy == NpcAutomationStrategy::Policy && hasMacro)
@@ -1811,12 +1811,12 @@ FlowStatus CombatEngine::runNpcTurn(BattleMap& bm, int agent_idx)
                         : dispatchNpcTurn(bm, agent_idx, strategy);
 
     // Stamp the resolution onto a PARKED turn (stamped after dispatch because the executors reset
-    // npc_turn_ when a fresh turn starts, which would wipe a pre-stamp). A completed turn cleared
-    // npc_turn_, so nothing is stamped and the next turn re-resolves.
-    if (npc_turn_.active && npc_turn_.agent_idx == agent_idx) {
-        npc_turn_.resolved_strategy = static_cast<int>(strategy);
-        npc_turn_.has_macro         = hasMacro;
-        npc_turn_.macro             = macro;
+    // npc_.turn() when a fresh turn starts, which would wipe a pre-stamp). A completed turn cleared
+    // npc_.turn(), so nothing is stamped and the next turn re-resolves.
+    if (npc_.turnActiveFor(agent_idx)) {
+        npc_.turn().resolved_strategy = static_cast<int>(strategy);
+        npc_.turn().has_macro         = hasMacro;
+        npc_.turn().macro             = macro;
     }
     // Beast Master (D9): a Bonus Action the turn left unspent commands the Primal Companion (Hunter's
     // Mark, the only real competitor, was cast by the turn itself if it wanted it).
@@ -1834,9 +1834,9 @@ FlowStatus CombatEngine::dispatchNpcTurn(BattleMap& bm, int agent_idx, NpcAutoma
     // fresh-turn heuristic would mis-route the resume. Route by strategy: the three caster strategies
     // re-enter runCasterTurn; everything else (PreferAOE + any strategy that took the Bucket-D recharge
     // route) re-enters runAoeTurn. A weapon-turn resume leaves both cast flags clear and falls through —
-    // runWeaponTurn/runCasterTurn detect it via npc_turn_.
-    if (npc_turn_.active && npc_turn_.agent_idx == agent_idx &&
-        (npc_turn_.cast_launched || npc_turn_.cast_moving)) {
+    // runWeaponTurn/runCasterTurn detect it via npc_.turn().
+    if (npc_.turnActiveFor(agent_idx) &&
+        (npc_.turn().cast_launched || npc_.turn().cast_moving)) {
         switch (strategy) {
             case NpcAutomationStrategy::PreferControl: return runCasterTurn(bm, agent_idx, CasterIntent::Control);
             case NpcAutomationStrategy::PreferHeal:    return runCasterTurn(bm, agent_idx, CasterIntent::Heal);
@@ -1850,8 +1850,8 @@ FlowStatus CombatEngine::dispatchNpcTurn(BattleMap& bm, int agent_idx, NpcAutoma
     // parked turn state defensively (a No-op turn never parks a decision window).
     if (strategy == NpcAutomationStrategy::NoOp) {
         log_("{} cowers in place and takes no action.", agentName(bm, agent_idx));
-        if (npc_turn_.active && npc_turn_.agent_idx == agent_idx)
-            npc_turn_ = NpcTurnState{};
+        if (npc_.turnActiveFor(agent_idx))
+            npc_.turn() = NpcTurnState{};
         return FlowStatus::Completed;
     }
 
@@ -2137,7 +2137,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
     const int n = static_cast<int>(bm.placedAgents().size());
     if (agent_idx < 0 || agent_idx >= n) return FlowStatus::Completed;
 
-    NpcTurnState& st = npc_turn_;
+    NpcTurnState& st = npc_.turn();
     if (!(st.active && st.agent_idx == agent_idx)) {   // fresh turn (else: resuming after a parked window)
         st           = NpcTurnState{};
         st.active    = true;
@@ -3068,7 +3068,7 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
         return bm.placedAgents()[static_cast<std::size_t>(agent_idx)].origin;
     };
 
-    NpcTurnState& st = npc_turn_;
+    NpcTurnState& st = npc_.turn();
     bool resuming_after_move = false;
     if (st.active && st.agent_idx == agent_idx) {        // resuming after a parked window
         if (st.cast_launched) {                          // the single AoE cast already resolved → turn over
@@ -3082,13 +3082,13 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
             resuming_after_move = true;
         } else {
             // No AoE launched and not approaching → this turn fell back to a weapon turn. Resume it:
-            // runWeaponTurn owns npc_turn_ and detects the resume via (active && agent_idx match).
+            // runWeaponTurn owns npc_.turn() and detects the resume via (active && agent_idx match).
             return runWeaponTurn(bm, agent_idx, NpcStrategyPolicy{});
         }
     }
 
     // A macro-action (Step 5) forces the spell and the aim; otherwise the planner picks both.
-    const std::optional<NpcMacroAction> forced = npc_forced_macro_;
+    const std::optional<NpcMacroAction> forced = npc_.forcedMacro();
     const auto planNow = [&] {
         return forced ? npcForcedAoePlan(bm, agent_idx, *forced) : npcPlanAoeCast(bm, agent_idx);
     };
@@ -3103,7 +3103,7 @@ FlowStatus CombatEngine::runAoeTurn(BattleMap& bm, int agent_idx)
     if (!resuming_after_move && plan.spell_idx < 0) {
         // Nothing catchable from here. Two very different situations:
         //   · The agent has NO castable AoE blast at all → it can never blast; act like a Simple melee
-        //     attacker so an AoE-less "caster" is not idle (runWeaponTurn seeds npc_turn_ from scratch).
+        //     attacker so an AoE-less "caster" is not idle (runWeaponTurn seeds npc_.turn() from scratch).
         //   · The agent HAS an AoE spell but no enemy is in range/LoS right now → PreferAOE must ALWAYS
         //     prioritise the AoE (never melee while holding one): move toward the enemies to bring them
         //     into range, then cast this turn if the approach closed enough distance.
@@ -3202,20 +3202,20 @@ NpcCastPlan CombatEngine::npcPlanCasterCast(const BattleMap& bm, int agent_idx,
 // or malformed, baked-in defaults keep the planners working. One home for all NPC-automation knobs so
 // difficulty tuning has somewhere to grow (control_priority + heal_threshold_fraction +
 // classification_ignore_spells).
-void CombatEngine::npcLoadConfig() const noexcept
+void NpcState::loadConfig() const noexcept
 {
-    if (npc_config_loaded_) return;
-    npc_config_loaded_ = true;
+    if (config_loaded_) return;
+    config_loaded_ = true;
 
     // Baked-in default control priority (NPC_AUTOMATION_PLAN.md Step 8) — used if the JSON is missing.
-    npc_control_priority_ = {"Hold Monster", "Hold Person", "Hypnotic Pattern",
+    control_priority_ = {"Hold Monster", "Hold Person", "Hypnotic Pattern",
                              "Slow", "Command", "Tasha's Hideous Laughter"};
-    npc_heal_threshold_fraction_ = 0.5;
+    heal_threshold_fraction_ = 0.5;
     // Baked-in classification ignore list (difficulty resolver): spells that do NOT make their owner a
     // "caster" — flavor / out-of-combat utility, plus combat spells automation can't use (Mage Armor is
     // pre-baked into stat-block AC; Phantom Steed needs mounts; Feather Fall needs a vertical axis).
     // Stored LOWERCASED; membership tests lowercase the probe so stat-block capitalization can't miss.
-    npc_classification_ignore_ = {
+    classification_ignore_ = {
         "speak with animals", "elementalism", "detect thoughts", "mage hand",
         "create or destroy water", "thaumaturgy", "mending", "druidcraft", "control weather",
         "light", "scrying", "mage armor", "locate object", "legend lore", "arcane eye",
@@ -3236,15 +3236,15 @@ void CombatEngine::npcLoadConfig() const noexcept
                 std::vector<std::string> cp;
                 for (const auto& e : j["control_priority"])
                     if (e.is_string()) cp.push_back(e.get<std::string>());
-                if (!cp.empty()) npc_control_priority_ = std::move(cp);
+                if (!cp.empty()) control_priority_ = std::move(cp);
             }
             if (j.contains("heal_threshold_fraction") && j["heal_threshold_fraction"].is_number())
-                npc_heal_threshold_fraction_ = j["heal_threshold_fraction"].get<double>();
+                heal_threshold_fraction_ = j["heal_threshold_fraction"].get<double>();
             if (j.contains("classification_ignore_spells") && j["classification_ignore_spells"].is_array()) {
                 std::set<std::string> ig;
                 for (const auto& e : j["classification_ignore_spells"])
                     if (e.is_string()) ig.insert(npcLowerName(e.get<std::string>()));
-                if (!ig.empty()) npc_classification_ignore_ = std::move(ig);
+                if (!ig.empty()) classification_ignore_ = std::move(ig);
             }
             break;   // first readable config wins
         } catch (...) { /* malformed → keep defaults */ }
@@ -3253,20 +3253,17 @@ void CombatEngine::npcLoadConfig() const noexcept
 
 const std::vector<std::string>& CombatEngine::npcControlPriority() const noexcept
 {
-    npcLoadConfig();
-    return npc_control_priority_;
+    return npc_.controlPriority();
 }
 
 double CombatEngine::npcHealThreshold() const noexcept
 {
-    npcLoadConfig();
-    return npc_heal_threshold_fraction_;
+    return npc_.healThreshold();
 }
 
 const std::set<std::string>& CombatEngine::npcClassificationIgnore() const noexcept
 {
-    npcLoadConfig();
-    return npc_classification_ignore_;
+    return npc_.classificationIgnore();
 }
 
 // PreferControl (Step 8): walk the DM-authored control_priority list IN ORDER and cast the FIRST entry that
@@ -3627,7 +3624,7 @@ FlowStatus CombatEngine::runCasterTurn(BattleMap& bm, int agent_idx, CasterInten
         return bm.placedAgents()[static_cast<std::size_t>(agent_idx)].origin;
     };
 
-    NpcTurnState& st = npc_turn_;
+    NpcTurnState& st = npc_.turn();
     bool resuming_after_move = false;
     if (st.active && st.agent_idx == agent_idx) {        // resuming after a parked window
         if (st.cast_launched) {                          // the single cast already resolved → turn over
@@ -3641,13 +3638,13 @@ FlowStatus CombatEngine::runCasterTurn(BattleMap& bm, int agent_idx, CasterInten
             resuming_after_move = true;
         } else {
             // No cast launched and not approaching → this turn fell back to a weapon turn. Resume it:
-            // runWeaponTurn owns npc_turn_ and detects the resume via (active && agent_idx match).
+            // runWeaponTurn owns npc_.turn() and detects the resume via (active && agent_idx match).
             return runWeaponTurn(bm, agent_idx, NpcStrategyPolicy{});
         }
     }
 
     // A macro-action (Step 5) forces the spell and the target; otherwise the intent's planner picks both.
-    const std::optional<NpcMacroAction> forced = npc_forced_macro_;
+    const std::optional<NpcMacroAction> forced = npc_.forcedMacro();
     const auto planNow = [&] {
         return forced ? npcForcedCastPlan(bm, agent_idx, *forced) : npcPlanCasterCast(bm, agent_idx, intent);
     };
@@ -3658,7 +3655,7 @@ FlowStatus CombatEngine::runCasterTurn(BattleMap& bm, int agent_idx, CasterInten
     if (!resuming_after_move && plan.spell_idx < 0) {
         // Nothing castable from here. Two very different situations (mirrors runAoeTurn):
         //   · No relevant spell at all (approach_target < 0) → act like a Simple weapon attacker so the
-        //     caster is not idle (runWeaponTurn seeds npc_turn_ from scratch).
+        //     caster is not idle (runWeaponTurn seeds npc_.turn() from scratch).
         //   · A worthwhile spell IS held but its target is out of range (approach_target >= 0) → close the
         //     distance to that ally/enemy, then re-plan and cast this turn if the approach reached range.
         if (plan.approach_target < 0)
@@ -4180,20 +4177,18 @@ std::vector<NpcAutomationStrategy> CombatEngine::npcArchetypeStrategies(NpcArche
 
 void CombatEngine::setNpcArchetypeModel(NpcArchetype a, std::vector<NpcAutomationStrategy> ranked)
 {
-    npc_models_[static_cast<std::size_t>(a)] = std::move(ranked);
+    npc_.setModel(a, std::move(ranked));
 }
 
 void CombatEngine::clearNpcArchetypeModels() noexcept
 {
-    for (auto& m : npc_models_) m.clear();
+    npc_.clearModels();
 }
 
 bool CombatEngine::npcModelsLoaded() const noexcept
 {
-    if (npc_policy_) return true;
-    for (const auto& m : npc_models_)
-        if (!m.empty()) return true;
-    return false;
+    if (npc_.policy()) return true;
+    return npc_.anyModel();
 }
 
 // ── Macro-actions, the policy seam and the entity observation (NPC_LEARNING_PLAN.md Step 5) ─────────
@@ -4340,13 +4335,13 @@ std::vector<bool> CombatEngine::macroActionMask(const BattleMap& bm, int agent_i
 
 bool CombatEngine::npcPolicyPick(const BattleMap& bm, int agent_idx, NpcDecision& d) const
 {
-    if (!npc_policy_) return false;
+    if (!npc_.policy()) return false;
     const std::vector<NpcMacroAction> actions = availableMacroActions(bm, agent_idx);
     std::vector<int> ranking;
     try {
-        ranking = npc_policy_->rank(*this, bm, agent_idx, d.archetype, actions);
+        ranking = npc_.policy()->rank(*this, bm, agent_idx, d.archetype, actions);
     } catch (...) {
-        npc_policy_error_ = std::current_exception();   // rethrown by runNpcTurn; the chain carries on
+        npc_.setPolicyError(std::current_exception());   // rethrown by runNpcTurn; the chain carries on
         return false;
     }
     for (std::size_t i = 0; i < ranking.size(); ++i) {
@@ -4370,11 +4365,11 @@ FlowStatus CombatEngine::executeMacroAction(BattleMap& bm, int agent_idx, const 
     if (agent_idx < 0 || agent_idx >= n) return FlowStatus::Completed;
 
     // The AoE / caster executors plan the forced spell + target while this is set (and on their resume).
-    npc_forced_macro_ = action;
+    npc_.forcedMacro() = action;
     struct Reset {
         std::optional<NpcMacroAction>& m;
         ~Reset() { m.reset(); }
-    } reset{npc_forced_macro_};
+    } reset{npc_.forcedMacro()};
 
     using K = NpcMacroKind;
     NpcStrategyPolicy policy;
@@ -4525,7 +4520,7 @@ NpcCastPlan CombatEngine::npcForcedCastPlan(const BattleMap& bm, int agent_idx, 
 
 FlowStatus CombatEngine::runMoveMacroTurn(BattleMap& bm, int agent_idx, const NpcMacroAction& a)
 {
-    NpcTurnState& st = npc_turn_;
+    NpcTurnState& st = npc_.turn();
     // Resume after a parked OA on the way: the move already resolved, and these turns end with it.
     if (st.active && st.agent_idx == agent_idx && st.flee_move_launched) {
         st = NpcTurnState{};

@@ -1,14 +1,14 @@
 # Combat Engine Refactor — Implementation Plan
 
 Status: **IN PROGRESS** — R0, R1, R2, R3 (additive landing + `rules.hpp` unit tests + the
-forwarder deletion that closes it), R4's first four sub-engine cuts (`VisibilityService`,
-`MovementController`, `ConditionTracker`, `SpellEffectStore`) plus its first mis-grouping fix
+forwarder deletion that closes it), R4's first five sub-engine cuts (`VisibilityService`,
+`MovementController`, `ConditionTracker`, `SpellEffectStore`, `NpcState`) plus its first mis-grouping fix
 (`combat_contested.cpp`), and **R5** (`snapshot()`/`restore()`) are done and verified.
 **R3 is now closed**: the four deletable forwarders are gone and the remaining call-site
 migration falls out of R4 rather than being swept. **R4 is the only phase with work left** —
-`NpcDriver` next, then `ReactionArbiter`, which (amended 2026-09-25) now also absorbs what was
+`ReactionArbiter` (`NpcState`, the renamed `NpcDriver` row, landed 2026-11-18 as R4f), which (amended 2026-09-25) now also absorbs what was
 the `AttackResolver` row plus the second mis-grouping (the turn-start reaction flow). See
-**Handoff (2026-09-25)** first, then **Handoff (2026-09-14)**, **R5**, and **R3d/R4d/R4e** below
+**Handoff (2026-11-18)** and **R4f** first, then **Handoff (2026-09-25)**, then **Handoff (2026-09-14)**, **R5**, and **R3d/R4d/R4e** below
 before picking this up in a new session.
 
 **Staleness review (2026-11-18)**: no refactor work since 2026-09-25, but the repo moved on
@@ -64,6 +64,22 @@ No behavior changes, no new features, no bug fixes bundled in. Every phase must 
 `tests/run_all_tests.py` green with byte-identical results for a fixed seed.
 
 ---
+
+## Handoff (2026-11-18)
+
+**R4f landed (2026-11-18)**: `npc_state.hpp` (new) takes every NPC-automation member — `npc_turn_`,
+the `npc_automation_config.json` cache, the Level 5/6 warning guard, the archetype models, the
+last decision, the policy, the forced macro-action and the held policy error. It is a
+**container-only** cut, as R4c and R4e were: the turn logic stays on `CombatEngine` because it
+parks through `beginAttack`/`beginCast`/`beginMove`. Read the **R4f** subsection. The row was
+renamed from `NpcDriver` to **`NpcState`** by the user's decision the same day, because nothing in
+it drives a turn (the same reason R4e renamed its row).
+
+**Next**: `ReactionArbiter`, last, with the deferred items listed at the end of **R4f**. Its API
+should be informed by the App plan's A2 seams (`app.pending` / `app.pick` / `app.attack_seq` /
+`app.cast_setup`, see `gui/pending.py`). Acceptance as before: take a fresh `./test.sh` baseline
+(**263/0** after R4f, which adds a case to `test_snapshot.py`, not a suite), keep `test_determinism.py` byte-identical,
+and mutant-check what guards the moved state.
 
 ## Handoff (2026-09-25)
 
@@ -413,7 +429,7 @@ therefore buys essentially nothing — the churn is method *additions* in the pu
 | **R1** | Split `rpg_bindings.cpp` by domain | very low | 2–3 days | biggest single build-time win |
 | **R2** | Extract `combat_types.hpp` | low | 1–2 days | 40% of header churn stops rebuilding binding TUs |
 | **R3** | Extract `CombatContext` + `rules.hpp` | medium | 1–2 weeks | dissolves the 950-call edge; testable rules — **DONE** *(the residual call-site migration falls out of R4)* |
-| **R4** | Decompose into sub-engines behind a facade | high | multi-week | true modularity — *4 of 6 sub-engines cut (`SpellEffectStore` 2026-09-25) + `ContestedActions`; `NpcDriver` next* |
+| **R4** | Decompose into sub-engines behind a facade | high | multi-week | true modularity — *5 of 6 sub-engines cut (`NpcState` 2026-11-18) + `ContestedActions`; `ReactionArbiter` next* |
 | **R5** | State serialization → snapshot/restore | medium | 1–2 weeks | `MULTIPLAYER_PLAN.md`, mid-combat save — **DONE** |
 
 R0–R2 are mechanical and near-risk-free — do them regardless of whether R4 ever happens.
@@ -772,7 +788,7 @@ look like if a Python-side *caller* ever wants it, is in `memory/known_limitatio
 *Architecture / Infrastructure* → "`rules::` has no Python binding". `README.md`'s Test section
 summarises it for anyone running the suite.
 
-### R4 — Sub-engines behind a facade — **IN PROGRESS** (4 of 6 cut + 1 of 2 mis-groupings fixed, 2026-09-25)
+### R4 — Sub-engines behind a facade — **IN PROGRESS** (5 of 6 cut + 1 of 2 mis-groupings fixed, 2026-11-18)
 
 Legend in the table below: ✅ fully cut · ◐ partially cut (see its subsection for what stayed
 behind and why).
@@ -786,12 +802,12 @@ Each sub-engine owns its state struct and holds `CombatContext&`:
 | `ConditionTracker` ◐ | `activeAgentConditions_`, `nextConditionId_`, petrify/gaseous snapshots | `combat_conditions.cpp` |
 | `SpellEffectStore` ◐ | `activeEffects_`, `safeTargets_`, `zoneAppliedTurn_` | `combat_spells.cpp` |
 | `ReactionArbiter` | `pending_decision_`, `in_flight_turn_`, `in_flight_attack_`, `cast_stack_` (+ `in_flight_move_` from R4b) | reaction paths in `combat_riders.cpp`, `combat_attack.cpp`, `combat_spells.cpp`, `combat_movement.cpp` |
-| `NpcDriver` | `npc_turn_`, npc config cache | `combat_turn.cpp` |
+| `NpcState` ◐ | `npc_turn_`, npc config cache (+ models, policy, forced macro, policy error, last decision, warning guard) | `combat_turn.cpp` |
 
 `CombatEngine` becomes ~281 one-line forwarders preserving the Python API exactly.
 
 **Order matters — take the clean cuts first:** `VisibilityService` → `MovementController` →
-`ConditionTracker` → `SpellEffectStore` → `NpcDriver` → `ReactionArbiter`
+`ConditionTracker` → `SpellEffectStore` → `NpcState` → `ReactionArbiter`
 **last**, because `pending_decision_` plus the three `in_flight_*` members are the only
 genuinely entangled state in the class (4 TUs touch `pending_decision_`) and the reaction
 system's park/resume flow is the hardest thing to move without behavior drift.
@@ -803,6 +819,12 @@ system's park/resume flow is the hardest thing to move without behavior drift.
 > `advanceAttack` (3× `pending_decision_`), `applyAttackReaction`, `applyD20SeenReaction`,
 > `maybeD20SeenInline` (`decider_`) and the generic `submitDecision` — all reaction flow, no
 > clean half. The table is six sub-engines now, not seven.
+>
+> Amendment, agreed with the user 2026-11-18: the `NpcDriver` row became **`NpcState`**
+> (`gui/npc_state.hpp`), because what moved is the NPC-automation state, not the turn driver.
+> The executors that drive the turn stay on `CombatEngine` (see R4f). Older prose that says
+> "the NpcDriver" about those executors (Ranger subclass comments and tests) still means the
+> turn logic, and was left as written.
 
 Two mis-groupings to fix while here, both originally in `combat_riders.cpp`:
 - The turn-start reaction flow (`beginTurnFlow`, `turnStartOptions`, `turnStartReactors`,
@@ -1100,15 +1122,74 @@ un-sets, restores, and requires both back. `test_snapshot.py` 6 → 7.
 `-flto` serial-LTRANS note); `test_determinism.py` byte-identical; `test_snapshot` 7/7;
 `./test.sh`-equivalent run **161/0**.
 
-#### Next cut: `NpcDriver`
+#### R4f — `NpcState` (was `NpcDriver`; the state, not the turn logic) — **DONE** (2026-11-18)
 
-See **Handoff (2026-09-25)** for the measurement so far, and its 2026-11-18 update:
-`combat_serialization.cpp` now touches `npc_turn_` too. `ReactionArbiter` stays last and now
-carries **six** deferred items: `in_flight_move_` plus the movement flow (R4b),
-`ConditionTracker::mutableAll()`'s removal once the tick drivers move (R4c), the turn-start
-reaction flow (R4's second mis-grouping, still in `combat_riders.cpp`), `in_flight_attack_` and
-the attack interrupt flow (the folded `AttackResolver`), and `cast_stack_` with the cast
-interrupt flow (R4e).
+Re-measured first, because the 2026-09-25 counts were stale. Grepped per member, per file:
+
+| member | `combat_turn.cpp` | `combat_serialization.cpp` | `combat.hpp` (inline) |
+| ------ | ----------------- | -------------------------- | --------------------- |
+| `npc_turn_` | 30 (`runNpcTurn`, `dispatchNpcTurn`, `runWeaponTurn`, `runAoeTurn`, `runCasterTurn`, `runFleeTurn`, `runMoveMacroTurn`, `runCompanionDodgeTurn`) | 3 (snapshot, restore reset, restore read) | — |
+| config cache (4 members) | `npcLoadConfig` + its 3 accessors | comment only | — |
+| `npc_nn_level_warned_` | `npcDecide` | comment only | — |
+| `npc_models_` | `npcDecide`, `setNpcArchetypeModel`, `clearNpcArchetypeModels`, `npcModelsLoaded` | comment only | — |
+| `last_npc_decision_` | `runNpcTurn` (5) | comment only | `lastNpcDecision()` |
+| `npc_policy_` | `npcDecide`, `npcModelsLoaded`, `npcPolicyPick` | — | `setNpcPolicy`, `clearNpcPolicy`, `npcPolicyLoaded` |
+| `npc_forced_macro_` | `runAoeTurn`, `runCasterTurn`, `executeMacroAction` | — | — |
+| `npc_policy_error_` | `npcDecide`, `npcPolicyPick` | — | `takeNpcPolicyError()` |
+
+None of these functions touch `pending_decision_`, `in_flight_*` or `cast_stack_`, but every
+executor launches its action through `beginAttack`/`beginCast`/`beginMove`, which park on
+`pending_decision_`, and `submitDecision` resumes into them. Moving the executors would split
+the park/resume flow across two owners before `ReactionArbiter` exists. So the decision was
+**container-only**, the R4c/R4e line.
+
+**New `gui/npc_state.hpp`**, header-only except `loadConfig()`, with **no `CombatContext&`**
+(nothing in it rolls or logs). `CombatEngine` holds `NpcState npc_;` where the NPC member block
+was, and the moved members keep their relative order inside it. Every public engine method is
+unchanged and forwards, so the bindings and `main.py` are untouched. `npcLoadConfig` (private)
+is gone, and its body became `NpcState::loadConfig()` with only member names changed. It stays in
+`combat_turn.cpp` beside the `npcLowerName` helper it calls, so the header needs no `<fstream>`
+or JSON. The public `npcControlPriority`/`npcHealThreshold`/`npcClassificationIgnore` now forward
+to the driver, which lazy-loads exactly as before.
+
+Call-site routes, each checked to be behaviour-identical:
+- `NpcTurnState& st = npc_turn_;` (6 executors) → `npc_.turn()`. That is a mutable reference, a
+  documented transitional seam like R4c's `mutableAll()`, because the phase machines write the
+  struct throughout. It goes away if the executors ever move.
+- The 8 spelled-out `npc_turn_.active && npc_turn_.agent_idx == agent_idx` tests → `turnActiveFor`,
+  the same short-circuit expression.
+- Engine members that were `mutable` (config cache, warning guard, policy error) stay `mutable`
+  inside the driver, behind `const` methods, because `npcDecide` and the planners are `const`.
+  `takePolicyError()` is the same `std::exchange`.
+- `npcModelsLoaded` stays on the engine (it composes policy + models) and calls `anyModel()`,
+  the same loop.
+- `executeMacroAction`'s RAII `Reset` binds `npc_.forcedMacro()`, the same `optional&`.
+
+**Serialization keeps the top-level `"npc_turn"` key**, written and read through `npc_.turn()`
+in the same positions in `snapshot()`/`restore()`. Nothing else in the driver is snapshot state,
+as before (the `combat_serialization.cpp` header comment now names the driver).
+
+**The finding: nothing guarded the `npc_turn` restore.** `test_round_trip_is_stable` only checks
+that the key exists, and its scripted fight never parks an NPC turn. New
+`test_snapshot.py::test_parked_npc_turn_round_trips` parks a Command (Flee) NPC at the OA its
+flee provokes, snapshots, drives the park to completion (which clears the turn), restores, and
+requires the identical `npc_turn` back plus the pending OA. `test_snapshot.py` 7 → 8.
+
+| Mutant | Caught by |
+| ------ | --------- |
+| `restore()` skips the `npc_turn` read | `test_parked_npc_turn_round_trips: npc_turn did not round-trip` (whether any other suite also catches it was not checked) |
+| `turnActiveFor` always false | `test_npc_macro_actions.py` (a parked turn loses its stamped `resolved_strategy`) |
+
+**Verification** (2026-11-18, `rpg_map` image): fresh baseline `./test.sh` **263/0**; after the
+cut, clean build with no warnings, `test_determinism.py` byte-identical to the golden,
+`test_snapshot` 8/8, `./test.sh` **263/0**.
+
+`ReactionArbiter` stays last and now carries these deferred items: `in_flight_move_` plus the
+movement flow (R4b), `ConditionTracker::mutableAll()`'s removal once the tick drivers move (R4c),
+the turn-start reaction flow (R4's second mis-grouping, still in `combat_riders.cpp`),
+`in_flight_attack_` and the attack interrupt flow (the folded `AttackResolver`), `cast_stack_`
+with the cast interrupt flow (R4e), and the NPC turn executors with `NpcState::turn()`'s mutable
+seam (R4f).
 
 ### R5 — Serialization — **DONE** (2026-09-15)
 
@@ -1128,7 +1209,7 @@ The "with R3+R4 done" opener turned out to be a convenience, not a prerequisite.
 `to_json`/`from_json` for every engine member; where that lives is the only thing R4 changes.
 Four members already had one (plan decision #4 made each sub-engine serializable in the commit
 that created it), so `snapshot()` just calls them; the rest serialize from `CombatEngine`
-directly. When ~~`SpellResolver` / `AttackResolver`~~ `ReactionArbiter` / `NpcDriver` land (`SpellEffectStore` did, 2026-09-25, keeping its keys top-level — see R4e), each
+directly. When ~~`SpellResolver` / `AttackResolver`~~ `ReactionArbiter` lands (`SpellEffectStore` did, 2026-09-25, keeping its keys top-level — see R4e; `NpcState` did 2026-11-18 without its own `to_json`, since its one snapshot member is written through `npc_.turn()` — see R4f), it
 should take its own `to_json`/`from_json` and `snapshot()` should delegate to it — **that is a
 move, not new work, and `tests/test_snapshot.py` is the check that the move preserved the
 payload.** Note the one obligation this puts on every remaining R4 cut: a member that moves into
