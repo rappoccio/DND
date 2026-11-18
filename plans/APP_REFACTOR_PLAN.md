@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. Drag & Cancel and Special Attacks next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed, 263/0. Drag & Cancel to be decided.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -216,7 +216,23 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
   two base modes armed at once. Still on `app`: the Attack arm's riders
   (`pending_horde_breaker_targets`, …), `pending_ward_*`, `pending_dispel_selection` and
   the Chromatic chain state.
-  **Next:** Drag & Cancel and Special Attacks out of `App`.
+  **A2c committed 2026-11-18 (263/0, goldens unchanged):** neither cluster's
+  member list had been recorded, and `graph.json` (built at a849702) clusters differently,
+  so the seam was re-derived from the code. 50 methods (about 1.47k lines) →
+  `gui/app_attacks.py`: the Attack action's sequence (`_start_attack`,
+  `_resolve_combat_attack`, `_finish_attack`, Extra Attack, off-hand/Nick, attack
+  replacements), its riders (Cleave, Sweep, Horde Breaker, Sudden Strike, Beast's Strike,
+  GWM Hew, Flurry, Quivering Palm) and the attacks that replace one (unarmed
+  punch/grapple/push, Vampiric Bite, Shove, grapple escape/drop). `App` keeps 24
+  forwarders (names used by `menus/riders.py`, `menus/reactions.py`, `menus/features.py`,
+  `net/picks.py`, `actions.py`, `app_initiative.py`, tests, plus `_finish_attack` bound as
+  the reaction continuation). Stayed: `_are_allies` and the `_pending_spell_*` helpers
+  (Spell Activation, A4), the Soulknife/Interception checks, the weapon factories other
+  than the unarmed punch. `App` 16,579 lines, 558 methods.
+  **Drag & Cancel is not a method seam:** map drag handling is inline in `_handle_events`
+  (its map-mouse block), item drag is three small methods, and cancel already lives in
+  `net/picks.py`. Whether to split that block out is open.
+
 - **A3. Turn mirrors** (D5, behavior change, separate sign-off): read budgets/action state
   from the engine instead of copying them.
 - **A4. Spell Activation UI** last, once its callers go through `app.pending`.
