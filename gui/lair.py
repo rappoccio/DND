@@ -21,6 +21,7 @@ The four lair actions are named handlers, not a general language:
 
 import rpg_battle_map as rpg
 
+import app_attacks
 from helpers import can_place_agent
 
 LAIR_INIT = 20
@@ -330,16 +331,19 @@ def _strike_and_vanish(app, monster, target: int, own: int, verb: str):
     app._combat_log_add(f"{verb} {tname}!")
     a = rpg.Attack(new, target, 0)
     a.attack_slot = "legendary"          # out of turn: no action economy
-    app._reaction_finish = lambda: _vanish(app, new)
+    app._reaction_finish = lambda: _vanish(app, new, target)
     status = app.combat.begin_attack(app.bm, a)
     app._flush_combat_log()
     if status == rpg.FlowStatus.AwaitingDecision:
         app._show_pending_reaction_menu()   # Shield etc.; resumes via _reaction_finish
     else:
-        _vanish(app, new)
+        _vanish(app, new, target)
 
 
-def _vanish(app, new: int):
+def _vanish(app, new: int, target: int = -1):
+    app._flush_combat_log()
+    if target >= 0:
+        app_attacks.report_attack_outcome(app, new, target)
     app.bm.set_agent_removed_from_play(new, True)
     app._combat_log_add(f"The {app.bm.placed_agents[new].name} vanishes.")
     app._sync_spell_effect_cache()

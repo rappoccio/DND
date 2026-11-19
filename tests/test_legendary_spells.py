@@ -144,6 +144,75 @@ def test_loader_reads_costs_and_spells():
     print("✅ test_loader_reads_costs_and_spells passed")
 
 
+# ── Legendary weapon attacks: the log line, refunds, and the turn row ────────────────
+
+def _make_legendary_striker(app, idx, budget=3):
+    """idx gets a legendary Greataxe swing (its own weapon, matched by name)."""
+    s = app.combat.get_agent_stats(app.bm, idx)
+    s.has_legendary_actions = True
+    s.legendary_actions_max = 3
+    s.legendary_actions_current = budget
+    s.legendary_action_names = ["Greataxe"]
+    app.combat.set_agent_stats(app.bm, idx, s)
+    app._legendary_queue = [idx]
+    app._legendary_actor = idx
+
+
+def test_legendary_attack_is_logged():
+    """A legendary weapon attack writes its HIT / miss line (the C++ logger has none)."""
+    app = _app()
+    skarn, aria = _idx(app, "Skarn"), _idx(app, "Aria")      # adjacent
+    _make_legendary_striker(app, skarn)
+    app._choose_legendary_action("Greataxe")
+    assert app._picking("legendary_target")
+    app.combat_log_wire.clear()
+    import app_initiative
+    app_initiative.resolve_legendary_attack(app, aria)
+    lines = [m for m in app.combat_log_wire if m.startswith("Legendary Greataxe: Skarn→Aria: ")]
+    assert lines and ("HIT" in lines[0] or "miss" in lines[0]), app.combat_log_wire
+    assert _budget(app, skarn) == 2
+    print("✅ test_legendary_attack_is_logged passed")
+
+
+def test_out_of_reach_legendary_attack_refunds_and_keeps_the_pick():
+    app = _app()
+    skarn, brannor = _idx(app, "Skarn"), _idx(app, "Brannor")   # far away
+    _make_legendary_striker(app, skarn)
+    app._choose_legendary_action("Greataxe")
+    import app_initiative
+    app_initiative.resolve_legendary_attack(app, brannor)
+    assert _budget(app, skarn) == 3, "an attack that never happened costs nothing"
+    assert app._picking("legendary_target"), "the DM picks again"
+    assert app._legendary_actor == skarn
+    print("✅ test_out_of_reach_legendary_attack_refunds_and_keeps_the_pick passed")
+
+
+def test_dismissed_legendary_menu_comes_back_and_end_turn_passes():
+    """A stray click closes the legendary menu. The panel's Legendary Actions… reopens it
+    (dropping a half-made pick); End Turn passes the creature without skipping a turn."""
+    from menus import panel
+    app = _app()
+    skarn = _idx(app, "Skarn")
+    _make_legendary_striker(app, skarn)
+    turn_before = app.turn_idx
+    features.show_legendary_action_menu(app, skarn, app.combat.get_agent_stats(app.bm, skarn))
+    app.prompts.cancel()                                  # the stray click
+    app._draw_combat_panel()
+    assert [a.id for a in panel.menu_group(app, "turn")] == ["legendary_actions", "end_turn"]
+    app._perform_action("legendary_actions", None)
+    assert app.prompts.live is not None and "legendary action" in app.prompts.live.title
+    app._choose_legendary_action("Greataxe")              # arm a pick, then reopen
+    assert app._picking("legendary_target")
+    app._perform_action("legendary_actions", None)
+    assert not app._picking("legendary_target") and app.prompts.live is not None
+    assert _budget(app, skarn) == 3
+    app._perform_action("end_turn", None)                 # passes
+    assert app._legendary_actor == -1
+    assert app.turn_idx == turn_before, "End Turn must not advance the initiative again"
+    assert _budget(app, skarn) == 3
+    print("✅ test_dismissed_legendary_menu_comes_back_and_end_turn_passes passed")
+
+
 if __name__ == "__main__":
     test_gaze_costs_two_and_burns_the_target()
     test_an_unaffordable_option_is_refused()
@@ -151,4 +220,7 @@ if __name__ == "__main__":
     test_out_of_range_keeps_the_pick()
     test_menu_labels_show_the_cost()
     test_loader_reads_costs_and_spells()
+    test_legendary_attack_is_logged()
+    test_out_of_reach_legendary_attack_refunds_and_keeps_the_pick()
+    test_dismissed_legendary_menu_comes_back_and_end_turn_passes()
     print("\nAll legendary-spell tests passed ✅")

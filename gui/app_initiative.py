@@ -25,6 +25,7 @@ import pygame
 
 import rpg_battle_map as rpg
 
+import app_attacks
 import autosave
 import lair
 import saves
@@ -1037,6 +1038,50 @@ def pass_legendary(app):
     offer_next_legendary(app)
 
 
+def in_legendary_phase(app) -> bool:
+    """True between turns while a legendary creature is being offered (or is resolving) an
+    action. turn_idx already points at the next combatant, whose turn has not begun."""
+    return bool(app.combat_active) and getattr(app, "_legendary_actor", -1) >= 0
+
+
+def _drop_legendary_in_flight(app):
+    """Drop a half-made legendary pick and close a live popup. Returns True if a legendary
+    Dash was mid-move (its cost is already spent, so the action counts as taken)."""
+    app._drop_pick("legendary_target")
+    app._drop_pick("legendary_spell")
+    if app.prompts.live is not None:
+        app.prompts.cancel()
+    was_moving = app._legendary_move_active
+    app._legendary_move_active = False
+    return was_moving
+
+
+def reopen_legendary_menu(app):
+    """Panel "Legendary Actions…" / Esc on a legendary pick: the menu is a popup a stray
+    click dismisses, so show it again. A half-made pick is dropped with nothing spent; a
+    legendary Dash in progress ends there (it was paid for when it began)."""
+    idx = app._legendary_actor
+    if idx < 0:
+        return
+    if _drop_legendary_in_flight(app):
+        after_legendary_action(app, idx)
+        return
+    features.show_legendary_action_menu(app, idx, app.combat.get_agent_stats(app.bm, idx))
+
+
+def end_turn_legendary(app):
+    """End Turn during the legendary phase passes the creature being offered, like the
+    menu's Pass (the next eligible creature is offered, else the next turn begins). It never
+    advances the initiative again: that already happened when the last turn ended."""
+    idx = app._legendary_actor
+    if idx < 0:
+        return
+    if _drop_legendary_in_flight(app):
+        after_legendary_action(app, idx)
+    else:
+        pass_legendary(app)
+
+
 def legendary_cost(app, idx: int, action_name: str) -> int:
     """Legendary actions the named option costs creature idx (bestiary action_costs; default 1)."""
     st = app.combat.get_agent_stats(app.bm, idx)
@@ -1133,20 +1178,37 @@ def resolve_legendary_attack(app, target_idx: int):
     action = rpg.Attack(idx, target_idx, widx)
     action.attack_slot = "legendary"   # resolves like a normal attack; no turn-economy cost
     # The attempt costs its legendary actions regardless of hit/miss.
-    spend_legendary_action(app, idx, app._legendary_cost_pending)
-    app._reaction_finish = lambda i=idx: finish_legendary_attack(app, i)
+    cost = app._legendary_cost_pending
+    spend_legendary_action(app, idx, cost)
+    app._reaction_finish = lambda i=idx, t=target_idx, c=cost: finish_legendary_attack(app, i, t, c)
     status = app.combat.begin_attack(app.bm, action)
     app._flush_combat_log()
     if status == rpg.FlowStatus.AwaitingDecision:
         app._show_pending_reaction_menu()   # target's Shield etc.; resumes via _reaction_finish
     else:
-        finish_legendary_attack(app, idx)
+        finish_legendary_attack(app, idx, target_idx, cost)
 
 
-def finish_legendary_attack(app, idx: int):
+def finish_legendary_attack(app, idx: int, target_idx: int = -1, cost: int = 0):
     """Post-resolution of a legendary attack (immediate or after a defender reaction window).
-    The hit/miss, damage and on-hit riders were applied in C++; just refresh and re-offer."""
+    The hit/miss, damage and on-hit riders were applied in C++; log the outcome (the C++
+    logger carries no HIT/miss line — finish_attack writes it for turn attacks, this does it
+    here), refresh and re-offer. An invalid attempt (out of reach, unseen target) refunds the
+    legendary action and re-arms the target pick, like a turn attack's misclick."""
     app._flush_combat_log()
+    label = f"Legendary {app._legendary_attack_name}" if app._legendary_attack_name else "Legendary"
+    if target_idx >= 0 and not app_attacks.report_attack_outcome(app, idx, target_idx, label):
+        st = app.combat.get_agent_stats(app.bm, idx)
+        st.legendary_actions_current += cost
+        app.combat.set_agent_stats(app.bm, idx, st)
+        name = app.bm.placed_agents[idx].name
+        why = ("can't see that target" if not app.combat.can_perceive_target(app.bm, idx, target_idx)
+               else "out of reach")
+        app._combat_log_add(f"{name}: {why} — click another target for legendary "
+                            f"{app._legendary_attack_name}.")
+        app._arm_pick("legendary_target")
+        app._flush_combat_log()
+        return
     app._sync_spell_effect_cache()
     app._update_attack_overlay()
     after_legendary_action(app, idx)

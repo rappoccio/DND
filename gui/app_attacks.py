@@ -421,6 +421,41 @@ def apply_chaos_staff_rider(app, atk_idx: int, target_idx: int, weapon_idx: int,
         f"Chaos Staff (1d4={roll}): {tgt_name} is {condition} until the start of the Slaad's next turn.")
 
 
+def attack_outcome_msg(app, atk_name: str, tgt_name: str, result, exh_note: str = "") -> str:
+    """The one-line HIT / miss log entry for a resolved AttackResult."""
+    if result.hit:
+        dmg_parts = app._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+        dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+        return (f"{atk_name}→{tgt_name}: "
+                f"HIT {result.total_damage}{app._damage_breakdown_str(result)} {dmg_type_str}"
+                f"{' CRIT!' if result.critical else ''}"
+                f"{' — DOWN' if result.target_down else ''}"
+                f"{exh_note}")
+    return (f"{atk_name}→{tgt_name}: "
+            f"miss (roll {result.total_roll} vs AC {result.target_ac})"
+            f"{exh_note}")
+
+
+def report_attack_outcome(app, atk_idx: int, target_idx: int, label: str = "") -> bool:
+    """Log + flash the last begin_attack result for an out-of-turn strike that skips the
+    finish_attack rider chain (legendary actions, lair spawns). `label` prefixes the line
+    (e.g. "Legendary Unarmed Strike"). Returns result.valid."""
+    result = app.combat.last_attack_result()
+    agents = app.bm.placed_agents
+    atk_name = agents[atk_idx].name if 0 <= atk_idx < len(agents) else "?"
+    tgt_name = agents[target_idx].name if 0 <= target_idx < len(agents) else "?"
+    if not result.valid:
+        return False
+    msg = attack_outcome_msg(app, atk_name, tgt_name, result)
+    app._combat_log_add(f"{label}: {msg}" if label else msg)
+    if result.hit:
+        flash_txt = f"Crit ({result.total_damage})" if result.critical else f"Hit ({result.total_damage})"
+        app._spawn_flash(target_idx, flash_txt, FLASH_CRIT if result.critical else FLASH_GOOD)
+    else:
+        app._spawn_flash(target_idx, "Miss", FLASH_BAD)
+    return True
+
+
 def finish_attack(app):
     """Post-resolution of a begin_attack flow (immediate or after the OnHit Shield window). Reads
     the AttackResult from last_attack_result() and runs the attacker rider-offer chain + logging."""
@@ -604,19 +639,7 @@ def finish_attack(app):
             has_soul_of_vengeance = True
 
     # FLAG: Move to C++
-    # Format attack message
-    if result.hit:
-        dmg_parts = app._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
-        dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
-        atk_msg = (f"{atk_name}→{tgt_name}: "
-                   f"HIT {result.total_damage}{app._damage_breakdown_str(result)} {dmg_type_str}"
-                   f"{' CRIT!' if result.critical else ''}"
-                   f"{' — DOWN' if result.target_down else ''}"
-                   f"{exh_note}")
-    else:
-        atk_msg = (f"{atk_name}→{tgt_name}: "
-                   f"miss (roll {result.total_roll} vs AC {result.target_ac})"
-                   f"{exh_note}")
+    atk_msg = attack_outcome_msg(app, atk_name, tgt_name, result, exh_note)
 
     # On-map outcome flash above the targeted token.
     if result.hit:
@@ -680,13 +703,7 @@ def finish_attack(app):
         nonlocal atk_msg
         if path_state["applied"]:
             # The detonation raised the damage; rebuild the HIT line the chain will log.
-            dmg_parts = app._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
-            dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
-            atk_msg = (f"{atk_name}→{tgt_name}: "
-                       f"HIT {result.total_damage}{app._damage_breakdown_str(result)} {dmg_type_str}"
-                       f"{' CRIT!' if result.critical else ''}"
-                       f"{' — DOWN' if result.target_down else ''}"
-                       f"{exh_note}")
+            atk_msg = attack_outcome_msg(app, atk_name, tgt_name, result, exh_note)
         # Defer logging until the rider effect is chosen; otherwise log immediately.
         if has_cunning_strike:
             riders.offer_cunning_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)

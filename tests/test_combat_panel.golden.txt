@@ -88,6 +88,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -238,6 +239,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -388,6 +390,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_long_jump | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
@@ -538,6 +541,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_long_jump | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
@@ -694,6 +698,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -847,6 +852,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -998,6 +1004,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -1149,6 +1156,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -1296,6 +1304,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_long_jump | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
@@ -1455,6 +1464,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -1609,6 +1619,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -1761,6 +1772,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_long_jump | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
@@ -1916,6 +1928,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_long_jump | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
@@ -2068,6 +2081,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -2220,6 +2234,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -2375,6 +2390,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -2524,6 +2540,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -2676,6 +2693,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -2833,6 +2851,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -2994,6 +3013,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -3146,6 +3166,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -3300,6 +3321,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -3454,6 +3476,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -3609,6 +3632,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -3760,6 +3784,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -3909,6 +3934,7 @@ btn  | -           | btn_cbt_inspiring_smite | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -4061,6 +4087,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -4213,6 +4240,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
@@ -4366,6 +4394,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
@@ -4520,6 +4549,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
@@ -4678,6 +4708,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -4840,6 +4871,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -4996,6 +5028,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -5154,6 +5187,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -5313,6 +5347,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -5476,6 +5511,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -5624,6 +5660,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -5775,6 +5812,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -5927,6 +5965,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -6079,6 +6118,7 @@ btn  | -           | btn_cbt_inspiring_smite | - | - | no
 btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -6238,6 +6278,7 @@ btn  | -           | btn_cbt_inspiring_smite | - | - | no
 btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -6396,6 +6437,7 @@ btn  | -           | btn_cbt_inspiring_smite | - | - | no
 btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -6556,6 +6598,7 @@ btn  | -           | btn_cbt_innate_sorcery | - | - | no
 btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
@@ -6709,6 +6752,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -6864,6 +6908,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -7016,6 +7061,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -7174,6 +7220,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -7326,6 +7373,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -7480,6 +7528,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -7631,6 +7680,7 @@ btn  | -           | btn_cbt_inspiring_smite | - | - | no
 btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -7788,6 +7838,7 @@ btn  | -           | btn_cbt_inspiring_smite | - | - | no
 btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -7941,6 +7992,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -8102,6 +8154,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
@@ -8262,6 +8315,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_martial_arts | - | - | no
@@ -8413,6 +8467,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -8567,6 +8622,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -8717,6 +8773,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -8869,6 +8926,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -9022,6 +9080,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
@@ -9174,6 +9233,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
 btn  | -           | btn_cbt_mantle_majesty | - | - | no
@@ -9324,6 +9384,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -9475,6 +9536,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -9626,6 +9688,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -9779,6 +9842,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -9930,6 +9994,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -10077,6 +10142,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_long_jump | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
@@ -10243,6 +10309,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -10399,6 +10466,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -10556,6 +10624,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -10704,6 +10773,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no
@@ -10843,6 +10913,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_long_jump | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
@@ -11003,6 +11074,7 @@ btn  | -           | btn_cbt_intimidating_presence | - | - | no
 btn  | -           | btn_cbt_invoke_duplicity | - | - | no
 btn  | -           | btn_cbt_lair_actions | - | - | no
 btn  | -           | btn_cbt_lay_on_hands | - | - | no
+btn  | -           | btn_cbt_legendary_actions | - | - | no
 btn  | -           | btn_cbt_living_legend | - | - | no
 btn  | -           | btn_cbt_magical_cunning | - | - | no
 btn  | -           | btn_cbt_mantle | - | - | no

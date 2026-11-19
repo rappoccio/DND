@@ -349,6 +349,10 @@ class ActionMenu:
         if lair.on_lair_turn(app) and getattr(app, "_lair_actor", -1) >= 0:
             return [Action("lair_actions", "Lair Actions…", GROUP_TURN),
                     Action("end_turn", "End Turn", GROUP_TURN)]
+        # Legendary actions (app_initiative.py): the same popup, between turns.
+        if getattr(app, "_legendary_actor", -1) >= 0 and app.combat_active:
+            return [Action("legendary_actions", "Legendary Actions…", GROUP_TURN),
+                    Action("end_turn", "End Turn", GROUP_TURN)]
         return [Action("end_turn", "End Turn", GROUP_TURN)]
 
     # ── §4 — the Action economy band ───────────────────────────────────────────

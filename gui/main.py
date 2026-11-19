@@ -8705,11 +8705,15 @@ class App:
             elif not self.combat_paused:
                 if lair.on_lair_turn(self):
                     lair.finish(self)     # passes: drops any armed lair pick, then advances
+                elif app_initiative.in_legendary_phase(self):
+                    app_initiative.end_turn_legendary(self)   # passes the legendary creature
                 else:
                     self._advance_turn()
                 self._flush_combat_log()
         if action_id == "lair_actions":
             lair.cancel_pick(self)        # reopen the Lair menu; a half-made pick is dropped
+        if action_id == "legendary_actions":
+            app_initiative.reopen_legendary_menu(self)   # a half-made pick is dropped
         if action_id == "end_combat":
             self._end_combat()
         if action_id == "drop_concentration":
@@ -9203,6 +9207,10 @@ class App:
                     continue
                 if self._pick_data("lair") and event.key == pygame.K_ESCAPE:
                     lair.cancel_pick(self)
+                    continue
+                if event.key == pygame.K_ESCAPE and (self._picking("legendary_target")
+                                                     or self._pick_data("legendary_spell")):
+                    app_initiative.reopen_legendary_menu(self)
                     continue
                 if self._picking("mantle") and event.key == pygame.K_ESCAPE:
                     self._cancel_mantle()
