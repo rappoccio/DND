@@ -28,7 +28,7 @@ import run_state as rs
 import save_layout as sl
 from atomic_io import atomic_write_json
 from constants import PC_FACTION
-from dungeon import Dungeon
+from dungeon import DUNGEON_LAYOUT_VERSION, Dungeon
 from net.roster import SessionRoster
 
 # Top-level keys of an agents file that are creatures, not encounter metadata.
@@ -302,3 +302,84 @@ def new_dungeon(campaign_root: str, name: str, scene: Scene | None = None, *,
     page.staging_cells = copy.deepcopy(extras.get("staging_cells")) or None
     dung.save(layout.manifest_path)
     return out
+
+
+# ── Generated dungeons (Generate Dungeon on the blank map) ───────────────────
+@dataclass
+class GeneratedPage:
+    """One generated page: the art it is drawn on, its terrain and roster documents (old
+    shape, as the generator wrote them), and its place on the global grid."""
+    map: str
+    image: str
+    terrain: dict
+    agents: dict
+    origin: list = field(default_factory=lambda: [0, 0, 0])
+    cols: int = 0
+    rows: int = 0
+
+
+def generated_dungeon_dir(campaign_root: str, name: str) -> str:
+    """Where ``new_generated_dungeon`` puts ``name``: the campaign's ``<slug>/``."""
+    return os.path.join(os.path.abspath(campaign_root), sl.slugify(name))
+
+
+def new_generated_dungeon(campaign_root: str, name: str, pages: list[GeneratedPage], *,
+                          entry_map: str, campaign_name: str | None = None,
+                          replace: bool = False, stamp: str = "") -> NewDungeon:
+    """Write generated pages as a campaign dungeon named ``name`` (slugified).
+
+    Every page is the dungeon's own map: the art is copied to ``<dungeon>/maps/<map>/``
+    with that page's ``map.json`` beside it, so pages that share one image (every floor
+    of a generated dungeon is drawn on the same blank PNG) never share walls, and nothing
+    lands in the campaign library. A page's mobs are its ``encounters/initial.json`` and
+    its section of ``runs/main``; its ladders, door staples and staging room go on its
+    ``dungeon.json`` entry; its fog and door states go to the run.
+
+    A dungeon already named ``name`` is refused unless ``replace``: then its folder is
+    moved to ``<campaign>/_archive/<slug>-<stamp>`` first (nothing is deleted), so the
+    old runs, autosaves and combat sidecars can't leak into the new dungeon.
+    ``dungeon.json`` is written last, so a failure part way leaves no openable dungeon."""
+    if not pages:
+        raise ValueError("a generated dungeon needs at least one page")
+    slug = sl.slugify(name)
+    root = os.path.abspath(campaign_root)
+    if os.path.isfile(os.path.join(root, sl.CAMPAIGN_FILE)):
+        camp = sl.Campaign(root)
+    else:
+        camp = sl.Campaign.create(root, campaign_name)
+    layout = camp.dungeon(slug)
+    if os.path.exists(layout.root):
+        if not replace:
+            raise ValueError(f"{camp.name} already has a dungeon {slug!r}")
+        arch = os.path.join(camp.root, "_archive")
+        os.makedirs(arch, exist_ok=True)
+        dst = os.path.join(arch, f"{slug}-{stamp}" if stamp else slug)
+        dst = os.path.join(arch, sl.unique_slug(os.path.basename(dst), os.listdir(arch)))
+        shutil.move(layout.root, dst)
+
+    run = rs.new_run(entry_map)
+    dung = Dungeon(pages=[], entry_page_id=entry_map, version=DUNGEON_LAYOUT_VERSION)
+    for p in pages:
+        m = sl._check_name(p.map, "map")
+        dst = os.path.join(layout.map_dir(m), m + os.path.splitext(p.image)[1].lower())
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(p.image, dst)
+        map_doc, extras, state = rs.split_terrain(p.terrain)
+        atomic_write_json(layout.write_path(m, sl.MAP_FILE), map_doc)
+        enc = encounter_doc(p.agents, ())
+        if enc["agents"]:
+            atomic_write_json(layout.encounter_path(m, INITIAL_ENCOUNTER), enc)
+        run_section_from(run, m, p.agents, state, (),
+                         encounter=INITIAL_ENCOUNTER if enc["agents"] else None)
+        page = Dungeon.single_map(m, p.cols, p.rows).pages[0]
+        page.origin = [int(v) for v in p.origin]
+        page.ladders = copy.deepcopy(extras.get("ladders", []) or [])
+        page.door_links = copy.deepcopy(extras.get("door_links", []) or [])
+        page.staging_cells = copy.deepcopy(extras.get("staging_cells")) or None
+        dung.pages.append(page)
+
+    if not os.path.isfile(camp.session_path):
+        SessionRoster().save(camp.session_path)
+    rs.save_run(layout.run_path(), run)
+    dung.save(layout.manifest_path)
+    return NewDungeon(layout, entry_map)

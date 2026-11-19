@@ -20,15 +20,21 @@ import math
 import os
 import random
 import re
+import shutil
 import sys
+import tempfile
 import textwrap
+import time
 
 import pygame
 
 import rpg_battle_map as rpg
 
 import app_dungeon_pages
+import campaign_import
+import save_layout
 from dungeon import Dungeon, MapPage
+from scene_store import CampaignStore
 from widgets import Button, IntStepper, TextInput
 
 
@@ -412,7 +418,7 @@ def pick_room_cell(rooms_meta, rng, avoid=None):
 
 
 def generate_multifloor(app, num_floors, terrain_params, encounter_params, base,
-                         maps_x=1, maps_y=1):
+                         maps_x=1, maps_y=1, out_dir=None, activate=True):
     """Generate an ``num_floors``-floor dungeon on the current map's PNG, each floor
     a freshly carved random layout (plus a populated encounter when
     ``encounter_params`` is given), wired into a ``<base>.dungeon.json`` with
@@ -428,7 +434,12 @@ def generate_multifloor(app, num_floors, terrain_params, encounter_params, base,
     ladder up from the spine's local (c,r) lands at the same (c,r) one floor higher —
     that cell is force-opened to FLOOR on the upper spine so the climb never ends in
     rock. Returns a summary list of strings; raises ValueError if a tile can't be
-    carved."""
+    carved.
+
+    ``out_dir`` (default: the map's folder) is where the page files and the manifest
+    go. ``activate=False`` leaves the manifest unopened: the blank-map path writes to a
+    scratch folder and converts it into a campaign dungeon instead."""
+    out_dir = out_dir or app._map_dir
     maps_x = max(1, min(4, int(maps_x)))
     maps_y = max(1, min(4, int(maps_y)))
     cols = int(getattr(app.bm, "grid_cols", 0) or 0)
@@ -564,7 +575,7 @@ def generate_multifloor(app, num_floors, terrain_params, encounter_params, base,
                     agents = [a for res in keep for a in res["agents"]]
                     total_mobs += len(agents)
 
-                page_base = multifloor_page_base(app, base, z, mx, my)
+                page_base = multifloor_page_base(app, base, z, mx, my, out_dir)
                 ter_path = page_base + "_terrain.json"
                 agt_path = page_base + "_agents.json"
                 write_generated_terrain(app, ter_path, regions, rooms_meta, t["doors"],
@@ -590,8 +601,13 @@ def generate_multifloor(app, num_floors, terrain_params, encounter_params, base,
         down_cell = up_cell   # the next floor gets a down-ladder where we climbed up
 
     dungeon = Dungeon(pages=pages, entry_page_id="floor0")
-    manifest = os.path.join(app._map_dir, f"{base}.dungeon.json")
+    manifest = os.path.join(out_dir, f"{base}.dungeon.json")
     dungeon.save(manifest)
+
+    per_floor = maps_x * maps_y
+    if not activate:
+        return multifloor_summary(num_floors, maps_x, maps_y, png_name, encounter_params,
+                                  total_mobs, boss_dropped, total_staples, manifest=None)
 
     # Activate: drop any stale page pointer so _switch_to_page treats this as an
     # initial load (no save-back of the transient generation scene), then open floor 0.
@@ -600,6 +616,14 @@ def generate_multifloor(app, num_floors, terrain_params, encounter_params, base,
     app.dungeon_page = None
     app_dungeon_pages.switch_to_page(app, dungeon.entry_page(), force=True)
 
+    return multifloor_summary(num_floors, maps_x, maps_y, png_name, encounter_params,
+                              total_mobs, boss_dropped, total_staples, manifest=manifest)
+
+
+def multifloor_summary(num_floors, maps_x, maps_y, png_name, encounter_params,
+                       total_mobs, boss_dropped, total_staples, manifest=None):
+    """The closing message of a multi-floor generation. ``manifest`` names the saved
+    file; None leaves that line for the caller (the blank-map path saves elsewhere)."""
     per_floor = maps_x * maps_y
     layout = f"{maps_x}×{maps_y} maps/floor" if per_floor > 1 else "1 map/floor"
     summary = [f"Dungeon generated: {num_floors} floors, {layout} on {png_name}"]
@@ -610,7 +634,8 @@ def generate_multifloor(app, num_floors, terrain_params, encounter_params, base,
                            "so its toughest mob is the boss.")
     else:
         summary.append("terrain only; ladders link every floor")
-    summary.append(f"Saved manifest: {os.path.basename(manifest)}")
+    if manifest:
+        summary.append(f"Saved manifest: {os.path.basename(manifest)}")
     if per_floor > 1:
         summary.append(f"{total_staples} linked doors join the abutting maps on each floor.")
         summary.append("Open one and 'Go through door' to walk to the next map "
@@ -735,11 +760,11 @@ def generate_terrain_with(app, params, cols, rows):
     ])
 
 
-def multifloor_page_base(app, base, z, mx, my) -> str:
+def multifloor_page_base(app, base, z, mx, my, out_dir=None) -> str:
     """'<map dir>/<base>_f<z>[_<mx>_<my>]': one generated page's file stem. The (0, 0)
     tile of a floor is its spine and carries no tile suffix."""
     suffix = "" if (mx, my) == (0, 0) else f"_{mx}_{my}"
-    return os.path.join(app._map_dir, f"{base}_f{z}{suffix}")
+    return os.path.join(out_dir or app._map_dir, f"{base}_f{z}{suffix}")
 
 
 def generation_targets(app, params, *, multi: bool, agents_path=None) -> list:
@@ -1287,6 +1312,9 @@ def on_generate_dungeon(app):
     params = app._modal_generate_dungeon()
     if not params:
         return
+    if on_blank_map(app):
+        ask_generated_dungeon_name(app, params)
+        return
     multi = params.get("carve", True) and (params.get("floors", 1) > 1
                                            or params.get("maps_x", 1) > 1
                                            or params.get("maps_y", 1) > 1)
@@ -1364,6 +1392,16 @@ def generate_dungeon_with(app, params):
                                  "Try fewer/smaller rooms or a bigger grid."])
             return
 
+    lines = populate_current_map(app, params, eg, rng, dungeon_out_path(app))
+    if lines:
+        app._modal_message(lines)
+
+
+def populate_current_map(app, params, eg, rng, out_path):
+    """Fill the live map's rooms with the generated encounter, write it to ``out_path``
+    and load it as the scene's roster. Returns the closing message's lines, or None
+    after reporting why nothing was placed."""
+    gui_dir = os.path.dirname(os.path.abspath(__file__))
     try:
         bestiary = eg.Bestiary(data_dir=gui_dir)
         # Prefer dungeon_from_png walk-order room metadata if the terrain carries it
@@ -1380,12 +1418,12 @@ def generate_dungeon_with(app, params):
             allowed=params.get("allowed_mobs"), boss_name=params.get("boss_mob"))
     except Exception as e:
         app._modal_message(["Generate Dungeon failed", str(e)])
-        return
+        return None
 
     if not rooms:
         app._modal_message(["Generate Dungeon", "No rooms detected on this map.",
                              "Load/paint terrain with walls, or lower Min room cells."])
-        return
+        return None
     # Leave the walk-order entrance (room 0) empty so Load PCs has a clear staging
     # room to drop the party into. results are in walk order, so results[0] is that
     # entrance; the boss (if any) is forced into the LAST room, so this never drops it.
@@ -1394,7 +1432,7 @@ def generate_dungeon_with(app, params):
     if not all_agents:
         app._modal_message(["Generate Dungeon",
                              "Rooms were too small to place any mobs."])
-        return
+        return None
     # Record the exact (post-filter) room the generator left empty — rooms[0], matching
     # results[0] — so Load PCs drops the party there rather than re-deriving "room 0".
     # Persist it into the terrain sidecar so it survives the _load_agents reload below.
@@ -1406,7 +1444,6 @@ def generate_dungeon_with(app, params):
     # open dungeon, the mobs go into that page's own encounter file instead: a new
     # base would re-point the terrain sidecar and leave the manifest page pointing at
     # the old roster, so the mobs would vanish on the next page switch.
-    out_path = dungeon_out_path(app)
     meta = {"mode": "dungeon-gui", "seed": params["seed"],
             "difficulty_start": params["start"],
             "difficulty_end": params["end"], "boss": params["boss"],
@@ -1438,4 +1475,128 @@ def generate_dungeon_with(app, params):
     if any(r.get("boss_dropped") for r in results):
         lines.insert(2, f"{params['boss_mob']} did not fit in the finale room, "
                         "so its toughest mob is the boss.")
-    app._modal_message(lines)
+    return lines
+
+
+# ── Generate Dungeon on the blank map: a named dungeon in "random_encounters" ──
+RANDOM_CAMPAIGN = "random_encounters"
+BLANK_MAP = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                          "..", "maps", "Blank.png"))
+
+
+def on_blank_map(app) -> bool:
+    """True when the scene is the bundled blank map, loose: no dungeon or campaign open.
+    Generating there names a new dungeon instead of writing ``Blank_*`` sidecars."""
+    if app.dungeon is not None or isinstance(getattr(app, "store", None), CampaignStore):
+        return False
+    try:
+        return os.path.samefile(app._map_path, BLANK_MAP)
+    except (OSError, TypeError):
+        return False
+
+
+def random_campaign_root(app) -> str:
+    return os.path.join(app_dungeon_pages.campaigns_root(app), RANDOM_CAMPAIGN)
+
+
+def ask_generated_dungeon_name(app, params):
+    """Ask what the dungeon is called; confirm before replacing one of that name."""
+    name = app._modal_text_prompt("Generate Dungeon", "Dungeon name:", ok_label="Generate")
+    if not name or not name.strip():
+        return
+    try:
+        target = campaign_import.generated_dungeon_dir(random_campaign_root(app), name)
+    except ValueError as e:
+        app._flash_status(f"Generate Dungeon: {e}")
+        return
+    app._confirm_overwrite([target], "Generate Dungeon",
+                           lambda: generate_named_dungeon(app, params, name))
+
+
+def _scratch_pages(app, scratch, slug, params, eg) -> tuple[list, str, list] | None:
+    """Generate into ``scratch`` (old-shape files) and read the pages back:
+    ``(pages, entry map, summary lines)``, or None after reporting a failure."""
+    image = app._map_path
+    cols, rows = app._grid_size()
+    if params.get("carve", True):
+        terrain_params = {
+            "rooms": params["rooms_per_floor"],
+            "min_room": max(2, int(round(params["min_room"] ** 0.5))),
+            "margin": 1, "seed": params["seed"], "floors": params["floors"],
+        }
+        app._modal_message(["Generating maps…"], blocking=False)
+        try:
+            summary = generate_multifloor(
+                app, params["floors"], terrain_params, encounter_params=params, base=slug,
+                maps_x=params.get("maps_x", 1), maps_y=params.get("maps_y", 1),
+                out_dir=scratch, activate=False)
+        except ValueError as e:
+            app._modal_message(["Generate Dungeon failed", str(e),
+                                 "Try fewer/smaller rooms or a bigger grid."])
+            return None
+        v1 = Dungeon.load(os.path.join(scratch, f"{slug}.dungeon.json"))
+        pages = []
+        for p in v1.pages:
+            agents = os.path.join(scratch, p.encounter_base)
+            terrain = agents[:-len("_agents.json")] + "_terrain.json"
+            pages.append(campaign_import.GeneratedPage(
+                map=p.id, image=image, terrain=campaign_import.read_json(terrain),
+                agents=campaign_import.read_json(agents), origin=list(p.origin),
+                cols=p.cols, rows=p.rows))
+        if params["floors"] <= 1:
+            summary = [l for l in summary if not l.startswith("Use Floor +/-")]
+        return pages, v1.entry_page_id, summary
+
+    # "Terrain: Keep (mobs only)": populate the map as it stands, saved to scratch.
+    app._modal_message(["Generating dungeon…"], blocking=False)
+    app._set_encounter_base(os.path.join(scratch, f"{slug}_agents.json"))
+    summary = populate_current_map(app, params, eg, random.Random(params["seed"]),
+                                   app._save_path)
+    if not summary:
+        return None
+    summary = [l for l in summary if not l.startswith("Saved:")]
+    page = campaign_import.GeneratedPage(
+        map="floor0", image=image,
+        terrain=campaign_import.read_json(app._terrain_path),
+        agents=campaign_import.read_json(app._save_path), cols=cols, rows=rows)
+    return [page], "floor0", summary
+
+
+def generate_named_dungeon(app, params, name):
+    """Generate on the blank map, then file the result as the dungeon ``name`` of the
+    random_encounters campaign and open it. The generator writes to a scratch folder,
+    so no ``Blank_*`` file is touched; a dungeon already called ``name`` is archived
+    (the overwrite was confirmed before this runs)."""
+    app._set_fog(True)
+    gui_dir = os.path.dirname(os.path.abspath(__file__))
+    tools_dir = os.path.join(os.path.dirname(gui_dir), "tools")
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    try:
+        import encounter_generator as eg
+    except Exception as e:
+        app._modal_message(["Generate Dungeon failed", f"Could not load generator: {e}"])
+        return
+
+    slug = save_layout.slugify(name)
+    old_save = app._save_path
+    scratch = tempfile.mkdtemp(prefix="gen_dungeon_")
+    made = None
+    try:
+        got = _scratch_pages(app, scratch, slug, params, eg)
+        if got is not None:
+            pages, entry, summary = got
+            made = campaign_import.new_generated_dungeon(
+                random_campaign_root(app), name, pages, entry_map=entry,
+                campaign_name=RANDOM_CAMPAIGN, replace=True,
+                stamp=time.strftime("%Y%m%d-%H%M%S"))
+    except (OSError, ValueError) as e:
+        app._modal_message(["Generate Dungeon failed", str(e)])
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    if made is None:
+        if app._save_path != old_save:     # Keep-terrain path re-pointed it at scratch
+            app._set_encounter_base(old_save)
+        return
+    app_dungeon_pages.open_campaign_dungeon(app, made.manifest_path)
+    app._modal_message(summary + [f"Saved: {RANDOM_CAMPAIGN}/{slug}"])
