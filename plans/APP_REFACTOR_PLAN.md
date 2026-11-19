@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0. A4b (summons → `gui/app_summons.py`) committed bd2b227, 263/0. Graph rebuilt at bd2b227; A5–A8 added 2026-11-18 (user), A9 deferred. A5 (dungeon generation and import → `gui/app_dungeon_gen.py`) committed bd92253, 263/0. A6 (panel drawing → `gui/app_panel_render.py`) committed 8c504de, 263/0. A7 (save / load → `gui/app_persist.py`) committed 2fc6644, 263/0; lighting editor split off as A7b. A7b (lighting editor → `gui/app_lighting.py`) committed, 263/0. A8 next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0. A4b (summons → `gui/app_summons.py`) committed bd2b227, 263/0. Graph rebuilt at bd2b227; A5–A8 added 2026-11-18 (user), A9 deferred. A5 (dungeon generation and import → `gui/app_dungeon_gen.py`) committed bd92253, 263/0. A6 (panel drawing → `gui/app_panel_render.py`) committed 8c504de, 263/0. A7 (save / load → `gui/app_persist.py`) committed 2fc6644, 263/0; lighting editor split off as A7b. A7b (lighting editor → `gui/app_lighting.py`) committed ac9bbce, 263/0. A8 (character setup and feature weapons → `gui/app_char_setup.py`) committed, 263/0. A5–A8 done; A9 (deferred) next to revisit.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -434,6 +434,28 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
     729 lines (`_on_stats_ok` 213, `_grant_class_features` 128,
     `_load_npc_spells_from_record`, `_apply_feature_scaling`, the `_create_*_weapon` set,
     `_set_origin_feat`, …). 36 in, 14 out; 9 reached from outside.
+    **Done 2026-11-18, 263/0 first run.** All 18 methods of the graph's cluster moved
+    (796-line module): `_load_npc_spells_from_record`, `_set_origin_feat`,
+    `_set_general_feats` (both still staticmethods on `App`), `_on_stats_ok`,
+    `_on_weapon_done`, `_drop_weapon`, `_pickup_item`, `_find_pickup_slot`,
+    `_create_monk_unarmed_weapon`, `_create_alter_self_claws_weapon`, `_bond_pact_weapon`,
+    `_create_pact_blade_weapon`, `_create_psychic_blade_weapon`, `_apply_psychic_blades`,
+    `_sync_item_spells`, `_sync_all_item_spells`, `_grant_class_features`,
+    `_apply_feature_scaling`. Weapon drop / pickup came along with the cluster (they share
+    `find_pickup_slot` and `bond_pact_weapon`). 13 forwarders (reached from tests,
+    `menus/board`, `menus/panel`, `items_play`, `app_initiative`, `app_persist`,
+    `app_spells`, `app_summons`). No forwarder for `find_pickup_slot`,
+    `create_pact_blade_weapon`, `create_psychic_blade_weapon`, `apply_feature_scaling`
+    (only moved code calls them) or `on_weapon_done` (no callers; moved as is, not
+    deleted). `_ORIGIN_FEATS` moved as `app_char_setup.ORIGIN_FEATS`; `App._ORIGIN_FEATS`
+    aliases it (test_feats). The module calls `helpers.sync_item_spells` qualified, since
+    its own `sync_item_spells` shadows the name. The subclass-spell tables
+    (`_BARD_/_SORCERER_/_WARLOCK_SUBCLASS_SPELLS`, `_FEY_EFFECT_NAMES`) stay on `App`.
+    `main.py` 10,036 lines. Graph rebuilt by re-extracting every code file under `gui/` +
+    `tools/` (AST cache, 157/160 hits), not just the two changed files: a two-file extract
+    dropped ~600 of `main.py`'s cross-file import/call edges, since those resolve only among
+    files extracted together. 8,915 nodes, 21,346 edges, 319 communities, 298 labels
+    carried by node overlap ≥50%, 21 named by hand.
   - **After A5–A8 `App` is about 10k lines.** Under ~8k also needs **A9 (deferred, user
     2026-11-18):** split `_perform_action` (819 lines) and `_handle_events` (996) into
     dispatch tables. That is a redesign, not a move; revisit after A8. Left on `App` on
