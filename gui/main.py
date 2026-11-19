@@ -3698,10 +3698,11 @@ class App:
         return max(dc, dr) <= 1
 
 
-    def _use_ladder(self, ladder_idx: int, actor_idx: int):
+    def _use_ladder(self, ladder_idx: int, actor_idx: int, party: bool = False):
         """Resolve a ladder's global target to a page + local cell and switch to it,
-        carrying the acting creature. No-ops with a flash if the dungeon isn't loaded
-        or the target lands on no page."""
+        carrying the acting creature (``party``: the whole party, as a staircase's
+        "Party:" row does). No-ops with a flash if the dungeon isn't loaded or the
+        target lands on no page. Returns True when the party moved."""
         if ladder_idx < 0 or ladder_idx >= len(self._ladders):
             return
         if self.dungeon is None:
@@ -3716,9 +3717,21 @@ class App:
         if local is None:
             self._flash_status("The ladder's exit is off the target map.")
             return
-        carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
+        if party:
+            carry = app_dungeon_pages.party_carry(self, actor_idx) or None
+        else:
+            carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
+        verb = self._ladder_verb(Z)
         if app_dungeon_pages.switch_to_page(self, page, drop_cell=local, carry=carry):
-            self._flash_status(f"Climbed to floor {Z}: {page.id}")
+            who = f"The party {verb.lower()}ed" if party else f"{verb}ed"
+            self._flash_status(f"{who} the ladder to floor {Z}: {page.id}")
+            return True
+        return False
+
+    def _ladder_verb(self, target_z) -> str:
+        """"Ascend" or "Descend": the ladder's target floor against this page's."""
+        here = self.dungeon_page.z if self.dungeon_page is not None else 0
+        return "Descend" if int(target_z) < here else "Ascend"
 
     # ── Staircases (manifest portals; plans/STAIRCASES_PLAN.md) ──────────────
     def _staircase_ends_here(self):

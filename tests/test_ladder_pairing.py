@@ -15,7 +15,8 @@ changed:
   · a landing cell that already holds a ladder is left alone;
   · no page under the target → the ladder stays one-way, and the DM is told;
   · ladders that existed before the editor opened are not touched;
-  · the other page's terrain (regions etc.) survives the edit.
+  · the other page's terrain (regions etc.) survives the edit;
+  · "Party: Ascend / Descend Ladder" carries every party token, out of combat only.
 """
 
 import json
@@ -32,8 +33,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import rpg_battle_map as rpg
 
+from constants import PC_FACTION
 from main import App
 from dungeon import Dungeon, MapPage
+from menus import dm
 
 MAP_PATH = os.path.join(_ROOT, "maps", "TestGrid12x12.png")
 SEED = 20261019
@@ -209,6 +212,57 @@ def test_dragging_a_ladder_moves_it_and_its_return():
     print("✅ test_dragging_a_ladder_moves_it_and_its_return passed")
 
 
+def _place(app, name, col, row):
+    cfg = rpg.AgentConfig()
+    cfg.name, cfg.start_col, cfg.start_row, cfg.size, cfg.sprite_path = name, col, row, 1, ""
+    app.combat.add_agent_config(app.bm, cfg)
+    app.pending_configs.append(cfg)
+    app.combat.apply_agent_configs(app.bm)
+
+
+def _idx(app, name):
+    return next((i for i, pt in enumerate(app.bm.placed_agents) if pt.name == name), -1)
+
+
+def _ladder_labels(app, col, row):
+    app.prompts.cancel()
+    dm.show_ladder_menu(app, rpg.Cell(col, row), (0, 0))
+    p = app.prompts.live
+    return [] if p is None else [o.label for o in p.options]
+
+
+def test_party_takes_the_ladder():
+    """"Party: Ascend Ladder …" carries every party token up and "Party: Descend …"
+    back; others stay behind, and the row is not offered in combat."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon_app(tmp)
+        _edit(app, (3, 5))
+        for name, c, r in (("Aria", 3, 6), ("Bram", 8, 8), ("Cole", 0, 2)):
+            _place(app, name, c, r)
+        _place(app, "Ghoul", 10, 0)
+        for name in ("Aria", "Bram", "Cole"):
+            app.bm.set_agent_faction(_idx(app, name), PC_FACTION)
+
+        app.combat_active = True
+        assert not any(l.startswith("Party:") for l in _ladder_labels(app, 3, 5))
+        app.combat_active = False
+        labels = _ladder_labels(app, 3, 5)
+        assert labels == ["Ascend Ladder to floor 1", "Party: Ascend Ladder to floor 1"], labels
+
+        assert app._use_ladder(0, -1, party=True)
+        assert app.dungeon_page.id == "f1"
+        here = [app.bm.placed_agents[_idx(app, n)].origin for n in ("Aria", "Bram", "Cole")]
+        assert all(max(abs(o.col - 3), abs(o.row - 5)) <= 1 for o in here), \
+            [(o.col, o.row) for o in here]
+        assert _idx(app, "Ghoul") < 0, "a non-party token came along"
+
+        assert _ladder_labels(app, 3, 5)[-1] == "Party: Descend Ladder to floor 0"
+        assert app._use_ladder(0, -1, party=True)
+        assert app.dungeon_page.id == "f0"
+        assert all(_idx(app, n) >= 0 for n in ("Aria", "Bram", "Cole", "Ghoul"))
+    print("✅ test_party_takes_the_ladder passed")
+
+
 def main():
     tests = [test_dragging_a_ladder_moves_it_and_its_return,
              test_a_placed_ladder_gets_a_return_ladder,
@@ -218,7 +272,8 @@ def main():
              test_an_occupied_landing_is_left_alone,
              test_the_other_pages_terrain_survives,
              test_no_floor_there_leaves_it_one_way,
-             test_ladders_from_before_the_edit_are_not_repaired]
+             test_ladders_from_before_the_edit_are_not_repaired,
+             test_party_takes_the_ladder]
     failed = 0
     for t in tests:
         try:

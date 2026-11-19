@@ -612,8 +612,9 @@ def secret_door_options(app, door) -> list:
 
 
 def show_ladder_menu(app, cell, pos):
-    """Context menu for a ladder cell: a "Use Ladder" action that carries the acting
-    (or selected) creature to the target floor via the dungeon manifest.
+    """Context menu for a ladder cell: "Ascend / Descend Ladder" carries the acting
+    (or selected) creature to the target floor via the dungeon manifest; out of combat
+    a "Party:" row carries every party token at once, as a staircase's does.
 
     Out-of-combat only for the MVP (see Floors plan Known Limitations); the actual
     page switch is gated by _switch_to_page's combat guard, which flashes if in combat."""
@@ -631,8 +632,11 @@ def show_ladder_menu(app, cell, pos):
             app._combat_log_add("Move adjacent to the ladder to use it.")
             return
 
-    label = f"Use Ladder (to floor {Z})"
+    label = f"{app._ladder_verb(Z)} Ladder to floor {Z}"
     options = [(label, lambda a=actor, l=li: app._use_ladder(l, a))]
+    if not app.combat_active:                      # a page change is refused in combat anyway
+        options.append((f"Party: {label}",
+                        lambda a=actor, l=li: app._use_ladder(l, a, party=True)))
     app._ask_actor(actor, "action", f"Ladder to floor {Z}", options, anchor=pos)
 
 
