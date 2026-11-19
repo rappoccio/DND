@@ -97,6 +97,7 @@ import app_summons
 import app_dungeon_gen
 import app_panel_render
 import app_persist
+import app_lighting
 from app_summons import SUMMON_SPELL_TO_SPIRIT
 import saves
 import placed_items
@@ -1822,20 +1823,12 @@ class App:
         self._attack_cells_rnorm = []
         self._attack_cells_rlong = []
 
-    def _clear_lighting(self):
-        """Remove all DM-placed light sources and reset the whole map to the
-        fully-lit default (mirrors _load_lighting's no-file branch)."""
-        for eff in list(self.bm.active_light_effects):
-            if eff.source_agent_idx == -1:  # DM-placed
-                self.bm.remove_light_effect(eff.id)
-        self.bm.apply_base_lighting(rpg.VisibilityLevel.Clear, [])
-
     def _clear_all(self):
         """Panel "Clear All": wipe the whole scene — agents, terrain AND lighting —
         back to a blank map (same state as a fresh startup)."""
         self._clear_agents()
         self._clear_terrain()
-        self._clear_lighting()
+        app_lighting.clear_lighting(self)
         self._flash_status("Cleared agents, terrain and lighting.")
 
     def _open_load_agents_browser(self):
@@ -2060,48 +2053,7 @@ class App:
 
 
     def _open_lighting_editor(self):
-        """Open the lighting editor primed with the encounter's saved lighting."""
-        light_sources = []
-        default_light = rpg.VisibilityLevel.Clear
-        lighting = self.store.lighting_read_path()
-        if os.path.exists(lighting):
-            try:
-                with open(lighting, 'r') as f:
-                    data = json.load(f)
-                    # Convert saved format (with "light_level" string) to dialog format (with "level" enum)
-                    saved_sources = data.get("light_sources", [])
-                    for src in saved_sources:
-                        level_str = src.get("light_level", "Sunlight")
-
-                        # Lights can be stored as grid coordinates (col, row) or old pixel format (x, y)
-                        if "col" in src and "row" in src:
-                            # New format: grid coordinates
-                            col = src.get("col", 0)
-                            row = src.get("row", 0)
-                        else:
-                            # Old format: pixel coordinates - convert to grid
-                            x = src.get("x", 0)
-                            y = src.get("y", 0)
-                            cell = self._pixel_to_cell(x, y)
-                            if not cell:
-                                continue
-                            col = cell.col
-                            row = cell.row
-
-                        light_sources.append({
-                            "name": src.get("name", "Light"),
-                            "col": col,
-                            "row": row,
-                            "level": self._parse_light_level(level_str),
-                            "radius": src.get("bright_radius", 5),
-                        })
-                    default_light_str = data.get("default_light", "BrightLight")
-                    default_light = self._parse_light_level(default_light_str)
-            except:
-                light_sources = []
-                default_light = rpg.VisibilityLevel.Clear
-        self._reset_zoom()   # open on the whole map; the editor can zoom from there
-        self.lighting_editor.open(self.map_surf, self.bm, self, light_sources, default_light)
+        return app_lighting.open_lighting_editor(self)
 
     def _open_load_lighting_browser(self):
         start = os.path.dirname(self._lighting_path) or self._map_dir
@@ -2429,22 +2381,7 @@ class App:
         return app_board_render.draw_npc_announcement(self)
 
     def _on_load_lighting_chosen(self, path: str):
-        """Import lighting from a chosen _lighting.json into the current scene (it then
-        saves with this encounter)."""
-        # Load shows every .json, so refuse a non-lighting pick (no "light_sources" key)
-        # rather than clearing the current lighting with an empty source list.
-        try:
-            with open(path) as f:
-                if "light_sources" not in json.load(f):
-                    self._flash_status(f"Not a lighting file: {os.path.basename(path)}")
-                    return
-        except Exception as e:
-            self._flash_status(f"Could not read {os.path.basename(path)}: {e}")
-            return
-        self._load_lighting(path)
-        # Auto-enable the lighting overlay so the user can see the loaded lighting
-        self.show_lighting_overlay = True
-        self._flash_status(f"Lighting loaded: {os.path.basename(path)}")
+        return app_lighting.on_load_lighting_chosen(self, path)
 
     def _merge_free_cell(self, col: int, row: int, size: int,
                          reserved: set[tuple[int, int]]):
@@ -8078,148 +8015,14 @@ class App:
             }
 
     def _load_lighting(self, path: str | None = None):
-        """Load lighting data from JSON file if it exists.
-
-        When the encounter has no lighting file, reset to a fully-lit default so a
-        previous encounter's darkness/sources don't bleed through on a swap.
-        """
-        path = path or self.store.lighting_read_path()
-        # Clear existing DM-placed light effects before loading new ones
-        for eff in self.bm.active_light_effects:
-            if eff.source_agent_idx == -1:  # DM-placed
-                self.bm.remove_light_effect(eff.id)
-
-        if os.path.exists(path):
-            try:
-                with open(path, 'r') as f:
-                    data = json.load(f)
-                # Apply the whole-map default light level (e.g. "Darkness" for a dark
-                # dungeon). Per-source lights are placed as explicit light effects below
-                # (so each keeps its own level, e.g. Sunlight); pass no sources here.
-                default_lvl = self._parse_light_level(data.get("default_light", "BrightLight"))
-                self.bm.apply_base_lighting(default_lvl, [])
-                # Load light sources using place_light_effect (same as dialog)
-                for src in data.get("light_sources", []):
-                    # A plain light source (torch/lantern) is ordinary bright light.
-                    # "Sunlight" is a special level (matters for vampires / sunlight
-                    # sensitivity) and must be opted into explicitly, not defaulted.
-                    level_str = src.get("light_level", "BrightLight")
-                    level = self._parse_light_level(level_str)
-                    radius = src.get("bright_radius", 5)
-
-                    # Lights can be stored as grid coordinates (col, row) or old pixel format (x, y)
-                    if "col" in src and "row" in src:
-                        # New format: grid coordinates
-                        col = src.get("col", 0)
-                        row = src.get("row", 0)
-                    else:
-                        # Old format: pixel coordinates - convert to grid
-                        x = src.get("x", 0)
-                        y = src.get("y", 0)
-                        cell = self._pixel_to_cell(x, y)
-                        if not cell:
-                            continue
-                        col = cell.col
-                        row = cell.row
-
-                    if col < 0 or col >= self.bm.grid_cols or row < 0 or row >= self.bm.grid_rows:
-                        continue
-
-                    # Create a sphere of cells around the light
-                    cells = []
-                    for r in range(max(0, row - radius), min(self.bm.grid_rows, row + radius + 1)):
-                        for c in range(max(0, col - radius), min(self.bm.grid_cols, col + radius + 1)):
-                            # Chebyshev distance for square radius
-                            if abs(c - col) <= radius and abs(r - row) <= radius:
-                                cells.append(rpg.Cell(c, r))
-
-                    # Place the light effect
-                    self.bm.place_light_effect(
-                        src.get("name", "Light"),
-                        cells,
-                        level,
-                        -1,  # -1 = permanent
-                        -1   # -1 = DM-placed (no source agent)
-                    )
-            except Exception as e:
-                print(f"[App] Error loading lighting: {e}")
-        else:
-            # No lighting file for this encounter: reset to a clean, fully-lit default
-            # so a previous encounter's darkness/sources don't bleed through on a swap.
-            self.bm.apply_base_lighting(rpg.VisibilityLevel.Clear, [])
-
-    def _save_lighting_no_reload(self, light_sources, default_light):
-        """Save lighting data to JSON file without reloading (used by dialog after apply)."""
-        # Convert enum to string
-        light_str_map = {
-            rpg.VisibilityLevel.Clear: "BrightLight",
-            rpg.VisibilityLevel.Dim: "DimLight",
-            rpg.VisibilityLevel.Dark: "Darkness",
-            rpg.VisibilityLevel.MagicalDark: "MagicalDarkness",
-            rpg.VisibilityLevel.HeavilyObscured: "HeavilyObscured",
-            rpg.VisibilityLevel.Sunlight: "Sunlight",
-        }
-        default_str = light_str_map.get(default_light, "Darkness")
-
-        # Convert light sources format: "level" (enum) -> "light_level" (string)
-        # and store grid coordinates (col, row)
-        converted_sources = []
-        for src in light_sources:
-            level_enum = src.get("level", rpg.VisibilityLevel.Sunlight)
-            level_str = light_str_map.get(level_enum, "Sunlight")
-            radius = src.get("radius", 5)
-            # Use grid coordinates (col, row) with fallback to old (x, y) format
-            col = src.get("col", src.get("x", 0))
-            row = src.get("row", src.get("y", 0))
-            converted_src = {
-                "name": src.get("name", "Light"),
-                "col": col,
-                "row": row,
-                "light_level": level_str,
-                "bright_radius": radius,
-                "dim_radius": radius + 1,
-            }
-            converted_sources.append(converted_src)
-
-        data = {
-            "default_light": default_str,
-            "light_sources": converted_sources
-        }
-        with open(self._lighting_path, 'w') as f:
-            json.dump(data, f, indent=2)
+        return app_lighting.load_lighting(self, path)
 
     def _lighting_done(self, editor):
-        """Lighting editor → Done: apply its work and save the lighting file, after
-        asking before overwriting it. Cancel keeps the editor open."""
-        def finish():
-            editor.active = False
-            # Apply base level and effects to the battle map first. The base has to
-            # travel with the sources: Done is the only thing that applies the editor's
-            # work without a reload, and a base the file knows about but the map does
-            # not is a light switch that does nothing.
-            self._apply_light_effects(editor.light_sources, editor.default_light)
-            # Then save the configuration to disk (no reload, since we just applied)
-            self._save_lighting_no_reload(editor.light_sources, editor.default_light)
-        self._confirm_overwrite([self._lighting_path], "Lighting", finish)
-
-    def _save_lighting(self, light_sources, default_light):
-        """Save lighting data to JSON file and reload into battle map."""
-        self._save_lighting_no_reload(light_sources, default_light)
-        # Reload lighting into battle map
-        self._load_lighting()
+        return app_lighting.lighting_done(self, editor)
 
     @staticmethod
     def _parse_light_level(s: str) -> 'rpg.VisibilityLevel':
-        """Convert string to VisibilityLevel enum."""
-        mapping = {
-            "BrightLight": rpg.VisibilityLevel.Clear,
-            "DimLight": rpg.VisibilityLevel.Dim,
-            "Darkness": rpg.VisibilityLevel.Dark,
-            "MagicalDarkness": rpg.VisibilityLevel.MagicalDark,
-            "HeavilyObscured": rpg.VisibilityLevel.HeavilyObscured,
-            "Sunlight": rpg.VisibilityLevel.Sunlight,
-        }
-        return mapping.get(s, rpg.VisibilityLevel.Clear)
+        return app_lighting.parse_light_level(s)
 
     def _set_fog(self, on: bool):
         """Turn the fog-of-war render toggle on/off, keeping the button label in sync.
@@ -8492,70 +8295,6 @@ class App:
 
     def _draw_fog_overlay(self):
         return app_board_render.draw_fog_overlay(self)
-
-    def _apply_light_effects(self, light_sources, default_light=None):
-        """Apply the lighting editor's work to the battle map: the whole-map base level
-        first, then the DM-placed sources on top of it.
-
-        `default_light` carries the editor's base-light button. It has to come through
-        here because Done is the only thing that applies the editor's work WITHOUT a
-        reload, and a base level the file knows about but the map does not is a light
-        switch that does nothing. Applied exactly as `_load_lighting` applies it.
-        Optional so the one caller that has no base to offer can still pass sources
-        alone."""
-        if default_light is not None:
-            self.bm.apply_base_lighting(default_light, [])
-
-        # Clear existing DM-placed light effects. This used to sit behind an early return
-        # on an empty `light_sources`, which meant two things silently did nothing:
-        # removing the LAST light left it burning until the next load, and a base-light
-        # change on a map with no torches at all — the case that motivated the button —
-        # never reached the map or the fog.
-        for eff in self.bm.active_light_effects:
-            if eff.source_agent_idx == -1:  # DM-placed
-                self.bm.remove_light_effect(eff.id)
-
-        # Place new light effects
-        for light in light_sources:
-            level = light.get("level", rpg.VisibilityLevel.Sunlight)
-            radius = light.get("radius", 5)
-
-            # Lights can be stored as grid coordinates (col, row) or old pixel format (x, y)
-            if "col" in light and "row" in light:
-                # New format: grid coordinates
-                col = light.get("col", 0)
-                row = light.get("row", 0)
-            else:
-                # Old format: pixel coordinates - convert to grid
-                x = light.get("x", 0)
-                y = light.get("y", 0)
-                cell = self._pixel_to_cell(x, y)
-                if not cell:
-                    continue
-                col = cell.col
-                row = cell.row
-
-            if col < 0 or col >= self.bm.grid_cols or row < 0 or row >= self.bm.grid_rows:
-                continue
-
-            # Create a sphere of cells around the light
-            cells = []
-            for r in range(max(0, row - radius), min(self.bm.grid_rows, row + radius + 1)):
-                for c in range(max(0, col - radius), min(self.bm.grid_cols, col + radius + 1)):
-                    # Chebyshev distance for square radius
-                    if abs(c - col) <= radius and abs(r - row) <= radius:
-                        cells.append(rpg.Cell(c, r))
-
-            # Place the light effect
-            self.bm.place_light_effect(
-                light.get("name", "Light"),
-                cells,
-                level,
-                -1,  # -1 = permanent
-                -1   # -1 = DM-placed (no source agent)
-            )
-
-        self._mark_fog_dirty()   # new lighting changes which cells the party can see
 
     def _clear_temporary_terrain(self):
         """Remove spell-created temporary terrain (regions with 'source' field)."""

@@ -1,7 +1,7 @@
 # `App` (main.py) refactor
 
 **Status 2026-11-18: Step 0 frozen (D1–D7). A0 committed d3c4cf1: baseline `./test.sh` 263/0.
-A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0. A4b (summons → `gui/app_summons.py`) committed bd2b227, 263/0. Graph rebuilt at bd2b227; A5–A8 added 2026-11-18 (user), A9 deferred. A5 (dungeon generation and import → `gui/app_dungeon_gen.py`) committed bd92253, 263/0. A6 (panel drawing → `gui/app_panel_render.py`) committed 8c504de, 263/0. A7 (save / load → `gui/app_persist.py`) committed, 263/0; lighting editor split off as A7b, next.**
+A1.1 (narrowed) committed a849702, 263/0. A1.2 committed 449d603, 263/0. A1.3 committed 44ce65d, 263/0. A1.4 committed cbdaccf, 263/0. A2a (click picks → `app.pick`) committed, 263/0. A2b (base modes → `app.pending`) committed e6fff8e, 263/0. A2c (Special Attacks → `gui/app_attacks.py`) committed b2bf1bf, 263/0. A2 closed 2026-11-18: Drag & Cancel dropped (user). Combat plan R4 closed (b736057). A3 (movement mirrors) committed 8062330, 263/0. A3b (action economy storage) committed e01fd7f, 263/0. Graph rebuilt at e01fd7f; A4 re-scoped as A4 (spells) + A4b (summons). A4 (spells → `gui/app_spells.py`) committed a5675cc, 263/0. A4b (summons → `gui/app_summons.py`) committed bd2b227, 263/0. Graph rebuilt at bd2b227; A5–A8 added 2026-11-18 (user), A9 deferred. A5 (dungeon generation and import → `gui/app_dungeon_gen.py`) committed bd92253, 263/0. A6 (panel drawing → `gui/app_panel_render.py`) committed 8c504de, 263/0. A7 (save / load → `gui/app_persist.py`) committed 2fc6644, 263/0; lighting editor split off as A7b. A7b (lighting editor → `gui/app_lighting.py`) committed, 263/0. A8 next.**
 
 **Sequencing with `COMBAT_REFACTOR_PLAN.md` (agreed 2026-11-18):** (1) this plan's A0–A2;
 (2) the combat plan's `NpcDriver` and `ReactionArbiter`, informed by A2's `app.pending` modes;
@@ -421,6 +421,15 @@ Shell → Spell Activation 17, Dungeon Pages → Spell Activation 16.
     `_parse_light_level`, `_open_lighting_editor`, `_on_load_lighting_chosen`,
     `_apply_light_effects`, `_clear_lighting` (`_pixel_to_cell` stays: board geometry).
     Same mechanics; same loop.
+    **Done:** all 9 moved as planned (306-line module). 5 forwarders: `_load_lighting`
+    (`app_persist`, `autosave`, `app_dungeon_pages`, tests), `_parse_light_level` (still a
+    staticmethod; tests), `_lighting_done` (the lighting dialog), `_open_lighting_editor`
+    (`menus/dm`, tests), `_on_load_lighting_chosen` (file-browser callback). No forwarder
+    for `save_lighting_no_reload` / `apply_light_effects` (only `lighting_done` calls
+    them), `clear_lighting` (`_clear_all` calls the module directly) or `save_lighting`
+    (no callers; moved as is, not deleted). `main.py` 10,744 lines. Graph rebuilt (changed
+    files only): 9,017 nodes, 326 communities, 309 labels carried by node overlap ≥50% (id
+    or (source_file, label)), 17 named by hand.
   - **A8. Character setup and feature weapons → `gui/app_char_setup.py`.** About 18 methods,
     729 lines (`_on_stats_ok` 213, `_grant_class_features` 128,
     `_load_npc_spells_from_record`, `_apply_feature_scaling`, the `_create_*_weapon` set,
