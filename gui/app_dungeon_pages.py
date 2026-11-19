@@ -738,7 +738,8 @@ def new_dungeon_from_scene(app, camp_root, camp_name, name, anchor):
         write(())()
         return
     app._ask_dm("action", f"Update sheets from the map: {', '.join(conflicts)}?",
-                 [("Update", write(conflicts)), ("Keep", write(()))], anchor=anchor)
+                 [("Update", write(conflicts)), ("Keep", write(()))], anchor=anchor,
+                 render="titled")
 
 
 def new_dungeon_write(app, camp_root, camp_name, name, *, scene=None,

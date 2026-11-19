@@ -2051,7 +2051,8 @@ class App:
         cancel = on_cancel or (lambda: None)
         self._ask_dm("action", f"{what}: overwrite {names}?",
                      [("Overwrite", proceed), ("Cancel", cancel)],
-                     anchor=anchor or pygame.mouse.get_pos(), on_cancel=cancel)
+                     anchor=anchor or pygame.mouse.get_pos(), on_cancel=cancel,
+                     render="titled")
 
     def _request_quit(self, anchor=None):
         """Quit button / window close. Quitting strips temporary terrain and saves the
@@ -2070,7 +2071,7 @@ class App:
                      [("Save and quit", choose("save")),
                       ("Quit without saving", choose("nosave")),
                       ("Cancel", lambda: None)],
-                     anchor=anchor or pygame.mouse.get_pos())
+                     anchor=anchor or pygame.mouse.get_pos(), render="titled")
 
     def _dungeon_save_confirmed(self, anchor=None):
         return app_dungeon_pages.dungeon_save_confirmed(self, anchor)
@@ -6189,7 +6190,7 @@ class App:
         self.reaction_timeout_s = choices[(i + 1) % len(choices)]
 
     def _ask_dm(self, kind, title, pairs, *, anchor=None, actor_idx=-1,
-                parent=None, on_cancel=None):
+                parent=None, on_cancel=None, render=None):
         """``_ask_actor`` for a menu only the DM may ever answer.
 
         Step 0.2 marks the map right-click and top-bar menus DM-authoring and never
@@ -6197,10 +6198,14 @@ class App:
         ``authorize()`` reads, and because a scripted test drives them the same way it
         drives a combat prompt. ``owner`` is pinned to ``DM_PRINCIPAL_ID`` rather than
         derived, so seating a player on a token can never hand them the authoring tools.
+
+        ``render="titled"`` draws the title as a header row. A confirm whose options
+        are bare verbs ("Overwrite" / "Cancel") needs it, or the DM sees the buttons
+        without the question.
         """
         return self._ask_actor(actor_idx, kind, title, pairs, owner=DM_PRINCIPAL_ID,
                                parent=parent, anchor=anchor or (100, 100),
-                               on_cancel=on_cancel)
+                               on_cancel=on_cancel, render=render)
 
     def _agent_name(self, agent_idx: int) -> str:
         """Display name for a token index, used by prompt titles. A remote player sees only
@@ -6906,7 +6911,7 @@ class App:
         self._ask_dm("action", measured, [
             (f"Rescale image ×{sx:.4f} × {sy:.4f}", lambda: self._apply_rescale(p)),
             ("Cancel", lambda: None),
-        ], anchor=(self.btn_terrain.rect.x, self.btn_terrain.rect.y))
+        ], anchor=(self.btn_terrain.rect.x, self.btn_terrain.rect.y), render="titled")
 
     def _apply_rescale(self, p):
         """Rewrite the image + terrain (backups in pre_rescale/), then reload the page."""

@@ -12,7 +12,8 @@ headless App writes at once as before.
   · a file that does not exist yet is written without asking;
   · Quit asks Save and quit / Quit without saving / Cancel;
   · the confirm popup over the terrain editor takes the Esc that would close it;
-  · the generator's overwrite list names the files the generator writes.
+  · the generator's overwrite list names the files the generator writes;
+  · the popup shows the question, not just Overwrite / Cancel.
 """
 
 import os
@@ -158,13 +159,33 @@ def test_generation_targets_name_the_generated_files():
     print("✅ test_generation_targets_name_the_generated_files passed")
 
 
+def test_the_popup_shows_the_question():
+    """The popup drew only "Overwrite / Cancel", with no word of what it would overwrite:
+    the DM confirms went to the untitled renderer. They now draw the title as a header."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _app(tmp)
+        app._save_terrain()
+        app._confirm_overwrite([app._terrain_path], "Generate Dungeon", lambda: None)
+        name = os.path.basename(app._terrain_path)
+        assert app.context_menu.header == f"Generate Dungeon: overwrite {name}?", \
+            app.context_menu.header
+        assert app.prompts.choose_label("Cancel").ok
+
+        app._request_quit()
+        assert app.context_menu.header == f"Quit: save terrain to {name}?", \
+            app.context_menu.header
+        assert app.prompts.choose_label("Cancel").ok
+    print("✅ test_the_popup_shows_the_question passed")
+
+
 def main():
     tests = [test_toggle_walls_asks_only_over_an_existing_file,
              test_headless_app_never_asks,
              test_save_terrain_as_cancel_keeps_the_file,
              test_quit_asks_save_or_not,
              test_confirm_over_the_terrain_editor_takes_its_esc,
-             test_generation_targets_name_the_generated_files]
+             test_generation_targets_name_the_generated_files,
+             test_the_popup_shows_the_question]
     failed = 0
     for t in tests:
         try:
