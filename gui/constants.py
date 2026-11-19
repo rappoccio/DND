@@ -88,3 +88,11 @@ JSON_EXTS  = {'.json'}
 # Room flood cap for waking On Deck enemies on drawn maps (matches the DM's Reveal this room).
 # Shared by main.py and app_dungeon_pages.py.
 _ROOM_FLOOD_CAP = 4000
+
+
+# ── Reaction deadline (D-M5-7) ─────────────────────────────────────────────────
+# The session-row button cycles REACTION_TIMEOUT_CHOICES_S in this order; None is "no
+# limit". The default is the frozen 60 s. Here rather than in main.py so app_persist
+# (the combat-state load) can read it without importing main.
+REACTION_TIMEOUT_DEFAULT_S = 60
+REACTION_TIMEOUT_CHOICES_S = (15, 30, 60, 120, None)
