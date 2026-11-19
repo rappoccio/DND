@@ -67043,5 +67043,242 @@
 	"Mass Suggestion"
       ]
     }
+  },
+  "Phantom Warrior": {
+    "name": "Phantom Warrior",
+    "size": "Medium",
+    "stats": {
+      "str": 16,
+      "dex": 11,
+      "con": 16,
+      "intel": 8,
+      "wis": 10,
+      "cha": 15,
+      "hp_max": 45,
+      "hp_cur": 45,
+      "ac": 16,
+      "speed_walk": 30,
+      "speed_fly": 0,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 2,
+      "num_attacks": 2,
+      "save_prof_str": false,
+      "save_prof_dex": false,
+      "save_prof_con": false,
+      "save_prof_intel": false,
+      "save_prof_wis": false,
+      "save_prof_cha": false,
+      "temp_hp": 0,
+      "is_npc": true,
+      "is_undead": true,
+      "magic_resistances": [],
+      "physical_resistances": [
+        "Bludgeoning",
+        "Piercing",
+        "Slashing"
+      ],
+      "magic_immunities": [
+        "Cold",
+        "Necrotic",
+        "Poison"
+      ],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [],
+      "physical_vulnerabilities": []
+    },
+    "weapons": {
+      "main_hand": {
+        "name": "Spectral Longsword",
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "bonus_damage": 0,
+        "physical_damage_types": [],
+        "magic_damage_types": [
+          {
+            "type": "Force",
+            "num_dice": 1,
+            "die_size": 8
+          }
+        ],
+        "conditions": [],
+        "mastery": "None"
+      },
+      "off_hand": "",
+      "ranged": ""
+    },
+    "meta": {
+      "type": "Undead",
+      "cr": "3",
+      "alignment": "Lawful Neutral",
+      "source": "Curse of Strahd",
+      "traits": [],
+      "languages": [
+        "Any languages it knew in life"
+      ],
+      "senses": {
+        "darkvision": 60
+      },
+      "passive_perception": 12,
+      "immunities_conditions": [
+        "Charmed",
+        "Exhaustion",
+        "Frightened",
+        "Grappled",
+        "Paralyzed",
+        "Petrified",
+        "Poisoned",
+        "Prone",
+        "Restrained"
+      ],
+      "save_dc": null,
+      "saving_throws": [],
+      "action_notes": "Multiattack: two Spectral Longsword attacks. Etherealness: enters the Ethereal Plane from the Material Plane, or vice versa; visible on the other plane but can't affect or be affected by anything there. Skills: Perception +2, Stealth +4.",
+      "bonus_action": null,
+      "reaction": null,
+      "legendary": {
+        "resistance": null,
+        "resistance_in_lair": null,
+        "actions": null,
+        "actions_in_lair": null,
+        "has_lair": false
+      }
+    }
+  },
+  "Vladimir Horngaard": {
+    "name": "Vladimir Horngaard",
+    "size": "Medium",
+    "stats": {
+      "str": 18,
+      "dex": 14,
+      "con": 18,
+      "intel": 13,
+      "wis": 16,
+      "cha": 18,
+      "hp_max": 192,
+      "hp_cur": 192,
+      "ac": 17,
+      "speed_walk": 30,
+      "speed_fly": 0,
+      "speed_swim": 0,
+      "speed_burrow": 0,
+      "prof_bonus": 3,
+      "num_attacks": 2,
+      "save_prof_str": true,
+      "save_prof_dex": false,
+      "save_prof_con": true,
+      "save_prof_intel": false,
+      "save_prof_wis": true,
+      "save_prof_cha": true,
+      "temp_hp": 0,
+      "is_npc": true,
+      "is_undead": true,
+      "magic_resistances": [
+        "Necrotic",
+        "Psychic"
+      ],
+      "physical_resistances": [],
+      "magic_immunities": [
+        "Poison"
+      ],
+      "physical_immunities": [],
+      "magic_vulnerabilities": [],
+      "physical_vulnerabilities": [],
+      "regeneration_amount": 10,
+      "regen_interrupt_damage_types": [
+        2,
+        8
+      ]
+    },
+    "weapons": [
+      {
+        "name": "+2 Greatsword",
+        "permanently_armed": true,
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "bonus_hit": 2,
+        "bonus_damage": 2,
+        "physical_damage_types": [
+          {
+            "type": "Slashing",
+            "num_dice": 4,
+            "die_size": 6
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None"
+      },
+      {
+        "name": "Fist",
+        "permanently_armed": true,
+        "type": "melee",
+        "reach_ft": 5,
+        "normal_range_ft": 80,
+        "long_range_ft": 320,
+        "proficient": true,
+        "bonus_hit": 0,
+        "bonus_damage": 0,
+        "physical_damage_types": [
+          {
+            "type": "Bludgeoning",
+            "num_dice": 2,
+            "die_size": 6
+          }
+        ],
+        "magic_damage_types": [],
+        "conditions": [],
+        "mastery": "None"
+      }
+    ],
+    "meta": {
+      "type": "Undead",
+      "cr": "7",
+      "alignment": "Lawful Evil",
+      "source": "Curse of Strahd",
+      "traits": [
+        "Regeneration",
+        "Revenant"
+      ],
+      "languages": [
+        "Common",
+        "Draconic"
+      ],
+      "senses": {
+        "darkvision": 60
+      },
+      "passive_perception": 13,
+      "immunities_conditions": [
+        "Charmed",
+        "Exhaustion",
+        "Frightened",
+        "Paralyzed",
+        "Poisoned",
+        "Stunned"
+      ],
+      "save_dc": 15,
+      "saving_throws": [
+        "Strength",
+        "Constitution",
+        "Wisdom",
+        "Charisma"
+      ],
+      "action_notes": "Multiattack: two Fist attacks or two +2 Greatsword attacks. Fist vs a creature he has sworn vengeance against: +14 (4d6) bludgeoning; instead of damage he can grapple a Large or smaller target (escape DC 14). Greatsword vs Strahd: +14 (4d6) slashing. Vengeful Glare: one creature he has sworn vengeance against within 30 ft, DC 15 WIS save or paralyzed until Vladimir damages it or the end of his next turn; then frightened of him for 1 minute (repeat save end of each turn, disadvantage if it can see him). Regeneration 10 HP at turn start unless he took fire or radiant damage.",
+      "bonus_action": null,
+      "reaction": null,
+      "legendary": {
+        "resistance": null,
+        "resistance_in_lair": null,
+        "actions": null,
+        "actions_in_lair": null,
+        "has_lair": false
+      }
+    }
   }
 }
