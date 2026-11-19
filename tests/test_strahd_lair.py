@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import rpg_battle_map as rpg
 import lair
+from menus import panel
 import run_state
 
 from test_combat_panel import App, MAP_PATH, SEED, _build_scene, _idx, _snapshot_baseline
@@ -158,6 +159,33 @@ def test_lair_turn_offers_menu_then_passes():
     assert app._current_agent_idx() == _idx(app, "Cyra")
     assert app._lair_actor == -1
     print("✅ test_lair_turn_offers_menu_then_passes passed")
+
+
+def test_dismissed_lair_menu_comes_back_and_end_turn_passes():
+    """A click away closes the Lair menu. The panel's Lair Actions… opens it again (dropping
+    a half-made pick), and End Turn passes the lair action like the menu's Pass."""
+    app, skarn = _lair_app()
+    _to_lair_turn(app)
+    assert app.prompts.live is not None
+    app.prompts.cancel()                              # the stray click
+    assert app.prompts.live is None
+    app._draw_combat_panel()
+    assert [a.id for a in panel.menu_group(app, "turn")] == ["lair_actions", "end_turn"]
+    app._perform_action("lair_actions", None)
+    assert app.prompts.live is not None and "lair action" in app.prompts.live.title
+    lair.choose(app, "Doors")                         # arm a pick, then reopen
+    assert app._pick_data("lair") == "doors"
+    app._perform_action("lair_actions", None)
+    assert not app._picking("lair") and app.prompts.live is not None
+    app.prompts.cancel()
+    lair.choose(app, "Doors")
+    app._draw_combat_panel()
+    app._perform_action("end_turn", None)
+    assert app._current_agent_idx() == _idx(app, "Cyra")
+    assert app._lair_actor == -1 and not app._picking("lair")
+    app._draw_combat_panel()
+    assert [a.id for a in panel.menu_group(app, "turn")] == ["end_turn"]
+    print("✅ test_dismissed_lair_menu_comes_back_and_end_turn_passes passed")
 
 
 def test_lair_skipped_when_owner_down():
@@ -384,6 +412,7 @@ if __name__ == "__main__":
     test_lair_entry_at_twenty_losing_ties()
     test_no_lair_creature_no_entry()
     test_lair_turn_offers_menu_then_passes()
+    test_dismissed_lair_menu_comes_back_and_end_turn_passes()
     test_lair_skipped_when_owner_down()
     test_phase_passes_walls_until_next_lair_turn()
     test_doors_cycle_and_lock()

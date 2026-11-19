@@ -208,6 +208,7 @@ CLASS: dict[str, str] = {
     "pause_resume": DM,
     "reaction_timer": DM,
     "end_turn": I,
+    "lair_actions": DM,          # the Lair turn's menu, again (lair.py); no creature's turn
     "end_combat": DM,
     "table": DM,                 # D-M7-5: the Table menu
     "drop_concentration": I,

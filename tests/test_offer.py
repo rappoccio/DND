@@ -57,7 +57,8 @@ from test_live import _auth_frame, _faster_cadence, _ws
 from test_submit import _Table, _drain, _next, _submit
 
 _MAIN = os.path.join(_ROOT, "gui", "main.py")
-_DM_TOOLS = ("pause_resume", "reaction_timer", "end_combat", "table", "place_terrain")
+_DM_TOOLS = ("pause_resume", "reaction_timer", "end_combat", "table", "place_terrain",
+             "lair_actions")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -173,13 +174,13 @@ def test_the_class_table_is_the_dispatch():
                    and n.left.id == key and isinstance(n.comparators[0], ast.Name)
                    and n.comparators[0].id == "action_id" for n in ast.walk(node)):
                 dispatched |= set(getattr(actions, node.iter.func.value.id))
-    assert len(dispatched) == 131, len(dispatched)     # M7.5 added `table`; Grave Domain `path_to_the_grave`; Ranger R1 `horde_breaker`; R2 `sudden_strike` for `dread_ambusher`; R3 `fey_reinforcements`, `misty_wanderer`; R4 `beasts_strike`, `command_companion`; Ravenloft RI6 `use_luck`, `regain_slot`; `move_hunters_mark`; Dhampir `vampiric_bite`
+    assert len(dispatched) == 132, len(dispatched)     # Lair `lair_actions`; M7.5 added `table`; Grave Domain `path_to_the_grave`; Ranger R1 `horde_breaker`; R2 `sudden_strike` for `dread_ambusher`; R3 `fey_reinforcements`, `misty_wanderer`; R4 `beasts_strike`, `command_companion`; Ravenloft RI6 `use_luck`, `regain_slot`; `move_hunters_mark`; Dhampir `vampiric_bite`
     assert set(net_offer.CLASS) == dispatched, (
         f"missing {sorted(dispatched - set(net_offer.CLASS))}, "
         f"extra {sorted(set(net_offer.CLASS) - dispatched)}")
     counts = collections.Counter(net_offer.CLASS.values())
     assert counts == {"I": 68, "C→I": 8, "A": 21, "A*": 1, "C→A": 8, "X": 13,
-                      "C→X": 1, "S": 6, "DM": 5}, counts
+                      "C→X": 1, "S": 6, "DM": 6}, counts
     assert sorted(i for i, c in net_offer.CLASS.items() if c == "DM") == sorted(_DM_TOOLS)
     assert all(net_offer.CLASS[i] == "I" for i in actions.METAMAGIC_VALUE_BY_ID)
     # M5d: every pick row is wired. M5e.2: every S row, Divine Intervention last.

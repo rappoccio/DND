@@ -343,6 +343,12 @@ class ActionMenu:
         # that refusal here would change what the panel renders, which M2's
         # no-behaviour-change rule forbids — it is an `enabled=False` waiting for a
         # renderer that can show it.
+        # The Lair turn (lair.py): its menu is a popup a stray click dismisses, so the
+        # panel offers it again, and End Turn there passes the lair action.
+        import lair
+        if lair.on_lair_turn(app) and getattr(app, "_lair_actor", -1) >= 0:
+            return [Action("lair_actions", "Lair Actions…", GROUP_TURN),
+                    Action("end_turn", "End Turn", GROUP_TURN)]
         return [Action("end_turn", "End Turn", GROUP_TURN)]
 
     # ── §4 — the Action economy band ───────────────────────────────────────────

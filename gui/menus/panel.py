@@ -155,6 +155,9 @@ def init_combat_panel(app):
     app.btn_cbt_end_turn    = Button(pygame.Rect(px, dummy_y, W, B),
                                      "End Turn",
                                      COL_BTN_ENDTURN, COL_BTN_ENDTURN_HOV, app.font_md)
+    app.btn_cbt_lair_actions = Button(pygame.Rect(px, dummy_y, W, B),
+                                     "Lair Actions…",
+                                     (120, 70, 120), (160, 100, 160), app.font_md)
     app.btn_cbt_place_terrain = Button(pygame.Rect(px, dummy_y, HW, B),
                                      "🌍 Place Terrain",
                                      (150, 120, 80), (180, 150, 110), app.font_md)

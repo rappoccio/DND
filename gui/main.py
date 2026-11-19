@@ -8703,8 +8703,13 @@ class App:
                     "or press Esc to decline.")
                 self._flush_combat_log()
             elif not self.combat_paused:
-                self._advance_turn()
+                if lair.on_lair_turn(self):
+                    lair.finish(self)     # passes: drops any armed lair pick, then advances
+                else:
+                    self._advance_turn()
                 self._flush_combat_log()
+        if action_id == "lair_actions":
+            lair.cancel_pick(self)        # reopen the Lair menu; a half-made pick is dropped
         if action_id == "end_combat":
             self._end_combat()
         if action_id == "drop_concentration":
