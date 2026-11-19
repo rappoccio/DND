@@ -57,10 +57,7 @@ class SpellDialog:
         self._add_spell_cb = add_spell_callback
         self._active_field = None
         self._rects      = {}
-        sw, sh = screen.get_size()
-        x = (sw - self.DLG_W) // 2
-        y = (sh - self.DLG_H) // 2
-        self._rect = pygame.Rect(x, y, self.DLG_W, self.DLG_H)
+        self._place(screen)
         self._sel = 0 if self._spells else -1
         self._scroll_y = 0
         self._load_form()
@@ -151,10 +148,21 @@ class SpellDialog:
         content_y = start_y + rows * (self.TAB_H + gap)
         return tab_rects, add_r, content_y
 
+    FIT_MARGIN = 10
+
+    def _place(self, screen):
+        """Centre the dialog on ``screen``, no taller than the window. The tabs + form
+        between the header and the buttons scroll, so a short window only shortens
+        that viewport."""
+        sw, sh = screen.get_size()
+        h = min(self.DLG_H, sh - 2 * self.FIT_MARGIN)
+        self._rect = pygame.Rect((sw - self.DLG_W) // 2, (sh - h) // 2, self.DLG_W, h)
+
     def _update_rects(self, screen):
         """Recalculate button and field rects based on current dialog position."""
         if not self._rect:
             return
+        self._place(screen)   # follows a window resize
         # Keep tab + add rects in sync for collision detection between draws.
         tab_rects, add_r, _ = self._layout_tabs()
         self._rects["tab"] = tab_rects

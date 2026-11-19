@@ -2273,10 +2273,46 @@ class StatsDialog:
         return enum_name
 
     # ── geometry ─────────────────────────────────────────────────────────────
-    def _dlg(self, screen) -> pygame.Rect:
+    # The dialog is laid out in its own DLG_W x DLG_H coordinates and drawn to an
+    # offscreen surface, which is shrunk to fit a window shorter (or narrower) than
+    # the dialog and centred on it. Its rows sit at fixed pixel positions and do not
+    # scroll, so shrinking is how it fits a small window.
+    FIT_MARGIN = 10
+    MIN_SCALE  = 0.4
+
+    def _dlg(self, screen=None) -> pygame.Rect:
+        """The dialog's rect in its own (unscaled) coordinates."""
+        return pygame.Rect(0, 0, self.DLG_W, self.DLG_H)
+
+    def _placement(self, screen):
+        """(scale, dest): how much the dialog is shrunk to fit ``screen``, and the
+        screen rect it is drawn into."""
         sw, sh = screen.get_size()
-        return pygame.Rect((sw - self.DLG_W) // 2, (sh - self.DLG_H) // 2,
-                           self.DLG_W, self.DLG_H)
+        m = self.FIT_MARGIN
+        s = min(1.0, (sw - 2 * m) / self.DLG_W, (sh - 2 * m) / self.DLG_H)
+        s = max(s, self.MIN_SCALE)
+        w, h = round(self.DLG_W * s), round(self.DLG_H * s)
+        return s, pygame.Rect((sw - w) // 2, (sh - h) // 2, w, h)
+
+    def _to_local(self, pos, screen):
+        """A screen position in the dialog's own coordinates."""
+        s, dest = self._placement(screen)
+        return (int((pos[0] - dest.x) / s), int((pos[1] - dest.y) / s))
+
+    def _local_event(self, event, screen):
+        """``event`` with its mouse position moved into the dialog's coordinates."""
+        if not hasattr(event, "pos"):
+            return event
+        d = dict(event.dict)
+        d["pos"] = self._to_local(event.pos, screen)
+        return pygame.event.Event(event.type, d)
+
+    def _overlays(self):
+        """The pickers opened from this dialog. They place themselves on the real
+        screen, so they are drawn and fed events outside the dialog's scaling."""
+        return [d for d in (self._invocation_dialog, self._metamagic_dialog,
+                            self._feat_dialog, self._element_dialog,
+                            self._spell_selection_dialog if self._is_npc else None) if d]
 
     def _cancel_rect(self, dlg) -> pygame.Rect:
         return pygame.Rect(dlg.right - 220,
@@ -2363,6 +2399,12 @@ class StatsDialog:
             return False
         dlg = self._dlg(screen)
 
+        # NPC spell picker (opened from a group's [+]) is modal-on-top, in screen coords.
+        if (self._is_npc and self._spell_selection_dialog
+                and self._spell_selection_dialog.visible):
+            self._spell_selection_dialog.handle(event)
+            return True
+
         # Invocation picker is modal-on-top: it consumes all events while open.
         if self._invocation_dialog and self._invocation_dialog.visible:
             self._invocation_dialog.handle(event)
@@ -2382,6 +2424,9 @@ class StatsDialog:
         if self._element_dialog and self._element_dialog.visible:
             self._element_dialog.handle(event)
             return True
+
+        # Everything below works in the dialog's own coordinates (see _placement).
+        event = self._local_event(event, screen)
 
         # Let steppers see every event first so a focused field can consume
         # Escape/Enter before the dialog itself acts on Escape.
@@ -2586,11 +2631,6 @@ class StatsDialog:
                 self.active = False
             return True
 
-        # Handle spell selection dialog events
-        if self._is_npc and self._spell_selection_dialog:
-            if self._spell_selection_dialog.handle(event):
-                return True
-
         return event.type in (pygame.MOUSEMOTION, pygame.MOUSEWHEEL)
 
     def _on_invocations_chosen(self, codes):
@@ -2685,12 +2725,32 @@ class StatsDialog:
     def draw(self, screen):
         if not self.active:
             return
-        dlg = self._dlg(screen)
-
         # Veil
         veil = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
         veil.fill((0, 0, 0, 160))
         screen.blit(veil, (0, 0))
+
+        # The dialog, drawn in its own coordinates and shrunk to fit the window.
+        s, dest = self._placement(screen)
+        surf = pygame.Surface((self.DLG_W, self.DLG_H), pygame.SRCALPHA)
+        real_get_pos = pygame.mouse.get_pos
+        # Hover tests inside the body (and its IntSteppers) read the mouse directly.
+        pygame.mouse.get_pos = lambda: self._to_local(real_get_pos(), screen)
+        try:
+            self._draw_body(surf)
+        finally:
+            pygame.mouse.get_pos = real_get_pos
+        if s < 1.0:
+            surf = pygame.transform.smoothscale(surf, dest.size)
+        screen.blit(surf, dest.topleft)
+
+        # The pickers draw last, on the real screen, over the whole dialog.
+        for d in self._overlays():
+            d.draw(screen)
+
+    def _draw_body(self, screen):
+        """Draw the dialog onto ``screen``, a DLG_W x DLG_H surface of its own."""
+        dlg = self._dlg(screen)
 
         # Box
         pygame.draw.rect(screen, self.C_BG,     dlg, border_radius=8)
@@ -3155,9 +3215,6 @@ class StatsDialog:
             ag_txt = self.font_sm.render("[Add Group]", True, (200, 220, 240))
             screen.blit(ag_txt, ag_txt.get_rect(center=self._npc_add_group_rect.center))
 
-            # Draw spell selection dialog if open
-            if self._spell_selection_dialog:
-                self._spell_selection_dialog.draw(screen)
 
         # ── Buttons ───────────────────────────────────────────────────────
         mouse = pygame.mouse.get_pos()
@@ -3170,19 +3227,6 @@ class StatsDialog:
             pygame.draw.rect(screen, self.C_BORDER, rect, 1, border_radius=4)
             t = self.font_md.render(label, True, (220, 220, 220))
             screen.blit(t, t.get_rect(center=rect.center))
-
-        # Invocation picker draws last so it overlays the whole stats dialog.
-        if self._invocation_dialog:
-            self._invocation_dialog.draw(screen)
-        # Metamagic picker overlays on top as well.
-        if self._metamagic_dialog:
-            self._metamagic_dialog.draw(screen)
-        # General Feats picker overlays on top as well.
-        if self._feat_dialog:
-            self._feat_dialog.draw(screen)
-        # Element picker overlays above the feat picker (Elemental Adept).
-        if self._element_dialog:
-            self._element_dialog.draw(screen)
 
 
 def _draw_search_text(surf, font, box, text, caret):
