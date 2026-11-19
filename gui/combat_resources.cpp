@@ -1129,6 +1129,7 @@ bool CombatEngine::swapWithDuplicate(BattleMap& bm, int cleric_idx, int dup_idx)
             applySpellEffect(bm, effect, cleric_idx);
     }
     updateDarknessBlinding(bm, cleric_idx);
+    followAnchoredEffects(bm, cleric_idx);   // the cleric's Spirit Guardians goes with them
     log_("Trickster's Transposition: {} swaps places with the duplicate", agentName(bm, cleric_idx));
     return true;
 }

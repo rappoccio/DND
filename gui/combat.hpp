@@ -442,6 +442,9 @@ public:
     // Teleport an agent to a new location (checks that destination is not blocked by terrain).
     // Returns true if successful, false if destination is blocked or out of bounds.
     bool teleportAgent(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
+    // Re-center every Emanation anchored to `idx` on where it stands now, affecting no one:
+    // for a DM reposition (drag before combat, paused or in tracker mode), which is not a move.
+    void recenterAnchoredEffects(BattleMap& bm, int idx) noexcept { recomputeAnchoredEffects(bm, idx); }
 
     // ── Reaction system / flow checkpoints ──────────
     // Start a (potentially) provoking move on the GUI/interactive path. Returns
@@ -2860,6 +2863,11 @@ private:
 
     // Re-center persistent Sphere effects anchored to this agent (moving Emanation).
     void recomputeAnchoredEffects(BattleMap& bm, int agent_idx) noexcept;
+
+    // The anchor moved in play (walk, fly, teleport, swap): re-center its Emanations and
+    // affect the creatures each one newly covers — "whenever the Emanation enters a
+    // creature's space" (once per turn).
+    void followAnchoredEffects(BattleMap& bm, int agent_idx) noexcept;
 
     // Apply a persistent zone effect to a target at most once per turn (D&D "a creature makes
     // this save only once per turn"). Returns true if applied, false if already applied this turn.

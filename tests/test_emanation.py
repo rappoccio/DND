@@ -2,7 +2,8 @@
 """
 Tests for the "Emanation" spell type: a Sphere whose center follows the caster
 (Spirit Guardians). Covers caster-centering, caster exclusion, the zone following
-the caster's movement (sweep), once-per-turn dedup, and save-for-half on the tick.
+the caster's movement (sweep) and teleports, a DM reposition re-centering it without
+damage, once-per-turn dedup, and save-for-half on the tick.
 """
 
 import sys
@@ -234,6 +235,53 @@ def test_emanation_halves_enemy_speed_spares_allies():
     print("✅ test_emanation_halves_enemy_speed_spares_allies passed")
 
 
+def test_zone_follows_caster_teleport():
+    """Misty Step & co. go through teleport_agent: the zone (and its Halved terrain) must
+    land with the caster and hit the enemy it now covers, not stay where it was cast."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 2, 2))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Goblin", 10, 9), hp=100)
+    bm.set_agent_faction(caster, 1)
+    bm.set_agent_faction(enemy, 2)
+    spell = _emanation()
+    spell.terrain_difficulty = rpg.TerrainDifficulty.Halved
+    _arm_caster(engine, bm, caster, spell)
+    _cast(engine, bm, caster, aoe_col=2, aoe_row=2)
+    assert engine.get_agent_stats(bm, enemy).hp_cur == 100
+
+    engine.begin_turn(bm, caster)
+    assert engine.teleport_agent(bm, caster, 9, 9), "teleport to open ground should succeed"
+    cells = bm.active_spell_effects[0].cells
+    assert _has_cell(cells, 9, 9), "zone must re-center on the caster after a teleport"
+    assert not _has_cell(cells, 2, 2), "zone must not stay where it was cast"
+    assert bm.get_terrain_multiplier(rpg.Cell(9, 9)) == 0.5, "zone terrain should follow the teleport"
+    assert bm.get_terrain_multiplier(rpg.Cell(2, 2)) == 1.0, "old zone terrain should clear"
+    assert engine.get_agent_stats(bm, enemy).hp_cur < 100, \
+        "the zone landing on the enemy should affect it"
+    print("✅ test_zone_follows_caster_teleport passed")
+
+
+def test_dm_reposition_recenters_without_damage():
+    """A DM drag sets the position directly; recenter_anchored_effects moves the zone
+    with it but affects no one, since a reposition is not a move."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    caster = add_agent_to_battle(engine, bm, create_test_agent("Cleric", 2, 2))
+    enemy = add_agent_to_battle(engine, bm, create_test_agent("Goblin", 10, 9), hp=100)
+    bm.set_agent_faction(caster, 1)
+    bm.set_agent_faction(enemy, 2)
+    _arm_caster(engine, bm, caster, _emanation())
+    _cast(engine, bm, caster, aoe_col=2, aoe_row=2)
+
+    assert bm.set_agent_position(caster, rpg.Cell(9, 9))
+    engine.recenter_anchored_effects(bm, caster)
+    cells = bm.active_spell_effects[0].cells
+    assert _has_cell(cells, 9, 9) and not _has_cell(cells, 2, 2), "zone should follow the drag"
+    assert engine.get_agent_stats(bm, enemy).hp_cur == 100, "a DM reposition must not deal damage"
+    print("✅ test_dm_reposition_recenters_without_damage passed")
+
+
 def _save_zone_damage(caster_wis, target_wis):
     """Apply one Save-type zone tick to a target via begin_turn; return damage dealt.
     Both engines share seed 42, so the save d20 and the 3d8 are identical — only the
@@ -278,4 +326,6 @@ if __name__ == "__main__":
     test_zone_spares_allies_hits_enemies()
     test_emanation_halves_enemy_speed_spares_allies()
     test_save_for_half_on_tick()
+    test_zone_follows_caster_teleport()
+    test_dm_reposition_recenters_without_damage()
     print("\n✅ All Emanation tests passed!")

@@ -212,30 +212,7 @@ bool CombatEngine::moveAgent(BattleMap& bm, int idx, Cell newOrigin, MovementTyp
     }
 
     // A moving Sphere (Emanation) anchored to this agent follows them as they move.
-    // Snapshot each anchored zone's footprint, re-center it, then affect creatures the
-    // zone newly swept onto — "whenever the Emanation enters a creature's space" (once/turn).
-    std::vector<std::pair<int, std::vector<Cell>>> oldAnchoredCells;  // (effect_id, cells before move)
-    for (const auto& effect : bm.activeSpellEffects())
-        if (effect.anchor_agent_idx == idx)
-            oldAnchoredCells.emplace_back(effect.effect_id, effect.cells);
-
-    recomputeAnchoredEffects(bm, idx);
-
-    for (const auto& [eff_id, oldCells] : oldAnchoredCells) {
-        const ActiveSpellEffect* eff = nullptr;
-        for (const auto& e : bm.activeSpellEffects())
-            if (e.effect_id == eff_id) { eff = &e; break; }
-        if (!eff) continue;
-        // An Emanation that only hurts creatures starting their turn in it (the Helm of
-        // Brilliance's Diamond Light: effects_on_enter false) does nothing as it sweeps on.
-        if (!eff->spell.effects_on_enter) continue;
-        for (int j = 0; j < static_cast<int>(agents.size()); ++j) {
-            if (zoneSparesTarget(bm, *eff, j)) continue;  // anchor + allies (faction rules)
-            const PlacedAgent& other = agents[static_cast<std::size_t>(j)];
-            if (footprintOverlapsCells(other, eff->cells) && !footprintOverlapsCells(other, oldCells))
-                applyZoneIfNewThisTurn(bm, *eff, j);
-        }
-    }
+    followAnchoredEffects(bm, idx);
 
     // Check for slipping terrain (ice/grease) along the path
     checkSlippingTerrain(bm, idx, oldOrigin, newOrigin);
@@ -399,10 +376,42 @@ bool CombatEngine::teleportAgent(BattleMap& bm, int idx, int target_col, int tar
         }
     }
 
+    // An Emanation anchored to the teleporter (Spirit Guardians) goes with them.
+    followAnchoredEffects(bm, idx);
+
     // Update darkness-based blinding after teleport
     updateDarknessBlinding(bm, idx);
 
     return true;
+}
+
+void CombatEngine::followAnchoredEffects(BattleMap& bm, int idx) noexcept
+{
+    // Snapshot each anchored zone's footprint, re-center it, then affect creatures the
+    // zone newly swept onto — "whenever the Emanation enters a creature's space" (once/turn).
+    const auto& agents = bm.placedAgents();
+    std::vector<std::pair<int, std::vector<Cell>>> oldAnchoredCells;  // (effect_id, cells before move)
+    for (const auto& effect : bm.activeSpellEffects())
+        if (effect.anchor_agent_idx == idx)
+            oldAnchoredCells.emplace_back(effect.effect_id, effect.cells);
+
+    recomputeAnchoredEffects(bm, idx);
+
+    for (const auto& [eff_id, oldCells] : oldAnchoredCells) {
+        const ActiveSpellEffect* eff = nullptr;
+        for (const auto& e : bm.activeSpellEffects())
+            if (e.effect_id == eff_id) { eff = &e; break; }
+        if (!eff) continue;
+        // An Emanation that only hurts creatures starting their turn in it (the Helm of
+        // Brilliance's Diamond Light: effects_on_enter false) does nothing as it sweeps on.
+        if (!eff->spell.effects_on_enter) continue;
+        for (int j = 0; j < static_cast<int>(agents.size()); ++j) {
+            if (zoneSparesTarget(bm, *eff, j)) continue;  // anchor + allies (faction rules)
+            const PlacedAgent& other = agents[static_cast<std::size_t>(j)];
+            if (footprintOverlapsCells(other, eff->cells) && !footprintOverlapsCells(other, oldCells))
+                applyZoneIfNewThisTurn(bm, *eff, j);
+        }
+    }
 }
 
 bool CombatEngine::isValidTeleportDestination(const BattleMap& bm, int col, int row) const noexcept

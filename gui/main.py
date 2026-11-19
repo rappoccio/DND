@@ -9529,6 +9529,8 @@ class App:
                         if self.bm.set_agent_position(self.drag_idx, self.drag_cell):
                             self.selected_idx = self.drag_idx
                             self._mark_fog_dirty()   # DM/pre-combat reposition moves a token
+                            # Its Spirit Guardians (any anchored Emanation) comes along.
+                            self.combat.recenter_anchored_effects(self.bm, self.drag_idx)
                         self._update_reach()
                         self._update_attack_overlay()
                     elif self.drag_valid and self.drag_cell is not None:

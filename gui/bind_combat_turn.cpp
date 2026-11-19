@@ -431,7 +431,13 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
              "Teleport agent to a new location (col, row). Only checks that destination is not blocked by terrain.\n"
              "Returns false if destination is blocked, out of bounds, or agent index invalid.\n"
-             "On successful teleport, checks for spell effects at destination and applies them.")
+             "On successful teleport, checks for spell effects at destination and applies them,\n"
+             "and an Emanation anchored to the teleporter (Spirit Guardians) goes with them.")
+        .def("recenter_anchored_effects",
+             &CombatEngine::recenterAnchoredEffects,
+             py::arg("battle_map"), py::arg("idx"),
+             "Re-center every Emanation anchored to agent idx on its current position, affecting\n"
+             "no one. For a DM reposition (set_agent_position), which is not a move.")
         .def("is_valid_teleport_destination",
              &CombatEngine::isValidTeleportDestination,
              py::arg("battle_map"), py::arg("col"), py::arg("row"),
