@@ -127,11 +127,46 @@ def test_the_edge_under_the_pointer_is_picked():
     print("✅ test_the_edge_under_the_pointer_is_picked passed")
 
 
+def test_generated_walls_land_on_their_carved_cells():
+    """Generate Terrain wrote its Wall rects in image px; regions are fit-scale px, so
+    on a shrunk map the walls drew and blocked ~1/fit too far out (Blank.png, fit 0.71:
+    walls 1.4 cells thick, off the map edge, doors stranded in open floor)."""
+    import random
+    tools = os.path.join(_ROOT, "tools")
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+    import dungeon_from_png as dfp
+    from app_dungeon_gen import carve_dungeon_layout, carve_current_map
+
+    app = App(_big_map(), seed=SEED)
+    app.bm.set_uniform_grid(CELL, 0, 0)
+    assert app.base_map_scale < 0.5, f"test map isn't shrunk: {app.base_map_scale}"
+    params = {"rooms": 4, "min_room": 9, "margin": 1}
+    cols, rows = app.bm.grid_cols, app.bm.grid_rows
+    grid, _r, _m, doors = carve_dungeon_layout(
+        app, dfp, cols, rows, list(app.bm.v_line_positions),
+        list(app.bm.h_line_positions), set(), params, random.Random(7))
+    carve_current_map(app, dfp, params, random.Random(7))
+    door_cells = set(map(tuple, doors))
+    wrong = []
+    for r in range(rows):
+        for c in range(cols):
+            if (c, r) in door_cells:
+                continue
+            want = grid[r][c] == dfp.WALL
+            got = app.bm.get_terrain_type(rpg.Cell(c, r)) == rpg.TerrainType.Wall
+            if want != got:
+                wrong.append((c, r, want, got))
+    assert not wrong, f"{len(wrong)} cells disagree with the carve, e.g. {wrong[:5]}"
+    print("✅ test_generated_walls_land_on_their_carved_cells passed")
+
+
 def main():
     tests = [test_the_editor_gets_the_fit_scale,
              test_a_detected_edge_wall_is_drawn_on_its_grid_line,
              test_a_door_click_lands_on_the_cell_under_the_pointer,
-             test_the_edge_under_the_pointer_is_picked]
+             test_the_edge_under_the_pointer_is_picked,
+             test_generated_walls_land_on_their_carved_cells]
     failed = 0
     for t in tests:
         try:

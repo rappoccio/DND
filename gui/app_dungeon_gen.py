@@ -231,7 +231,7 @@ def carve_dungeon_layout(app, dfp, cols, rows, raw_v, raw_h, blocked, params, rn
         if 0 <= r < len(grid) and 0 <= c < len(grid[0]):
             grid[r][c] = dfp.FLOOR
 
-    regions = regions_from_grid(dfp, grid, raw_v, raw_h)
+    regions = regions_from_grid(dfp, grid, raw_v, raw_h, app.base_map_scale)
     rooms_meta = [
         {"path_index": i, "c": rm["c"], "r": rm["r"], "w": rm["w"], "h": rm["h"],
          "cells": [[c, r] for (c, r) in rm["cells"]]}
@@ -240,15 +240,20 @@ def carve_dungeon_layout(app, dfp, cols, rows, raw_v, raw_h, blocked, params, rn
     return grid, regions, rooms_meta, doors
 
 
-def regions_from_grid(dfp, grid, raw_v, raw_h):
+def regions_from_grid(dfp, grid, raw_v, raw_h, scale=1.0):
     """The carve grid's WALL cells as pixel-space Wall terrain rects. Recomputed
     whenever the grid is reopened (e.g. after tunnelling a cross-map doorway), so
-    the terrain the engine sees always matches the grid."""
+    the terrain the engine sees always matches the grid.
+
+    Terrain regions live in fit-scale px (the draw code, ``_pixel_rect_to_cells`` and
+    the terrain editor all read them that way), but ``raw_v``/``raw_h`` are image px.
+    ``scale`` is the app's ``base_map_scale``: on a map too big for the window
+    (fit < 1) unscaled rects drew and blocked ~1/fit too far out."""
     def cell_to_px(c, r, w, h):
         c2 = min(c + w, len(raw_v) - 1)
         r2 = min(r + h, len(raw_h) - 1)
-        x, y = raw_v[c], raw_h[r]
-        return x, y, raw_v[c2] - x, raw_h[r2] - y
+        x, y = round(raw_v[c] * scale), round(raw_h[r] * scale)
+        return x, y, round(raw_v[c2] * scale) - x, round(raw_h[r2] * scale) - y
 
     regions = []
     for (c, r, w, h) in dfp.wall_rects(grid):
@@ -515,7 +520,8 @@ def generate_multifloor(app, num_floors, terrain_params, encounter_params, base,
                 is_spine, rng, rooms_meta = t["is_spine"], t["rng"], t["rooms"]
                 # Rebuild the wall rects from the stapled grid, so the doorways the
                 # staples tunnelled are open terrain in both the engine and the file.
-                regions = regions_from_grid(dfp, t["grid"], raw_v, raw_h)
+                regions = regions_from_grid(dfp, t["grid"], raw_v, raw_h,
+                                           app.base_map_scale)
 
                 # Populate this tile's rooms (optional). Placement reads bm.is_blocked, so
                 # apply the carved walls to the engine first (mirrors Generate Terrain →
