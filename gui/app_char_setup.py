@@ -151,6 +151,8 @@ def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_nam
     stats.cha        = steppers["cha"].value
     stats.hp_cur     = steppers["hp_cur"].value
     stats.hp_max     = steppers["hp_max"].value
+    if "temp_hp" in steppers:       # Edit Stats sets temp HP outright (DM override)
+        stats.temp_hp = steppers["temp_hp"].value
     stats.base_ac    = steppers["base_ac"].value
     stats.speed_walk   = steppers["speed_walk"].value
     stats.speed_swim   = steppers["speed_swim"].value

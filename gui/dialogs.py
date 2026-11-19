@@ -2105,6 +2105,7 @@ class StatsDialog:
     COMBAT = [
         ("Current HP",    "hp_cur",       0, 999),
         ("Max HP",        "hp_max",       1, 999),
+        ("Temp HP",       "temp_hp",      0, 999),
         ("Armor Class",   "base_ac",      1,  30),
         ("Walk (ft)",     "speed_walk",   0, 120),
         ("Swim (ft)",     "speed_swim",   0, 120),
@@ -2891,7 +2892,9 @@ class StatsDialog:
                                    max(4, int(bar_w * ratio)), 18)
                 pygame.draw.rect(screen, hp_col, fill, border_radius=4)
             pygame.draw.rect(screen, self.C_BORDER, bar_r, 1, border_radius=4)
-            hp_txt = self.font_sm.render(f"HP  {cur} / {mx}", True, (210, 210, 210))
+            st_tmp = self.steppers.get("temp_hp")
+            tmp_sfx = f"  (+{st_tmp.value} temp)" if st_tmp and st_tmp.value > 0 else ""
+            hp_txt = self.font_sm.render(f"HP  {cur} / {mx}{tmp_sfx}", True, (210, 210, 210))
             screen.blit(hp_txt, hp_txt.get_rect(center=bar_r.center))
 
         # ── Class Level and Class ─────────────────────────────────────────
