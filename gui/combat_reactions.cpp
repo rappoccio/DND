@@ -516,13 +516,23 @@ void CombatEngine::resolveCounterspellEffect(BattleMap& bm, InFlightCast& c)
 {
     const int reactor = c.action.caster_idx;             // the counterspeller
     const int target  = c.counter_target_caster;         // the caster being countered
-    const int dc = rules::holderSpellSaveDc(bm.placedAgents()[static_cast<std::size_t>(reactor)]);
-    const Agent::Stats cs = bm.getAgentStats(target);
-    const int save_mod = abilityMod(cs.con) + (cs.save_prof_con ? cs.prof_bonus : 0);
-    const int d20 = roll(20), total = d20 + save_mod;
-    log_("{} must make a DC {} CON save vs Counterspell (rolled {}{}{} = {})",
-         agentName(bm, target), dc, d20, save_mod >= 0 ? "+" : "", save_mod, total);
-    if (total >= dc) { log_("{} resists — the spell resolves", agentName(bm, target)); return; }
+    // The save was pre-rolled in stepTopCast's OnSaveFail window (where Legendary Resistance etc.
+    // could rescue it). Fall back to a fresh roll only if that window never ran.
+    bool saved = false;
+    const SpellSave* pre = nullptr;
+    for (const auto& p : c.save_prerolls) if (p.target_idx == target) { pre = &p; break; }
+    if (pre) {
+        saved = pre->saved;
+    } else {
+        const int dc = rules::holderSpellSaveDc(bm.placedAgents()[static_cast<std::size_t>(reactor)]);
+        const Agent::Stats cs = bm.getAgentStats(target);
+        const int save_mod = abilityMod(cs.con) + (cs.save_prof_con ? cs.prof_bonus : 0);
+        const int d20 = roll(20), total = d20 + save_mod;
+        log_("{} must make a DC {} CON save vs Counterspell (rolled {}{}{} = {})",
+             agentName(bm, target), dc, d20, save_mod >= 0 ? "+" : "", save_mod, total);
+        saved = total >= dc;
+    }
+    if (saved) { log_("{} resists — the spell resolves", agentName(bm, target)); return; }
     log_("{}'s spell is countered and fails (its slot is retained)", agentName(bm, target));
     if (rx_.casts().size() >= 2)                          // mark the PARENT (directly below) countered
         rx_.casts()[rx_.casts().size() - 2].countered = true;
@@ -628,6 +638,29 @@ CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
     // A Counterspell cast is not a Save spell, so this window self-skips for it.
     if (!c.countered && !c.save_window_built) {
         c.save_window_built = true;
+        // A Counterspell's own CON save (rolled by the countered caster) goes through this same
+        // window, so Legendary Resistance / Indomitable / … are offered on a failure. Pre-rolled
+        // here; resolveCounterspellEffect consumes the (possibly rescued) result at pop time.
+        if (c.is_counterspell) {
+            const int target = c.counter_target_caster;
+            if (target >= 0 && target < static_cast<int>(agents.size())) {
+                const int reactor = c.action.caster_idx;    // the counterspeller
+                const Agent::Stats cs = bm.getAgentStats(target);
+                SpellSave ss{};
+                ss.target_idx = target;
+                ss.ability    = SaveCon;
+                ss.dc         = rules::holderSpellSaveDc(agents[static_cast<std::size_t>(reactor)]);
+                ss.save_mod   = abilityMod(cs.con) + (cs.save_prof_con ? cs.prof_bonus : 0);
+                ss.d20        = roll(20);
+                reevaluateSave(ss);
+                log_("{} must make a DC {} CON save vs Counterspell (rolled {}{}{} = {})",
+                     agentName(bm, target), ss.dc, ss.d20, ss.save_mod >= 0 ? "+" : "",
+                     ss.save_mod, ss.total);
+                c.save_prerolls.push_back(ss);
+                for (int r : saveFailReactors(bm, c.action, ss))
+                    c.savefail_pairs.emplace_back(target, r);
+            }
+        }
         bool is_save_spell = false;
         if (c.action.caster_idx >= 0 && c.action.caster_idx < static_cast<int>(agents.size())) {
             const auto& spells = bm.getAgentSpells(c.action.caster_idx);

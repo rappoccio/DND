@@ -453,7 +453,64 @@ def test_enemy_still_counters_with_factions():
     print("✅ test_enemy_still_counters_with_factions passed")
 
 
+def _counter_then_save_fail(engine, bm, caster, victim, mage):
+    """GUI path to the countered caster's failed CON save: cast, take the Counterspell, and return
+    the parked OnSaveFail decision (caster CON 1 vs DC 19 always fails)."""
+    st = engine.get_agent_stats(bm, caster)
+    st.legendary_resistance_max = 3; st.legendary_resistance_current = 3
+    engine.set_agent_stats(bm, caster, st)
+    status = engine.begin_cast(bm, _mm_action(caster, victim))
+    assert status == rpg.FlowStatus.AwaitingDecision
+    pd = engine.pending_decision()
+    opt = next(i for i, o in enumerate(pd.ctx.options) if o.feature == "Counterspell")
+    resp = rpg.ReactionResponse(); resp.option = opt
+    status = engine.submit_decision(bm, resp)
+    assert status == rpg.FlowStatus.AwaitingDecision, \
+        "the failed Counterspell save opens a save-fail window"
+    pd = engine.pending_decision()
+    assert pd.ctx.window == rpg.ReactionWindow.OnSaveFail, pd.ctx.window
+    assert pd.ctx.reactor_idx == caster and pd.ctx.source_idx == caster
+    feats = [o.feature for o in pd.ctx.options]
+    assert "LegendaryResistance" in feats, feats
+    return pd
+
+
+def test_legendary_resistance_offered_vs_counterspell():
+    """A legendary caster that fails its CON save vs Counterspell is offered Legendary Resistance;
+    taking it makes the save succeed, so the spell resolves and one use is spent."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster, victim, mage = _setup(engine, bm, high_dc=True, caster_con=1)
+    pd = _counter_then_save_fail(engine, bm, caster, victim, mage)
+    resp = rpg.ReactionResponse()
+    resp.option = next(i for i, o in enumerate(pd.ctx.options) if o.feature == "LegendaryResistance")
+    status = engine.submit_decision(bm, resp)
+    assert status == rpg.FlowStatus.Completed
+    assert not engine.last_cast_countered(), "Legendary Resistance beat the Counterspell"
+    assert _hp(engine, bm, victim) < 40, "the spell resolved"
+    assert engine.get_agent_stats(bm, caster).legendary_resistance_current == 2
+    assert _l3(engine, bm, mage) == 1, "the Counterspell itself is still spent"
+    print("✅ test_legendary_resistance_offered_vs_counterspell passed")
+
+
+def test_legendary_resistance_declined_vs_counterspell():
+    """Skipping the offer leaves the save failed: the spell is countered, no use spent."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    caster, victim, mage = _setup(engine, bm, high_dc=True, caster_con=1)
+    pd = _counter_then_save_fail(engine, bm, caster, victim, mage)
+    resp = rpg.ReactionResponse()
+    resp.option = next(i for i, o in enumerate(pd.ctx.options)
+                       if o.kind == rpg.ReactionOptionKind.Skip)
+    status = engine.submit_decision(bm, resp)
+    assert status == rpg.FlowStatus.Completed
+    assert engine.last_cast_countered()
+    assert _hp(engine, bm, victim) == 40
+    assert engine.get_agent_stats(bm, caster).legendary_resistance_current == 3
+    print("✅ test_legendary_resistance_declined_vs_counterspell passed")
+
+
 def run_all():
+    test_legendary_resistance_offered_vs_counterspell()
+    test_legendary_resistance_declined_vs_counterspell()
     test_counterspell_counters_on_failed_save()
     test_counterspell_fails_on_successful_save()
     test_skipped_counterspell_resolves()

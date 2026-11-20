@@ -3328,6 +3328,11 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                     log_("{} throws {} — their last one, and it now lies at {}'s feet",
                          agentName(bm, action.attacker_idx), tw.name,
                          agentName(bm, action.target_idx));
+                    // The off-hand attack (bonus action, Dual Wielder, Nick) needs a weapon IN the
+                    // off hand; the GUI drops the "Bonus Atk" button once it is gone. Say why.
+                    if (tw.off_hand)
+                        log_("{} has no off-hand weapon left — no off-hand attack until one is "
+                             "picked up", agentName(bm, action.attacker_idx));
                     tw = Weapon{};    // blank slot: nothing left to swing or throw
                 } else {
                     log_("{} throws {} — it lands at {}'s feet ({} left)",
