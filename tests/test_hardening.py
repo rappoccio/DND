@@ -877,6 +877,30 @@ def test_reserves_wake_by_drawn_room():
     print("✅ test_reserves_wake_by_drawn_room")
 
 
+def test_another_table_names_its_join_code():
+    """Opening another table (a generated dungeon, another campaign) tells the DM the
+    new join code — the startup line names the old one — and never tells the players."""
+    import shutil
+    import tempfile
+    from types import SimpleNamespace as NS
+    from test_offer import _aria_turn
+    tmp = tempfile.mkdtemp()
+    try:
+        app, _, _ = _aria_turn(tmp)
+        if getattr(app, "_net", None) is None:
+            app._net = NS(set_roster=lambda r: None)
+        app._point_session(os.path.join(tmp, "other_session.json"))
+        code = app.roster.join_code
+        dm = [e["text"] for e in app.session_log.tail(include_dm=True)]
+        public = " ".join(e["text"] for e in app.session_log.tail(include_dm=False))
+        assert f"Join code for this table: {code}" in dm, dm
+        assert code not in public, public
+        assert code in app._status_msg, app._status_msg
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("✅ test_another_table_names_its_join_code")
+
+
 if __name__ == "__main__":
     test_the_roster_survives_racing_threads()
     test_the_bus_hook_runs_outside_the_lock()
@@ -897,6 +921,7 @@ if __name__ == "__main__":
     test_the_combat_tool_opens_it_mid_fight()
     test_removing_a_player()
     test_new_code_and_lock()
+    test_another_table_names_its_join_code()
     test_rename_and_the_log_viewer()
     test_room_cells_stop_at_the_room()
     test_reveal_and_fog_a_room()

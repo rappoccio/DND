@@ -1686,6 +1686,12 @@ class App:
             if getattr(self, "_net", None) is not None:
                 self._net.set_roster(self.roster)
                 self.session_log.add("The DM opened another table. Everyone joins again.")
+                # The startup "[net] join code" line now names the old table's code, so
+                # say the new one (DM-only in the log: a code is never sent to players).
+                code = self.roster.join_code
+                self.session_log.add(f"Join code for this table: {code}", dm_only=True)
+                print(f"[net] join code: {code}")
+                self._flash_status(f"Another table: join code {code}")
             if getattr(self, "bm", None) is not None:
                 self._sync_roster_tokens()
 
