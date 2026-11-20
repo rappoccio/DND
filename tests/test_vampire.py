@@ -230,8 +230,8 @@ def test_bite_auto_hits_grappled_target():
     print("✅ Bite auto-hits a creature the attacker has Grappled")
 
 
-def test_bite_no_auto_hit_when_grappled_by_other():
-    """auto_hit only applies vs a creature THIS attacker grapples — not one held by someone else."""
+def test_bite_auto_hits_when_grappled_by_other():
+    """auto_hit applies vs a creature held by ANY grappler, not only this attacker."""
     bm = setup_battle_map()
     engine = setup_combat_engine()
     atk = add_agent_to_battle(engine, bm, create_test_agent("Vampire", 5, 5), str=1, hp=50)
@@ -252,15 +252,12 @@ def test_bite_no_auto_hit_when_grappled_by_other():
     action.target_idx = tgt
     action.weapon_idx = 0
 
-    misses = 0
     for _ in range(20):
         st = engine.get_agent_stats(bm, tgt); st.hp_cur = 60; st.hp_max = 60
         engine.set_agent_stats(bm, tgt, st)
         r = engine.execute_action(bm, action)
-        if not r.hit:
-            misses += 1
-    assert misses >= 18, "no auto-hit when the target is grappled by someone other than the attacker"
-    print("✅ no auto-hit when the target is grappled by a different creature")
+        assert r.hit, "Bite vs a creature grappled by someone else must auto-hit"
+    print("✅ Bite auto-hits a creature grappled by a different creature")
 
 
 def _grapple(engine, bm, atk, tgt):
@@ -415,7 +412,7 @@ def test_pending_auto_grapple_strike_gating():
     """CP2 helper (MONSTER_AUTO_EFFECTS_PLAN.md): pending_auto_grapple_strike returns the
     (bite_slot, victim) of an auto_use_when_grappling weapon ONLY when the attacker is currently
     grappling a legal, in-reach victim — and (-1, -1) otherwise (no flag, not grappling, or the
-    victim is held by someone else)."""
+    victim is an ally held by someone else)."""
     bm = setup_battle_map(); engine = setup_combat_engine()
     atk = add_agent_to_battle(engine, bm, create_test_agent("Vampire", 6, 5))
     foe = add_agent_to_battle(engine, bm, create_test_agent("Victim", 7, 5))
@@ -446,13 +443,19 @@ def test_pending_auto_grapple_strike_gating():
     assert engine.pending_auto_grapple_strike(bm, atk) == (1, foe), \
         f"expected (1, {foe}), got {engine.pending_auto_grapple_strike(bm, atk)}"
 
-    # Victim held by a DIFFERENT creature (not this attacker) → empty (mirror of the auto-hit gate).
+    # Victim held by a DIFFERENT creature → still offered (the Bite auto-hits whoever holds it).
     cond = engine.get_agent_conditions(bm, foe)
     cond.grappler_idx = 99
     engine.set_agent_conditions(bm, foe, cond)
+    assert engine.pending_auto_grapple_strike(bm, atk) == (1, foe), \
+        "a non-ally grappled by someone else is a legal Bite victim"
+
+    # ...but not when that victim is the attacker's ally.
+    bm.set_agent_faction(foe, 1)
     assert engine.pending_auto_grapple_strike(bm, atk) == (-1, -1), \
-        "no auto-strike when the victim is grappled by someone else"
-    print("✅ pending_auto_grapple_strike gates on flag + grappled-by-me + in reach")
+        "no auto-strike at an ally held by someone else"
+    bm.set_agent_faction(foe, 2)
+    print("✅ pending_auto_grapple_strike gates on flag + grappled + not an ally + in reach")
 
 
 def test_vampire_auto_bite_no_recipe():
@@ -510,7 +513,7 @@ if __name__ == "__main__":
     test_bite_drains_max_and_heals_attacker()
     test_no_necrotic_no_drain()
     test_bite_auto_hits_grappled_target()
-    test_bite_no_auto_hit_when_grappled_by_other()
+    test_bite_auto_hits_when_grappled_by_other()
     test_bite_con_save_success_negates()
     test_bite_con_save_failure_bites()
     test_vampire_multiattack_recipe()

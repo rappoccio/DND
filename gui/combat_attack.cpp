@@ -1915,8 +1915,8 @@ bool CombatEngine::canRestoreBalance(const BattleMap& bm, int reactor, int rolle
 
 // "Auto-use-when-grappling" intent: for attacker `atk`, return the {weapon_slot, victim_idx} of a
 // weapon flagged auto_use_when_grappling (a Vampire's Bite) fired at a creature `atk` is currently
-// Grappling (or has Charmed — a willing victim) — or {-1,-1} if there is no such weapon or no legal
-// victim. A legal victim must be grappled or Charmed BY this attacker, alive, not tombstoned, and within the weapon's reach. This governs
+// Grappling (or has Charmed — a willing victim), or a non-ally Grappled by any other creature — or
+// {-1,-1} if there is no such weapon or no legal victim. A legal victim must be grappled or Charmed, alive, not tombstoned, and within the weapon's reach. This governs
 // INITIATION only (prompting/automation); resolution stays with forceAutoHit / save_for_damage.
 std::pair<int,int> CombatEngine::pendingAutoGrappleStrike(const BattleMap& bm, int atk) const
 {
@@ -1936,7 +1936,9 @@ std::pair<int,int> CombatEngine::pendingAutoGrappleStrike(const BattleMap& bm, i
             const PlacedAgent& vp = agents[static_cast<std::size_t>(v)];
             if (!vp.agent || vp.removed_from_play) continue;
             const Agent::Conditions& vc = vp.agent->getConditions();
-            const bool held    = vc.grappled && vc.grappler_idx == atk;
+            // Held by this attacker, or by anyone else as long as the victim is not its ally.
+            const bool held    = vc.grappled &&
+                                 (vc.grappler_idx == atk || !areAllies(bm, atk, v));
             const bool charmed = vc.charmed && vc.charmed_by == atk;   // a willing victim
             if (!held && !charmed) continue;
             if (vp.agent->getStats().hp_cur <= 0) continue;         // not a legal target if downed
@@ -3032,12 +3034,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         log_("Advantage: Grappler attacking a creature it has grappled");
     }
 
-    // Auto-hit weapons (e.g. a vampire's Bite) automatically hit a creature this attacker has
-    // Grappled — the roll is still made (a natural 20 still crits / OnD20 + Shield windows still
-    // open) but a miss is forced to a hit after the roll. Recorded here; applied in the caller.
-    // A creature it has Charmed is a willing victim and counts the same.
+    // Auto-hit weapons (e.g. a vampire's Bite) automatically hit a Grappled creature — held by
+    // ANY creature, not only this attacker — the roll is still made (a natural 20 still crits /
+    // OnD20 + Shield windows still open) but a miss is forced to a hit after the roll. Recorded
+    // here; applied in the caller. A creature it has Charmed is a willing victim and counts the same.
     bool auto_hit = (w.auto_hit_if_grappled &&
-                     ((tgt_cond.grappled && tgt_cond.grappler_idx == action.attacker_idx) ||
+                     (tgt_cond.grappled ||
                       (tgt_cond.charmed  && tgt_cond.charmed_by   == action.attacker_idx)));
 
     // Target is prone: advantage for melee attacks within 5 feet, disadvantage for ranged

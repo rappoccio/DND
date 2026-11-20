@@ -78,8 +78,8 @@ struct Weapon {
                                                 // makes no attack, and counts as "holding a Shield" (Shield Master,
                                                 // Interception, Protection, Unarmed Fighting)
     WeaponMastery mastery        = WeaponMastery::None;  // 2024 Weapon Mastery property
-    bool         auto_hit_if_grappled = false;  // the attack automatically hits a creature this attacker
-                                                // has Grappled (e.g. a vampire's Bite) — skips the roll
+    bool         auto_hit_if_grappled = false;  // the attack automatically hits a Grappled creature,
+                                                // whoever holds it (e.g. a vampire's Bite) — skips the roll
                                                 // (a natural 20 still crits)
     // Save-delivered damage (e.g. a Vampire's Bite is a CON save, not an attack roll). When true AND the
     // attack qualifies as an auto-hit (auto_hit_if_grappled vs a creature this attacker has Grappled), the
