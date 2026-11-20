@@ -1233,12 +1233,12 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         int tgt_idx = targets[ti];
         if (tgt_idx < 0 || tgt_idx >= static_cast<int>(agents.size())) continue;
 
-        // Forcecage Box (10-ft solid): nothing crosses the wall between a sealed occupant and the
-        // outside — a spell or its area has no effect on a target on the other side of the box. Covers
-        // both directions and every geometry (single, multi, AoE) at the point effects are applied.
-        if (forcecageSeparates(bm, action.caster_idx, tgt_idx)) {
-            log_("{} is unaffected by {} — a Forcecage wall blocks it.",
-                 agentName(bm, tgt_idx), sp.name);
+        // Two-way seal (Forcecage Box, or Untouchable): nothing crosses between the two sides — a
+        // spell or its area has no effect on a target on the other side. Covers both directions and
+        // every geometry (single, multi, AoE) at the point effects are applied.
+        if (sealedApart(bm, action.caster_idx, tgt_idx)) {
+            log_("{} is unaffected by {} — {}.", agentName(bm, tgt_idx), sp.name,
+                 rules::sealReason(bm.getAgentConditions(action.caster_idx), bm.getAgentConditions(tgt_idx)));
             continue;
         }
 
@@ -3440,7 +3440,7 @@ bool CombatEngine::zoneSparesTarget(const BattleMap& bm, const ActiveSpellEffect
     // Forcecage Box (10-ft solid): a persistent zone can't reach across the wall either — spare a
     // sealed occupant from a zone cast by someone outside (and vice versa). Same two-way seal as
     // direct spells/attacks.
-    if (forcecageSeparates(bm, effect.caster_idx, target_idx)) return true;
+    if (sealedApart(bm, effect.caster_idx, target_idx)) return true;
 
     const Spell& sp = effect.spell;
     // A neutral (faction 0) caster has no allies, so it keeps the legacy "affect everyone in

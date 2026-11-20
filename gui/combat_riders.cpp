@@ -276,6 +276,7 @@ std::vector<int> CombatEngine::beguilingTwistTargets(const BattleMap& bm, int re
         if (i == reactor || i == saver) continue;
         const PlacedAgent& o = agents[static_cast<std::size_t>(i)];
         if (o.removed_from_play || o.on_deck) continue;
+        if (rules::untouchableApart(bm, reactor, i)) continue;   // Untouchable: out of reach
         if (o.agent->getConditions().dead || o.agent->getStats().hp_cur <= 0) continue;
         if (footprintDistance(me.origin, me.agent->getSize(), o.origin, o.agent->getSize()) > 24) continue;
         if (!bm.hasLineOfSight(me.origin, me.agent->getSize(), o.origin, o.agent->getSize())) continue;
@@ -292,6 +293,7 @@ bool CombatEngine::canBeguilingTwist(const BattleMap& bm, int reactor, int saver
     if (reactor < 0 || reactor >= n || saver < 0 || saver >= n) return false;
     const PlacedAgent& rp = agents[static_cast<std::size_t>(reactor)];
     if (rp.removed_from_play || rp.on_deck) return false;
+    if (rules::untouchableApart(bm, reactor, saver)) return false;   // Untouchable: out of reach
     const Agent::Stats s = rp.agent->getStats();
     if (s.hp_cur <= 0 || !s.hasClass(CharacterClass::Ranger) || s.ranger_subclass != FeyWandererPath ||
         s.classLevel(CharacterClass::Ranger) < 7) return false;

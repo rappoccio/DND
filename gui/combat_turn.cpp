@@ -1970,6 +1970,9 @@ bool CombatEngine::npcAttackable(const BattleMap& bm, int agent_idx, int target_
     if (target_idx < 0 || target_idx >= n || target_idx == agent_idx) return false;
     const PlacedAgent& t = agents[static_cast<std::size_t>(target_idx)];
     if (t.removed_from_play || t.on_deck)          return false;   // tombstoned / reserve: not in play
+    // Untouchable: out of reach. (Not the Forcecage seal — a boxed NPC still wants its enemies, to
+    // teleport toward them; its attacks are filtered by availableAttacks / resolveAttack.)
+    if (rules::untouchableApart(bm, agent_idx, target_idx)) return false;
     if (areAllies(bm, agent_idx, target_idx))      return false;   // enemy == any non-ally
     if (bm.getAgentStats(target_idx).hp_cur <= 0)  return false;
     const auto cond = bm.getAgentConditions(target_idx);
@@ -2580,10 +2583,18 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
             // force the segment onto that victim — the Bite lands on the thing being held, overriding the
             // proximity/lowest-HP pick. Resolution (CON save via save_for_damage / forceAutoHit) is
             // unchanged. Runs before re-acquire so the forced (valid) victim survives the drop-check below.
+            // With nobody grappled or Charmed by this agent, the Bite has no legal victim and the
+            // segment is skipped ("makes two attacks and uses Bite" — the Bite is not a free swing).
             {
                 const auto [biteSlot, biteVictim] = pendingAutoGrappleStrike(bm, agent_idx);
-                if (biteVictim >= 0 && biteSlot == st.weapon_idx)
+                if (biteVictim >= 0 && biteSlot == st.weapon_idx) {
                     st.target_idx = biteVictim;
+                } else if (const auto ws = bm.getAgentWeapons(agent_idx);
+                           st.weapon_idx >= 0 && st.weapon_idx < static_cast<int>(ws.size()) &&
+                           ws[static_cast<std::size_t>(st.weapon_idx)].auto_use_when_grappling) {
+                    st.attacks_remaining = 0;
+                    continue;
+                }
             }
             // Re-acquire if the current target dropped (or became invalid) mid-multiattack — move to next.
             if (!npcAttackable(bm, agent_idx, st.target_idx)) {
@@ -2970,6 +2981,7 @@ bool CombatEngine::npcTeleportEscape(BattleMap& bm, int agent_idx) noexcept
             const PlacedAgent& o = pa[static_cast<std::size_t>(j)];
             if (o.removed_from_play || o.on_deck) continue;
             if (o.agent->getConditions().dead)    continue;
+            if (rules::untouchableApart(bm, agent_idx, j)) continue;   // Untouchable: shares squares (as agentOccupancy)
             if (footprintDistance(at, ms, o.origin, o.agent->getSize()) == 0) return true;
         }
         return false;
@@ -3416,6 +3428,7 @@ NpcCastPlan CombatEngine::npcPlanHealCast(const BattleMap& bm, int agent_idx) co
         const PlacedAgent& a = agents[static_cast<std::size_t>(j)];
         if (a.removed_from_play || a.on_deck) continue;
         if (j != agent_idx && !areAllies(bm, agent_idx, j)) continue;   // self or an ally only
+        if (rules::untouchableApart(bm, agent_idx, j)) continue;   // Untouchable: out of reach
         if (getAgentConditions(bm, j).dead) continue;                   // true-dead needs revival magic, not a heal
         const Agent::Stats s = bm.getAgentStats(j);
         if (s.hp_max <= 0) continue;
@@ -3521,6 +3534,7 @@ NpcCastPlan CombatEngine::npcPlanSupportCast(const BattleMap& bm, int agent_idx)
         const PlacedAgent& a = agents[static_cast<std::size_t>(j)];
         if (a.removed_from_play || a.on_deck) continue;
         if (j != agent_idx && !areAllies(bm, agent_idx, j)) continue;   // self or an ally only
+        if (rules::untouchableApart(bm, agent_idx, j)) continue;   // Untouchable: out of reach
         const auto cond = bm.getAgentConditions(j);
         if (cond.dead || cond.unconscious) continue;                    // a downed ally wants a heal, not a buff
         if (bm.getAgentStats(j).hp_cur <= 0) continue;
@@ -4266,6 +4280,7 @@ std::vector<NpcMacroAction> CombatEngine::availableMacroActions(const BattleMap&
     bool anyAttackable = false;
     for (int j = 0; j < n; ++j) {
         if (at(j).removed_from_play || at(j).on_deck) continue;
+        if (rules::untouchableApart(bm, agent_idx, j)) continue;   // Untouchable: out of reach
         if (getAgentConditions(bm, j).dead) continue;
         if (j == agent_idx || areAllies(bm, agent_idx, j)) { allies.push_back(j); continue; }
         enemies.push_back(j);
@@ -4447,6 +4462,7 @@ NpcCastPlan CombatEngine::npcForcedCastPlan(const BattleMap& bm, int agent_idx, 
     // Still a target this kind of cast wants: the candidate list's legality test, re-run now.
     const auto wanted = [&](int j) -> bool {
         if (at(j).removed_from_play || at(j).on_deck) return false;
+        if (rules::untouchableApart(bm, agent_idx, j)) return false;   // Untouchable: out of reach
         const bool friendly = j == agent_idx || areAllies(bm, agent_idx, j);
         switch (a.kind) {
             case K::Control: return npcAttackable(bm, agent_idx, j);

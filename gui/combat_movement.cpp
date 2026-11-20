@@ -14,6 +14,7 @@
 #include "combat.hpp"
 #include "battle_map.hpp"
 #include "combat_internal.hpp"
+#include "rules.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -620,6 +621,7 @@ CombatEngine::detectProvokes(const BattleMap& bm, int mover_idx,
         if (areAllies(bm, mover_idx, r)) continue;  // teammates don't provoke OAs from each other
         const PlacedAgent& ra = agents[static_cast<std::size_t>(r)];
         if (ra.on_deck) continue;                    // a reserve held On Deck makes no opportunity attacks
+        if (rules::untouchableApart(bm, mover_idx, r)) continue; // Untouchable: out of reach
         if (ra.agent->getConditions().incapacitated) continue;
         if (ra.agent->getStats().hp_cur <= 0) continue;
         if (!canTakeReaction(bm.getAgentConditions(r))) continue;

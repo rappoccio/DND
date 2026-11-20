@@ -1736,12 +1736,15 @@ def draw_agents(app):
             sx, sy = app._cell_to_screen(pt.origin.col, pt.origin.row)
         # On-deck reserves are still drawn (the DM placed them), but dimmed with an
         # "ON DECK" badge so it's clear they aren't in the initiative yet.
+        # Untouchable (DM-set, out of everyone's reach): ghosted with a badge. Player views
+        # never get here — _concealed_on_screen / net/view.py drop it via _npc_concealed_from_party.
         on_deck = app.bm.is_agent_on_deck(i)
-        alpha = 110 if on_deck else (128 if invisible else 255)
+        untouchable = getattr(pt.conditions, "untouchable", False)
+        alpha = 110 if on_deck else (80 if untouchable else (128 if invisible else 255))
         draw_one_agent(app, pt, sx, sy, cpx, alpha=alpha, agent_idx=i)
-        if on_deck:
+        if on_deck or untouchable:
             size_px = cpx * pt.size
-            badge = app.font_sm.render("ON DECK", True, (255, 235, 150))
+            badge = app.font_sm.render("ON DECK" if on_deck else "UNTOUCHABLE", True, (255, 235, 150))
             bg = pygame.Surface((badge.get_width() + 4, badge.get_height() + 2),
                                 pygame.SRCALPHA)
             bg.fill((40, 30, 0, 200))

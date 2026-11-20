@@ -413,7 +413,10 @@ DM_CONDITIONS = [("Blinded", "blinded"), ("Charmed", "charmed"), ("Deafened", "d
                  ("Incapacitated", "incapacitated"), ("Invisible", "invisible"),
                  ("Paralyzed", "paralyzed"), ("Petrified", "petrified"),
                  ("Poisoned", "poisoned"), ("Prone", "prone"), ("Restrained", "restrained"),
-                 ("Stunned", "stunned"), ("Unconscious", "unconscious")]
+                 ("Stunned", "stunned"), ("Unconscious", "unconscious"),
+                 # Not a 5e condition: the DM's two-way seal for a creature still in the fight
+                 # but out of everyone's reach (Etherealness, Strahd phased into a wall/floor).
+                 ("Untouchable", "untouchable")]
 
 # The conditions that carry Incapacitated with them (PHB 2024). Incapacitated is set with
 # any of them and cleared only once none is left, unless the DM toggles it directly.

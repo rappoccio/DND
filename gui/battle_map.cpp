@@ -1044,6 +1044,9 @@ int BattleMap::agentOccupancy(Cell origin, int size, int mover_idx) const noexce
         const auto& pa = placedAgents_[i];
         if (pa.removed_from_play || pa.on_deck)   continue;   // tombstoned / reserve: not on the map
         if (pa.agent->getConditions().dead)       continue;   // a corpse frees its square; a downed (unconscious) body still blocks
+        // Untouchable (on one side only): it neither blocks nor is blocked — the squares are shared.
+        if (pa.agent->getConditions().untouchable != placedAgents_[static_cast<std::size_t>(mover_idx)].agent->getConditions().untouchable)
+            continue;
         const int psize = pa.agent->getSize();
         // Rectangle-overlap of the two footprints.
         if (origin.col < pa.origin.col + psize && origin.col + size > pa.origin.col &&

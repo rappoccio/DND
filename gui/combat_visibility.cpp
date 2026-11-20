@@ -57,6 +57,9 @@ bool VisibilityService::canPerceiveTarget(const BattleMap& bm, int viewer_idx, i
         return true;  // permissive on bad indices; callers handle geometry/range separately
     const PlacedAgent& target = agents[static_cast<std::size_t>(target_idx)];
     const PlacedAgent& viewer = agents[static_cast<std::size_t>(viewer_idx)];
+    // Untouchable (Etherealness, phased into a wall/floor): nothing perceives across that seal.
+    if (viewer.agent->getConditions().untouchable != target.agent->getConditions().untouchable)
+        return false;
     if (darknessConceals(bm, viewer_idx, viewer.origin, target_idx))
         return false;
     if (!target.agent->getConditions().invisible)
@@ -99,14 +102,14 @@ bool VisibilityService::darknessConceals(const BattleMap& bm, int viewer_idx, Ce
     return !piercesInvisibility(vs, dist_ft) && vs.devilssight_range < dist_ft;
 }
 
-bool VisibilityService::forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx) const noexcept
+bool VisibilityService::sealedApart(const BattleMap& bm, int a_idx, int b_idx) const noexcept
 {
     const auto& agents = bm.placedAgents();
     const int n = static_cast<int>(agents.size());
     if (a_idx < 0 || a_idx >= n || b_idx < 0 || b_idx >= n) return false;
-    const bool a_sealed = agents[static_cast<std::size_t>(a_idx)].agent->getConditions().forcecage_sealed;
-    const bool b_sealed = agents[static_cast<std::size_t>(b_idx)].agent->getConditions().forcecage_sealed;
-    return a_sealed != b_sealed;   // exactly one is inside a solid box → opposite sides of the wall
+    const auto& ac = agents[static_cast<std::size_t>(a_idx)].agent->getConditions();
+    const auto& bc = agents[static_cast<std::size_t>(b_idx)].agent->getConditions();
+    return rules::sealedApart(ac, bc);
 }
 
 bool VisibilityService::areAllies(const BattleMap& bm, int a_idx, int b_idx) const noexcept
@@ -497,9 +500,9 @@ bool CombatEngine::darknessConceals(const BattleMap& bm, int viewer_idx, Cell vi
     return vis_.darknessConceals(bm, viewer_idx, viewer_origin, target_idx);
 }
 
-bool CombatEngine::forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx) const noexcept
+bool CombatEngine::sealedApart(const BattleMap& bm, int a_idx, int b_idx) const noexcept
 {
-    return vis_.forcecageSeparates(bm, a_idx, b_idx);
+    return vis_.sealedApart(bm, a_idx, b_idx);
 }
 
 bool CombatEngine::areAllies(const BattleMap& bm, int a_idx, int b_idx) const noexcept

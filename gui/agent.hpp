@@ -1102,6 +1102,11 @@ namespace rpg {
       bool forcecaged{false};     // Forcecage: trapped in place (Speed 0 → canAgentMove false) but NOT Incapacitated — the creature can still act, attack, and cast. Persists for the spell's duration (NOT a per-turn transient, so it is NOT reset in turn()); cleared in clearSpellConditionEffect on any end path, or immediately when the creature teleports free (teleportAgent). A caged creature may teleport out only by first succeeding on a CHA save vs forcecage_dc.
       int  forcecage_dc{0};       // Forcecage: CHA save DC (caster's spell save DC) to teleport out of the cage.
       bool forcecage_sealed{false}; // Forcecage BOX form (10-ft solid cube) rather than the Cage (20-ft barred): a two-way seal. The occupant can't attack or cast at anything outside (only a CHA-saved teleport escapes — non-teleport actions are blocked), AND nothing outside can attack, target, or affect the occupant (attacks/harmful spells/AoEs between inside and outside are blocked, like a wall). Set alongside forcecaged for the Box form only; cleared with it.
+      bool untouchable{false};    // DM-set "Untouchable" (Etherealness, Strahd phased into a wall/floor): a two-way seal like
+                                  // forcecage_sealed, against EVERYONE not also untouchable. It can't attack, target, perceive or
+                                  // affect anyone across the seal, nor they it; it makes and provokes no opportunity attacks and
+                                  // blocks no one's movement. It keeps its initiative turn and Legendary Action offers. Set and
+                                  // cleared only by the DM (right-click → Conditions); NOT reset in turn().
       bool burning{false};        // Burning [Hazard] (Alchemist's Fire): 1d4 Fire at the start of each of its turns until extinguished (CombatEngine::extinguishBurning — an action: drop Prone and roll on the ground)
       bool poisoned{false};      // disadvantage on attack rolls and ability checks
       bool petrified{false};     // incapacitated, speed 0, resistance to all damage (0.5x), immune to poisoned, auto-fail STR/DEX saves, advantage on attacks

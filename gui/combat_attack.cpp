@@ -164,6 +164,7 @@ bool CombatEngine::isThreatened(const BattleMap& bm, int attacker_idx) const noe
         if (i == attacker_idx || rules::alliedFactions(bm, attacker_idx, i)) continue;
         const PlacedAgent& other = agents[static_cast<std::size_t>(i)];
         if (other.removed_from_play || other.on_deck) continue;
+        if (rules::untouchableApart(bm, attacker_idx, i)) continue;   // Untouchable: out of reach
         if (other.agent->getConditions().incapacitated) continue;
         if (other.agent->getStats().hp_cur <= 0) continue;
         int reach_ft = 5;
@@ -725,7 +726,8 @@ AttackResult CombatEngine::resolveAttack(const Weapon& w,
     // Forcecage Box (10-ft solid): a two-way wall — an attack never crosses between a sealed occupant
     // and anyone outside. Exactly one of the pair being sealed means they are on opposite sides of it.
     // (availableAttacks already omits these targets; this guards direct callers / summoned attacks too.)
-    if (attacker.getConditions().forcecage_sealed != target.getConditions().forcecage_sealed) {
+    // Untouchable is the same two-way seal (rules::sealedApart).
+    if (rules::sealedApart(attacker.getConditions(), target.getConditions())) {
         AttackResult blocked;
         blocked.valid     = true;
         blocked.hit       = false;
@@ -1130,6 +1132,7 @@ Cell CombatEngine::shadowyDodgeDestination(const BattleMap& bm, int idx) const
         if (i == idx || rules::alliedFactions(bm, idx, i)) continue;
         const PlacedAgent& o = agents[static_cast<std::size_t>(i)];
         if (o.removed_from_play || o.on_deck) continue;
+        if (rules::untouchableApart(bm, idx, i)) continue;   // Untouchable: out of reach
         if (o.agent->getConditions().dead || o.agent->getStats().hp_cur <= 0) continue;
         int reach_ft = 5;
         for (const Weapon& w : bm.getAgentWeapons(i))
@@ -1912,8 +1915,8 @@ bool CombatEngine::canRestoreBalance(const BattleMap& bm, int reactor, int rolle
 
 // "Auto-use-when-grappling" intent: for attacker `atk`, return the {weapon_slot, victim_idx} of a
 // weapon flagged auto_use_when_grappling (a Vampire's Bite) fired at a creature `atk` is currently
-// Grappling — or {-1,-1} if there is no such weapon or no legal victim. A legal victim must be
-// grappled BY this attacker, alive, not tombstoned, and within the weapon's reach. This governs
+// Grappling (or has Charmed — a willing victim) — or {-1,-1} if there is no such weapon or no legal
+// victim. A legal victim must be grappled or Charmed BY this attacker, alive, not tombstoned, and within the weapon's reach. This governs
 // INITIATION only (prompting/automation); resolution stays with forceAutoHit / save_for_damage.
 std::pair<int,int> CombatEngine::pendingAutoGrappleStrike(const BattleMap& bm, int atk) const
 {
@@ -1933,7 +1936,9 @@ std::pair<int,int> CombatEngine::pendingAutoGrappleStrike(const BattleMap& bm, i
             const PlacedAgent& vp = agents[static_cast<std::size_t>(v)];
             if (!vp.agent || vp.removed_from_play) continue;
             const Agent::Conditions& vc = vp.agent->getConditions();
-            if (!vc.grappled || vc.grappler_idx != atk) continue;
+            const bool held    = vc.grappled && vc.grappler_idx == atk;
+            const bool charmed = vc.charmed && vc.charmed_by == atk;   // a willing victim
+            if (!held && !charmed) continue;
             if (vp.agent->getStats().hp_cur <= 0) continue;         // not a legal target if downed
             if (!canAttack(w, bm, atk_pt.origin, atk_pt.agent->getSize(),
                            vp.origin, vp.agent->getSize()))
@@ -3030,8 +3035,10 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     // Auto-hit weapons (e.g. a vampire's Bite) automatically hit a creature this attacker has
     // Grappled — the roll is still made (a natural 20 still crits / OnD20 + Shield windows still
     // open) but a miss is forced to a hit after the roll. Recorded here; applied in the caller.
+    // A creature it has Charmed is a willing victim and counts the same.
     bool auto_hit = (w.auto_hit_if_grappled &&
-                     tgt_cond.grappled && tgt_cond.grappler_idx == action.attacker_idx);
+                     ((tgt_cond.grappled && tgt_cond.grappler_idx == action.attacker_idx) ||
+                      (tgt_cond.charmed  && tgt_cond.charmed_by   == action.attacker_idx)));
 
     // Target is prone: advantage for melee attacks within 5 feet, disadvantage for ranged
     if (tgt_cond.prone) {

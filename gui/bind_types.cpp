@@ -933,6 +933,7 @@ void bindTypes(py::module_& m) {
         .def_readwrite("forcecaged", &Agent::Conditions::forcecaged)
         .def_readwrite("forcecage_dc", &Agent::Conditions::forcecage_dc)
         .def_readwrite("forcecage_sealed", &Agent::Conditions::forcecage_sealed)
+        .def_readwrite("untouchable", &Agent::Conditions::untouchable)
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("pull_of_death_turn", &Agent::Conditions::pull_of_death_turn)
         .def_readwrite("grave_cursed_by", &Agent::Conditions::grave_cursed_by)

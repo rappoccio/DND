@@ -463,6 +463,7 @@ test_scripts = [
     "test_condition_immunities.py",
     "test_legendary_spells.py",
     "test_strahd_lair.py",
+    "test_untouchable.py",
     "test_send_to_floor.py",
     "test_death_burst.py",
     "test_deny_reactions.py",

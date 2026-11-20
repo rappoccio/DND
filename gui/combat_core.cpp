@@ -400,7 +400,7 @@ std::vector<Attack> CombatEngine::availableAttacks(
             const Weapon& w = atk.weapons[static_cast<std::size_t>(wi)];
             if (canAttack(w, bm, atk.origin, atk_sz, tgt.origin, tgt_sz)
                     && canPerceiveTarget(bm, attacker_idx, ti)
-                    && !forcecageSeparates(bm, attacker_idx, ti)) {   // no attack crosses a Forcecage Box wall
+                    && !sealedApart(bm, attacker_idx, ti)) {   // no attack crosses a Forcecage Box wall
                 log_("[AVAILABLE_ATTACKS] Can attack with weapon {}: '{}'", wi, w.name);
                 result.push_back({attacker_idx, ti, wi});
             }

@@ -886,13 +886,17 @@ class ActionMenu:
 
         # ── Bite (grappled) (bucket 7c, M2d) ──
         # A weapon flagged `auto_use_when_grappling` (a Vampire's Bite) whose wielder is
-        # currently holding a legal victim: the engine finds the pair, and the button is
+        # currently holding (or has Charmed) a legal victim: the engine finds the pair, and the button is
         # the one-click version of picking that weapon and that target by hand. Offered
         # while the Attack action is unspent OR mid-multiattack, which is the common
         # case — a claw grapples, and the trailing Bite fires.
+        # It is part of the Attack action but not one of its swings, so it stays on offer
+        # (once a turn) after the last swing too — not after a spell or other action.
         mid_sequence_action = (app.attack_seq.remaining > 0
                                and app.attack_seq.slot == "action")
-        if not app.action_used or mid_sequence_action:
+        if (not getattr(app, "grapple_bite_used", False)
+                and (not app.action_used or mid_sequence_action
+                     or getattr(app, "attack_action_taken", False))):
             wslot, victim = app.combat.pending_auto_grapple_strike(app.bm, agent_idx)
             if wslot >= 0 and victim >= 0:
                 out.append(Action("bite_grappled", "🧛 Bite (grappled)", GROUP_BONUS))

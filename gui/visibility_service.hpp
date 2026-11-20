@@ -85,10 +85,10 @@ public:
     // planner can ask about a cell it hasn't moved to yet.
     [[nodiscard]] bool darknessConceals(const BattleMap& bm, int viewer_idx, Cell viewer_origin, int target_idx) const noexcept;
 
-    // True when a Forcecage BOX (10-ft solid) stands between the two agents: exactly one of
-    // them is sealed inside a box, so they are on opposite sides of that wall and NO attack,
-    // spell, or effect passes between them (a two-way seal).
-    [[nodiscard]] bool forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx) const noexcept;
+    // True when a two-way seal stands between the two agents (rules::sealedApart): a Forcecage
+    // BOX (exactly one of them inside), or Untouchable (exactly one of them untouchable). NO
+    // attack, spell, or effect passes between them.
+    [[nodiscard]] bool sealedApart(const BattleMap& bm, int a_idx, int b_idx) const noexcept;
 
     // True if two placed agents are allies: same NON-zero faction. Faction 0 is
     // neutral/unassigned — every neutral is its own faction, allied with no one.

@@ -927,11 +927,11 @@ public:
     // can't be targeted by an attack or a single-target spell. See VisibilityService.
     [[nodiscard]] bool darknessConceals(const BattleMap& bm, int viewer_idx, Cell viewer_origin, int target_idx) const noexcept;
 
-    // True when a Forcecage BOX (10-ft solid) stands between the two agents: exactly one of them is
-    // sealed inside a box, so they are on opposite sides of that wall and NO attack, spell, or effect
-    // passes between them (a two-way seal). Both unsealed (normal) or both sealed (same box) → false.
+    // True when a two-way seal stands between the two agents (rules::sealedApart): a Forcecage BOX
+    // (exactly one of them sealed inside — opposite sides of the wall) or Untouchable (exactly one of
+    // them untouchable). NO attack, spell, or effect passes between them. Both on the same side → false.
     // The occupant's own teleport-escape is exempt — that is gated separately in teleportAgent.
-    [[nodiscard]] bool forcecageSeparates(const BattleMap& bm, int a_idx, int b_idx) const noexcept;
+    [[nodiscard]] bool sealedApart(const BattleMap& bm, int a_idx, int b_idx) const noexcept;
 
     // True if two placed agents are allies: same NON-zero faction. Faction 0 is
     // neutral/unassigned — every neutral is its own faction, allied with no one
@@ -2407,7 +2407,7 @@ private:
     // Vision, perception and hiding, plus the (source_idx, target_idx) -> VisibilityLevel cache
     // that used to be visibilityMap_ here — see visibility_service.hpp (COMBAT_REFACTOR_PLAN.md
     // R4, first sub-engine cut). The public computeVisibility/getVisibility/canPerceiveTarget/
-    // forcecageSeparates/areAllies/checkHide/checkHiddenAgentDetection methods above are now
+    // sealedApart/areAllies/checkHide/checkHiddenAgentDetection methods above are now
     // one-line forwarders to this, defined in combat_visibility.cpp.
     // Declared after ctx_ so the CombatContext& it binds is already initialized.
     VisibilityService vis_{ctx_};

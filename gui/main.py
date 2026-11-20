@@ -730,6 +730,8 @@ class App:
         self.turn_idx             = 0     # index into initiative_order
         self.action_used          = False
         self.bonus_used           = False
+        self.attack_action_taken  = False
+        self.grapple_bite_used    = False
         # The action being built, awaiting a click (pending.py: Attack / Spell / Shove /
         # Unarmed / Summon), or None. A click pick (`self.pick`) can sit on top of it.
         self.pending              = None
@@ -3161,7 +3163,9 @@ class App:
                     target = self.bm.placed_agents[hit]
                     c_cond = self.combat.get_agent_conditions(self.bm, caster_idx)
                     t_cond = self.combat.get_agent_conditions(self.bm, hit)
-                    if not self.bm.has_line_of_sight(caster.origin, caster.size, target.origin, target.size):
+                    if c_cond.untouchable != t_cond.untouchable:
+                        self._combat_log_add("Untouchable: that creature is out of reach — no spell crosses.")
+                    elif not self.bm.has_line_of_sight(caster.origin, caster.size, target.origin, target.size):
                         self._combat_log_add("No line of sight to target!")
                     elif not self.combat.can_perceive_target(self.bm, caster_idx, hit):
                         self._combat_log_add("Cannot perceive target (invisible or in magical darkness)!")
@@ -3333,6 +3337,8 @@ class App:
         self.bonus_used            = False
         self.attack_seq.remaining  = 0
         self.attack_seq.slot       = ""
+        self.attack_action_taken   = False   # this turn's action was the Attack action
+        self.grapple_bite_used     = False   # a vampire's Bite (grappled/charmed), once a turn
         # Every base mode but a Summon, which the turn boundary's clear disarms.
         self._disarm(pending.Attack, pending.Spell, pending.Shove, pending.Unarmed)
         self._reaction_mover_idx       = -1
@@ -7582,7 +7588,7 @@ class App:
         if pt.faction == PC_FACTION:
             return False
         cond = pt.conditions
-        if cond.hidden:
+        if cond.hidden or cond.untouchable:   # Untouchable: out of reach (phased, ethereal)
             return True
         if not cond.invisible:
             return False
@@ -8253,13 +8259,27 @@ class App:
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
                     wslot, victim = self.combat.pending_auto_grapple_strike(self.bm, idx)
-                    if wslot >= 0 and victim >= 0:
-                        # Pre-seed the flagged weapon + grappled victim, then resolve straight
-                        # away (the button IS the DM's confirmation). Routes through the normal
-                        # attack dispatch on the Attack budget so forceAutoHit / save_for_damage
-                        # / the HP-max drain all fire unchanged (the victim still gets its save).
-                        self._start_extra_attack(weapon_idx=wslot, offhand=False,
-                                                 slot="action", label="🧛 Bite (grappled)")
+                    if wslot >= 0 and victim >= 0 and not self.grapple_bite_used:
+                        # "Makes two attacks and uses Bite": the Bite rides along with the
+                        # Attack action without spending one of its swings. Route it through
+                        # the normal Attack dispatch (so forceAutoHit / save_for_damage / the
+                        # HP-max drain fire unchanged) with ONE extra swing added to the
+                        # sequence, which the dispatch then spends — so the weapon swings
+                        # left over are exactly what they were before the Bite.
+                        seq = self.attack_seq
+                        if seq.slot == "action" and seq.remaining > 0:
+                            seq.remaining += 1                       # mid-sequence
+                        else:
+                            fresh = not self.action_used
+                            seq.remaining = (app_attacks.attack_action_budget(self, idx)
+                                             if fresh else 0) + 1
+                            seq.slot = "action"
+                            seq.offhand = None
+                            seq.resource = None
+                        self.grapple_bite_used = True
+                        seq.weapon_idx = wslot
+                        self.pending = pending.Attack("action")
+                        self._combat_log_add("🧛 Bite (grappled)")
                         self._resolve_combat_attack(victim)
             if action_id == "gwm_hew":
                 idx = self._current_agent_idx()

@@ -781,9 +781,9 @@ def test_dash_after_an_unswung_attack_undoes_the_arm():
 
 
 def test_a_bite_after_an_unswung_attack_is_one_of_its_swings():
-    """Bite (grappled) spends the Action by swinging inside its own handler. It is paid out
-    of the Attack's swings, so it does not abandon the Attack: Aria (Fighter 5, DM-run
-    here, no seats) still owes her second swing after it."""
+    """Bite (grappled) swings inside its own handler, as part of the Attack action but not
+    one of its swings ("makes two attacks and uses Bite"), so it neither abandons the Attack
+    nor spends a swing: Aria (Fighter 5, DM-run here, no seats) still owes both swings."""
     from test_action_menu import _app
     from test_combat_panel import _goto, _set_conditions, _weapon
     app = _app()
@@ -802,8 +802,43 @@ def test_a_bite_after_an_unswung_attack_is_one_of_its_swings():
     assert app._armed_slot(pending.Attack) == "action" and app.attack_seq.remaining == 2, _attack_fields(app)
     assert app.perform("bite_grappled", DM_PRINCIPAL_ID), "the Bite was refused"
     assert app.action_used
-    assert (app.attack_seq.remaining, app.attack_seq.slot) == (1, "action"), _attack_fields(app)
+    assert (app.attack_seq.remaining, app.attack_seq.slot) == (2, "action"), _attack_fields(app)
+    _frame(app)
+    assert not app.perform("bite_grappled", DM_PRINCIPAL_ID), "a second Bite in one turn"
     print("✅ test_a_bite_after_an_unswung_attack_is_one_of_its_swings")
+
+
+def test_a_vampire_makes_its_attacks_and_bites_a_charmed_victim():
+    """Strahd's block: num_attacks 3 = recipe [[0,2],[1,1]] (two strikes + Bite). The DM's
+    Attack action is the two strikes; the Bite is extra, on a creature he has Charmed, and it
+    stays on offer once after the last strike. Bite first, then both strikes."""
+    from test_action_menu import _app
+    from test_combat_panel import _goto, _set_conditions, _weapon
+    app = _app()
+    aria, skarn = _goto(app, "Aria"), _idx(app, "Skarn")
+    strike = _weapon(app, "Longsword")
+    bite = _weapon(app, "Longsword")
+    bite.name = "Bite"
+    bite.auto_use_when_grappling = True
+    app.combat.set_agent_weapons(app.bm, aria, [strike, bite])
+    st = app.combat.get_agent_stats(app.bm, aria)
+    st.num_attacks = 3
+    st.multiattack = [(0, 2), (1, 1)]
+    app.combat.set_agent_stats(app.bm, aria, st)
+    _set_conditions(app, skarn, charmed=True, charmed_by=aria)
+    _frame(app)
+    assert app.combat.pending_auto_grapple_strike(app.bm, aria) == (1, skarn), \
+        "a Charmed creature is not a Bite victim"
+    assert app.perform("bite_grappled", DM_PRINCIPAL_ID), "the Bite was refused"
+    assert (app.attack_seq.remaining, app.attack_seq.slot) == (2, "action"), _attack_fields(app)
+    _frame(app)
+    assert app.perform("atk_action", DM_PRINCIPAL_ID), "Attack was refused after the Bite"
+    _frame(app)
+    # The Bite is not one of the Attack action's weapon choices.
+    live = app.prompts.live
+    labels = [o.label for o in live.options] if live is not None and live.is_live else []
+    assert "Bite" not in labels and "Longsword" in labels, labels
+    print("✅ test_a_vampire_makes_its_attacks_and_bites_a_charmed_victim")
 
 
 def test_attack_after_a_dash_is_refused():
@@ -2079,6 +2114,7 @@ if __name__ == "__main__":
         test_feint_on_yourself_keeps_the_pick()
         test_dash_after_an_unswung_attack_undoes_the_arm()
         test_a_bite_after_an_unswung_attack_is_one_of_its_swings()
+        test_a_vampire_makes_its_attacks_and_bites_a_charmed_victim()
         test_attack_after_a_dash_is_refused()
         test_a_player_cancels_then_dashes()
         test_a_dm_takeover_then_dash_leaves_no_attack()

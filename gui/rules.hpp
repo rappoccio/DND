@@ -535,6 +535,32 @@ inline bool canEquipArmor(const BattleMap& bm, int agent_idx, const Armor& armor
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Two-way seals: Forcecage Box and Untouchable
+// ─────────────────────────────────────────────────────────────────────────────
+
+// True when a two-way seal separates two creatures, so NO attack, spell, effect, reaction or
+// perception passes between them. Forcecage Box: exactly one is sealed inside a box (opposite sides
+// of its wall). Untouchable (DM-set: Etherealness, Strahd phased into a wall or floor): exactly one
+// is untouchable — two untouchable creatures share the same "side" and interact normally.
+inline bool sealedApart(const Agent::Conditions& a, const Agent::Conditions& b) noexcept
+{
+    return a.forcecage_sealed != b.forcecage_sealed || a.untouchable != b.untouchable;
+}
+
+// Untouchable alone: exactly one of the two placed agents is untouchable. Used where the Forcecage
+// seal deliberately does NOT apply (threat, opportunity attacks, NPC planning, occupancy).
+inline bool untouchableApart(const BattleMap& bm, int a_idx, int b_idx) noexcept
+{
+    return bm.getAgentConditions(a_idx).untouchable != bm.getAgentConditions(b_idx).untouchable;
+}
+
+// Log wording for why sealedApart(a, b) held (Untouchable wins when both apply).
+inline const char* sealReason(const Agent::Conditions& a, const Agent::Conditions& b) noexcept
+{
+    return a.untouchable != b.untouchable ? "Untouchable: out of reach" : "a Forcecage wall blocks it";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Paladin / advantage auras (team-scoped emanations)
 // ─────────────────────────────────────────────────────────────────────────────
 

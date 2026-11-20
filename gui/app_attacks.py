@@ -107,6 +107,23 @@ def weapon_menu_label(w) -> str:
     return label
 
 
+def attack_action_budget(app, idx: int) -> int:
+    """How many weapon attacks one Attack action makes for agent `idx`.
+
+    A Vampire-style stat block ("makes two attacks and uses Bite") counts its grapple-Bite in
+    `num_attacks` and in the NPC recipe, but the Bite is not one of the DM's swings: it is the
+    separate "🧛 Bite (grappled)" button, used on a creature the vampire is grappling or has
+    Charmed. So the DM-driven budget drops the Bite's share of the multiattack recipe."""
+    stats = app.combat.get_agent_stats(app.bm, idx)
+    n = stats.num_attacks
+    recipe = list(stats.multiattack)
+    if recipe:
+        weapons = app.combat.get_agent_weapons(app.bm, idx)
+        bite = {i for i, w in enumerate(weapons) if w.auto_use_when_grappling}
+        n -= sum(cnt for slot, cnt in recipe if slot in bite)
+    return max(1, n)
+
+
 def start_attack(app, slot: str):
     """Begin target-selection for an attack in the given slot."""
     idx = app._current_agent_idx()
@@ -142,7 +159,7 @@ def start_attack(app, slot: str):
     if app.attack_seq.remaining == 0:
         # Fresh start
         if slot == "action":
-            app.attack_seq.remaining = stats.num_attacks
+            app.attack_seq.remaining = attack_action_budget(app, idx)
             # War Magic gates once per Attack action; a fresh Attack action (including the
             # second one granted by Action Surge) re-enables the substitution.
             if conds.war_magic_used:
@@ -184,6 +201,11 @@ def start_attack(app, slot: str):
         offhand_weapons = [w for w in weapons if w.off_hand]
         if offhand_weapons:
             weapons_to_use = offhand_weapons
+    elif slot == "action":
+        # A grapple-Bite is not one of the Attack action's swings — it has its own button.
+        plain = [w for w in weapons if not w.auto_use_when_grappling]
+        if plain:
+            weapons_to_use = plain
 
     # Eldritch Knight War Magic (L7+): during the Attack action, one attack may be replaced by
     # casting a spell. Offer it only when the engine gate is open AND there is an eligible spell.
@@ -326,6 +348,13 @@ def attack_is_a_throw(app, atk_idx: int, target_idx: int, weapon_idx: int) -> bo
     return dist_ft > w.reach_ft
 
 
+def untouchable_apart(app, a: int, b: int) -> bool:
+    """True when exactly one of agents a, b is Untouchable (the engine's two-way seal)."""
+    ca = app.combat.get_agent_conditions(app.bm, a)
+    cb = app.combat.get_agent_conditions(app.bm, b)
+    return bool(ca.untouchable) != bool(cb.untouchable)
+
+
 def resolve_combat_attack(app, target_idx: int):
     """Resolve the pending attack against target_idx.
 
@@ -337,6 +366,10 @@ def resolve_combat_attack(app, target_idx: int):
     atk_idx = app._current_agent_idx()
     slot    = app._armed_slot(pending.Attack)
     if atk_idx < 0 or not slot:
+        return
+    if untouchable_apart(app, atk_idx, target_idx):
+        app._combat_log_add("Untouchable: that creature is out of reach — pick another target.")
+        app._flush_combat_log()
         return
     if app.pending_beasts_strike_targets:
         if target_idx not in app.pending_beasts_strike_targets:
@@ -679,6 +712,7 @@ def finish_attack(app):
     if app.attack_seq.slot == "action":
         app._disarm(pending.Attack)
         app.action_used = True
+        app.attack_action_taken = True   # a vampire may still Bite after its last swing
         if not has_more_attacks:
             app.attack_seq.slot = ""
             app.attack_seq.offhand = None
@@ -1324,8 +1358,7 @@ def start_unarmed_punch(app, unarmed=None):
     # unarmed weapon (slot 0). The standard attack dispatch (the Attack arm) +
     # _finish_attack handle decrementing the count and restoring the weapons.
     if app.attack_seq.remaining == 0:
-        stats = app.combat.get_agent_stats(app.bm, idx)
-        app.attack_seq.remaining = max(1, stats.num_attacks)
+        app.attack_seq.remaining = attack_action_budget(app, idx)
         app.attack_seq.slot = "action"
     app.pending = pending.Attack("action")
     app.attack_seq.weapon_idx      = 0
@@ -1375,11 +1408,11 @@ def spend_unarmed_attack(app, atk_idx: int) -> bool:
     (Extra Attack) so the caller can let the player continue — the standing "⚔ Attack (N)" and
     Unarmed buttons resume the sequence."""
     if app.attack_seq.remaining == 0:
-        stats = app.combat.get_agent_stats(app.bm, atk_idx)
-        app.attack_seq.remaining = max(1, stats.num_attacks)
+        app.attack_seq.remaining = attack_action_budget(app, atk_idx)
         app.attack_seq.slot = "action"
     app.attack_seq.remaining -= 1
     app.action_used = True
+    app.attack_action_taken = True
     if app.attack_seq.remaining > 0:
         atk_name = app.bm.placed_agents[atk_idx].name
         app._combat_log_add(
@@ -1473,8 +1506,7 @@ def consume_attack_replacement(app, user_idx: int):
     not started one. Mirrors _consume_cast_slot's War Magic branch, including the disarm that
     lets the player move between attacks and resume with the standing "⚔ Attack (N)" button."""
     if app.attack_seq.slot != "action" or app.attack_seq.remaining <= 0:
-        stats = app.combat.get_agent_stats(app.bm, user_idx)
-        app.attack_seq.remaining     = max(1, stats.num_attacks)
+        app.attack_seq.remaining     = attack_action_budget(app, user_idx)
         app.attack_seq.slot = "action"
 
     # The Attack action itself is spent the moment it is taken — exactly as _finish_attack marks
@@ -1482,6 +1514,7 @@ def consume_attack_replacement(app, user_idx: int):
     # keeps the standing "⚔ Attack (N)" button (and its handler) working while action_used is set.
     app.attack_seq.remaining -= 1
     app.action_used = True
+    app.attack_action_taken = True
     if app.attack_seq.remaining > 0:
         app._disarm(pending.Attack)
         rem = app.attack_seq.remaining

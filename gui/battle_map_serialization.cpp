@@ -152,7 +152,7 @@ namespace {
     X(concentrating_on) X(has_advantage) X(has_disadvantage) X(paralyzed) X(blinded) \
     X(deafened) X(stunned) X(prone) X(charmed) X(charmed_by) X(frightened) \
     X(slipped_this_turn) X(restrained) X(netted) X(net_escape_dc) X(forcecaged) \
-    X(forcecage_dc) X(forcecage_sealed) X(burning) X(poisoned) X(petrified) \
+    X(forcecage_dc) X(forcecage_sealed) X(untouchable) X(burning) X(poisoned) X(petrified) \
     X(gaseous_form) X(unconscious) X(dead) X(death_save_successes) \
     X(death_save_failures) X(stabilized) X(grappled) X(grappler_idx) \
     X(grapple_escape_dc) X(grapple_range_ft) X(exhaustion_level) X(raging) \
