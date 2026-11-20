@@ -56,11 +56,12 @@ _BON_ROW_CUNNING   = ("dash_bonus", "disengage_bonus", "hide_bonus")
 # Escape and the Telekinetic feat's shove, between the two rows.
 _BON_RUN_ESCAPE    = ("grapple_esc", "telekinetic_feat")
 
-# The five drawn OUTSIDE the band, in draw order. What they have in common is exactly
+# The ones drawn OUTSIDE the band, in draw order. What they have in common is exactly
 # their `economy`: none of them costs the Bonus Action, which is why spending it must
 # not take them (`actions._BONUS_ECONOMY`).
 _BON_RUN_UNBANDED  = ("grapple_drop", "use_item", "extinguish", "escape_net",
-                      "haste_action", "horde_breaker", "sudden_strike", "beasts_strike")
+                      "haste_action", "horde_breaker", "sudden_strike", "beasts_strike",
+                      "action_surge")
 
 # The Archfey trio, named on its own only because the rider selector's label is the one
 # thing in §7 the draw pass WRITES back to the app. See the draw site.
@@ -90,7 +91,7 @@ _BON_RUN_BAND      = (
     "bite_grappled",
     # Hew to Lay on Hands
     "gwm_hew", "blink_steps", "martial_arts", "flurry_of_blows", "second_wind",
-    "bm_maneuver", "one_with_shadows", "merge_shadows", "action_surge",
+    "bm_maneuver", "one_with_shadows", "merge_shadows",
     "lay_on_hands",
     # Bard: Grant Inspiration and the College of Glamour four
     "grant_inspiration", "mantle", "mantle_majesty", "unbreakable_majesty",

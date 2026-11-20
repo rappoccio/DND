@@ -30,8 +30,8 @@ btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,392,102,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,426,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,426,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,460,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,560,156,30 | yes
@@ -176,8 +176,8 @@ btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,320,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,354,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,354,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,354,102,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,388,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,422,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,388,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,422,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,522,156,30 | yes
@@ -332,17 +332,17 @@ btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
 btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action ✓
 text | BonusAction | [Bonus used]
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,388,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
-btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,454,156,30 | yes
-btn  | Movement    | btn_show_visible_targets | Show Visible | 1212,454,156,30 | yes
-btn  | Movement    | btn_show_terrain | Hide Terrain | 1052,488,156,30 | yes
-btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,488,156,30 | yes
-btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,522,102,30 | yes
-btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,522,102,30 | yes
-btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,522,102,30 | yes
+btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,488,156,30 | yes
+btn  | Movement    | btn_show_visible_targets | Show Visible | 1212,488,156,30 | yes
+btn  | Movement    | btn_show_terrain | Hide Terrain | 1052,522,156,30 | yes
+btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,522,156,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,556,102,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,556,102,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,556,102,30 | yes
 text | CombatLog   | Combat Log:
-btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -459,7 +459,7 @@ btn  | -           | btn_cbt_wild_magic_extra_action | - | - | no
 btn  | -           | btn_cbt_wild_magic_teleport | - | - | no
 btn  | -           | btn_cbt_wild_shape | - | - | no
 btn  | -           | btn_cbt_zealous_presence | - | - | no
-meta | bottom=552 max_scroll=0
+meta | bottom=586 max_scroll=0
 
 === 04 incapacitated — Aria ===
 text | Header      | ⚔  Combat
@@ -636,8 +636,8 @@ btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,354,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,388,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,388,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,388,102,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,422,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,456,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,422,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,456,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,556,156,30 | yes
@@ -794,8 +794,8 @@ btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,392,102,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,426,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,426,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,460,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,560,156,30 | yes
@@ -947,8 +947,8 @@ btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,392,102,30 | yes
 btn  | BonusAction | btn_cbt_grapple_esc | 💨 Escape | 1052,426,316,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,460,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,494,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,494,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,594,156,30 | yes
@@ -1098,8 +1098,8 @@ btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,392,102,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,426,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,426,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,460,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,560,156,30 | yes
@@ -1247,17 +1247,17 @@ btn  | Action      | btn_cbt_hide | Hide | 1250,300,41,30 | yes
 btn  | Action      | btn_cbt_prone | Go Prone | 1295,300,73,30 | yes
 text | BonusAction | Bonus Action ✓
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus (1) | 1052,358,156,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,388,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
-btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,454,156,30 | yes
-btn  | Movement    | btn_show_visible_targets | Show Visible | 1212,454,156,30 | yes
-btn  | Movement    | btn_show_terrain | Hide Terrain | 1052,488,156,30 | yes
-btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,488,156,30 | yes
-btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,522,102,30 | yes
-btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,522,102,30 | yes
-btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,522,102,30 | yes
+btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,488,156,30 | yes
+btn  | Movement    | btn_show_visible_targets | Show Visible | 1212,488,156,30 | yes
+btn  | Movement    | btn_show_terrain | Hide Terrain | 1052,522,156,30 | yes
+btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,522,156,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,556,102,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,556,102,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,556,102,30 | yes
 text | CombatLog   | Combat Log:
-btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -1373,7 +1373,7 @@ btn  | -           | btn_cbt_wild_magic_extra_action | - | - | no
 btn  | -           | btn_cbt_wild_magic_teleport | - | - | no
 btn  | -           | btn_cbt_wild_shape | - | - | no
 btn  | -           | btn_cbt_zealous_presence | - | - | no
-meta | bottom=552 max_scroll=0
+meta | bottom=586 max_scroll=0
 
 === 09 cleric turn — Brannor (bucket 7e: Channel Divinity cluster) ===
 text | Header      | ⚔  Combat
@@ -2176,8 +2176,8 @@ btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,358,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,392,102,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,426,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,426,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,460,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,560,156,30 | yes
@@ -2630,8 +2630,8 @@ btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,354,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,388,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,388,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,388,102,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,422,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,456,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,422,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,456,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,556,156,30 | yes
@@ -5753,9 +5753,9 @@ btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | y
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,426,316,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,460,316,30 | yes
-btn  | BonusAction | btn_cbt_bm_maneuver | Maneuver (Bonus Action) | 1052,494,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,528,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,494,316,30 | yes
+btn  | BonusAction | btn_cbt_bm_maneuver | Maneuver (Bonus Action) | 1052,528,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,628,156,30 | yes
@@ -5905,8 +5905,8 @@ btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | y
 text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,426,316,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,460,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,494,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,494,316,30 | yes
 btn  | BonusAction | btn_cbt_telekinetic_psi | Telekinetic Movement | 1052,528,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
@@ -9327,8 +9327,8 @@ btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,392,102,30 | yes
 btn  | BonusAction | btn_cbt_grapple_drop | 🔓 Drop | 1052,426,316,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,460,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,494,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,494,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,594,156,30 | yes
@@ -9479,9 +9479,9 @@ btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,392,102,30 | yes
 btn  | BonusAction | btn_cbt_grapple_drop | 🔓 Drop | 1052,426,316,30 | yes
-btn  | BonusAction | btn_cbt_bite_grappled | 🧛 Bite (grappled) | 1052,460,316,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,494,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,528,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_bite_grappled | 🧛 Bite (grappled) | 1052,494,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,528,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,628,156,30 | yes
@@ -9631,8 +9631,8 @@ btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,392,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,392,102,30 | yes
 btn  | BonusAction | btn_cbt_escape_net | 🕸 Free from Net | 1052,426,316,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,460,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,494,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,494,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,594,156,30 | yes
@@ -9782,8 +9782,8 @@ text | BonusAction | Bonus Action
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,426,316,30 | yes
 btn  | BonusAction | btn_cbt_telekinetic_feat | 🌀 Telekinetic Shove | 1052,460,316,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,494,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,528,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,494,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,528,316,30 | yes
 btn  | BonusAction | btn_cbt_telekinetic_psi | Telekinetic Movement | 1052,562,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
@@ -9936,8 +9936,8 @@ btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,426,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,426,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,426,102,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,460,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,494,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,460,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,494,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,594,156,30 | yes
@@ -10085,17 +10085,17 @@ btn  | Action      | btn_cbt_spell_action | ✨ Cast Spell | 1052,334,316,30 | y
 text | BonusAction | Bonus Action ✓
 btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus (2) | 1052,392,156,30 | yes
 btn  | BonusAction | btn_cbt_spell_bonus | ✨ Spell | 1212,392,156,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,422,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
-btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,488,156,30 | yes
-btn  | Movement    | btn_show_visible_targets | Show Visible | 1212,488,156,30 | yes
-btn  | Movement    | btn_show_terrain | Hide Terrain | 1052,522,156,30 | yes
-btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,522,156,30 | yes
-btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,556,102,30 | yes
-btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,556,102,30 | yes
-btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,556,102,30 | yes
+btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,522,156,30 | yes
+btn  | Movement    | btn_show_visible_targets | Show Visible | 1212,522,156,30 | yes
+btn  | Movement    | btn_show_terrain | Hide Terrain | 1052,556,156,30 | yes
+btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,556,156,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,590,102,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,590,102,30 | yes
+btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,590,102,30 | yes
 text | CombatLog   | Combat Log:
-btn  | -           | btn_cbt_action_surge | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -10209,7 +10209,7 @@ btn  | -           | btn_cbt_wild_magic_extra_action | - | - | no
 btn  | -           | btn_cbt_wild_magic_teleport | - | - | no
 btn  | -           | btn_cbt_wild_shape | - | - | no
 btn  | -           | btn_cbt_zealous_presence | - | - | no
-meta | bottom=586 max_scroll=0
+meta | bottom=620 max_scroll=0
 
 === 66 sorcerer 7, all nine metamagic options — Cyra (bucket 7d: the seven dark toggles) ===
 text | Header      | ⚔  Combat
@@ -11016,8 +11016,8 @@ btn  | BonusAction | btn_cbt_atk_bonus | ⚔ Bonus Atk | 1052,414,156,30 | yes
 btn  | BonusAction | btn_cbt_long_jump | Jump | 1052,448,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_push | 🔨 Shove | 1158,448,102,30 | yes
 btn  | BonusAction | btn_cbt_shove_prone | ⬇ Trip | 1264,448,102,30 | yes
-btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,482,316,30 | yes
-btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,516,316,30 | yes
+btn  | BonusAction | btn_cbt_action_surge | Action Surge | 1052,482,316,30 | yes
+btn  | BonusAction | btn_cbt_second_wind | Second Wind (Bonus Action) | 1052,516,316,30 | yes
 text | Movement    | Movement
 text | Movement    | Walk  30ft
 btn  | Movement    | btn_show_spell_effects | Show Spell Effects | 1052,616,156,30 | yes

@@ -102,6 +102,7 @@ _BONUS_ECONOMY = {
     "horde_breaker":         ECONOMY_FREE,     # Hunter: the feature grants the extra attack
     "sudden_strike":         ECONOMY_FREE,     # Gloom Stalker L11: Stalker's Flurry grants it
     "beasts_strike":         ECONOMY_ATTACK,   # Beast Master: replaces one attack of the Attack action
+    "action_surge":          ECONOMY_FREE,     # Fighter: grants an extra Action, costs none
 
     # ── inside the band, and Action-costing with it ──
     "turn_undead":           ECONOMY_ACTION,
@@ -530,7 +531,7 @@ class ActionMenu:
 
         · the **band gate**. Most of §7 sits inside one `if not incapacitated and not
           bonus_used:` block, including several buttons whose own comments say they are
-          not Bonus Actions at all (`action_surge` "available anytime", `corona`, the
+          not Bonus Actions at all (`corona`, the
           Paladin capstones). Spending the Bonus Action hides them today; checkpoint 03
           records exactly that, and M2 preserves it. Whether it is *right* is a separate
           item.
@@ -649,6 +650,11 @@ class ActionMenu:
                                   f"🐾 Beast's Strike ({cond.beast_strikes_left} left)", GROUP_BONUS))
             elif app._can_replace_attack(agent_idx):
                 out.append(Action("beasts_strike", "🐾 Beast's Strike (for an attack)", GROUP_BONUS))
+        # Action Surge is outside the action economy: it costs no Bonus Action, so a spent
+        # Bonus Action must not hide it.
+        if (stats.character_class == rpg.CharacterClass.Fighter
+                and _res(stats, "Action Surge") > 0):
+            out.append(Action("action_surge", "Action Surge", GROUP_BONUS))
 
         # ── F11, closed: Open Hand L11 Fleet Step ──
         # The one option in §7 whose gate is the OPPOSITE of the band's. Step of the
@@ -933,8 +939,6 @@ class ActionMenu:
             out.append(Action("merge_shadows",
                               "Merge with Shadows (Invisible)", GROUP_BONUS))
 
-        if cls == CC.Fighter and _res(stats, "Action Surge") > 0:
-            out.append(Action("action_surge", "Action Surge", GROUP_BONUS))
         if cls == CC.Paladin and _res(stats, "Lay on Hands") > 0:
             out.append(Action("lay_on_hands", "Lay on Hands", GROUP_BONUS))
 

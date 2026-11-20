@@ -657,22 +657,18 @@ def test_the_bonus_section_collapses_when_the_creature_cannot_act():
     print("✅ test_the_bonus_section_collapses_when_the_creature_cannot_act passed")
 
 
-def test_spending_the_bonus_action_takes_action_surge_with_it():
-    """The band gate, stated on the button that most looks like an exception.
-
-    `btn_cbt_action_surge`'s own comment says "available anytime" and Action Surge
-    costs no bonus action — but it is written inside the band block, so spending the
-    Bonus Action hides it. Checkpoint 03 is the golden's record of that. M2 preserves
-    behaviour, so this pins it rather than fixing it; whether the panel is RIGHT here
-    is a separate item.
-    """
+def test_spending_the_bonus_action_leaves_action_surge():
+    """Action Surge is outside the action economy: spending the Bonus Action hides
+    Second Wind (a Bonus Action) but must leave Action Surge offered."""
     app = _app()
     aria = _goto(app, "Aria")                      # Fighter 5
     assert "action_surge" in _bonus(app, aria)
     assert "second_wind" in _bonus(app, aria)
+    assert _by_id(app, aria)["action_surge"].economy == "free"
     app.bonus_used = True
-    assert _bonus(app, aria) == [], _bonus(app, aria)
-    print("✅ test_spending_the_bonus_action_takes_action_surge_with_it passed")
+    assert _bonus(app, aria) == ["action_surge"], _bonus(app, aria)
+    app.bonus_used = False
+    print("✅ test_spending_the_bonus_action_leaves_action_surge passed")
 
 
 def test_use_item_and_extinguish_are_outside_the_band():
@@ -2051,7 +2047,7 @@ if __name__ == "__main__":
         test_dash_is_drawn_mid_sequence_but_the_click_is_refused()
         test_stand_up_from_a_stale_rect_does_nothing()
         test_the_bonus_section_collapses_when_the_creature_cannot_act()
-        test_spending_the_bonus_action_takes_action_surge_with_it()
+        test_spending_the_bonus_action_leaves_action_surge()
         test_use_item_and_extinguish_are_outside_the_band()
         test_the_economy_band_headers_are_the_bands_own_two_buttons()
         test_the_bonus_band_stays_open_for_a_bonus_slot_sequence()
