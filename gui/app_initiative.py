@@ -1045,27 +1045,32 @@ def in_legendary_phase(app) -> bool:
 
 
 def _drop_legendary_in_flight(app):
-    """Drop a half-made legendary pick and close a live popup. Returns True if a legendary
-    Dash was mid-move (its cost is already spent, so the action counts as taken)."""
+    """Drop a half-made legendary pick and close a live popup, with nothing spent. A legendary
+    Dash is paid for when chosen, but a committed move clears `_legendary_move_active` (and
+    resolves the action), so a Dash still armed here has not moved: its cost is refunded."""
     app._drop_pick("legendary_target")
     app._drop_pick("legendary_spell")
     if app.prompts.live is not None:
         app.prompts.cancel()
-    was_moving = app._legendary_move_active
-    app._legendary_move_active = False
-    return was_moving
+    if app._legendary_move_active:
+        app._legendary_move_active = False
+        idx = app._legendary_actor
+        if idx >= 0:
+            st = app.combat.get_agent_stats(app.bm, idx)
+            st.legendary_actions_current += app._legendary_cost_pending
+            app.combat.set_agent_stats(app.bm, idx, st)
+        app._update_reach()
+        app._update_attack_overlay()
 
 
 def reopen_legendary_menu(app):
     """Panel "Legendary Actions…" / Esc on a legendary pick: the menu is a popup a stray
-    click dismisses, so show it again. A half-made pick is dropped with nothing spent; a
-    legendary Dash in progress ends there (it was paid for when it began)."""
+    click dismisses, so show it again. A half-made pick, or a Dash that has not moved yet,
+    is dropped with nothing spent."""
     idx = app._legendary_actor
     if idx < 0:
         return
-    if _drop_legendary_in_flight(app):
-        after_legendary_action(app, idx)
-        return
+    _drop_legendary_in_flight(app)
     features.show_legendary_action_menu(app, idx, app.combat.get_agent_stats(app.bm, idx))
 
 
@@ -1076,10 +1081,8 @@ def end_turn_legendary(app):
     idx = app._legendary_actor
     if idx < 0:
         return
-    if _drop_legendary_in_flight(app):
-        after_legendary_action(app, idx)
-    else:
-        pass_legendary(app)
+    _drop_legendary_in_flight(app)
+    pass_legendary(app)
 
 
 def legendary_cost(app, idx: int, action_name: str) -> int:

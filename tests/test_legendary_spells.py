@@ -213,6 +213,30 @@ def test_dismissed_legendary_menu_comes_back_and_end_turn_passes():
     print("✅ test_dismissed_legendary_menu_comes_back_and_end_turn_passes passed")
 
 
+def test_misclicked_legendary_dash_is_refunded_on_reopen():
+    """A Dash chosen by mistake is paid for up front. Before it moves, the panel's
+    Legendary Actions… refunds it and re-offers the menu instead of skipping the creature."""
+    app = _app()
+    skarn = _idx(app, "Skarn")
+    _make_legendary_striker(app, skarn)
+    s = app.combat.get_agent_stats(app.bm, skarn)
+    s.legendary_action_names = ["Greataxe", "DashHalf"]
+    app.combat.set_agent_stats(app.bm, skarn, s)
+    turn_before = app.turn_idx
+    app._choose_legendary_action("DashHalf")              # the misclick
+    assert app._legendary_move_active and _budget(app, skarn) == 2
+    app._perform_action("legendary_actions", None)
+    assert not app._legendary_move_active
+    assert _budget(app, skarn) == 3, "an un-moved Dash costs nothing"
+    assert app._legendary_actor == skarn and app.prompts.live is not None
+    assert "legendary action" in app.prompts.live.title
+    assert app.turn_idx == turn_before
+    app._choose_legendary_action("DashHalf")              # End Turn also passes for free
+    app._perform_action("end_turn", None)
+    assert app._legendary_actor == -1 and _budget(app, skarn) == 3
+    print("✅ test_misclicked_legendary_dash_is_refunded_on_reopen passed")
+
+
 if __name__ == "__main__":
     test_gaze_costs_two_and_burns_the_target()
     test_an_unaffordable_option_is_refused()
@@ -223,4 +247,5 @@ if __name__ == "__main__":
     test_legendary_attack_is_logged()
     test_out_of_reach_legendary_attack_refunds_and_keeps_the_pick()
     test_dismissed_legendary_menu_comes_back_and_end_turn_passes()
+    test_misclicked_legendary_dash_is_refunded_on_reopen()
     print("\nAll legendary-spell tests passed ✅")
