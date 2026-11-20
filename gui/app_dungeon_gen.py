@@ -1456,11 +1456,19 @@ def populate_current_map(app, params, eg, rng, out_path):
         meta["allowed_mobs"] = params["allowed_mobs"]
     if params.get("boss_mob"):
         meta["boss_mob"] = params["boss_mob"]
-    eg.write_agents_file(
-        out_path, all_agents, difficulty=params["end"], target_cr=params["cr"],
-        generator_meta=meta)
-    app._set_encounter_base(out_path)
-    app._load_agents(out_path)
+    if isinstance(app.store, CampaignStore) and out_path == app._save_path:
+        # A campaign run: the scene's agents path is the store's identity, not a file
+        # (scene_store.scene_paths), and _load_agents reads the run. Writing a file
+        # there would leave the run's old roster on the map.
+        app.store.write_creatures({"agents": all_agents, "map_items": [],
+                                   "active_conditions": []})
+        app._load_agents()
+    else:
+        eg.write_agents_file(
+            out_path, all_agents, difficulty=params["end"], target_cr=params["cr"],
+            generator_meta=meta)
+        app._set_encounter_base(out_path)
+        app._load_agents(out_path)
 
     boss_line = "  + boss finale" if params["boss"] else ""
     if params["boss"] and params.get("boss_mob"):

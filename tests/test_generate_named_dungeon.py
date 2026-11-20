@@ -215,8 +215,36 @@ def test_keep_terrain_files_the_map_as_it_stands():
     print("✅ test_keep_terrain_files_the_map_as_it_stands passed")
 
 
+def _run_agents(layout, page_id):
+    run = json.load(open(layout.run_path()))
+    return (run.get("maps") or {}).get(page_id, {}).get("agents", [])
+
+
+def test_regenerate_in_an_open_campaign_dungeon_places_mobs():
+    """Generate Dungeon on a map of an open campaign dungeon: the mobs reach the
+    engine and the run (the scene's agents path is the store's, not a file)."""
+    with _Sandbox() as sb:
+        app = sb.app()
+        gen.generate_named_dungeon(app, _params(), "Crypt")
+        layout = sl.Campaign(sb.root).dungeon("crypt")
+        app.bm.clear_agents()
+        app.store.write_creatures({"agents": [], "map_items": [],
+                                   "active_conditions": []})
+        gen.generate_dungeon_with(app, _params(seed=99))
+        msg = getattr(app, "_last_msg", [])
+        assert len(app.bm.placed_agents) > 0, f"no mobs placed: {msg}"
+        assert len(_run_agents(layout, "floor0")) == len(app.bm.placed_agents), \
+            "the run did not get the mobs"
+        assert app._dungeon_manifest_path == layout.manifest_path
+        assert not os.path.exists(os.path.join(layout.run_dir(sl.DEFAULT_RUN),
+                                               "floor0_agents.json")), \
+            "wrote a stray file at the store's identity path"
+    print("✅ test_regenerate_in_an_open_campaign_dungeon_places_mobs passed")
+
+
 def main():
-    tests = [test_writer_lays_out_the_pages,
+    tests = [test_regenerate_in_an_open_campaign_dungeon_places_mobs,
+             test_writer_lays_out_the_pages,
              test_only_the_loose_blank_map_is_named,
              test_one_floor_opens_as_a_campaign_dungeon,
              test_floors_and_maps_become_pages,
