@@ -16,6 +16,7 @@ action: each row deploys a group of reserves, and the click that does it is hand
 import lair
 import pygame
 
+from helpers import hp_status
 from actions import METAMAGIC_ID_BY_VALUE, METAMAGIC_OPTIONS
 from constants import (COL_BTN_ATK, COL_BTN_ATK_HOV, COL_BTN_DANGER, COL_BTN_DASH,
                        COL_BTN_DASH_HOV, COL_BTN_DISENG, COL_BTN_DISENG_HOV, COL_BTN_DODGE,
@@ -662,10 +663,9 @@ def draw_tracker_section(app, lx, W, y):
 
 
 def _hp_label(app, idx) -> str:
-    """ "12/30" (+ "+5" temp). The tracker sits on the DM's console, so it shows every
-    token's HP whatever D1's view; D1 still governs the map's HP bars and the log. """
-    s = app.combat.get_agent_stats(app.bm, idx)
-    return f"{s.hp_cur}/{s.hp_max}" + (f" +{s.temp_hp}" if s.temp_hp else "")
+    """ helpers.hp_status: "12+5/30-2". The tracker sits on the DM's console, so it shows
+    every token's HP whatever D1's view; D1 still governs the map's HP bars and the log. """
+    return hp_status(app.combat.get_agent_stats(app.bm, idx))
 
 
 def _draw_hp_box(app, lx, W, y, text, button):

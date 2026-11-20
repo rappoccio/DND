@@ -30,6 +30,7 @@ import autosave
 import lair
 import saves
 from constants import PC_FACTION
+from helpers import hp_status
 from menus import features
 from tracker import Tracker
 from widgets import edit_line
@@ -327,7 +328,7 @@ def tracker_hp_apply(app, op: str):
         s.hp_cur = max(0, s.hp_cur - (n - soak))
         msg = f"{pt.name} takes {n} damage" + (f" ({soak} to temp HP)" if soak else "")
     elif op == "heal":
-        s.hp_cur = min(s.hp_max, s.hp_cur + n)
+        s.hp_cur = min(s.effective_max_hp, s.hp_cur + n)
         msg = f"{pt.name} heals {n}"
     elif op == "temp":
         s.temp_hp = n
@@ -341,7 +342,7 @@ def tracker_hp_apply(app, op: str):
     app.combat.set_agent_stats(bm, idx, s)
     app._tracker_hp_text = ""
     if app._tracker_hp_shown(idx):
-        msg += f": {s.hp_cur}/{s.hp_max} HP" + (f" +{s.temp_hp} temp" if s.temp_hp else "")
+        msg += f": {hp_status(s)} HP"
     app._combat_log_add(msg + ".")
     if s.hp_cur <= 0 and pt.faction != PC_FACTION:
         app._tracker_hp = -1

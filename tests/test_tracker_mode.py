@@ -594,6 +594,35 @@ def test_hp_display_d1():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_hp_status_format():
+    """The HP label: cur[+temp]/max[-reduction]; a +N heal stops at the reduced max."""
+    from helpers import hp_status
+    tmp = tempfile.mkdtemp()
+    try:
+        app = _board(tmp, tracker=True)
+        skarn = _idx(app, "Skarn")
+        s = app.combat.get_agent_stats(app.bm, skarn)
+        s.hp_max, s.hp_cur, s.temp_hp, s.available_hit_points = 51, 51, 0, 0
+        check(hp_status(s) == "51/51", hp_status(s))
+        s.temp_hp = 3
+        check(hp_status(s) == "51+3/51", hp_status(s))
+        s.temp_hp, s.hp_cur = 0, 49
+        check(hp_status(s) == "49/51", hp_status(s))
+        s.available_hit_points = 2
+        check(hp_status(s) == "49/51-2", hp_status(s))
+        app.combat.set_agent_stats(app.bm, skarn, s)
+        check(panel._hp_label(app, skarn) == "49/51-2", panel._hp_label(app, skarn))
+        app.dm_view = True
+        _click(app, "row", skarn)
+        _hp(app, "heal", 10)
+        s = app.combat.get_agent_stats(app.bm, skarn)
+        check(s.hp_cur == 49, f"heal ran past the reduced max: {s.hp_cur}")
+        app._draw_combat_panel()
+        print("✅ test_hp_status_format")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def test_dm_view_toggle():
     """T4b/D1: the sheet's DM view button lifts the fog on the console (a fogged mob is
     drawn) and shows monster HP; off again, both are hidden. The explored mask never
@@ -778,6 +807,7 @@ if __name__ == "__main__":
     test_door_far_from_turn()
     test_hp_zero()
     test_hp_display_d1()
+    test_hp_status_format()
     test_dm_view_toggle()
     test_save_and_resume()
     test_resume_while_collecting()

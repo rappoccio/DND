@@ -1711,3 +1711,16 @@ def attunement_warning(n: int) -> str:
     """'' at or under the limit, else the D5 warning text."""
     return (f"⚠ attuned to {n} items (limit {ATTUNEMENT_LIMIT})"
             if n > ATTUNEMENT_LIMIT else "")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  HP status label (initiative lists)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def hp_status(s) -> str:
+    """ "cur[+temp]/max[-reduction]" for an Agent.Stats: 51/51, 51+3/51, 49/51-2.
+    The slash is a separator, not division; the reduction is the until-long-rest cut to
+    the HP maximum (available_hit_points)."""
+    num = f"{s.hp_cur}" + (f"+{s.temp_hp}" if s.temp_hp > 0 else "")
+    den = f"{s.hp_max}" + (f"-{s.available_hit_points}" if s.available_hit_points > 0 else "")
+    return f"{num}/{den}"

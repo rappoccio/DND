@@ -11,9 +11,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -163,9 +167,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -316,9 +324,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -469,9 +481,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -622,9 +638,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -775,9 +795,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -927,9 +951,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -1079,9 +1107,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -1231,9 +1263,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -1383,9 +1419,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  | ▶ 16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Brannor
 text | TurnInfo    | HP 25/25
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -1538,9 +1578,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -1693,9 +1737,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -1849,9 +1897,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -2005,9 +2057,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  | ▶ 15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Skarn
 text | TurnInfo    | HP 60/60
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -2157,9 +2213,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1213,38,92,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1309,38,59,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -2309,9 +2369,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  | ▶ 16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Brannor
 text | TurnInfo    | HP 25/25
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -2464,9 +2528,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  | ▶ 15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Skarn
 text | TurnInfo    | HP 60/60
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -2616,9 +2684,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -2769,9 +2841,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -2926,9 +3002,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 34/34
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 34/34
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -3087,9 +3167,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20+5/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20 (+5)
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -3242,9 +3326,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -3396,9 +3484,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -3551,9 +3643,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 text | TurnInfo    | Focus Pts 17/17
@@ -3704,9 +3800,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 text | TurnInfo    | Focus Pts 3/3
@@ -3857,9 +3957,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -4009,9 +4113,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -4161,9 +4269,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -4315,9 +4427,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -4469,9 +4585,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -4623,9 +4743,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -4782,9 +4906,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -4945,9 +5073,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -5101,9 +5233,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -5257,9 +5393,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -5420,9 +5560,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -5583,9 +5727,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -5735,9 +5883,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -5887,9 +6039,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -6039,9 +6195,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -6193,9 +6353,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -6353,9 +6517,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -6513,9 +6681,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -6673,9 +6845,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -6828,9 +7004,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -6983,9 +7163,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -7137,9 +7321,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -7294,9 +7482,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  | ▶ 15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Skarn
 text | TurnInfo    | HP 60/60
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -7446,9 +7638,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 text | TurnInfo    | Focus Pts 13/17
@@ -7599,9 +7795,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -7755,9 +7955,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -7911,9 +8115,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -8066,9 +8274,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -8227,9 +8439,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -8388,9 +8604,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -8540,9 +8760,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 text | TurnInfo    | Focus Pts 17/17
@@ -8693,9 +8917,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 text | TurnInfo    | Focus Pts 6/6
@@ -8846,9 +9074,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 text | TurnInfo    | Focus Pts 6/6
@@ -8999,9 +9231,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -9153,9 +9389,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -9307,9 +9547,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -9459,9 +9703,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -9611,9 +9859,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -9763,9 +10015,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -9915,9 +10171,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -10067,9 +10327,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Aria
 text | TurnInfo    | HP 44/44
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -10219,9 +10483,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -10376,9 +10644,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -10533,9 +10805,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -10691,9 +10967,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  |   21  Aria
+text | Initiative  | 44/44
 text | Initiative  | ▶ 19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | TurnInfo    | Turn: Cyra
 text | TurnInfo    | HP 20/20
 btn  | TurnInfo    | btn_cbt_end_turn | End Turn | 1052,212,316,30 | yes
@@ -10994,9 +11274,13 @@ btn  | Header      | btn_cbt_end_combat | End Combat | 1203,38,97,30 | yes
 btn  | Header      | btn_cbt_table | Table… | 1304,38,64,30 | yes
 text | Initiative  | Initiative Order
 text | Initiative  | ▶ 21  Aria
+text | Initiative  | 44/44
 text | Initiative  |   19  Cyra
+text | Initiative  | 20/20
 text | Initiative  |   16  Brannor
+text | Initiative  | 25/25
 text | Initiative  |   15  Skarn
+text | Initiative  | 60/60
 text | Initiative  | 🎴 On Deck — click to deploy
 text | Initiative  |   ⮕ Goblin ×2
 text | Initiative  |   ⮕ Ogre

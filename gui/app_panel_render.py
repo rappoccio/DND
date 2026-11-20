@@ -29,7 +29,7 @@ import lair
 import pending
 from actions import ActionMenu, fey_rider_index, METAMAGIC_OPTIONS, METAMAGIC_ID_BY_VALUE
 from constants import *
-from helpers import (item_spells_summary, is_scroll, scroll_line, can_read_scroll,
+from helpers import (hp_status, item_spells_summary, is_scroll, scroll_line, can_read_scroll,
                      attuned_count, attunement_warning)
 from menus import panel
 from xp import level_for_xp
@@ -372,15 +372,20 @@ def draw_combat_panel(app):
         name   = agents[aidx].name if aidx < len(agents) else "?"
         alive  = True
         dismissed = (aidx < len(agents) and agents[aidx].removed_from_play)
+        hp_s = ""
         if aidx < len(agents):
             s = app.combat.get_agent_stats(app.bm, aidx)
             alive = s.hp_cur > 0
+            hp_s = hp_status(s)
         if not alive or dismissed:
             col = (90, 90, 90)
         prefix = "▶ " if is_cur else "  "
         suffix = "  (dismissed)" if dismissed else ""
         row_s  = f"{prefix}{entry.total:2d}  {name}{suffix}"
         txt(row_s, lx, y, col)
+        if hp_s and not dismissed:
+            hs = app.font_sm.render(hp_s, True, col)
+            app.screen.blit(hs, (lx + W - hs.get_width(), y))
         # Track clickable area for this initiative item
         item_rect = pygame.Rect(lx, y, W, 16)
         app.initiative_item_rects.append((item_rect, aidx))
