@@ -8715,6 +8715,12 @@ class App:
             self.combat_paused = not self.combat_paused
             self.session_log.add("The DM paused the game." if self.combat_paused
                                  else "The DM resumed the game.")
+            if not self.combat_paused:
+                # A paused drag selects the dragged token; hand the highlight back to whoever's
+                # turn it is.
+                self.selected_idx = self._current_agent_idx()
+                self._update_reach()
+                self._update_attack_overlay()
         if action_id == "reaction_timer":
             self._cycle_reaction_timeout()
         if action_id == "table":
