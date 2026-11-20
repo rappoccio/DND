@@ -671,6 +671,45 @@ def test_spending_the_bonus_action_leaves_action_surge():
     print("✅ test_spending_the_bonus_action_leaves_action_surge passed")
 
 
+def test_attack_after_action_surge_following_a_bonus_attack():
+    """Live-play bug (Nov 20): Attack ×2, the off-hand Bonus attack, then Action Surge left
+    "⚔ Attack" dead. A bonus sequence never counted `attack_seq.remaining` down, so a stale
+    1 made `_start_attack("action")` read as mid-sequence in another slot and return; and
+    the surge's own handler sat behind the Bonus Action gate."""
+    from net.roster import DM_PRINCIPAL_ID
+    from prompts import Response
+    app = _app()
+    aria = _goto(app, "Aria")                      # Fighter 5, Longsword + off-hand Shortsword
+    skarn = _idx(app, "Skarn")
+
+    def click(aid):
+        _draw(app)
+        assert aid in app._action_menu, f"{aid} not offered"
+        post_click(app, panel.cbt_btn(app, aid).rect.center)
+        _draw(app)
+        p = app.prompts.live
+        if p is not None and p.title and "weapon" in p.title:
+            opt = next(o for o in p.options if o.enabled)
+            assert app.prompts.submit(p.id, Response(option=opt.id), DM_PRINCIPAL_ID).ok
+            _draw(app)
+
+    def swing():
+        post_click(app, app._agent_screen_pos(skarn))
+        _draw(app)
+
+    click("atk_action"); swing()
+    click("atk_action"); swing()
+    click("atk_bonus"); swing()
+    assert app.bonus_used and app.attack_seq.slot == ""
+    assert app.attack_seq.remaining == 0, "a finished bonus sequence left a stale count"
+    click("action_surge")
+    assert not app.action_used, "Action Surge did nothing with the Bonus Action spent"
+    click("atk_action")
+    assert app.attack_seq.slot == "action" and app.attack_seq.remaining == 2, \
+        (app.attack_seq.slot, app.attack_seq.remaining)
+    print("✅ test_attack_after_action_surge_following_a_bonus_attack passed")
+
+
 def test_use_item_and_extinguish_are_outside_the_band():
     """The two 7a guards that are NOT band-gated — which is why the plan's `economy`
     field cannot be a boolean.
@@ -2048,6 +2087,7 @@ if __name__ == "__main__":
         test_stand_up_from_a_stale_rect_does_nothing()
         test_the_bonus_section_collapses_when_the_creature_cannot_act()
         test_spending_the_bonus_action_leaves_action_surge()
+        test_attack_after_action_surge_following_a_bonus_attack()
         test_use_item_and_extinguish_are_outside_the_band()
         test_the_economy_band_headers_are_the_bands_own_two_buttons()
         test_the_bonus_band_stays_open_for_a_bonus_slot_sequence()

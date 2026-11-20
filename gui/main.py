@@ -8024,6 +8024,12 @@ class App:
         # than seeding a new one (`attack_seq.remaining != 0` skips the seed).
         if action_id == "atk_bonus":
             self._start_attack("bonus")
+        # Action Surge costs no Bonus Action (`_BONUS_ECONOMY` marks it free, and the menu
+        # offers it with the Bonus Action spent), so its handler is outside the gate too.
+        if action_id == "action_surge":
+            idx = self._current_agent_idx()
+            if 0 <= idx < len(self.bm.placed_agents):
+                self._use_action_surge(idx)
         if not self.bonus_used:
             # `spell_bonus` stays behind the gate, and that is D-M2-4 rather
             # than F14: it is `spell_action`'s mirror, drawn mid-sequence with
@@ -8349,10 +8355,6 @@ class App:
                         self._combat_log_add(f"{self.bm.placed_agents[idx].name}: Merge with Shadows — now invisible.")
                     else:
                         self._combat_log_add("Merge with Shadows requires standing in Dim Light or Darkness.")
-            if action_id == "action_surge":
-                idx = self._current_agent_idx()
-                if 0 <= idx < len(self.bm.placed_agents):
-                    self._use_action_surge(idx)
             if action_id == "lay_on_hands":
                 self._arm_pick("lay_on_hands")
                 self.hint = "Click target for Lay on Hands healing"

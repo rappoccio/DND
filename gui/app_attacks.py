@@ -75,6 +75,9 @@ def continue_attack_sequence_after_rider(app, atk_idx: int):
         # Attacks exhausted
         app._disarm(pending.Attack)
         app.attack_seq.slot = ""
+        # A bonus sequence never counts `remaining` down (the engine keeps that count), so
+        # zero it here or a stale count makes the next Attack click read as mid-sequence.
+        app.attack_seq.remaining = 0
         app.attack_seq.offhand = None
         app.attack_seq.resource = None
         # Boon of Dimensional Travel — arm Blink Steps once the Attack action is fully spent (this is
@@ -841,6 +844,7 @@ def finish_attack(app):
                 # Attacks exhausted — mark action used and clear sequence state
                 app._disarm(pending.Attack)
                 app.attack_seq.slot = ""
+                app.attack_seq.remaining = 0   # bonus sequences leave it stale; see the rider path
                 # Clear the generic extra-attack knobs so they don't leak to the next attack.
                 app.attack_seq.offhand = None
                 app.attack_seq.resource = None
