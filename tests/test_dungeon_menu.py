@@ -6,7 +6,7 @@
     Open Dungeon;
   · with a dungeon open it offers Floors…, Staircases…, Populate Floor… and the rest,
     and no longer lists Pages / Overview…, Add Page… or Align Floor at the top level;
-  · Floors… holds Overview…, Add… and Align Floor;
+  · Floors… opens the W7 checklist, which holds Overview… and Add…;
   · Populate Floor… opens the generator in its populate shape and never carves.
 """
 
@@ -137,16 +137,16 @@ def test_menu_with_dungeon():
     print("  ✅ dungeon open: Floors… / Staircases… / Populate Floor… lead the menu")
 
 
-def test_floors_submenu():
+def test_floors_opens_the_checklist():
     with tempfile.TemporaryDirectory() as tmp:
         app = _dungeon(tmp)
         dm.show_dungeon_menu(app)
         assert app.prompts.choose_label("Floors…").ok
-        assert app.prompts.live.title == "Floors"
-        assert _labels(app) == ["Overview…", "Add…", "Align Floor"], _labels(app)
-        assert app.prompts.choose_label("Align Floor").ok
-        assert app.floor_align.active
-    print("  ✅ Floors… holds Overview… / Add… / Align Floor, and Align Floor starts")
+        assert app.floor_checklist.visible            # W7: the checklist holds the rest
+        assert {val for _r, kind, val in app.floor_checklist._hit if kind == "btn"} == \
+            {"overview", "add", "close"}
+        assert app.floor_checklist.rows[0].page_id == "U"
+    print("  ✅ Floors… opens the checklist (Overview… / Add… / the floors)")
 
 
 def test_populate_floor_routes():

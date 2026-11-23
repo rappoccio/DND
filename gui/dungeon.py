@@ -281,6 +281,10 @@ class MapPage:
     ladders: list[dict] = field(default_factory=list)
     door_links: list[dict] = field(default_factory=list)
     staging_cells: Optional[list[list[int]]] = None
+    # Whether the floor was lined up against its neighbours (DUNGEON_WIZARD_PLAN W7):
+    # True once an alignment is accepted, False while it sits where it was first put
+    # (or Skip left it), None when nobody recorded it (pages made before W7, the entry).
+    aligned: Optional[bool] = None
 
     # ── Global-grid geometry ────────────────────────────────────────────────
     @property
@@ -330,6 +334,8 @@ class MapPage:
         }
         if self.rooms:
             d["rooms"] = [r.to_dict() for r in self.rooms]
+        if self.aligned is not None:
+            d["aligned"] = bool(self.aligned)
         return d
 
     def to_dict_v2(self) -> dict:
@@ -347,6 +353,8 @@ class MapPage:
             d["ladders"] = [_portal(lad) for lad in self.ladders]
         if self.door_links:
             d["door_links"] = [_portal(dl) for dl in self.door_links]
+        if self.aligned is not None:
+            d["aligned"] = bool(self.aligned)
         return d
 
     @classmethod
@@ -373,6 +381,7 @@ class MapPage:
             rows=int(d.get("rows", 0)),
             rooms=[r for r in (RoomLabel.from_dict(rd) for rd in d.get("rooms", []) or [])
                    if r is not None],
+            aligned=d["aligned"] if isinstance(d.get("aligned"), bool) else None,
         )
 
 

@@ -96,6 +96,7 @@ from app_spells import CLERIC_DI_SPELL_NAMES
 import app_summons
 import app_dungeon_gen
 from dungeon_wizard import DungeonWizard
+from floor_checklist import FloorChecklist
 import app_panel_render
 import app_persist
 import app_lighting
@@ -441,6 +442,7 @@ class App:
         self._wall_detect_dialog = WallDetectionDialog(self.font_sm, self.font_md)
         # Dungeon → New Dungeon…: the wizard, docked over the panel (DUNGEON_WIZARD_PLAN W4).
         self.dungeon_wizard = DungeonWizard(self.font_sm, self.font_md)
+        self.floor_checklist = FloorChecklist(self.font_sm, self.font_md)   # Floors… (W7)
         # Agents… → Automate NPCs…: one slider for every red creature (menus/dm.py).
         self._npc_auto_dialog = NpcAutomationDialog(self.font_sm, self.font_md)
         self._npc_auto_level = None     # the slider's last value this session
@@ -8787,7 +8789,7 @@ class App:
                 self.file_browser.active or self.terrain_placement_dialog.active or
                 self.terrain_editor.active or self.lighting_editor.active or
                 self._wall_detect_dialog.visible or self._npc_auto_dialog.visible or
-                self.dungeon_wizard.visible or
+                self.dungeon_wizard.visible or self.floor_checklist.visible or
                 self.weapon_selection_dialog.visible or
                 self.armor_selection_dialog.visible or
                 self.spell_selection_dialog.visible or
@@ -8965,6 +8967,12 @@ class App:
                     if self.context_menu.handle(event):
                         self.prompts.renderer_dismissed()
                 elif not self.dungeon_wizard.handle(event):
+                    self._handle_map_view_event(event)
+                continue
+
+            # ── Floors… checklist: docked over the panel, the map stays live ──
+            if self.floor_checklist.visible:
+                if not self.floor_checklist.handle(event):
                     self._handle_map_view_event(event)
                 continue
 
@@ -9915,6 +9923,7 @@ class App:
             self.lighting_editor.draw(self.screen)         # modal — always on top
             self._wall_detect_dialog.draw(self.screen)     # docked over the panel
             self.dungeon_wizard.draw(self.screen)          # docked over the panel
+            self.floor_checklist.draw(self.screen)         # docked over the panel
             self._npc_auto_dialog.draw(self.screen)        # docked over the panel
             self.terrain_placement_dialog.draw(self.screen)  # modal — always on top
             self.file_browser.draw(self.screen)     # modal — always on top

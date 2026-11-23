@@ -466,16 +466,10 @@ def show_dungeon_menu(app):
 
 
 def show_floors_menu(app, anchor=None):
-    """Dungeon → Floors… (D2): the overview (place pages, set the entry, remove), Add a
-    page to the current floor, and Align Floor. W7's checklist takes this over."""
-    if anchor is None:
-        anchor = _dungeon_anchor(app)
-    items = [
-        ("Overview…",   app._dungeon_pages_overview),
-        ("Add…",        app._dungeon_add_page_browser),
-        ("Align Floor", lambda: app.floor_align.start(app)),
-    ]
-    app._ask_dm("action", "Floors", items, anchor=anchor, parent=app.prompts.answering)
+    """Dungeon → Floors… (D2, D21): the per-floor checklist, which also holds the
+    overview (place pages, set the entry, remove) and Add. Each item jumps to its floor
+    with its tool open; Align Floor is the "aligned" item."""
+    app.floor_checklist.open(app)
 
 
 def show_staircases_menu(app, anchor=None):

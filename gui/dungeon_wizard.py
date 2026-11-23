@@ -376,7 +376,7 @@ class DungeonWizard:
         self._layout()
 
     def finish(self):
-        """Close and open the dungeon on its entry floor. (W7's checklist follows here.)"""
+        """Close, open the dungeon on its entry floor, and show its checklist (D21)."""
         app, t = self.app, self.target
         if not self.floors:
             self.error = "Write at least one floor first."
@@ -391,7 +391,10 @@ class DungeonWizard:
             app_dungeon_pages.on_open_dungeon_chosen(app, t.manifest_path())
         n = len(self.floors)
         app._flash_status(f"{t.name}: {n} floor{'s' if n != 1 else ''}. "
-                          "Walls, doors and staircases: Dungeon → Floors….", secs=6)
+                          "Click a floor's walls, doors or staircases to work on them.",
+                          secs=6)
+        if app.dungeon is not None:
+            app.floor_checklist.open(app)
 
     def _goto(self, step):
         self.history.append((self.step, self.cur, self.sheet))
@@ -661,6 +664,7 @@ class DungeonWizard:
         dung = self.writer.load_dungeon()
         try:
             fp.place(dung, f.written, f.ref, f.relation)
+            dung.page_by_id(f.written).aligned = False     # until Align accepts (W7)
             self.writer.save_dungeon(dung)
         except (OSError, ValueError) as e:
             self.error = str(e)
@@ -706,6 +710,7 @@ class DungeonWizard:
         (Skip)."""
         if origin is not None:
             self.align_page.origin[:] = list(origin)
+        self.align_page.aligned = origin is None       # Skip is not an alignment (W7)
         try:
             self.writer.save_dungeon(self.align_dung)
         except OSError as e:

@@ -410,6 +410,8 @@ def test_premade_loose_click_through():
             [("keep-floor-1", [0, 0, 0]), ("roof", [0, 0, 1])]
         assert app.dungeon_page.id == "keep-floor-1"
         assert (app.bm.grid_cols, app.bm.grid_rows) == (8, 6), (app.bm.grid_cols, app.bm.grid_rows)
+        assert app.floor_checklist.visible                             # W7 (D21)
+        assert [r.page_id for r in app.floor_checklist.rows] == ["roof", "keep-floor-1"]
     print("  ✅ premade, loose: pick, Set Grid, crop + brush, name, another, rename, Finish")
 
 
@@ -531,6 +533,12 @@ def test_place_and_align_click_through():
             [("pit-floor-1", [0, 0, 0]), ("pit-floor-2", [-3, 2, -1]),
              ("pit-floor-3", [10, 0, 0])]
         assert app.dungeon.entry_page_id == "pit-floor-1"
+        # W7: the entry is not recorded; the landmark-aligned floor is, Skip is not.
+        assert [p.aligned for p in app.dungeon.pages] == [None, True, False]
+        rows = {r.page_id: r for r in app.floor_checklist.rows}
+        assert [rows[p].label("aligned") for p in ("pit-floor-1", "pit-floor-2",
+                                                    "pit-floor-3")] == \
+            ["Entry", "Aligned ✓", "Aligned ✗"]
     print("  ✅ W6: place below (stack preview), landmark pair + nudge, beside + Skip")
 
 def test_players_held_while_open():

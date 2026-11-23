@@ -1,6 +1,6 @@
 # Dungeon wizard: building multi-floor dungeons from premade maps
 
-**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 committed 6149629 (271/0). W6 committed a21e915 (272/0). W7 next on go.**
+**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 committed 6149629 (271/0). W6 committed a21e915 (272/0). W7 committed (273/0). W8 next on go.**
 
 The problem (user, 2026-11-22): building a multi-floor dungeon from published maps is
 confusing. You open a map, *then* make a dungeon, *then* add a page, *then* set its grid,
@@ -143,7 +143,7 @@ that's left.
 | W4 | **Wizard shell** (D4–D8). Docked step panel, Back/Next/Cancel/Discard, combat refusal, player placeholder, saving at each step, first screen, Generate path. | ✅ |
 | W5 | **Source, grid, crop, name** (D10–D16). | ✅ |
 | W6 | **Placement and alignment** (D17–D19). | ✅ |
-| W7 | **Checklist** (D21), on Finish and in Floors…. | ☐ |
+| W7 | **Checklist** (D21), on Finish and in Floors…. | ✅ |
 | W8 | **Floors… → Add** (D22), including re-cropping from a kept source. Replaces Add Page's v2 path. | ☐ |
 | W9 | **Staircase tool with the other floor faded in** (D23). | ☐ |
 | W10 | **Live check.** Build a dungeon from a fresh sheet in the real app, run by the user. | ☐ |
@@ -349,6 +349,36 @@ that's left.
   (place below, landmark clicks on the canvas, nudge, beside + Skip) and the W5
   click-through updated for the new steps. Headless screenshots on the spires sheet
   checked (`tools/debug/w6_shots.py`, untracked).
+
+### W7 as built (2026-11-23)
+- `gui/floor_checklist.py`: `FloorChecklist` (`app.floor_checklist`), docked over the right
+  panel like the wizard, the map live beside it. One block per floor (page), top floor
+  first, manifest order within a level: `★ name · floor Z`, then six chips
+  Grid ✓/✗ · Aligned ✓/✗/?/Entry · Walls: none/detected/edited · Doors N · Stairs N ·
+  Creatures N, green when done, amber when not. Wheel scrolls; Esc / Close shut it.
+  Buttons Overview… and Add… (the old Floors… entries, D2).
+- **Opens** from Dungeon → Floors… (`menus/dm.show_floors_menu`, no longer a popup) and
+  after the wizard's Finish.
+- **Where the numbers come from:** the floor showing is read from the live scene (unsaved
+  edits count); the others from the store (`store.terrain` / `store.creatures`), so it
+  works for campaign and loose dungeons. Nothing is written. Grid: a `manual_grid`, or a
+  page with cols × rows. Walls (`walls_state`): OFF with nothing painted = none; ON with
+  edge overrides or painted Wall regions (or OFF with painted walls) = edited; else
+  detected. Staircases: ends on that page. Creatures: every record on the map.
+- **Aligned, settled here (W1 amended, D26):** a page gains an optional `"aligned"` bool
+  in both manifest shapes (`MapPage.aligned`). The wizard writes a later floor `false`,
+  Place resets it to `false`, Align's accept sets `true`, Skip `false`; Align Floor's
+  Enter sets `true`. Absent (`None`) shows "Aligned ?" (pages made before W7, e.g.
+  Argynvostholt, Ravenloft); the entry shows "Entry".
+- **Jumps** (`jump`): switch to the floor (refused in combat, as any switch), then
+  Grid → Set Grid's tile drag; Aligned → Align Floor; Walls → Wall Detection (walls OFF:
+  turned ON first, through the overwrite confirm), or, once edited, the terrain editor's
+  Edge tool (Drawn mode) / Wall tool; Doors → editor, Door tool; Stairs → editor,
+  Staircase tool; Creatures → Populate Floor….
+- Tests: `tests/test_floor_checklist.py` (5 cases, new); `test_dungeon_menu.py` (Floors…
+  opens the checklist); `test_dungeon_wizard.py` (Finish shows it; aligned recorded
+  for landmark vs Skip). Headless screenshot on a copy of Argynvostholt checked
+  (`tools/debug/w7_shot.py`, untracked).
 
 ### D25 commands (for the user to run; Claude never runs `rm -rf`)
 ```bash

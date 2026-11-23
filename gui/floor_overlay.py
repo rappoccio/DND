@@ -203,6 +203,7 @@ class FloorAlign:
         page = app.dungeon_page
         if page is not None and self.start_origin is not None:
             if keep:
+                page.aligned = True                 # the Floors… checklist's ✓ (W7)
                 app._apply_page_origin(page)
                 app._dungeon_save()
             else:

@@ -518,7 +518,8 @@ def _put_page(dung: dg.Dungeon, name: str, plan: CropPlan, origin, *, png: str,
     page = dung.page_by_id(name)
     if page is None:
         page = dg.MapPage(id=name, png=png, encounter_base=agents,
-                          origin=[int(v) for v in (origin or [0, 0, 0])])
+                          origin=[int(v) for v in (origin or [0, 0, 0])],
+                          aligned=False if dung.pages else None)   # the first is the entry
         dung.add_page(page)
     page.cols, page.rows = plan.cols, plan.rows
     return page
