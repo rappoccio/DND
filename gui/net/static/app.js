@@ -385,6 +385,9 @@ function render(next) {
   el("who").textContent = recall(NAME_KEY) || "at the table";
   // The DM's "map only" switch (a table with miniatures): the board is the whole screen.
   el("session").dataset.mapOnly = next.map_only ? "yes" : "no";
+  // The DM is building a dungeon (DUNGEON_WIZARD_PLAN.md D6): an empty board and why.
+  el("hold").hidden = !next.hold;
+  el("hold").textContent = next.hold || "";
   // A timed-out submit is resolved by this view either way: the prompt is gone, or it is
   // still live and the player may answer it again.
   if (awaiting && awaiting !== view.you.prompt_id) { awaiting = ""; ackNote = ""; }

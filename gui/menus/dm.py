@@ -436,10 +436,7 @@ def show_dungeon_menu(app):
     anchor = _dungeon_anchor(app)
     if app.dungeon is None:
         items = [
-            ("New Dungeon…",           app._dungeon_new),
-            # Until the wizard's Generate path (W4) exists, the generator for a
-            # fresh dungeon (the blank map) or a loose map is reached from here.
-            ("Generate Dungeon…",      lambda: _dungeon_gen().on_generate_dungeon(app)),
+            ("New Dungeon…",           lambda: app.dungeon_wizard.start(app)),   # W4
             ("Open Campaign…",         app._open_campaign),
             ("Open Dungeon…",          app._dungeon_open_browser),
         ]
@@ -464,7 +461,7 @@ def show_dungeon_menu(app):
             ("Close Dungeon",     app._dungeon_close),
         ]
         if isinstance(app.store, CampaignStore):     # U4: another dungeon of this campaign
-            items.insert(-3, ("New Dungeon…", app._dungeon_new))
+            items.insert(-3, ("New Dungeon…", lambda: app.dungeon_wizard.start(app)))
     app._ask_dm("action", "Dungeon", items, anchor=anchor)
 
 

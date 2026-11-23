@@ -95,6 +95,7 @@ import app_spells
 from app_spells import CLERIC_DI_SPELL_NAMES
 import app_summons
 import app_dungeon_gen
+from dungeon_wizard import DungeonWizard
 import app_panel_render
 import app_persist
 import app_lighting
@@ -438,6 +439,8 @@ class App:
         # Asks how many cells a sampled grid box spanned (manual-grid precision).
         self._grid_span_dialog = GridSpanDialog(self.font_sm, self.font_md)
         self._wall_detect_dialog = WallDetectionDialog(self.font_sm, self.font_md)
+        # Dungeon → New Dungeon…: the wizard, docked over the panel (DUNGEON_WIZARD_PLAN W4).
+        self.dungeon_wizard = DungeonWizard(self.font_sm, self.font_md)
         # Agents… → Automate NPCs…: one slider for every red creature (menus/dm.py).
         self._npc_auto_dialog = NpcAutomationDialog(self.font_sm, self.font_md)
         self._npc_auto_level = None     # the slider's last value this session
@@ -6675,8 +6678,10 @@ class App:
     def _modal_select_items(self, title: str, items: list[str], selection: set[str] | list, multi_select: bool=True) -> None:
         return app_dungeon_gen.modal_select_items(self, title, items, selection, multi_select)
 
-    def _modal_generate_dungeon(self, populate: bool = False) -> dict | None:
-        return app_dungeon_gen.modal_generate_dungeon(self, populate=populate)
+    def _modal_generate_dungeon(self, populate: bool = False,
+                                generate: bool = False) -> dict | None:
+        return app_dungeon_gen.modal_generate_dungeon(self, populate=populate,
+                                                      generate=generate)
 
     def _modal_pick_mobs(self, bestiary, cr, types, languages, boss_on, excluded: set, boss: list) -> dict | None:
         return app_dungeon_gen.modal_pick_mobs(self, bestiary, cr, types, languages, boss_on, excluded, boss)
@@ -8782,6 +8787,7 @@ class App:
                 self.file_browser.active or self.terrain_placement_dialog.active or
                 self.terrain_editor.active or self.lighting_editor.active or
                 self._wall_detect_dialog.visible or self._npc_auto_dialog.visible or
+                self.dungeon_wizard.visible or
                 self.weapon_selection_dialog.visible or
                 self.armor_selection_dialog.visible or
                 self.spell_selection_dialog.visible or
@@ -8947,6 +8953,16 @@ class App:
             # ── Automate NPCs dialog: docked over the panel, modal ──
             if self._npc_auto_dialog.visible:
                 self._npc_auto_dialog.handle(event)
+                continue
+
+            # ── New Dungeon wizard: docked over the panel, the map stays live. Its
+            # Discard confirm is a popup over it, which takes events first. ──
+            if self.dungeon_wizard.visible:
+                if self.context_menu.visible:
+                    if self.context_menu.handle(event):
+                        self.prompts.renderer_dismissed()
+                elif not self.dungeon_wizard.handle(event):
+                    self._handle_map_view_event(event)
                 continue
 
             # ── Wall Detection dialog: docked over the panel, the map stays live ──
@@ -9895,6 +9911,7 @@ class App:
             self.terrain_editor.draw(self.screen)          # modal — always on top
             self.lighting_editor.draw(self.screen)         # modal — always on top
             self._wall_detect_dialog.draw(self.screen)     # docked over the panel
+            self.dungeon_wizard.draw(self.screen)          # docked over the panel
             self._npc_auto_dialog.draw(self.screen)        # docked over the panel
             self.terrain_placement_dialog.draw(self.screen)  # modal — always on top
             self.file_browser.draw(self.screen)     # modal — always on top

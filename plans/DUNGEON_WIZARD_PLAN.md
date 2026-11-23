@@ -1,6 +1,6 @@
 # Dungeon wizard: building multi-floor dungeons from premade maps
 
-**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 next on go.**
+**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 implemented 2026-11-23 (270/0), uncommitted.**
 
 The problem (user, 2026-11-22): building a multi-floor dungeon from published maps is
 confusing. You open a map, *then* make a dungeon, *then* add a page, *then* set its grid,
@@ -140,7 +140,7 @@ that's left.
 | W1 | **Data model.** Source sheets and floor crop metadata. Readers and writers in `dungeon.py` / `save_layout.py`, all fields optional (D26). | ✅ |
 | W2 | **Link existing content** (D24). One-off tool, dry run first, overlay PNGs for the user to check, then `--apply`. | ✅ |
 | W3 | **Dungeon button and menu** (D1–D3). Merge the buttons, add the Floors… entry that holds the old overview/add/align, split out Populate Floor…. | ✅ |
-| W4 | **Wizard shell** (D4–D8). Docked step panel, Back/Next/Cancel/Discard, combat refusal, player placeholder, saving at each step, first screen, Generate path. | ☐ |
+| W4 | **Wizard shell** (D4–D8). Docked step panel, Back/Next/Cancel/Discard, combat refusal, player placeholder, saving at each step, first screen, Generate path. | ✅ |
 | W5 | **Source, grid, crop, name** (D10–D16). | ☐ |
 | W6 | **Placement and alignment** (D17–D19). | ☐ |
 | W7 | **Checklist** (D21), on Finish and in Floors…. | ☐ |
@@ -230,6 +230,52 @@ that's left.
   page's own encounter through the usual overwrite confirmation.
 - Strings that named "Dungeon Configuration" (staircase-tool hints, comments) now say "Dungeon".
 - Tests: `tests/test_dungeon_menu.py` (7 cases); headless click-through via `gui_driver`.
+
+### W4 as built (2026-11-23)
+- `gui/dungeon_wizard.py`: `DungeonWizard` (`app.dungeon_wizard`), a step panel docked over
+  the whole width of the right panel. The map beside it stays live (wheel / arrows / +/−
+  reach it, as with Wall Detection). Steps are names on a stack: Back pops one.
+  Enter is Next, Esc is Cancel, Tab moves between the name fields.
+- **Entry points.** Dungeon → New Dungeon… (no dungeon open, and inside a campaign) and
+  Open Campaign → <campaign> → New Dungeon… (that campaign preselected) open it. The
+  interim Generate Dungeon… row from W3 is gone. Refused in combat (D6).
+- **First screen (D8).** Campaign: every campaign, New campaign… (adds a campaign-name
+  field), No campaign (loose); Dungeon name; Start from: Premade maps / Generate.
+  `resolve_target` refuses, in the panel, a missing choice or name, a name with no usable
+  characters, and a dungeon name already taken where it would go. **Taken names are
+  refused, never replaced.** A new campaign's folder is its slug, `-2` when taken. Nothing
+  is written by the first screen.
+- **Where a loose dungeon lives (D9, settled here):** `maps/<slug>/<slug>.dungeon.json`
+  (`app_dungeon_gen.loose_root()`, the blank map's folder), its own folder so Discard can
+  archive it whole.
+- **Generate (D8).** Next opens the generator's settings in a new `generate=True` shape
+  (Terrain row left out, carve forced on). Cancelling them leaves the wizard and the
+  scene. Otherwise the blank map is loaded if it isn't showing (`load_blank_scene`: a
+  dungeon page is saved first, the campaign left), then:
+  - campaign: `generate_named_dungeon(…, camp_root=, camp_name=, replace=False)`, which
+    now takes the campaign (default still random_encounters for the old blank-map path);
+  - loose: `generate_loose_dungeon`, built in a scratch folder under `maps/`, the blank
+    image copied in, renamed into `maps/<slug>/` whole, then opened.
+  The wizard closes on success. (W7's checklist will follow Finish.)
+- **Premade maps.** Next goes to step 2, "Pick an image", which for now only says it
+  arrives in W5; Back / Cancel work.
+- **Saving (D7).** `mark_saved()` is the hook W5's steps call once they write. From then
+  Discard dungeon is offered: it asks first, then moves the dungeon's folder to
+  `_archive/<slug>-<stamp>` beside it (going back to the blank map if it was showing).
+  Cancel after a save says "Continue with Dungeon → Floors… → Add."; before one, that
+  nothing was saved.
+- **Players held (D6).** While the wizard is open a player's view is the empty envelope
+  plus `"hold": "The DM is preparing the dungeon…"` (`net.view._hold_view`); the event
+  filter shows them nobody, and `MapImageCache.hold_players` makes `GET /map.png` 404 for
+  them. The client shows the text over the empty board. The DM's view is unchanged.
+- **Left in place:** the old New Dungeon dialog functions (`dungeon_new`,
+  `open_campaign_new_dungeon`, `new_dungeon_from_scene`, …) and `on_generate_dungeon` are
+  no longer reachable from a menu; their suites still drive them directly. They go when
+  W5/W8 have replaced what they did (the "this map" import of a loose scene into a
+  campaign has no wizard equivalent yet).
+- Tests: `tests/test_dungeon_wizard.py` (9 cases, real clicks/keys through
+  `_handle_events`); `test_gameview.py` gains `test_held_while_the_dm_builds_a_dungeon`;
+  `test_dungeon_menu.py` and `test_new_dungeon_dialog.py` updated for the new entry points.
 
 ### D25 commands (for the user to run; Claude never runs `rm -rf`)
 ```bash

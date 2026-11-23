@@ -210,6 +210,7 @@ def push_cycle(app) -> None:
     app._net_push_ms = now
     # publish() decides whether the new snapshot actually replaces the published one: the
     # image key lags 3 s, but only while the lag is nothing worse than extra fog (D-M4-1).
+    app.map_images.hold_players(net_view.players_held(app))
     app.map_images.publish(net_view.page_image(app), boundary=boundary)
     _project_seated(app)
     _push_views(app)

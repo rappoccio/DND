@@ -92,6 +92,9 @@ def build_view(app, viewer: Principal, seq: int = 0) -> dict:
     # and nowhere else, this module included.
     is_dm = roster.authorize(viewer, Action.VIEW_DM_CHANNEL)
 
+    if not is_dm and players_held(app):
+        return _hold_view(app, viewer, seq)
+
     bm = app.bm
     # The PARTY's gate, not the DM screen's (D-M7-1). `_fog_active()` also drops while a
     # terrain or lighting editor is open, so the DM can see the map they are editing, and
@@ -127,6 +130,41 @@ def build_view(app, viewer: Principal, seq: int = 0) -> dict:
     if bare:
         view["map_only"] = True
     return view
+
+
+# DUNGEON_WIZARD_PLAN.md D6: while the DM builds a dungeon, a player sees this and no map.
+HOLD_TEXT = "The DM is preparing the dungeon…"
+
+
+def players_held(app) -> bool:
+    """True while the New Dungeon wizard is open: the scene behind it is the DM's
+    workbench (a sheet being cropped, a floor being aligned), not the table's map."""
+    wizard = getattr(app, "dungeon_wizard", None)
+    return bool(wizard is not None and wizard.visible)
+
+
+def _hold_view(app, viewer: Principal, seq: int) -> dict:
+    """A player's view while ``players_held``: the usual envelope with nothing in it, and
+    ``hold`` for the client to say why. Built through the same fog-on, nothing-explored
+    cuts as any view, so its shape is a view's; no image is named, and ``GET /map.png``
+    refuses a player meanwhile (``MapImageCache.hold_players``)."""
+    nothing: set = set()
+    return {
+        "v":       PROTOCOL_VERSION,
+        "t":       "view",
+        "seq":     int(seq),
+        "you":     {"principal_id": viewer.id, "controls": [], "prompt_id": None},
+        "map":     {"page": "", "cell_px": 1, "cols": 0, "rows": 0},
+        "fog":     {"active": True, "explored_runs": []},
+        "combat":  _combat(app, nothing),
+        "agents":  [],
+        "terrain": _terrain(app, False, True, nothing),
+        "lighting": _lighting(app, False, True, nothing),
+        "effects": _effects(app, False, True, nothing, True),
+        "log":     [],
+        "session": [],
+        "hold":    HOLD_TEXT,
+    }
 
 
 def map_only(app, is_dm: bool) -> bool:
@@ -177,7 +215,7 @@ def _drawn(app, idx: int, pt, is_dm: bool) -> bool:
     """The three gates above, in one place, because ``sight`` must apply exactly these."""
     if pt.removed_from_play:
         return False
-    if map_only(app, is_dm):
+    if map_only(app, is_dm) or (not is_dm and players_held(app)):
         return False
     return is_dm or not (app._agent_fogged(idx, pt, party=True)
                       or app._npc_concealed_from_party(idx, pt))

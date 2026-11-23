@@ -2,7 +2,7 @@
 """The Dungeon… panel button and its menu (plans/DUNGEON_WIZARD_PLAN.md W3, D1–D3).
 
   · one Dungeon… button replaces Generate Dungeon and Dungeon Configuration;
-  · with no dungeon open the menu offers New / Generate (until W4) / Open Campaign /
+  · with no dungeon open the menu offers New Dungeon… (the W4 wizard) / Open Campaign /
     Open Dungeon;
   · with a dungeon open it offers Floors…, Staircases…, Populate Floor… and the rest,
     and no longer lists Pages / Overview…, Add Page… or Align Floor at the top level;
@@ -80,9 +80,45 @@ def test_menu_without_dungeon():
         app = App(_png(tmp, "loose.png"), seed=1)
         dm.show_dungeon_menu(app)
         assert app.prompts.live.title == "Dungeon"
-        assert _labels(app) == ["New Dungeon…", "Generate Dungeon…",
-                                "Open Campaign…", "Open Dungeon…"], _labels(app)
-    print("  ✅ no dungeon: New / Generate / Open Campaign / Open Dungeon")
+        assert _labels(app) == ["New Dungeon…", "Open Campaign…", "Open Dungeon…"], \
+            _labels(app)
+        assert app.prompts.choose_label("New Dungeon…").ok
+        assert app.dungeon_wizard.visible          # W4: New Dungeon… is the wizard
+    print("  ✅ no dungeon: New Dungeon… (the wizard) / Open Campaign / Open Dungeon")
+
+
+def test_open_dungeon_starts_in_encounters():
+    with tempfile.TemporaryDirectory() as tmp:
+        maps = os.path.join(tmp, "maps")
+        os.makedirs(maps)
+        os.makedirs(os.path.join(tmp, "encounters"))
+        app = App(_png(maps, "loose.png"), seed=1)
+        seen = []
+        app.file_browser.open = lambda start, *a, **k: seen.append(start)
+        dm.show_dungeon_menu(app)
+        assert app.prompts.choose_label("Open Dungeon…").ok
+        assert seen == [os.path.join(tmp, "encounters")], seen
+    print("  ✅ Open Dungeon… starts in encounters/")
+
+
+def test_open_dungeon_lists_both_manifests():
+    """A campaign dungeon's manifest is plain dungeon.json; a loose one is
+    <name>.dungeon.json. The browser shows both, and not backups or sidecars."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app = App(_png(tmp, "loose.png"), seed=1)
+        d = os.path.join(tmp, "castle")
+        os.makedirs(os.path.join(d, "maps"))
+        for name in ("dungeon.json", "dungeon.json.pre-pc-sheets", "keep.dungeon.json",
+                     "dungeon_TestGrid12x12_agents.json", "keep_agents.json"):
+            open(os.path.join(d, name), "w").close()
+        app._dungeon_manifest_path = os.path.join(d, "keep.dungeon.json")
+        app._map_dir = os.path.join(tmp, "nowhere", "maps")    # no encounters/: start at d
+        app._dungeon_open_browser()
+        assert app.file_browser.cwd == d, app.file_browser.cwd
+        files = sorted(n for n, is_dir in app.file_browser._raw if not is_dir)
+        assert files == ["dungeon.json", "keep.dungeon.json"], files
+        app.file_browser.active = False
+    print("  ✅ Open Dungeon… lists dungeon.json and <name>.dungeon.json, nothing else")
 
 
 def test_menu_with_dungeon():

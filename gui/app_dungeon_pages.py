@@ -608,7 +608,7 @@ def open_campaign_menu(app, camp_root, anchor):
         return
     items = [(d, lambda d=d: open_campaign_dungeon(app, camp.dungeon(d).manifest_path))
              for d in dungeons]
-    items.append(("New Dungeon…", lambda: open_campaign_new_dungeon(app, camp, anchor)))
+    items.append(("New Dungeon…", lambda: app.dungeon_wizard.start(app, campaign=camp.root)))
     app._ask_dm("action", camp.name, items, anchor=anchor)
 
 
@@ -828,12 +828,16 @@ def dungeon_save_manifest(app) -> bool:
 
 
 def dungeon_open_browser(app):
-    start = os.path.dirname(app._dungeon_manifest_path or app._save_path) or app._map_dir
+    """Open Dungeon…: the browser starts in encounters/, where the campaigns are."""
+    start = campaigns_root(app)
+    if not os.path.isdir(start):
+        start = os.path.dirname(app._dungeon_manifest_path or app._save_path) or app._map_dir
     app.file_browser.open(
         start, app._on_open_dungeon_chosen,
         save_mode=False,
         extensions=JSON_EXTS,
-        name_pattern=".dungeon.json",
+        # Both "<name>.dungeon.json" (loose) and a campaign dungeon's "dungeon.json".
+        name_pattern="dungeon.json",
         title="Open Dungeon",
     )
 

@@ -312,7 +312,15 @@ class MapImageCache:
         self._page: PageImage | None = None
         self._published_at = 0.0
         self._entries: dict[bool, tuple[str, bytes]] = {}
+        self._hold_players = False
         self.renders = 0          # tests assert on this; the route never reads it
+
+    def hold_players(self, held: bool) -> None:
+        """While held (the New Dungeon wizard is open, DUNGEON_WIZARD_PLAN.md D6) a
+        player's ``png`` is None: the route answers 404 and the DM's image is unaffected.
+        Set on the pygame thread each push cycle."""
+        with self._lock:
+            self._hold_players = bool(held)
 
     def publish(self, page: PageImage | None, *,
                 boundary: bool = False, now: float | None = None) -> PageImage | None:
@@ -359,6 +367,8 @@ class MapImageCache:
         with self._lock:
             page = self._page
             entry = self._entries.get(is_dm)
+            if self._hold_players and not is_dm:
+                return None
         if page is None:
             return None
 

@@ -905,12 +905,15 @@ def modal_select_items(app, title: str, items: list[str], selection: set[str] | 
         app.clock.tick(60)
 
 
-def modal_generate_dungeon(app, populate: bool = False) -> dict | None:
+def modal_generate_dungeon(app, populate: bool = False, generate: bool = False) -> dict | None:
     """Blocking dialog for the Generate Dungeon (DM-mode) parameters.
 
     ``populate`` is Dungeon → Populate Floor… (plans/DUNGEON_WIZARD_PLAN.md D3): the
     same dialog, titled for it, with the carve rows (Floors, Rooms/map, N×M, Terrain)
     left out and carve forced off.
+
+    ``generate`` is the New Dungeon wizard's Generate path (D8): the Terrain row is left
+    out and carve forced on, since a new dungeon always carves.
 
     Returns {cr, min_room, start, end, boss, seed, carve, ...} or None on
     cancel. The start/peak difficulties are the endpoints of the per-room
@@ -954,6 +957,8 @@ def modal_generate_dungeon(app, populate: bool = False) -> dict | None:
     if populate:
         labels = [lab for lab in labels
                   if lab not in ("Floors", "Rooms/map", "Each floor (N×M)", "Terrain")]
+    elif generate:
+        labels = [lab for lab in labels if lab != "Terrain"]
     row_y = {lab: y0 + i * row_h for i, lab in enumerate(labels)}
 
     def ry(i):
@@ -982,7 +987,7 @@ def modal_generate_dungeon(app, populate: bool = False) -> dict | None:
     start_i, end_i, boss_on = [0], [2], [True]     # Easy -> Hard, boss on
     # Carve a fresh floor plan, or keep the map's terrain and generate mobs only.
     # A premade dungeon (manifest open) defaults to mobs only: its floors are drawn.
-    carve_on = [app.dungeon is None and not populate]
+    carve_on = [generate or (app.dungeon is None and not populate)]
     CARVE_TXT = {True: "New", False: "Keep (mobs only)"}
     type_selection, lang_selection = set(), set()  # multi-select for both
     # The mob picker's choices, kept across Back so a tweak here doesn't lose them.
@@ -1036,7 +1041,7 @@ def modal_generate_dungeon(app, populate: bool = False) -> dict | None:
             if btn_boss.clicked(event):
                 boss_on[0] = not boss_on[0]
                 btn_boss.text = "ON" if boss_on[0] else "OFF"
-            if not populate and btn_carve.clicked(event):
+            if not (populate or generate) and btn_carve.clicked(event):
                 carve_on[0] = not carve_on[0]
                 btn_carve.text = CARVE_TXT[carve_on[0]]
             if btn_type.clicked(event):
@@ -1105,7 +1110,9 @@ def modal_generate_dungeon(app, populate: bool = False) -> dict | None:
         shown = [cr_step, room_step, seed_inp, btn_start, btn_end, btn_boss, btn_type,
                  btn_lang, auto_step, groups_step, gen, cancel]
         if not populate:
-            shown += [floors_step, roomsfloor_step, mapsx_step, mapsy_step, btn_carve]
+            shown += [floors_step, roomsfloor_step, mapsx_step, mapsy_step]
+            if not generate:
+                shown.append(btn_carve)
         for w in shown:
             w.draw(app.screen)
         pygame.display.flip()
@@ -1610,11 +1617,15 @@ def _scratch_pages(app, scratch, slug, params, eg) -> tuple[list, str, list] | N
     return [page], "floor0", summary
 
 
-def generate_named_dungeon(app, params, name):
-    """Generate on the blank map, then file the result as the dungeon ``name`` of the
-    random_encounters campaign and open it. The generator writes to a scratch folder,
-    so no ``Blank_*`` file is touched; a dungeon already called ``name`` is archived
-    (the overwrite was confirmed before this runs)."""
+def generate_named_dungeon(app, params, name, *, camp_root=None,
+                           camp_name=RANDOM_CAMPAIGN, replace=True) -> bool:
+    """Generate on the blank map, then file the result as the dungeon ``name`` of a
+    campaign (``camp_root``, default the random_encounters campaign; made, named
+    ``camp_name``, when it does not exist yet) and open it. The generator writes to a
+    scratch folder, so no ``Blank_*`` file is touched. With ``replace`` a dungeon already
+    called ``name`` is archived (the overwrite was confirmed before this runs); without
+    it, it is refused. True when the dungeon was made and opened."""
+    camp_root = camp_root or random_campaign_root(app)
     app._set_fog(True)
     gui_dir = os.path.dirname(os.path.abspath(__file__))
     tools_dir = os.path.join(os.path.dirname(gui_dir), "tools")
@@ -1624,7 +1635,7 @@ def generate_named_dungeon(app, params, name):
         import encounter_generator as eg
     except Exception as e:
         app._modal_message(["Generate Dungeon failed", f"Could not load generator: {e}"])
-        return
+        return False
 
     slug = save_layout.slugify(name)
     old_save = app._save_path
@@ -1635,8 +1646,8 @@ def generate_named_dungeon(app, params, name):
         if got is not None:
             pages, entry, summary = got
             made = campaign_import.new_generated_dungeon(
-                random_campaign_root(app), name, pages, entry_map=entry,
-                campaign_name=RANDOM_CAMPAIGN, replace=True,
+                camp_root, name, pages, entry_map=entry,
+                campaign_name=camp_name, replace=replace,
                 stamp=time.strftime("%Y%m%d-%H%M%S"))
     except (OSError, ValueError) as e:
         app._modal_message(["Generate Dungeon failed", str(e)])
@@ -1645,6 +1656,98 @@ def generate_named_dungeon(app, params, name):
     if made is None:
         if app._save_path != old_save:     # Keep-terrain path re-pointed it at scratch
             app._set_encounter_base(old_save)
-        return
-    app_dungeon_pages.open_campaign_dungeon(app, made.manifest_path)
-    app._modal_message(summary + [f"Saved: {RANDOM_CAMPAIGN}/{slug}"])
+        return False
+    if not app_dungeon_pages.open_campaign_dungeon(app, made.manifest_path):
+        return False
+    app._modal_message(summary + [f"Saved: {os.path.basename(camp_root)}/{slug}"])
+    return True
+
+
+# ── The New Dungeon wizard's Generate path (plans/DUNGEON_WIZARD_PLAN.md D8) ──
+
+def loose_root() -> str:
+    """Where a loose (no campaign) wizard dungeon gets its folder: the maps/ folder
+    holding the blank map. Each dungeon is ``<loose_root>/<slug>/<slug>.dungeon.json``."""
+    return os.path.dirname(BLANK_MAP)
+
+
+def load_blank_scene(app) -> None:
+    """Leave whatever is open for the bundled blank map, loose: the generator carves on
+    the scene's map and grid. A dungeon page showing is saved first, as a page switch
+    would; a loose map is left as it is on disk, as opening a dungeon leaves it."""
+    if app.dungeon_page is not None:
+        app._save_agents()
+        app._save_terrain()
+    app_dungeon_pages.leave_campaign(app)
+    app.dungeon = None
+    app.dungeon_page = None
+    app._dungeon_manifest_path = None
+    app._load_map_png(BLANK_MAP)
+    app._set_encounter_base(os.path.splitext(BLANK_MAP)[0] + "_agents.json")
+    app._load_terrain()
+    app._load_lighting()
+    app._load_spell_effects()
+    app._load_agents()
+    app._mark_fog_dirty()
+
+
+def generate_loose_dungeon(app, params, name) -> bool:
+    """Generate on the blank map into a loose (version 1) dungeon of its own folder,
+    ``<loose_root>/<slug>/``, holding the manifest, every page's sidecars and a copy of
+    the blank image they all draw on, then open it. Built in a scratch folder and moved
+    into place whole, so a failure leaves nothing behind. A taken folder is refused."""
+    slug = save_layout.slugify(name)
+    out = os.path.join(loose_root(), slug)
+    if os.path.exists(out):
+        app._modal_message(["Generate Dungeon", f"maps/{slug}/ already exists."])
+        return False
+    app._set_fog(True)
+    gui_dir = os.path.dirname(os.path.abspath(__file__))
+    tools_dir = os.path.join(os.path.dirname(gui_dir), "tools")
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    terrain_params = {
+        "rooms": params["rooms_per_floor"],
+        "min_room": max(2, int(round(params["min_room"] ** 0.5))),
+        "margin": 1, "seed": params["seed"], "floors": params["floors"],
+    }
+    scratch = tempfile.mkdtemp(prefix="gen_dungeon_", dir=loose_root())
+    try:
+        app._modal_message(["Generating maps…"], blocking=False)
+        summary = generate_multifloor(
+            app, params["floors"], terrain_params, encounter_params=params, base=slug,
+            maps_x=params.get("maps_x", 1), maps_y=params.get("maps_y", 1),
+            out_dir=scratch, activate=False)
+        # Pages name their image by basename, relative to the manifest.
+        shutil.copy2(app._map_path, os.path.join(scratch, os.path.basename(app._map_path)))
+        os.rename(scratch, out)
+    except (OSError, ValueError) as e:
+        shutil.rmtree(scratch, ignore_errors=True)
+        app._modal_message(["Generate Dungeon failed", str(e),
+                             "Try fewer/smaller rooms or a bigger grid."])
+        return False
+    manifest = os.path.join(out, f"{slug}.dungeon.json")
+    app_dungeon_pages.on_open_dungeon_chosen(app, manifest)
+    if app.dungeon is None:
+        return False
+    if params["floors"] <= 1:
+        summary = [l for l in summary if not l.startswith("Use Floor +/-")]
+    app._modal_message(summary + [f"Saved: maps/{slug}/{slug}.dungeon.json"])
+    return True
+
+
+def wizard_generate(app, target) -> bool:
+    """The wizard's Generate path: today's generator settings (Terrain left out, since a
+    new dungeon always carves), then the blank map, then the dungeon ``target`` names,
+    in its campaign or loose. True when the dungeon was made and opened; False when the
+    settings were cancelled or the build failed (the wizard stays open)."""
+    params = app._modal_generate_dungeon(generate=True)
+    if not params:
+        return False
+    params["carve"] = True
+    if not on_blank_map(app):
+        load_blank_scene(app)
+    if target.campaign is None:
+        return generate_loose_dungeon(app, params, target.name)
+    return generate_named_dungeon(app, params, target.name, camp_root=target.campaign,
+                                  camp_name=target.campaign_name, replace=False)

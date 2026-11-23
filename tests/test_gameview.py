@@ -651,6 +651,32 @@ def test_map_only_sends_the_map_and_nothing_else():
     print("✅ test_map_only_sends_the_map_and_nothing_else")
 
 
+def test_held_while_the_dm_builds_a_dungeon():
+    """DUNGEON_WIZARD_PLAN.md D6: while the New Dungeon wizard is open a player's view is
+    the empty envelope with ``hold``: no image, token, door, log line or prompt, and the
+    event filter shows nobody. The DM's view is untouched, and closing releases it."""
+    def check(app, kira, _spectator):
+        app._combat_log_add("Gnasher swings at Aria")
+        assert app.dungeon_wizard.start(app)
+        view = build_view(app, kira, seq=7)
+        blob = _blob(view)
+        assert view["hold"] == "The DM is preparing the dungeon…" and view["seq"] == 7
+        assert "image" not in view["map"] and view["map"]["cols"] == 0
+        assert view["agents"] == [] and view["log"] == [] and view["session"] == []
+        assert view["terrain"]["doors"] == [] and view["terrain"].get("cells", []) == []
+        assert view["you"]["controls"] == [] and view["you"]["prompt_id"] is None
+        for name in ("Aria", "Brannor", "Gnasher", "Skarn"):
+            assert name not in blob, f"{name} reached a held screen"
+        assert not sight(app, kira).shown
+        dm_view = build_view(app, app.roster.get(DM_PRINCIPAL_ID))
+        assert "hold" not in dm_view and len(dm_view["agents"]) == 4
+        app.dungeon_wizard.close()
+        view = build_view(app, kira)
+        assert "hold" not in view and "Aria" in _agent_names(view)
+    _run(check)
+    print("✅ test_held_while_the_dm_builds_a_dungeon")
+
+
 def test_view_envelope_shape():
     """Ground rules 1 and 5: every frame carries a `v` and a `t`, and `seq` is the
     caller's (D-M3-1) rather than something this module invents."""
@@ -687,5 +713,6 @@ if __name__ == "__main__":
     test_map_names_an_image_keyed_per_viewer()
     test_log_burst_reaches_a_player_whole()
     test_map_only_sends_the_map_and_nothing_else()
+    test_held_while_the_dm_builds_a_dungeon()
     test_view_envelope_shape()
     print("\nAll GameView tests passed! 🎉")

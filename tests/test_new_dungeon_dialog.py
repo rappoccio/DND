@@ -207,17 +207,16 @@ def test_open_campaign():
         app._dungeon_new(anchor=(10, 10))
         camp = sl.Campaign(os.path.join(tmp, "encounters", "my-campaign"))
 
-        # From a loose map, no dungeon open: Open Campaign → New Dungeon… on its library.
+        # From a loose map, no dungeon open: Open Campaign → New Dungeon… opens the
+        # New Dungeon wizard (DUNGEON_WIZARD_PLAN.md W4) with that campaign picked.
         app = _app(png)
-        script = Script(app, picks=["My Campaign", "New Dungeon…", "room"], names=["Annex"])
+        script = Script(app, picks=["My Campaign", "New Dungeon…"])
         app._open_campaign(anchor=(10, 10))
         assert script.menus[0] == ("Open Campaign", ["My Campaign"]), script.menus
         assert script.menus[1] == ("My Campaign", ["the-crypt", "New Dungeon…"]), script.menus
-        assert script.menus[2] == ("New Dungeon 'Annex': start map",
-                                   ["room.png (this map)", "room"]), script.menus
-        assert camp.list_dungeons() == ["annex", "the-crypt"]
-        assert isinstance(app.store, CampaignStore)
-        assert app._dungeon_manifest_path == camp.dungeon("annex").manifest_path
+        assert app.dungeon_wizard.visible
+        assert os.path.samefile(app.dungeon_wizard.choice, camp.root)
+        assert camp.list_dungeons() == ["the-crypt"]
 
         # …or one of its dungeons, opened directly.
         app = _app(png)
@@ -248,13 +247,12 @@ def test_map_inside_a_campaign():
         app._open_campaign(anchor=(10, 10))
         assert script.menus[0] == ("Open Campaign", ["Camp"]), script.menus
 
-        # Open Campaign → New Dungeon… → the loose map showing, brought into the campaign.
+        # Open Campaign → New Dungeon… opens the wizard on that campaign.
         app = _app(png)
-        Script(app, picks=["Camp", "New Dungeon…", "room.png (this map)", "Keep"], names=["Hut Two"])
+        Script(app, picks=["Camp", "New Dungeon…"])
         app._open_campaign(anchor=(10, 10))
-        assert camp.list_dungeons() == ["hut", "hut-two"]
-        assert isinstance(app.store, CampaignStore)
-        assert app._dungeon_manifest_path == camp.dungeon("hut-two").manifest_path
+        assert app.dungeon_wizard.visible
+        assert os.path.samefile(app.dungeon_wizard.choice, camp.root)
     finally:
         shutil.rmtree(tmp)
     print("  ✅ A map inside a campaign's maps/ folder lists the campaigns beside it")
