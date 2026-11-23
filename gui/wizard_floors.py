@@ -251,6 +251,45 @@ def sheet_from_library(camp: sl.Campaign, map_name: str) -> Sheet:
                  library=True, grid_locked=grid is not None, placed=False)
 
 
+def sheet_from_loose_source(root: str, entry: dict) -> Sheet:
+    """A loose dungeon's kept sheet (its manifest's ``sources`` entry), already in
+    place beside the manifest, with the grid its design document recorded."""
+    image = os.path.join(root, entry["png"])
+    doc = _read(os.path.join(root, entry["terrain"])) if entry.get("terrain") else None
+    return Sheet(image=image, size=image_size(image), grid=SheetGrid.from_doc(doc),
+                 name=os.path.splitext(os.path.basename(entry["png"]))[0], placed=True)
+
+
+def kept_sheets(writer: "FloorWriter", dung: dg.Dungeon) -> list[Sheet]:
+    """The source sheets an open dungeon's floors were cut from (W8, D12), with their
+    grids, for Floors… → Add to crop from again. Campaign: the library maps its floors'
+    ``crop`` blocks name; loose: the manifest's ``sources``. Missing images are left out."""
+    out: list[Sheet] = []
+    if writer.loose:
+        root = os.path.dirname(writer.manifest())
+        for e in dung.sources:
+            if os.path.isfile(os.path.join(root, e["png"])):
+                try:
+                    out.append(sheet_from_loose_source(root, e))
+                except OSError:
+                    pass
+        return out
+    camp, layout = writer.campaign(), writer.layout()
+    if camp is None or layout is None:
+        return out
+    seen = set()
+    for p in dung.pages:
+        crop = layout.crop(p.id)
+        if crop is None or crop.sheet in seen:
+            continue
+        seen.add(crop.sheet)
+        try:
+            out.append(sheet_from_library(camp, crop.sheet))
+        except (OSError, ValueError):
+            pass
+    return out
+
+
 # ── Writing (D7, D9, D12) ───────────────────────────────────────────────────
 
 @dataclass

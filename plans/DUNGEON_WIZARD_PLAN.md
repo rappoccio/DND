@@ -1,6 +1,6 @@
 # Dungeon wizard: building multi-floor dungeons from premade maps
 
-**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 committed 6149629 (271/0). W6 committed a21e915 (272/0). W7 committed (273/0). W8 next on go.**
+**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 committed 6149629 (271/0). W6 committed a21e915 (272/0). W7 committed (273/0). W8 committed (273/0). W9 next on go.**
 
 The problem (user, 2026-11-22): building a multi-floor dungeon from published maps is
 confusing. You open a map, *then* make a dungeon, *then* add a page, *then* set its grid,
@@ -144,7 +144,7 @@ that's left.
 | W5 | **Source, grid, crop, name** (D10–D16). | ✅ |
 | W6 | **Placement and alignment** (D17–D19). | ✅ |
 | W7 | **Checklist** (D21), on Finish and in Floors…. | ✅ |
-| W8 | **Floors… → Add** (D22), including re-cropping from a kept source. Replaces Add Page's v2 path. | ☐ |
+| W8 | **Floors… → Add** (D22), including re-cropping from a kept source. Replaces Add Page's v2 path. | ✅ |
 | W9 | **Staircase tool with the other floor faded in** (D23). | ☐ |
 | W10 | **Live check.** Build a dungeon from a fresh sheet in the real app, run by the user. | ☐ |
 
@@ -379,6 +379,31 @@ that's left.
   opens the checklist); `test_dungeon_wizard.py` (Finish shows it; aligned recorded
   for landmark vs Skip). Headless screenshot on a copy of Argynvostholt checked
   (`tools/debug/w7_shot.py`, untracked).
+
+### W8 as built (2026-11-23)
+- **Floors… → Add…** (the checklist's Add button) opens the wizard in an add mode,
+  `DungeonWizard.start_add(app)`, on the open dungeon (`target_for_open_dungeon`: a
+  campaign dungeon by its folder; a loose one by its manifest, wherever it is). Refused
+  in combat. Header "Add a floor — …"; it starts at Pick an image (Back stops there).
+- **Kept sheets (D12)** (`wizard_floors.kept_sheets`): campaign, the library maps the
+  dungeon's floors' `crop` blocks name; loose, the manifest's `sources`
+  (`sheet_from_loose_source`, already placed, its grid from its `_terrain.json`). They are
+  listed under "Sheets" with their grids, so picking one goes straight through Set Grid.
+- Every added floor is placed and aligned (no D17 shortcut); Place defaults to the floor
+  showing when Add began. Names default to `<dungeon>-floor-<N>` past the existing pages,
+  and an existing page's name is refused.
+- **Saving.** Add saves the scene first. The writer then writes to disk, so the app's copy
+  of the dungeon (and a campaign's run) is stale: Finish, or Cancel after a floor is
+  written, **reopens the dungeon from disk** without saving over it, back on the floor that
+  was showing; Finish then shows the checklist. Discard is never offered in add mode.
+- **Removed:** Add Page's `dungeon_add_page_browser` / `on_add_page_png_chosen` and their
+  `main.py` wrappers (the v1/v2 Add Page path); nothing else called them.
+- **Not in W8:** re-cropping an existing floor in place from its sheet (D7's Back covers
+  it only inside a wizard run).
+- Tests: `test_dungeon_wizard.py` +2 (loose Add from the kept sheet through the checklist's
+  button, taken name refused, place below + align, Finish; campaign Add from a new file,
+  combat refusal, Cancel reopens and a later save keeps the floor in the run);
+  `test_floor_checklist.py` Add button updated.
 
 ### D25 commands (for the user to run; Claude never runs `rm -rf`)
 ```bash

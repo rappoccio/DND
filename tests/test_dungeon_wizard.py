@@ -14,7 +14,9 @@
   · W5, the premade steps (D10–D16): pick, Set Grid, crop + brush, name, another floor,
     Back to rename, Finish; in a campaign the floors go in its library;
   · W6, placement and alignment (D17–D19): above / below / beside, a landmark pair,
-    arrow nudges, Skip.
+    arrow nudges, Skip;
+  · W8, Floors… → Add (D22): the open dungeon's kept sheets, every added floor placed,
+    Finish / Cancel reopen the dungeon from disk.
 """
 
 import json
@@ -540,6 +542,125 @@ def test_place_and_align_click_through():
                                                     "pit-floor-3")] == \
             ["Entry", "Aligned ✓", "Aligned ✗"]
     print("  ✅ W6: place below (stack preview), landmark pair + nudge, beside + Skip")
+
+
+def _build_one_floor(app, choice, name, sheet, camp_name=""):
+    """The wizard, start to Finish, with one Whole-image floor from ``sheet``."""
+    wiz = app.dungeon_wizard
+    wiz.start(app)
+    wiz.choice = choice
+    wiz.camp_input.text = camp_name
+    wiz.name_input.text = name
+    wiz.next()
+    wiz.on_file_chosen(sheet)
+    wiz.set_grid_box((0, 0), (40, 40))
+    wiz.across = wiz.down = 2
+    wiz._regrid()
+    wiz.next()
+    wiz.set_crop((0, 0), (200, 200))
+    wiz.next()
+    wiz.next()
+    assert wiz.step == "more", wiz.error
+    wiz.finish()
+    assert app.dungeon is not None and not wiz.visible
+    return wiz
+
+
+def test_add_loose_from_a_kept_sheet():
+    """W8 (D22): Floors… → Add on an open loose dungeon offers its kept sheet with its
+    grid (D12), crops another floor from it, places and aligns it, and Finish goes
+    back to the dungeon (on the floor that was showing) with the new floor in it."""
+    with _Sandbox() as sb:
+        sheet = _two_level_sheet(os.path.join(sb.tmp, "two.png"))
+        app = sb.app()
+        wiz = _build_one_floor(app, dw.LOOSE, "Pit", sheet)
+        ck = app.floor_checklist
+        assert ck.visible
+        add = next(r for r, k, v in ck._hit if v == "add")
+        gui_driver.post_click(app, add.center)
+        assert not ck.visible and wiz.visible and wiz.adding and wiz.step == "source"
+        assert not wiz._enabled("back")
+        assert [s.name for s in wiz.sheets] == ["two"], wiz.sheets
+        assert wiz.sheets[0].grid is not None and wiz.sheets[0].placed
+        gui_driver.post_click(app, wiz.button_rect(0).center)        # the kept sheet
+        assert wiz.step == "grid" and wiz._enabled("next")           # no grid asked
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "crop"
+        assert wiz.floors == []
+        wiz.set_crop((200, 0), (400, 200))
+        _key(app, pygame.K_RETURN)
+        assert wiz.floor_input.text == "pit-floor-2", wiz.floor_input.text
+        wiz.floor_input.text = "pit-floor-1"                         # taken: refused
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "name" and "already has" in wiz.error, wiz.error
+        wiz.floor_input.text = "pit-floor-2"
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "place", wiz.error           # an added floor is always placed
+        assert wiz.cur.ref == "pit-floor-1"
+        assert wiz.button_rect("discard") is None       # never discards the dungeon
+        gui_driver.post_click(app, wiz.button_rect("below").center)
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "align", wiz.error
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "more", wiz.error
+        root = os.path.join(sb.maps, "pit")
+        made = set(os.listdir(root))
+        assert {"pit-floor-2.png", "pit-floor-2_terrain.json", "pit-floor-2_agents.json",
+                "two.png", "two_terrain.json"} <= made, made
+        assert not any(f.startswith("two-") or f.startswith("two_2") for f in made), made
+        gui_driver.post_click(app, wiz.button_rect("next").center)   # Finish
+        assert not wiz.visible and app.floor_checklist.visible
+        assert [(p.id, p.z, p.aligned) for p in app.dungeon.pages] == \
+            [("pit-floor-1", 0, None), ("pit-floor-2", -1, True)]
+        assert app.dungeon_page.id == "pit-floor-1"
+        assert len(app.dungeon.sources) == 1
+        # The app's copy is the disk's: saving it keeps the new floor.
+        app._dungeon_save()
+        assert dw.dg.Dungeon.load(app._dungeon_manifest_path).page_by_id("pit-floor-2")
+    print("  ✅ W8: Add on a loose dungeon crops from its kept sheet, placed and aligned")
+
+
+def test_add_campaign_cancel_reopens():
+    """W8 in a campaign: Add from a new file; Cancel after a floor is written keeps it,
+    and the dungeon is reopened from disk, so the run the app saves next has it."""
+    with _Sandbox() as sb:
+        sheet = _two_level_sheet(os.path.join(sb.tmp, "two.png"))
+        other = _sheet_png(os.path.join(sb.tmp, "cellar.png"))
+        app = sb.app()
+        wiz = _build_one_floor(app, sb.camp.root, "Crypt", sheet)
+        assert isinstance(app.store, CampaignStore)
+        app.floor_checklist.close()
+        app.combat_active = True
+        assert not wiz.start_add(app) and "combat" in app._status_msg
+        app.combat_active = False
+        assert wiz.start_add(app)
+        assert wiz.target.slug == "crypt" and wiz.target.campaign == sb.camp.root
+        assert [s.name for s in wiz.sheets] == ["two"]               # the crop's sheet
+        wiz.on_file_chosen(other)
+        wiz.set_grid_box((10, 10), (50, 50))
+        wiz.across = wiz.down = 2
+        wiz._regrid()
+        wiz.next()
+        wiz.whole_image()
+        wiz.next()
+        assert wiz.floor_input.text == "crypt-floor-2"
+        wiz.next()
+        assert wiz.step == "place", wiz.error
+        wiz.next()
+        assert wiz.step == "align", wiz.error
+        _key(app, pygame.K_ESCAPE)                                   # Cancel
+        assert not wiz.visible and "1 floor added" in app._status_msg, app._status_msg
+        assert [p.id for p in app.dungeon.pages] == ["crypt-floor-1", "crypt-floor-2"]
+        assert app.dungeon_page.id == "crypt-floor-1"
+        assert sorted(sb.camp.list_library_maps()) == ["cellar", "crypt-floor-1",
+                                                       "crypt-floor-2", "two"]
+        app._save_terrain()                     # the app's run must not drop the floor
+        layout = sb.camp.dungeon("crypt")
+        with open(layout.run_path()) as f:
+            run = json.load(f)
+        assert "crypt-floor-2" in run["maps"], list(run["maps"])
+    print("  ✅ W8: Add in a campaign; Cancel keeps the floor and reopens the dungeon")
+
 
 def test_players_held_while_open():
     with _Sandbox() as sb:

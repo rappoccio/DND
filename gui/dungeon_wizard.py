@@ -70,20 +70,44 @@ class Target:
     campaign_name: str | None     # a new campaign's display name, else None
     name: str                     # the dungeon's display name
     start: str                    # PREMADE or GENERATE
+    # W8, an open dungeon (Floors… → Add): its folder name in the campaign, and a loose
+    # dungeon's manifest, which may sit anywhere and be named anything.
+    folder: str | None = None
+    manifest: str | None = None
 
     @property
     def slug(self) -> str:
-        return save_layout.slugify(self.name)
+        return self.folder or save_layout.slugify(self.name)
 
     def root(self) -> str:
         """The dungeon's folder: archived whole by Discard."""
+        if self.manifest is not None:
+            return os.path.dirname(os.path.abspath(self.manifest))
         parent = self.campaign if self.campaign is not None else app_dungeon_gen.loose_root()
         return os.path.join(parent, self.slug)
 
     def manifest_path(self) -> str:
+        if self.manifest is not None:
+            return os.path.abspath(self.manifest)
         if self.campaign is not None:
             return os.path.join(self.root(), save_layout.DUNGEON_FILE)
         return os.path.join(self.root(), f"{self.slug}.dungeon.json")
+
+
+def target_for_open_dungeon(app) -> Target:
+    """The ``Target`` of the dungeon showing, for Floors… → Add (W8, D22)."""
+    if isinstance(app.store, CampaignStore):
+        layout = app.store.layout
+        return Target(layout.campaign.root, None, layout.name, PREMADE, folder=layout.name)
+    manifest = os.path.abspath(app._dungeon_manifest_path)
+    stem = os.path.basename(manifest)
+    stem = stem[:-len(".dungeon.json")] if stem.endswith(".dungeon.json") \
+        else os.path.splitext(stem)[0]
+    try:
+        slug = save_layout.slugify(stem)
+    except ValueError:
+        slug = "dungeon"
+    return Target(None, None, stem, PREMADE, folder=slug, manifest=manifest)
 
 
 def campaign_choices(app) -> list[tuple[str, str]]:
@@ -201,6 +225,8 @@ class DungeonWizard:
 
     def _reset(self):
         self.step = "start"
+        self.adding = False                    # W8: Floors… → Add on the open dungeon
+        self.home_page: str | None = None      # the floor showing when Add began
         self.history: list[tuple] = []
         self.target: Target | None = None
         self.saved = False
@@ -258,6 +284,33 @@ class DungeonWizard:
                                 if k not in (NEW_CAMPAIGN, LOOSE)
                                 and _same_dir(k, campaign)), None)
         self.name_input.active = True
+        self.visible = True
+        self._layout()
+        return True
+
+    def start_add(self, app) -> bool:
+        """Floors… → Add (W8, D22): the premade steps on the open dungeon, from Pick an
+        image. The dungeon's kept sheets are offered with their grids (D12). The scene
+        is saved first; while the wizard writes, the app's copy of the dungeon is stale,
+        so closing reopens it from disk rather than saving over it."""
+        if app.combat_active:
+            app._flash_status("Finish combat before adding a floor.")
+            return False
+        if app.dungeon is None or not app._dungeon_manifest_path:
+            app._flash_status("No dungeon open.")
+            return False
+        if self.visible:
+            return True
+        app_dungeon_pages.dungeon_save(app)
+        self.app = app
+        self._reset()
+        self.adding = True
+        self.home_page = app.dungeon_page.id if app.dungeon_page is not None else None
+        self.target = target_for_open_dungeon(app)
+        self.writer = wf.FloorWriter(self.target)
+        dung = self.writer.load_dungeon()
+        self.sheets = wf.kept_sheets(self.writer, dung) if dung is not None else []
+        self.step = "source"
         self.visible = True
         self._layout()
         return True
@@ -344,6 +397,15 @@ class DungeonWizard:
     def cancel(self):
         """Close, keeping everything saved (D7)."""
         self.close()
+        if self.adding:
+            n = len(self.floors)
+            if self.saved:
+                self._reopen()
+                self.app._flash_status(f"{n} floor{'s' if n != 1 else ''} added to "
+                                       f"{self.target.name}.", secs=5)
+            else:
+                self.app._flash_status("Add cancelled; nothing was saved.")
+            return
         if self.saved:
             self.app._flash_status(f"{self.target.name} is saved. {CONTINUE_HINT}", secs=5)
         else:
@@ -351,7 +413,7 @@ class DungeonWizard:
 
     def ask_discard(self):
         """Discard dungeon, after asking: its folder goes to ``_archive/``."""
-        if not (self.saved and self.target):
+        if not (self.saved and self.target) or self.adding:
             return
         t = self.target
         self.app._ask_dm("action", f"Discard dungeon {t.name}? It is moved to _archive/.",
@@ -382,6 +444,15 @@ class DungeonWizard:
             self.error = "Write at least one floor first."
             return
         self.close()
+        if self.adding:
+            self._reopen()
+            n = len(self.floors)
+            app._flash_status(f"{t.name}: {n} floor{'s' if n != 1 else ''} added. "
+                              "Click a floor's walls, doors or staircases to work on them.",
+                              secs=6)
+            if app.dungeon is not None:
+                app.floor_checklist.open(app)
+            return
         if app.dungeon_page is not None:          # leave the page showing as a switch would
             app._save_agents()
             app._save_terrain()
@@ -395,6 +466,20 @@ class DungeonWizard:
                           secs=6)
         if app.dungeon is not None:
             app.floor_checklist.open(app)
+
+    def _reopen(self):
+        """After Add wrote floors: open the dungeon again from disk, on the floor that
+        was showing, without writing the app's stale copy back."""
+        app, t = self.app, self.target
+        if t.campaign is not None:
+            app_dungeon_pages.open_campaign_dungeon(app, t.manifest_path())
+        else:
+            app_dungeon_pages.on_open_dungeon_chosen(app, t.manifest_path())
+        if app.dungeon is None:
+            return
+        home = app.dungeon.page_by_id(self.home_page) if self.home_page else None
+        if home is not None and (app.dungeon_page is None or app.dungeon_page.id != home.id):
+            app_dungeon_pages.switch_to_page(app, home)
 
     def _goto(self, step):
         self.history.append((self.step, self.cur, self.sheet))
@@ -556,9 +641,14 @@ class DungeonWizard:
         else:
             self.cur.blanks.discard((k, j))
 
+    def _page_ids(self) -> set[str]:
+        """The ids of the dungeon's pages on disk (Add: floors made before this run)."""
+        dung = self.writer.load_dungeon() if self.writer else None
+        return {p.id for p in dung.pages} if dung is not None else set()
+
     def _default_name(self) -> str:
-        names = {f.written for f in self.floors}
-        n = len(self.floors) + 1
+        names = {f.written for f in self.floors} | self._page_ids()
+        n = len(names) + 1
         while True:
             name = wf.default_floor_name(self.target.slug, n)
             if name not in names and self.writer.floor_name_problem(name) is None:
@@ -571,7 +661,8 @@ class DungeonWizard:
             self.error = "Name the floor."
             return
         f = self.cur
-        others = {g.written for g in self.floors if g is not f}
+        others = {g.written for g in self.floors if g is not f} | \
+            (self._page_ids() - {f.written})
         if name in others:
             self.error = f"This dungeon already has a floor '{name}'."
             return
@@ -591,7 +682,7 @@ class DungeonWizard:
             self.floors.append(f)
         self.floor_input.active = False
         self.mark_saved()
-        if f is self.floors[0]:                # D17: floor 0, the entry; nothing to place
+        if f is self.floors[0] and not self.adding:   # D17: floor 0, the entry; nothing to place
             self._goto("more")
             return
         self._goto("place")
@@ -609,7 +700,8 @@ class DungeonWizard:
                 if p.id != self.cur.written]
 
     def _default_ref(self) -> str | None:
-        """The floor written before this one, else the entry."""
+        """The floor written before this one, else (Add) the floor that was showing,
+        else the top floor."""
         refs = [pid for pid, _z in self.place_refs()]
         if self.cur.ref in refs:
             return self.cur.ref
@@ -617,6 +709,8 @@ class DungeonWizard:
         for g in reversed(self.floors[:i]):
             if g.written in refs:
                 return g.written
+        if self.home_page in refs:
+            return self.home_page
         return refs[0] if refs else None
 
     def set_place(self, ref=None, relation=None):
@@ -779,7 +873,8 @@ class DungeonWizard:
                 y += self.ROW_H
             if self.sheets:
                 y += 6
-                self._labels.append(("Sheets picked so far", (ix, y)))
+                self._labels.append(("Sheets" if self.adding else "Sheets picked so far",
+                                     (ix, y)))
                 y += 22
                 for i, _s in enumerate(self.sheets):
                     self._hit.append((pygame.Rect(ix, y, iw, rh), "sheet", i))
@@ -866,7 +961,7 @@ class DungeonWizard:
         self._hit.append((pygame.Rect(self.rect.x + self.PAD, by, bw, bh), "button", "back"))
         self._hit.append((pygame.Rect(self.rect.centerx - bw // 2, by, bw, bh), "button", "cancel"))
         self._hit.append((pygame.Rect(self.rect.right - self.PAD - bw, by, bw, bh), "button", "next"))
-        if self.saved:
+        if self.saved and not self.adding:
             self._hit.append((pygame.Rect(ix, by - bh - 8, iw, bh), "button", "discard"))
         if self.step in self.CANVAS_STEPS and self.sheet is not None:
             self.canvas.set_sheet(self.sheet.image, self.map_area())
@@ -1117,7 +1212,8 @@ class DungeonWizard:
             self.align.draw(surf, marks=self._marks(), font=self.font_sm)
         pygame.draw.rect(surf, (28, 28, 44), self.rect, border_radius=8)
         pygame.draw.rect(surf, (110, 90, 170), self.rect, width=2, border_radius=8)
-        hdr = f"New Dungeon — {self.TITLES.get(self.step, self.step)}"
+        title = self.TITLES.get(self.step, self.step)
+        hdr = f"Add a floor — {title}" if self.adding else f"New Dungeon — {title}"
         surf.blit(self.font_md.render(hdr, True, (220, 220, 235)),
                   (self.rect.x + self.PAD, self.rect.y + 7))
         lab = (185, 185, 200)
@@ -1194,6 +1290,9 @@ class DungeonWizard:
                     "Next picks the first image: a sheet of several levels, or one level."]
         if s == "source":
             out = ["A sheet holding several levels, or one level's map."]
+            if self.adding and self.sheets:
+                out.append("This dungeon's sheets are listed with their grids: pick one "
+                           "to crop another floor from it.")
             if self.sheet is not None:
                 out.append(f"Picked: {self.sheet.label}. Next sets its grid.")
             return out
@@ -1248,7 +1347,8 @@ class DungeonWizard:
                 out.append(f"Skip puts it at ({self.skip_origin[0]}, {self.skip_origin[1]}).")
             return out
         if s == "more":
-            return ["Finish opens the dungeon on its entry floor."]
+            return ["Finish goes back to the dungeon and its floor checklist."
+                    if self.adding else "Finish opens the dungeon on its entry floor."]
         return []
 
     def _marks(self):

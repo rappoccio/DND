@@ -415,7 +415,7 @@ def show_lighting_menu(app):
 
 
 # ─────────────────────────────────────────────────────────────────────
-#  Dungeon manifest management (Phase 6): New / Open / Save / Add Page,
+#  Dungeon manifest management (Phase 6): New / Open / Save / Floors…,
 #  plus the Pages overview that places pages on the global grid.
 #  The manifest is placement-only; each page's scene lives in its own
 #  encounter sidecars (agents/terrain/lighting/effects).

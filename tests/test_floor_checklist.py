@@ -176,7 +176,7 @@ def test_buttons_and_escape():
         app = _dungeon(tmp)
         calls = []
         app._dungeon_pages_overview = lambda: calls.append("overview")
-        app._dungeon_add_page_browser = lambda: calls.append("add")
+        app.dungeon_wizard.start_add = lambda _app: calls.append("add")
         for key in ("overview", "add"):
             ck = _reopen(app)
             gui_driver.post_click(app, _btn(ck, key).center)

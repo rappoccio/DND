@@ -236,7 +236,7 @@ class FloorChecklist:
         elif val == "overview":
             app._dungeon_pages_overview()
         elif val == "add":
-            app._dungeon_add_page_browser()
+            app.dungeon_wizard.start_add(app)        # W8 (D22)
 
     def handle(self, event) -> bool:
         """True when the panel used the event; map-view events are left to the app."""

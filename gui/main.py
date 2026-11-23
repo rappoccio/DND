@@ -2102,11 +2102,6 @@ class App:
     def _dungeon_close(self):
         return app_dungeon_pages.dungeon_close(self)
 
-    def _dungeon_add_page_browser(self):
-        return app_dungeon_pages.dungeon_add_page_browser(self)
-
-    def _on_add_page_png_chosen(self, png_path: str):
-        return app_dungeon_pages.on_add_page_png_chosen(self, png_path)
 
     def _dungeon_pages_overview(self):
         return app_dungeon_pages.dungeon_pages_overview(self)

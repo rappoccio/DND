@@ -29,7 +29,7 @@ import campaign_import
 import run_control
 import save_layout
 from atomic_io import atomic_write_json
-from constants import IMAGE_EXTS, JSON_EXTS, PC_FACTION, _ROOM_FLOOD_CAP
+from constants import JSON_EXTS, PC_FACTION, _ROOM_FLOOD_CAP
 from dungeon import Dungeon, MapPage, dungeon_path_for
 from menus import dm
 from scene_store import CampaignStore, LegacyStore
@@ -953,67 +953,6 @@ def dungeon_close(app):
     app.dungeon_page = None
     app._dungeon_manifest_path = None
     app._flash_status("Dungeon closed — single-map mode.")
-
-
-def dungeon_add_page_browser(app):
-    if app.dungeon is None:
-        app._flash_status("No dungeon open — New Dungeon first.")
-        return
-    app.file_browser.open(
-        dungeon_dir(app), app._on_add_page_png_chosen,
-        save_mode=False,
-        extensions=IMAGE_EXTS,
-        title="Add Page — Select Map Image",
-    )
-
-
-def on_add_page_png_chosen(app, png_path: str):
-    """Add ``png_path`` as a new page, east of the current floor's rightmost page,
-    with a fresh empty encounter, and switch to it. The page's footprint
-    (cols × rows) is only known once its grid is analyzed, so it is recorded after
-    the switch; the origin can then be moved in the Pages overview."""
-    if app.dungeon is None:
-        return
-    if app.combat_active:
-        app._flash_status("Finish combat before adding a page.")
-        return
-    cur = app.dungeon_page
-    z  = cur.z  if cur else 0
-    gy = cur.gy if cur else 0
-    on_floor = app.dungeon.pages_on_floor(z)
-    gx = max((p.gx + p.cols for p in on_floor), default=0)
-
-    page_id = unique_page_id(app, os.path.splitext(os.path.basename(png_path))[0])
-    # Each page owns its own encounter sidecars: <manifest stem>_<page id>_agents.json,
-    # written beside the manifest.
-    agents_path = os.path.join(dungeon_dir(app),
-                               f"{dungeon_stem(app)}_{page_id}_agents.json")
-    if not os.path.exists(agents_path):
-        try:
-            with open(agents_path, "w") as f:
-                json.dump({"agents": [], "map_items": []}, f, indent=2)
-        except OSError as e:                     # noqa: BLE001
-            app._flash_status(f"Could not create {os.path.basename(agents_path)}: {e}")
-            return
-
-    page = MapPage(id=page_id, png=dungeon_path_ref(app, png_path),
-                   encounter_base=dungeon_path_ref(app, agents_path),
-                   origin=[gx, gy, z], cols=0, rows=0)
-    app.dungeon.add_page(page)
-    if not switch_to_page(app, page):
-        app.dungeon.remove_page(page_id)        # switch refused — don't keep a page we can't open
-        return
-    page.cols = int(getattr(app.bm, "grid_cols", 0) or 0)
-    page.rows = int(getattr(app.bm, "grid_rows", 0) or 0)
-    apply_page_origin(app, page)
-    dungeon_save(app)
-    if not page.cols or not page.rows:
-        app._modal_message(["Page added — but it has no grid",
-                             f"'{page_id}' has no detected grid, so it has no footprint",
-                             "on the global map. Use Set Grid…, then re-save the dungeon",
-                             "(Dungeon… → Save Dungeon) to record its size."])
-    else:
-        app._flash_status(f"Added page '{page_id}' at ({gx}, {gy}, {z})")
 
 
 def dungeon_pages_overview(app):
