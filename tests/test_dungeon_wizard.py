@@ -12,7 +12,9 @@
   · Discard dungeon is offered only once something is saved, and archives the folder;
   · while the wizard is open players are held: no image for them (D6);
   · W5, the premade steps (D10–D16): pick, Set Grid, crop + brush, name, another floor,
-    Back to rename, Finish; in a campaign the floors go in its library.
+    Back to rename, Finish; in a campaign the floors go in its library;
+  · W6, placement and alignment (D17–D19): above / below / beside, a landmark pair,
+    arrow nudges, Skip.
 """
 
 import json
@@ -384,13 +386,20 @@ def test_premade_loose_click_through():
         _key(app, pygame.K_RETURN)
         assert wiz.floor_input.text == "keep-floor-2"
         _key(app, pygame.K_RETURN)
+        assert wiz.step == "place", wiz.error              # W6: a later floor is placed
+        _key(app, pygame.K_RETURN)                         # above keep-floor-1 (default)
+        assert wiz.step == "align", wiz.error
+        _key(app, pygame.K_RETURN)                         # accepted where it is
         assert wiz.step == "more", wiz.error
 
-        # Back reopens the name: a new one renames the floor.
-        gui_driver.post_click(app, wiz.button_rect("back").center)
-        assert wiz.step == "name" and wiz.floor_input.text == "keep-floor-2"
+        # Back reopens the name (through Align and Place): a new one renames the floor.
+        for step in ("align", "place", "name"):
+            gui_driver.post_click(app, wiz.button_rect("back").center)
+            assert wiz.step == step, (wiz.step, step)
+        assert wiz.floor_input.text == "keep-floor-2"
         wiz.floor_input.text = "roof"
-        _key(app, pygame.K_RETURN)
+        for _ in range(3):
+            _key(app, pygame.K_RETURN)
         assert wiz.step == "more" and [f.written for f in wiz.floors] == ["keep-floor-1", "roof"]
         assert not os.path.exists(os.path.join(root, "keep-floor-2.png"))
 
@@ -440,6 +449,89 @@ def test_premade_campaign_discard():
         assert sorted(kept) == ["crypt-floor-1", "crypt-map"], kept
     print("  ✅ premade, campaign: floors in the library; Discard archives them too")
 
+
+def _two_level_sheet(path):
+    """A 400 × 200 sheet, 20-px squares from (0, 0): two 10 × 10-square levels side by
+    side, each with a red landmark square, at (2, 3) on the left and (5, 1) on the right."""
+    surf = pygame.Surface((400, 200))
+    surf.fill((225, 220, 210))
+    pygame.draw.rect(surf, (200, 30, 30), (2 * 20, 3 * 20, 20, 20))
+    pygame.draw.rect(surf, (200, 30, 30), (200 + 5 * 20, 1 * 20, 20, 20))
+    pygame.image.save(surf, path)
+    return path
+
+
+def test_place_and_align_click_through():
+    """W6 (D17–D19): the first floor is floor 0 and the entry; the second is placed
+    below it (a chip click), aligned by a landmark pair clicked on the map view and an
+    arrow nudge, Enter accepts; a third goes beside the first with Skip."""
+    with _Sandbox() as sb:
+        sheet = _two_level_sheet(os.path.join(sb.tmp, "two.png"))
+        app = sb.app()
+        wiz = app.dungeon_wizard
+        wiz.start(app)
+        wiz.choice = dw.LOOSE
+        wiz.name_input.text = "Pit"
+        wiz.next()
+        wiz.on_file_chosen(sheet)
+        wiz.set_grid_box((0, 0), (40, 40))
+        wiz.across = wiz.down = 2
+        wiz._regrid()
+        wiz.next()
+        wiz.set_crop((0, 0), (200, 200))                   # the left level
+        wiz.next()
+        wiz.next()
+        assert wiz.step == "more", wiz.error               # D17: nothing to place
+        wiz.another_from_sheet()
+        wiz.set_crop((200, 0), (400, 200))                 # the right level
+        wiz.next()
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "place", wiz.error
+        assert wiz.cur.ref == "pit-floor-1" and wiz.cur.relation == "above"
+        gui_driver.post_click(app, wiz.button_rect("below").center)
+        assert wiz.cur.relation == "below"
+        assert [z for z, _ids in dw.fp.stack(wiz.place_preview)] == [0, -1]
+        assert wiz.align.layers and wiz.align.layers[-1].page_id == "pit-floor-1"
+        manifest = os.path.join(sb.maps, "pit", "pit.dungeon.json")
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "align", wiz.error
+        saved = dw.dg.Dungeon.load(manifest)                # Place saved the stack (D7)
+        assert saved.page_by_id("pit-floor-2").origin == [0, 0, -1]
+
+        # Landmark pair: the red square's centre on the new floor (5.5, 1.5), then on
+        # the faded floor above (2.5, 3.5): the new floor moves by (-3, +2).
+        a = wiz.align
+        gui_driver.post_click(app, tuple(round(v) for v in a.to_screen(5.5, 1.5)))
+        assert wiz.mark_a is not None and wiz.mark_b is None, wiz.error
+        gui_driver.post_click(app, tuple(round(v) for v in a.to_screen(2.5, 3.5)))
+        assert wiz.align_page.origin == [-3, 2, -1], wiz.align_page.origin
+        _key(app, pygame.K_RIGHT)                          # fine-tune a cell
+        assert wiz.align_page.origin == [-2, 2, -1]
+        _key(app, pygame.K_LEFT)
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "more", wiz.error
+        assert dw.dg.Dungeon.load(manifest).page_by_id("pit-floor-2").origin == [-3, 2, -1]
+
+        # A third floor beside the first, Skip: just east of floor 0's pages.
+        wiz.another_from_sheet()
+        wiz.whole_image()
+        wiz.next()
+        wiz.next()
+        assert wiz.step == "place", wiz.error
+        wiz.set_place(ref="pit-floor-1", relation="beside")
+        wiz.next()
+        assert wiz.step == "align"
+        faint = [ly.page_id for ly in wiz.align.layers if ly.alpha < 100]
+        assert faint == ["pit-floor-2"], faint             # the floor below, for context
+        gui_driver.post_click(app, wiz.button_rect("skip").center)
+        assert wiz.step == "more", wiz.error
+
+        gui_driver.post_click(app, wiz.button_rect("next").center)     # Finish
+        assert [(p.id, p.origin) for p in app.dungeon.pages] == \
+            [("pit-floor-1", [0, 0, 0]), ("pit-floor-2", [-3, 2, -1]),
+             ("pit-floor-3", [10, 0, 0])]
+        assert app.dungeon.entry_page_id == "pit-floor-1"
+    print("  ✅ W6: place below (stack preview), landmark pair + nudge, beside + Skip")
 
 def test_players_held_while_open():
     with _Sandbox() as sb:

@@ -239,6 +239,7 @@ test_scripts = [
     "test_dungeon_menu.py",
     "test_dungeon_wizard.py",
     "test_wizard_floors.py",
+    "test_floor_place.py",
     "test_visibility.py",
     "test_light_effects.py",
     "test_heavily_obscured.py",

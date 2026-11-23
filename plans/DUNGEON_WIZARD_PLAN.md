@@ -1,6 +1,6 @@
 # Dungeon wizard: building multi-floor dungeons from premade maps
 
-**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 committed 6149629 (271/0). W6 next on go.**
+**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 committed 6149629 (271/0). W6 implemented 2026-11-23 (272/0), uncommitted.**
 
 The problem (user, 2026-11-22): building a multi-floor dungeon from published maps is
 confusing. You open a map, *then* make a dungeon, *then* add a page, *then* set its grid,
@@ -142,7 +142,7 @@ that's left.
 | W3 | **Dungeon button and menu** (D1–D3). Merge the buttons, add the Floors… entry that holds the old overview/add/align, split out Populate Floor…. | ✅ |
 | W4 | **Wizard shell** (D4–D8). Docked step panel, Back/Next/Cancel/Discard, combat refusal, player placeholder, saving at each step, first screen, Generate path. | ✅ |
 | W5 | **Source, grid, crop, name** (D10–D16). | ✅ |
-| W6 | **Placement and alignment** (D17–D19). | ☐ |
+| W6 | **Placement and alignment** (D17–D19). | ✅ |
 | W7 | **Checklist** (D21), on Finish and in Floors…. | ☐ |
 | W8 | **Floors… → Add** (D22), including re-cropping from a kept source. Replaces Add Page's v2 path. | ☐ |
 | W9 | **Staircase tool with the other floor faded in** (D23). | ☐ |
@@ -324,6 +324,31 @@ that's left.
 - **D15 amended (user, 2026-11-23): a minimum of 6 px per 5-ft cell** (`MIN_CELL`). A
   sheet with smaller cells is enlarged to 6; the 2048 px cap still wins over it. The
   spires sheet (5.6 px a cell) rounds to 6 either way; W2's existing crops are at 16.
+
+### W6 as built (2026-11-23)
+- **Steps.** Name → (first floor: straight to Another floor?, D17) → **6. Place the floor**
+  → **7. Align the floor** → 8. Another floor?. Back walks them in reverse; a floor is
+  first written one floor above the highest (as in W5), and Place moves it.
+- **Place (D18).** Above / Below / Beside chips, and Against: every other floor (page) of
+  the dungeon, top first, defaulting to the floor written before. The panel shows **the
+  stack** as it would be (entry ★, "← new"); the map view previews it. Next saves.
+- **Z rules** (`gui/floor_place.py`, settled here): the entry's Z never moves. A level
+  taken where the floor goes gets a new level inserted, shifting the block of floors on
+  the side away from the entry; a floor leaving a level it held alone closes the gap, so
+  the stack stays contiguous. Ladder / door-staple targets (`[X, Y, Z]`) move with their
+  floor; staircases are page-local and need nothing.
+- **Align (D19)** (`gui/align_canvas.py`): floors drawn at their global cells by their
+  manual grid; the floor being placed opaque (gold), the floor it sits on / under faded
+  over it (blue); beside: the other maps of its floor faded, the floor below faint.
+  Click a landmark on the new floor, then the same point on the faded floor: the floor
+  moves to the nearest cell. Arrows move it a cell, Enter accepts (saves). **Skip** saves
+  the default corner: the reference floor's corner above / below, just east of that
+  floor's pages beside. Right-drag pans, wheel / + / − zoom, 0 fits.
+- `FloorWriter` gains `manifest` / `load_dungeon` / `save_dungeon` / `page_art`.
+- Tests: `tests/test_floor_place.py` (5 cases, new); `test_dungeon_wizard.py` +1
+  (place below, landmark clicks on the canvas, nudge, beside + Skip) and the W5
+  click-through updated for the new steps. Headless screenshots on the spires sheet
+  checked (`tools/debug/w6_shots.py`, untracked).
 
 ### D25 commands (for the user to run; Claude never runs `rm -rf`)
 ```bash

@@ -421,6 +421,38 @@ class FloorWriter:
         dung.save(manifest)
         return page
 
+    # ── placement (W6) ──
+    def manifest(self) -> str:
+        layout = None if self.loose else self.layout()
+        return layout.manifest_path if layout is not None else self.target.manifest_path()
+
+    def load_dungeon(self) -> dg.Dungeon | None:
+        return _load_dungeon(self.manifest())
+
+    def save_dungeon(self, dung: dg.Dungeon) -> None:
+        dung.save(self.manifest())
+
+    def page_art(self, page: dg.MapPage) -> tuple[str, float, tuple[float, float]] | None:
+        """``(image, cell_px, anchor)`` of a page, for drawing it on the global grid:
+        its manual grid, else its image's width over its columns. None without an image."""
+        if self.loose:
+            root = os.path.dirname(self.manifest())
+            image = os.path.join(root, page.png)
+            doc = _read(os.path.join(root, os.path.splitext(page.png)[0] + "_terrain.json"))
+        else:
+            layout = self.layout()
+            image = layout.image(page.id)
+            doc = layout.map_doc(page.id)
+        if not image or not os.path.isfile(image):
+            return None
+        mg = (doc or {}).get("manual_grid")
+        try:
+            return image, float(mg["cell_px"]), (float(mg["anchor"][0]), float(mg["anchor"][1]))
+        except (KeyError, TypeError, ValueError, IndexError):
+            pass
+        w, _h = image_size(image)
+        return image, (w / page.cols if page.cols else float(w)), (0.0, 0.0)
+
     def rename_floor(self, old: str, new: str) -> None:
         """Move a written floor's files to a new name, and its page, entry and run
         section with them."""
@@ -493,8 +525,8 @@ def _put_page(dung: dg.Dungeon, name: str, plan: CropPlan, origin, *, png: str,
 
 
 def next_floor_origin(pages: list[dg.MapPage]) -> list[int]:
-    """Where a floor goes until placement and alignment arrive (W6): one floor above the
-    highest, at the same corner as the floor written last (D19's Skip)."""
+    """Where a new floor is first written, before its Place step (W6) moves it: one
+    floor above the highest, at the same corner as the floor written last."""
     if not pages:
         return [0, 0, 0]
     last = pages[-1]

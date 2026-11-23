@@ -23,8 +23,12 @@ Grid on it, crop a floor (grid-snapped, with a blank-outside brush), name it, th
 another floor from the same sheet or another image, or Finish. The sheet is drawn over
 the map view by ``sheet_canvas.SheetCanvas``; ``wizard_floors`` does the geometry and the
 writing. Naming a floor writes it, and the dungeon around it, so from the first floor on
-the dungeon opens. Until placement and alignment arrive (W6), each later floor goes one
-floor above the highest, at the same corner as the last (D19's Skip).
+the dungeon opens.
+
+Placement and alignment (D17–D19, W6): the first floor is floor 0 and the entry. Each
+later floor, once named, is placed above / below / beside a floor already written
+(``floor_place``), then aligned on ``align_canvas.AlignCanvas``: a landmark pair, arrow
+keys a cell at a time, Enter accepts, Skip keeps the default corner.
 
 The model (``Target``, ``resolve_target``, ``discard``) is plain functions, so the
 suites drive it without the panel; ``DungeonWizard`` is the panel.
@@ -42,8 +46,10 @@ import pygame
 import app_dungeon_gen
 import app_dungeon_pages
 import dungeon as dg
+import floor_place as fp
 import save_layout
 import wizard_floors as wf
+from align_canvas import COL_FADED, COL_FAINT, COL_MARK_A, COL_MARK_B, COL_NEW, AlignCanvas, Layer
 from dialogs import _wrap_words
 from scene_store import CampaignStore
 from sheet_canvas import SheetCanvas
@@ -153,6 +159,8 @@ class Floor:
     squares: tuple | None = None
     blanks: set = field(default_factory=set)
     written: str | None = None
+    ref: str | None = None                 # W6: the floor it is placed against
+    relation: str = fp.ABOVE
 
 
 def _same_dir(a: str, b: str) -> bool:
@@ -175,8 +183,10 @@ class DungeonWizard:
 
     TITLES = {"start": "1. Start", "source": "2. Pick an image", "grid": "3. Set Grid",
               "crop": "4. Crop a floor", "name": "5. Name the floor",
-              "more": "6. Another floor?"}
+              "place": "6. Place the floor", "align": "7. Align the floor",
+              "more": "8. Another floor?"}
     CANVAS_STEPS = ("grid", "crop", "name", "more")
+    ALIGN_STEPS = ("place", "align")
     FT_CHOICES = (5, 10)
 
     def __init__(self, font_sm=None, font_md=None):
@@ -186,6 +196,7 @@ class DungeonWizard:
         self.app = None
         self.rect = None
         self.canvas = SheetCanvas()
+        self.align = AlignCanvas()
         self._reset()
 
     def _reset(self):
@@ -214,6 +225,15 @@ class DungeonWizard:
         self.brush = None                      # None, "paint" or "erase"
         self._drag = None                      # ("box" | "pan" | "brush", start, current)
         self.canvas.clear()
+        # Placement and alignment (W6).
+        self.align.clear()
+        self.place_preview: dg.Dungeon | None = None
+        self.align_dung: dg.Dungeon | None = None
+        self.align_page: dg.MapPage | None = None
+        self.skip_origin: list[int] | None = None
+        self.mark_a = None                     # the landmark on the new floor, cells from its origin
+        self.mark_b = None                     # the same point on the faded floor, global cells
+        self._refs: dict[str, int] = {}       # Place's floors to place against: id → z
         self._hit: list[tuple[pygame.Rect, str, object]] = []    # (rect, kind, value)
         self._labels = []
         self._frames_since_show = 0
@@ -247,6 +267,7 @@ class DungeonWizard:
         for t in self._all_inputs():
             t.active = False
         self.canvas.clear()
+        self.align.clear()
 
     def _all_inputs(self):
         return (self.camp_input, self.name_input, self.ft_input, self.floor_input)
@@ -300,6 +321,10 @@ class DungeonWizard:
             self._goto("name")
         elif self.step == "name":
             self._write_floor()
+        elif self.step == "place":
+            self._place()
+        elif self.step == "align":
+            self.accept_align()
         elif self.step == "more":
             self.finish()
 
@@ -310,6 +335,10 @@ class DungeonWizard:
             self._drag = None
             if self.step == "name" and self.cur is not None:
                 self.floor_input.text = self.cur.written or self._default_name()
+            if self.step == "align":
+                self._load_align()
+            if self.step in self.ALIGN_STEPS:
+                self._refresh_align()
             self._layout()
 
     def cancel(self):
@@ -559,7 +588,134 @@ class DungeonWizard:
             self.floors.append(f)
         self.floor_input.active = False
         self.mark_saved()
+        if f is self.floors[0]:                # D17: floor 0, the entry; nothing to place
+            self._goto("more")
+            return
+        self._goto("place")
+        self._refresh_align()
+
+    # ── Placement and alignment (W6, D17–D19) ─────────────────────────────
+
+    def place_refs(self) -> list[tuple[str, int]]:
+        """``(page id, z)`` of every floor the current one can be placed against, top
+        floor first."""
+        dung = self.writer.load_dungeon()
+        if dung is None or self.cur is None:
+            return []
+        return [(p.id, p.z) for p in sorted(dung.pages, key=lambda p: -p.z)
+                if p.id != self.cur.written]
+
+    def _default_ref(self) -> str | None:
+        """The floor written before this one, else the entry."""
+        refs = [pid for pid, _z in self.place_refs()]
+        if self.cur.ref in refs:
+            return self.cur.ref
+        i = self.floors.index(self.cur) if self.cur in self.floors else len(self.floors)
+        for g in reversed(self.floors[:i]):
+            if g.written in refs:
+                return g.written
+        return refs[0] if refs else None
+
+    def set_place(self, ref=None, relation=None):
+        """Choose what the floor is placed against, and how (a chip click)."""
+        if ref is not None:
+            self.cur.ref = ref
+        if relation is not None:
+            self.cur.relation = relation
+        self._refresh_align()
+
+    def _refresh_align(self, fit: bool = True):
+        """Rebuild the Place preview or the Align view: the floor opaque, the floor it
+        is placed against faded over it (beside: the floor below faint, under it)."""
+        f = self.cur
+        self.error = ""
+        if self.step == "place":
+            f.ref = self._default_ref()
+            dung = self.writer.load_dungeon()
+            try:
+                d = fp.preview(dung, f.written, f.ref, f.relation)
+            except (ValueError, AttributeError) as e:
+                self.error = str(e)
+                self.place_preview = None
+                self.align.clear()
+                self._layout()
+                return
+            self.place_preview = d
+            page = d.page_by_id(f.written)
+        else:
+            d, page = self.align_dung, self.align_page
+        faded, faint = fp.faded_floor(d, page.id, f.relation)
+        rows = ([(q, 70, COL_FAINT) for q in faint] + [(page, 255, COL_NEW)]
+                + [(q, 130, COL_FADED) for q in faded])
+        layers = []
+        for p, alpha, col in rows:
+            art = self.writer.page_art(p)
+            if art is not None:
+                layers.append(Layer(p.id, art[0], p.origin, art[1], art[2], alpha, col))
+        self.align.set_layers(layers, self.map_area(), fit=fit)
+        self._layout()
+
+    def _place(self):
+        """Next on Place: move the floor in the stack and save (D7, D18), then Align."""
+        f = self.cur
+        dung = self.writer.load_dungeon()
+        try:
+            fp.place(dung, f.written, f.ref, f.relation)
+            self.writer.save_dungeon(dung)
+        except (OSError, ValueError) as e:
+            self.error = str(e)
+            return
+        self._goto("align")
+        self._load_align()
+        self._refresh_align()
+
+    def _load_align(self):
+        f = self.cur
+        self.align_dung = self.writer.load_dungeon()
+        self.align_page = self.align_dung.page_by_id(f.written)
+        self.skip_origin = fp.default_origin(self.align_dung, f.written, f.ref, f.relation)
+        self.mark_a = self.mark_b = None
+
+    def nudge(self, dx: int, dy: int):
+        """Move the floor a cell at a time (D19 step 2)."""
+        o = self.align_page.origin
+        o[0] += dx
+        o[1] += dy
+
+    def landmark(self, world):
+        """A landmark click (D19 step 1), ``world`` in global cells: first a point on the
+        new floor, then the same point on the faded floor, which moves the floor so the
+        two meet. A third click starts a new pair."""
+        p = self.align_page
+        if self.mark_a is None or self.mark_b is not None:
+            ly = next((ly for ly in self.align.layers if ly.page_id == p.id), None)
+            if ly is not None:
+                x, y, w, h = ly.world_rect(self.align._image(ly.image)[2])
+                if not (x <= world[0] <= x + w and y <= world[1] <= y + h):
+                    self.error = f"First click a point on {p.id} (outlined in gold)."
+                    return
+            self.error = ""
+            self.mark_a = (world[0] - p.gx, world[1] - p.gy)
+            self.mark_b = None
+            return
+        self.mark_b = tuple(world)
+        p.origin[:] = fp.landmark_origin(p.origin, self.mark_a, world)
+
+    def accept_align(self, origin=None):
+        """Enter / Next: save the floor where it is (D19 step 2). ``origin`` overrides it
+        (Skip)."""
+        if origin is not None:
+            self.align_page.origin[:] = list(origin)
+        try:
+            self.writer.save_dungeon(self.align_dung)
+        except OSError as e:
+            self.error = str(e)
+            return
         self._goto("more")
+
+    def skip_align(self):
+        """D19 step 3: the default corner, saved."""
+        self.accept_align(self.skip_origin)
 
     def another_from_sheet(self):
         """Back to Crop on the same sheet, its grid kept (D10 step 5)."""
@@ -656,6 +812,39 @@ class DungeonWizard:
             y += 22
             self.floor_input.rect = pygame.Rect(ix, y, iw, rh)
             y += self.ROW_H
+        elif self.step == "place" and self.cur is not None:
+            self._labels.append((f"Place {self.cur.written}", (ix, y)))
+            y += 22
+            cw = (iw - 12) // 3
+            for i, v in enumerate(fp.RELATIONS):
+                self._hit.append((pygame.Rect(ix + i * (cw + 6), y, cw, rh), "rel", v))
+            y += self.ROW_H + 6
+            self._labels.append(("Against", (ix, y)))
+            y += 22
+            self._refs = dict(self.place_refs())
+            for pid in self._refs:
+                self._hit.append((pygame.Rect(ix, y, iw, rh), "ref", pid))
+                y += self.ROW_H
+            if self.place_preview is not None:
+                y += 6
+                self._labels.append(("The stack, top first", (ix, y)))
+                y += 22
+                entry = self.place_preview.entry_page_id
+                for z, ids in fp.stack(self.place_preview):
+                    for n, i in enumerate(ids):
+                        lead = f"  {z:+d}: " if n == 0 else "        "
+                        tail = " ★" if i == entry else "  ← new" if i == self.cur.written else ""
+                        self._labels.append((f"{lead}{i}{tail}", (ix, y)))
+                        y += 22
+        elif self.step == "align":
+            self._hit.append((pygame.Rect(ix, y, iw, rh), "act", "skip"))
+            y += self.ROW_H
+            self._hit.append((pygame.Rect(ix, y, iw, rh), "act", "fit"))
+            y += self.ROW_H + 6
+            if self.align_page is not None:
+                p = self.align_page
+                self._labels.append((f"{p.id} at ({p.gx}, {p.gy}), floor {p.z:+d}", (ix, y)))
+                y += 22
         elif self.step == "more":
             self._hit.append((pygame.Rect(ix, y, iw, rh), "act", "same"))
             y += self.ROW_H
@@ -676,6 +865,8 @@ class DungeonWizard:
             self._hit.append((pygame.Rect(ix, by - bh - 8, iw, bh), "button", "discard"))
         if self.step in self.CANVAS_STEPS and self.sheet is not None:
             self.canvas.set_sheet(self.sheet.image, self.map_area())
+        if self.step in self.ALIGN_STEPS:
+            self.align.set_area(self.map_area())
 
     def button_rect(self, which) -> pygame.Rect | None:
         """The hit rect of a button (back / cancel / next / discard), a chip, or an
@@ -693,6 +884,8 @@ class DungeonWizard:
                 return self.sheet is not None and self.sheet.grid is not None
             if self.step == "crop":
                 return self.cur is not None and self.cur.squares is not None
+            if self.step == "place":
+                return self.place_preview is not None
             return True
         return True
 
@@ -728,8 +921,12 @@ class DungeonWizard:
                 return True
             if on_canvas:
                 return self._canvas_key(event)
+            if self.step in self.ALIGN_STEPS:
+                return self._align_key(event)
             return False               # arrows / +/- reach the map's pan and zoom
         if on_canvas and self._canvas_mouse(event):
+            return True
+        if self.step in self.ALIGN_STEPS and self._align_mouse(event):
             return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if not self.rect.collidepoint(*event.pos):
@@ -759,7 +956,8 @@ class DungeonWizard:
             self.error = ""
             {"file": self.pick_file, "library": self.pick_library,
              "whole": self.whole_image, "same": self.another_from_sheet,
-             "another": self.another_image}[val]()
+             "another": self.another_image, "skip": self.skip_align,
+             "fit": self.align.fit}[val]()
         elif kind == "sheet":
             self._use_sheet(self.sheets[val])
         elif kind == "step" and not self._grid_locked():
@@ -777,6 +975,10 @@ class DungeonWizard:
             self._regrid()
         elif kind == "brush":
             self.brush = val
+        elif kind == "rel":
+            self.set_place(relation=val)
+        elif kind == "ref":
+            self.set_place(ref=val)
         elif kind == "button" and self._enabled(val):
             {"back": self.back, "cancel": self.cancel, "next": self.next,
              "discard": self.ask_discard}[val]()
@@ -796,6 +998,60 @@ class DungeonWizard:
         else:
             return False
         return True
+
+    def _align_key(self, event) -> bool:
+        """Place / Align keys: on Align arrows move the floor a cell (D19); elsewhere
+        they pan. + / − zoom, 0 fits."""
+        a = self.align
+        steps = {pygame.K_LEFT: (-1, 0), pygame.K_RIGHT: (1, 0),
+                 pygame.K_UP: (0, -1), pygame.K_DOWN: (0, 1)}
+        if event.key in steps:
+            dx, dy = steps[event.key]
+            if self.step == "align" and self.align_page is not None:
+                self.nudge(dx, dy)
+                self._layout()
+            else:
+                a.pan(-40 * dx, -40 * dy)
+        elif event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+            a.zoom_at(1.25, a.area.center)
+        elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+            a.zoom_at(0.8, a.area.center)
+        elif event.key in (pygame.K_0, pygame.K_KP0):
+            a.fit()
+        else:
+            return False
+        return True
+
+    def _align_mouse(self, event) -> bool:
+        """Place / Align mouse: wheel zooms, right or middle drag pans; on Align a left
+        click is a landmark (D19)."""
+        a = self.align
+        area = self.map_area()
+        if hasattr(pygame, "MOUSEWHEEL") and event.type == pygame.MOUSEWHEEL:
+            pos = pygame.mouse.get_pos()
+            if not area.collidepoint(pos):
+                return False
+            a.zoom_at(1.15 ** event.y, pos)
+            return True
+        if event.type == pygame.MOUSEBUTTONDOWN and area.collidepoint(*event.pos):
+            if event.button in (4, 5):
+                a.zoom_at(1.15 if event.button == 4 else 1 / 1.15, event.pos)
+            elif event.button in (2, 3):
+                self._drag = ("pan", event.pos, event.pos)
+            elif event.button == 1 and self.step == "align" and self.align_page is not None:
+                self.landmark(a.to_world(event.pos))
+                self._layout()
+            return True
+        if event.type == pygame.MOUSEMOTION and self._drag is not None:
+            _kind, start, last = self._drag
+            a.pan(event.pos[0] - last[0], event.pos[1] - last[1])
+            self._drag = ("pan", start, event.pos)
+            return True
+        if event.type == pygame.MOUSEBUTTONUP and (self._drag is not None
+                                                  or area.collidepoint(*event.pos)):
+            self._drag = None
+            return True
+        return False
 
     def _canvas_mouse(self, event) -> bool:
         """The canvas's mouse: wheel zooms, right or middle drag pans; a left drag sets
@@ -852,6 +1108,8 @@ class DungeonWizard:
         self._frames_since_show += 1
         if self.step in self.CANVAS_STEPS and self.sheet is not None:
             self._draw_canvas(surf)
+        elif self.step in self.ALIGN_STEPS:
+            self.align.draw(surf, marks=self._marks(), font=self.font_sm)
         pygame.draw.rect(surf, (28, 28, 44), self.rect, border_radius=8)
         pygame.draw.rect(surf, (110, 90, 170), self.rect, width=2, border_radius=8)
         hdr = f"New Dungeon — {self.TITLES.get(self.step, self.step)}"
@@ -863,7 +1121,8 @@ class DungeonWizard:
         labels = dict(self.choices)
         acts = {"file": "From a file…", "library": "From the campaign library…",
                 "whole": "Whole image", "same": "Another floor from this sheet",
-                "another": "Another image"}
+                "another": "Another image", "skip": "Skip (default corner)",
+                "fit": "Fit the view (0)"}
         locked = self._grid_locked()
         for r, kind, val in self._hit:
             if kind == "choice":
@@ -889,6 +1148,11 @@ class DungeonWizard:
             elif kind == "brush":
                 self._chip(surf, r, {None: "Off", "paint": "Paint", "erase": "Erase"}[val],
                            self.brush == val)
+            elif kind == "rel":
+                self._chip(surf, r, val.capitalize(), self.cur.relation == val)
+            elif kind == "ref":
+                z = self._refs.get(val, 0)
+                self._chip(surf, r, f"{val}  (floor {z:+d})", self.cur.ref == val)
         for t in self._inputs():
             t.draw(surf)
         y = self._body_bottom + 8
@@ -962,10 +1226,36 @@ class DungeonWizard:
             if self.target and self.target.campaign is not None:
                 out.append("The name is also its folder in the campaign's maps/.")
             return out
+        if s == "place":
+            return ["Pick the floor this one sits above, below or beside. Nobody types a "
+                    "floor number: the stack shows where it goes, and the entry (★) stays "
+                    "floor 0. Next saves it and goes on to align it."]
+        if s == "align" and self.align_page is not None:
+            p = self.align_page
+            faded = ("the other maps of its floor" if self.cur.relation == fp.BESIDE
+                     else "the floor " + ("below" if self.cur.relation == fp.ABOVE else "above"))
+            out = [f"Click a landmark on {p.id} (gold), then the same point on {faded} "
+                   "(blue); the floor moves so they meet. Arrows move it a cell; Enter "
+                   "accepts. Right-drag pans, wheel zooms."]
+            if self.mark_a is not None and self.mark_b is None:
+                out.append("Now click the same point on the faded floor.")
+            if self.skip_origin is not None:
+                out.append(f"Skip puts it at ({self.skip_origin[0]}, {self.skip_origin[1]}).")
+            return out
         if s == "more":
-            return ["Finish opens the dungeon. Later floors sit one floor up for now; "
-                    "placing and aligning them comes next (W6)."]
+            return ["Finish opens the dungeon on its entry floor."]
         return []
+
+    def _marks(self):
+        p = self.align_page
+        if self.step != "align" or p is None:
+            return ()
+        out = []
+        if self.mark_a is not None:
+            out.append(((p.gx + self.mark_a[0], p.gy + self.mark_a[1]), COL_MARK_A))
+        if self.mark_b is not None:
+            out.append((self.mark_b, COL_MARK_B))
+        return out
 
     def _draw_canvas(self, surf):
         c = self.canvas
