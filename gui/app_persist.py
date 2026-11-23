@@ -47,6 +47,26 @@ from tracker import Tracker
 
 # ─────────────────────────────────────────────────────────────────────
 #  (Re)build the active battle map from a PNG (re-entrant map loading)
+def _keep_window_on_screen(win_w: int, win_h: int) -> None:
+    """Re-centre the window on the desktop after a resize.
+
+    ``set_mode`` on an existing window changes its size but not its position, and the
+    container's Xvfb has no window manager to pull it back. A dungeon whose first load
+    made a small window (centred for that size) then grew for a wider floor ran off the
+    right of the display, clipping the panel. Skipped on the headless dummy driver: it
+    has no windows to place, and taking an SDL window handle there crashes later
+    ``set_mode`` calls (segfaults in the GUI suites)."""
+    try:
+        if pygame.display.get_driver() == "dummy":
+            return
+        from pygame._sdl2.video import Window
+        dw, dh = pygame.display.get_desktop_sizes()[0]
+        Window.from_display_module().position = (max(0, (dw - win_w) // 2),
+                                                 max(0, (dh - win_h) // 2))
+    except Exception:
+        pass
+
+
 # ─────────────────────────────────────────────────────────────────────
 def load_map_png(app, path):
     """Load (or swap to) the PNG at ``path`` as the active battle map.
@@ -96,6 +116,7 @@ def load_map_png(app, path):
     win_w = disp_mw + PANEL_W
     win_h = max(disp_mh, 600)
     app.screen = pygame.display.set_mode((win_w, win_h), pygame.RESIZABLE)
+    _keep_window_on_screen(win_w, win_h)
 
     # ── Now safe to convert (display surface exists) ──────────────────
     # Keep the full-resolution converted surface around so zoom can rescale

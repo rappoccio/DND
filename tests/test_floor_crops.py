@@ -49,7 +49,6 @@ def test_bad_crops_ignored():
                 {**CROP, "sheet": ""},
                 {**CROP, "rect": [0, 0, 1]},
                 {**CROP, "rect": [0, 0, 0, 5]},                  # empty
-                {**CROP, "rect": [-1, 0, 5, 5]},
                 {**CROP, "rect": "nope"},
                 {**CROP, "scale": 0},
                 {**CROP, "scale": -1},
@@ -58,6 +57,9 @@ def test_bad_crops_ignored():
                 "crop", 3, None):
         assert dg.Crop.from_value(bad) is None, bad
     assert dg.Crop.from_value({"sheet": "s", "rect": [0, 0, 5, 5]}).scale == 1.0
+    # A padded floor's rect reaches past the sheet's edge (W2): that is not malformed.
+    assert dg.Crop.from_value({**CROP, "rect": [-233, -103, 857, 699]}).rect == \
+        (-233, -103, 857, 699)
     print("  ✅ a malformed crop reads as none")
 
 

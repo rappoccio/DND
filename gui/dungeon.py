@@ -102,6 +102,9 @@ _DIR_DELTAS = {
 #                                   path (as in the manifest's ``sources``) when loose;
 #                                   ``rect`` is in sheet pixels; ``s`` is floor pixels per
 #                                   sheet pixel (below 1 when shrunk, above 1 when enlarged).
+#                                   ``rect`` may reach past the sheet's edge (x or y
+#                                   negative, or beyond its size): that part of the floor
+#                                   is blank padding, as on Castle Ravenloft's floors (W2).
 #
 # A map can be both: a single-level image is its own source (D24).
 SOURCE_KEY = "source"
@@ -167,7 +170,7 @@ class Crop:
             scale = float(v.get("scale", 1.0))
         except (TypeError, ValueError):
             return None
-        if len(r) != 4 or r[0] < 0 or r[1] < 0 or r[2] <= 0 or r[3] <= 0:
+        if len(r) != 4 or r[2] <= 0 or r[3] <= 0:
             return None
         if not scale > 0 or scale == float("inf"):
             return None

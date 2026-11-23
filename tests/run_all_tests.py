@@ -220,6 +220,7 @@ test_scripts = [
     "test_staircases.py",
     "test_save_layout.py",
     "test_floor_crops.py",
+    "test_link_floor_crops.py",
     "test_dungeon_layout.py",
     "test_run_state.py",
     "test_campaign_import.py",
