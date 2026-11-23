@@ -321,10 +321,9 @@ that's left.
   `gui/dungeon_wizard.py` (steps). Tests: `tests/test_wizard_floors.py` (6 cases, new);
   `tests/test_dungeon_wizard.py` +2 (loose click-through with real drags; campaign +
   Discard). Headless screenshots of Ravenloft's spires sheet checked by eye.
-- **Open question for the user:** D15 keeps a low-resolution sheet's resolution, so a
-  floor cut from `spires-of-ravenloft` (11.3 px squares at 10 ft) is 6 px per cell, where
-  W2's existing crops were enlarged to 16. Raise a minimum cell size (enlarge small
-  sheets) if that plays badly.
+- **D15 amended (user, 2026-11-23): a minimum of 6 px per 5-ft cell** (`MIN_CELL`). A
+  sheet with smaller cells is enlarged to 6; the 2048 px cap still wins over it. The
+  spires sheet (5.6 px a cell) rounds to 6 either way; W2's existing crops are at 16.
 
 ### D25 commands (for the user to run; Claude never runs `rm -rf`)
 ```bash

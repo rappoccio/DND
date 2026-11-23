@@ -951,7 +951,8 @@ class DungeonWizard:
                 k0, j0, k1, j1 = self.cur.squares
                 w, h = p.size
                 out.append(f"{k1 - k0}×{j1 - j0} squares → {p.cols}×{p.rows} cells, "
-                           f"floor image {w}×{h} px" + (" (shrunk)" if p.shrunk else "") + ".")
+                           f"floor image {w}×{h} px" + (" (shrunk)" if p.shrunk else " (enlarged)" if p.enlarged
+                                                     else "") + ".")
             return out
         if s == "name":
             out = ["Next writes this floor; from then on the dungeon opens."]

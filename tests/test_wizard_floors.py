@@ -4,7 +4,7 @@ D10–D16): gui/wizard_floors.py.
 
   · Set Grid from a box over several squares; the source block keeps the exact square;
   · crops snap to whole drawn squares; Whole image is every whole square;
-  · a floor keeps the sheet's resolution, shrunk over 2048 px, always whole pixels per
+  · a floor keeps the sheet's resolution, enlarged under 6 px a cell, shrunk over 2048 px, whole pixels per
     5-ft cell, so its grid sits on the drawn lines at anchor (0, 0);
   · the floor image is the crop, with brushed squares black;
   · campaign: sheet and floors in the library, dungeon.json, run, session; a later floor
@@ -79,12 +79,18 @@ def test_grid_snap_and_plan():
     p = wf.plan_crop(g, (0, 0, 10, 8))
     assert (p.cols, p.rows, p.cell_px) == (20, 16, 6), p
     assert abs(p.scale - 12 / 11.276) < 1e-9 and p.size == (120, 96)
+    assert not p.enlarged
+    # Under 6 px per 5-ft cell: enlarged to 6 (a 6.4 px square at 10 ft is 3.2 px a cell).
+    g = wf.SheetGrid(6.4, (0, 0), 10)
+    p = wf.plan_crop(g, (0, 0, 10, 5))
+    assert (p.cell_px, p.size, p.enlarged, p.shrunk) == (6, (120, 60), True, False), p
+    assert abs(p.scale - 6 / 3.2) < 1e-12
     # Over 2048 px: shrunk, still whole pixels per cell.
     g = wf.SheetGrid(72.0, (26, 61), 10)
     p = wf.plan_crop(g, (0, 0, 63, 40))
     assert p.shrunk and p.cell_px == 2048 // 126 and max(p.size) <= 2048, p
     assert abs(p.scale - p.cell_px / 36.0) < 1e-12
-    print("  ✅ Set Grid measures; crops snap; floors are whole pixels per cell, shrunk over 2048")
+    print("  ✅ Set Grid measures; crops snap; floors are whole pixels per cell, ≥ 6, shrunk over 2048")
 
 
 def test_render_floor_and_blanks():

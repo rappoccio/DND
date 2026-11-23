@@ -8,8 +8,9 @@ Plain functions and two small classes, so the suites drive them directly:
   ``measure_grid`` makes one from a box dragged over ``across`` × ``down`` squares (D13).
 * A crop is a rectangle of whole drawn squares, ``(k0, j0, k1, j1)`` in square indices
   (D14). ``snap_squares`` turns a drag into one; ``whole_image`` is every whole square.
-* ``plan_crop`` sizes the floor (D15): the sheet's resolution, shrunk when the longest
-  side is over ``MAX_SIDE``, and always a whole number of pixels per 5-ft cell, so the
+* ``plan_crop`` sizes the floor (D15): the sheet's resolution, enlarged when that is
+  under ``MIN_CELL`` px per 5-ft cell, shrunk when the longest side is over ``MAX_SIDE``,
+  and always a whole number of pixels per 5-ft cell, so the
   floor's manual grid sits exactly on its drawn lines with its anchor at (0, 0).
 * ``FloorWriter`` writes a dungeon's sheets and floors, in a campaign or loose (D9):
 
@@ -40,6 +41,7 @@ from atomic_io import atomic_write_json
 from net.roster import SessionRoster
 
 MAX_SIDE = 2048          # D15: a floor's longest side, in pixels
+MIN_CELL = 6             # D15 amended: a floor's least pixels per 5-ft cell (small sheets enlarged)
 _EPS = 1e-6
 
 
@@ -143,6 +145,7 @@ class CropPlan:
     cell_px: int                               # floor pixels per 5-ft cell
     scale: float                               # floor pixels per sheet pixel
     shrunk: bool
+    enlarged: bool = False
 
     @property
     def size(self) -> tuple[int, int]:
@@ -157,20 +160,23 @@ class CropPlan:
         return {"cell_px": self.cell_px, "anchor": [0, 0], "square_ft": int(square_ft)}
 
 
-def plan_crop(grid: SheetGrid, squares: Squares, max_side: int = MAX_SIDE) -> CropPlan:
-    """How a crop of ``squares`` becomes a floor (D15): kept at the sheet's resolution
-    unless its longest side is over ``max_side``, then shrunk; either way rounded to a
-    whole number of pixels per 5-ft cell."""
+def plan_crop(grid: SheetGrid, squares: Squares, max_side: int = MAX_SIDE,
+              min_cell: int = MIN_CELL) -> CropPlan:
+    """How a crop of ``squares`` becomes a floor (D15): kept at the sheet's resolution,
+    enlarged to ``min_cell`` px per 5-ft cell when it has fewer, shrunk when its longest
+    side is over ``max_side`` (which wins over ``min_cell``); always a whole number of
+    pixels per 5-ft cell."""
     k0, j0, k1, j1 = squares
     per = grid.per_side
     cols, rows = (k1 - k0) * per, (j1 - j0) * per
     natural = grid.square_px / per                       # sheet px per 5-ft cell
-    cell = max(1, round(natural))
+    cell = max(1, round(natural), min_cell)
     shrunk = max(cols, rows) * cell > max_side
     if shrunk:
         cell = max(1, max_side // max(cols, rows))
     box = (grid.line(k0, 0), grid.line(j0, 1), grid.line(k1, 0), grid.line(j1, 1))
-    return CropPlan(squares, box, cols, rows, cell, cell / natural, shrunk)
+    return CropPlan(squares, box, cols, rows, cell, cell / natural, shrunk,
+                    enlarged=not shrunk and cell > round(natural))
 
 
 def render_floor(image_path: str, plan: CropPlan, grid: SheetGrid, blanks=()) -> Image.Image:
