@@ -1,6 +1,6 @@
 # Dungeon wizard: building multi-floor dungeons from premade maps
 
-**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 committed 6149629 (271/0). W6 implemented 2026-11-23 (272/0), uncommitted.**
+**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 committed 6149629 (271/0). W6 committed a21e915 (272/0). W7 next on go.**
 
 The problem (user, 2026-11-22): building a multi-floor dungeon from published maps is
 confusing. You open a map, *then* make a dungeon, *then* add a page, *then* set its grid,
