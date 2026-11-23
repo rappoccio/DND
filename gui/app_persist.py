@@ -55,16 +55,31 @@ def _keep_window_on_screen(win_w: int, win_h: int) -> None:
     made a small window (centred for that size) then grew for a wider floor ran off the
     right of the display, clipping the panel. Skipped on the headless dummy driver: it
     has no windows to place, and taking an SDL window handle there crashes later
-    ``set_mode`` calls (segfaults in the GUI suites)."""
+    ``set_mode`` calls (segfaults in the GUI suites).
+
+    **The wrapper must outlive the window.** In pygame 2.6, ``from_display_module()``
+    stores a *borrowed* pointer to the Python ``Window`` on the SDL window
+    (``SDL_SetWindowData(win, "pg_window", self)``), and ``pygame.event.get()`` reads it
+    back for every window event to fill ``event.window``. A wrapper dropped right away
+    leaves that pointer dangling, and the next focus/enter/resize event — a click under
+    X11 is enough — dereferences freed memory: the native SIGSEGV in ``event.get`` of
+    plans/CRASH_HANDOFF.md. So the latest wrapper is kept in ``_DISPLAY_WINDOW``; taking a
+    new one re-points the window data at it before the old one is released."""
+    global _DISPLAY_WINDOW
     try:
         if pygame.display.get_driver() == "dummy":
             return
         from pygame._sdl2.video import Window
         dw, dh = pygame.display.get_desktop_sizes()[0]
-        Window.from_display_module().position = (max(0, (dw - win_w) // 2),
-                                                 max(0, (dh - win_h) // 2))
+        _DISPLAY_WINDOW = Window.from_display_module()
+        _DISPLAY_WINDOW.position = (max(0, (dw - win_w) // 2), max(0, (dh - win_h) // 2))
     except Exception:
         pass
+
+
+# The display window's `pygame._sdl2` wrapper, held for the process lifetime — see
+# `_keep_window_on_screen`. Never read; existing is its whole job.
+_DISPLAY_WINDOW = None
 
 
 # ─────────────────────────────────────────────────────────────────────
