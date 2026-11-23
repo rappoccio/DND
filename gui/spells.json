@@ -1187,7 +1187,7 @@
     "upcast_dice_bonus": 0,
     "num_targets": 1,
     "targets_per_upcast_level": 1,
-    "requires_concentration": true,
+    "requires_concentration": false,
     "requires_los": true,
     "check_los_on_center": true,
     "conditions": [
@@ -1403,6 +1403,29 @@
     "check_los_on_center": true,
     "school": "enchantment"
   },
+  {
+    "name": "Command Bonus",
+    "description": "You speak a one-word command to a creature you can see within range. The target must succeed on a Wisdom saving throw or follow the command on its next turn. Choose the command from these options:\n\n- **Drop.** The target drops whatever it is holding and then ends its turn.\n- **Flee.** The target spends its turn moving away from you by the fastest available means.\n- **Grovel.** The target has the Prone condition and then ends its turn.\n- **Halt.** On its turn, the target doesn't move and takes no action or Bonus Action.",
+    "type": "Harm",
+    "geometry": "Multiple",
+    "attack_type": "Save",
+    "save_ability": "SaveWis",
+    "casting_time": "BonusAction",      
+    "range": 60,
+    "radius": 0,
+    "width": 0,
+    "length": 0,
+    "duration": 1,
+    "magic_damage_types": [],
+    "physical_damage_types": [],
+    "level": 1,
+    "upcast_dice_bonus": 0,
+    "targets_per_upcast_level": 1,
+    "requires_concentration": false,
+    "requires_los": true,
+    "check_los_on_center": true,
+    "school": "enchantment"
+  },    
   {
     "name": "Commune",
     "description": "You contact a deity or a divine proxy and ask up to three questions that can be answered with yes or no. You must ask your questions before the spell ends. You receive a correct answer for each question. Divine beings aren't necessarily omniscient, so you might receive \"unclear\" as an answer if a question pertains to information that lies beyond the deity's knowledge. In a case where a one-word answer could be misleading or contrary to the deity's interests, the GM might offer a short phrase as an answer instead. If you cast the spell more than once before finishing a Long Rest, there is a cumulative 25 percent chance for each casting after the first that you get no answer.",

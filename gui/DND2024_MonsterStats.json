@@ -53965,7 +53965,7 @@
     },
     "weapons": {
       "main_hand": {
-        "name": "Melee (Slashing)",
+        "name": "Death Strike",
         "permanently_armed": true,
         "type": "melee",
         "reach_ft": 5,
@@ -54021,7 +54021,7 @@
         "auto_hit_if_grappled": true,
         "auto_use_when_grappling": true,
         "mastery": "None",
-        "save_for_damage": true,
+        "save_for_damage": false,
         "save_for_damage_ability": "SaveCon"
       },
       "ranged": ""
@@ -54064,7 +54064,7 @@
         "actions_in_lair": 4,
         "has_lair": true,
         "action_names": [
-          "Melee (Slashing)",
+          "Death Strike",
           "Bite",
           "Dash"
         ],
@@ -54092,7 +54092,7 @@
       "Mirror Image",
       "Charm Person Bonus",
       "Greater Invisibility",
-      "Command",
+      "Command Bonus",
       "Misty Escape"
     ],
     "npc_spell_groups": {
@@ -54102,7 +54102,7 @@
         "Dispel Magic",
         "Fog Cloud",
         "Charm Person Bonus",
-        "Command",
+        "Command Bonus",
         "Misty Escape"
       ],
       "2": [
