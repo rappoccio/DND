@@ -388,6 +388,7 @@ void bindTypes(py::module_& m) {
         .def_readwrite("spellcasting_ability", &Agent::Stats::spellcasting_ability)
         // Initiative
         .def_readwrite("initiative_prof", &Agent::Stats::initiative_prof)
+        .def_readwrite("initiative_bonus", &Agent::Stats::initiative_bonus)
         .def_property_readonly("initiative_modifier", &Agent::Stats::initiativeModifier)
         // Character Class & Spell Slots. Multiclassing (MULTICLASSING_PLAN.md):
         // class_levels is the source of truth. character_class/char_level stay

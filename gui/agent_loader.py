@@ -92,6 +92,7 @@ def dict_to_stats(stats_dict):
     stats.sleight_of_hand_expertise = bool(stats_dict.get("sleight_of_hand_expertise", False))
     stats.athletics_prof = bool(stats_dict.get("athletics_prof", False))
     stats.athletics_expertise = bool(stats_dict.get("athletics_expertise", False))
+    stats.initiative_bonus = int(stats_dict.get("initiative_bonus", 0))
     if "spellcasting_ability" in stats_dict:
         ability_val = stats_dict["spellcasting_ability"]
         if isinstance(ability_val, str):

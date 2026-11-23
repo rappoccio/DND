@@ -279,6 +279,14 @@ def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_nam
     stats.metamagic_options = ([rpg.MetamagicOption(int(v)) for v in (metamagic_options or [])]
                                if "Sorcerer" in cl_map else [])
 
+    # Initiative: the dialog shows the total modifier. A changed value becomes the flat
+    # initiative_bonus on top of what DEX / prof / feats now give; an untouched one keeps
+    # the stored bonus, so a DEX or proficiency edit still moves initiative.
+    st_init = steppers.get("initiative")
+    if st_init is not None and st_init.value != getattr(st_init, "start", st_init.value):
+        stats.initiative_bonus = 0
+        stats.initiative_bonus = st_init.value - stats.initiative_modifier
+
     app.combat.set_agent_stats(app.bm, agent_idx, stats)
 
     # For Monks, replace default "Unarmed" weapon with "MonkUnarmed" (1d8)

@@ -2066,7 +2066,7 @@ class StatsDialog:
     Callback: callback(agent_idx, new_stats_obj) called on OK.
     """
     DLG_W = 610
-    DLG_H = 700
+    DLG_H = 880
     HDR_H = 36
     BTN_H = 32
     PAD   = 14
@@ -2107,11 +2107,14 @@ class StatsDialog:
         ("Max HP",        "hp_max",       1, 999),
         ("Temp HP",       "temp_hp",      0, 999),
         ("Armor Class",   "base_ac",      1,  30),
+        # Total initiative modifier (stats.initiative_modifier). Not a stats field:
+        # on OK, a changed value is stored as stats.initiative_bonus (on_stats_ok).
+        ("Initiative",    "initiative", -10,  30),
+        ("Prof. Bonus",   "prof_bonus",   2,   6),
         ("Walk (ft)",     "speed_walk",   0, 120),
         ("Swim (ft)",     "speed_swim",   0, 120),
         ("Fly (ft)",      "speed_fly",    0, 120),
         ("Burrow (ft)",   "speed_burrow", 0, 120),
-        ("Prof. Bonus",   "prof_bonus",   2,   6),
         ("# Attacks",     "num_attacks",  1,  10),
     ]
 
@@ -2346,8 +2349,9 @@ class StatsDialog:
             self.steppers[key] = IntStepper(r, val, 1, 30, self.font_md)
 
         # ── Saving throw proficiency checkboxes (one per ability column) ──
-        # Sit below the modifier text: step_h + 2 (mod gap) + 14 (mod h) + 6 (gap)
-        cb_y = y + step_h + 2 + 14 + 6
+        # Sit below the modifier text and the SAVE PROF. label row:
+        # step_h + 2 (mod gap) + 14 (mod h) + 4 (gap) + 16 (label row)
+        cb_y = y + step_h + 2 + 14 + 4 + 16
         self._prof_rects = {}
         self.prof_flags  = {}
         for i, (lbl, key) in enumerate(self.ABILITIES):
@@ -2356,21 +2360,21 @@ class StatsDialog:
             self._prof_rects[flag_key] = pygame.Rect(cx, cb_y, CB_H, CB_H)
             self.prof_flags[flag_key]  = getattr(stats, flag_key, False)
 
-        # ── Sleight of Hand skill checkbox (picks door locks) ─────────────
-        # Sits at the right edge of the SAVE PROF. label row (first checkbox y - 16).
-        self._sleight_rect = pygame.Rect(dlg.x + W - PAD - CB_H, cb_y - 16, CB_H, CB_H)
+        # ── Skill proficiency row: Athletics (forces doors off their frame) and
+        # Sleight of Hand (picks door locks). Its own row under the save boxes, after a
+        # "SKILL PROF." label; each label is drawn to the left of its box.
+        sk_y = cb_y + CB_H + 10
+        _x = dlg.x + PAD + self.font_sm.size("SKILL PROF.")[0] + 24
+        _x += self.font_sm.size("Athletics")[0] + 6
+        self._athletics_rect = pygame.Rect(_x, sk_y, CB_H, CB_H)
+        self.prof_flags["athletics_prof"] = getattr(stats, "athletics_prof", False)
+        _x = self._athletics_rect.right + 24 + self.font_sm.size("Sleight of Hand")[0] + 6
+        self._sleight_rect = pygame.Rect(_x, sk_y, CB_H, CB_H)
         self.prof_flags["sleight_of_hand_prof"] = getattr(stats, "sleight_of_hand_prof", False)
 
-        # ── Athletics skill checkbox (forces doors off their frame) ───────
-        # Same row, just left of Sleight of Hand (label + box drawn to its left).
-        _sleight_lbl_w = self.font_sm.size("Sleight of Hand")[0]
-        _ath_x = self._sleight_rect.x - _sleight_lbl_w - 6 - 14 - CB_H
-        self._athletics_rect = pygame.Rect(_ath_x, cb_y - 16, CB_H, CB_H)
-        self.prof_flags["athletics_prof"] = getattr(stats, "athletics_prof", False)
-
-        # ── Combat stats (4 rows × 2 cols) ───────────────────────────────
-        # Row starts below the checkbox row: cb_y + CB_H + gap + sect label + pad
-        cy = cb_y + CB_H + 8 + 18 + 10
+        # ── Combat stats (2 cols) ────────────────────────────────────────
+        # Row starts below the skill row: sk_y + CB_H + gap + sect label + pad
+        cy = sk_y + CB_H + 10 + 18 + 16
         half = (W - PAD * 3) // 2
         ROW = 52   # vertical stride per row
         # Build positions for 8 entries: pairs fill left/right, last row centred if odd
@@ -2383,13 +2387,20 @@ class StatsDialog:
             positions.append((cx, ccy))
         for (lbl, key, lo, hi), (cx, ccy) in zip(self.COMBAT, positions):
             r = pygame.Rect(cx, ccy, half, step_h)
-            self.steppers[key] = IntStepper(r, getattr(stats, key, lo), lo, hi,
-                                            self.font_md)
+            if key == "initiative":
+                val = int(getattr(stats, "initiative_modifier", 0))
+            else:
+                val = getattr(stats, key, lo)
+            self.steppers[key] = IntStepper(r, val, lo, hi, self.font_md)
+        # The initiative shown at open: on OK an unchanged value keeps the stored bonus,
+        # so editing DEX or prof still moves initiative the way it should.
+        self.steppers["initiative"].start = self.steppers["initiative"].value
 
         # ── Character level stepper (Python-only, not in C++ stats) ────────
-        # Create it at the bottom-left, below the combat stats
+        # Below the combat stats and the HP bar (10 gap + 18 bar), with room for its label.
         last_row_idx = (len(self.COMBAT) - 1) // 2
-        char_level_y = cy + (last_row_idx + 1) * ROW + 10
+        last_bottom = cy + last_row_idx * ROW + step_h
+        char_level_y = last_bottom + 10 + 18 + 12 + 14
         char_level_rect = pygame.Rect(dlg.x + PAD, char_level_y, half, step_h)
         # lo=0 so a focused class can be dropped from the multiclass build (0 levels).
         self._char_level_stepper = IntStepper(char_level_rect, self._char_level, 0, 20, self.font_md)
@@ -2811,6 +2822,11 @@ class StatsDialog:
                 ]
                 pygame.draw.lines(screen, (110, 240, 110), False, pts, 2)
 
+        # ── Skill proficiency row ────────────────────────────────────────
+        if getattr(self, "_athletics_rect", None):
+            t = self.font_sm.render("SKILL PROF.", True, self.C_SECT)
+            screen.blit(t, (dlg.x + PAD, self._athletics_rect.centery - t.get_height() // 2))
+
         # ── Sleight of Hand skill checkbox ───────────────────────────────
         if getattr(self, "_sleight_rect", None):
             rect = self._sleight_rect
@@ -2850,7 +2866,7 @@ class StatsDialog:
         # ── Combat Stats section ──────────────────────────────────────────
         half = (self.DLG_W - PAD * 3) // 2
         if "hp_cur" in self.steppers:
-            cs_y = self.steppers["hp_cur"].rect.y - 18 - 10
+            cs_y = self.steppers["hp_cur"].rect.y - 18 - 16
             t = self.font_sm.render("COMBAT STATS", True, self.C_SECT)
             screen.blit(t, (dlg.x + PAD, cs_y))
 
@@ -2957,7 +2973,7 @@ class StatsDialog:
                 subclass_lbl = self.font_sm.render("Subclass:", True, self.C_LABEL)
                 screen.blit(subclass_lbl, (dlg.x + PAD, subclass_y))
 
-                left_sub_r = pygame.Rect(dlg.x + PAD + 75, subclass_y, 20, 16)
+                left_sub_r = pygame.Rect(dlg.x + PAD + 95, subclass_y, 20, 16)
                 right_sub_r = pygame.Rect(dlg.right - PAD - 20, subclass_y, 20, 16)
                 subclass_txt_r = pygame.Rect(left_sub_r.right + 4, subclass_y, right_sub_r.left - left_sub_r.right - 8, 16)
 
@@ -2983,7 +2999,7 @@ class StatsDialog:
                 if self._class_name == "Cleric" and lvl >= 7:
                     bs_y = subclass_y + 24
                     screen.blit(self.font_sm.render("Blessed:", True, self.C_LABEL), (dlg.x + PAD, bs_y))
-                    left_bs_r = pygame.Rect(dlg.x + PAD + 75, bs_y, 20, 16)
+                    left_bs_r = pygame.Rect(dlg.x + PAD + 95, bs_y, 20, 16)
                     right_bs_r = pygame.Rect(dlg.right - PAD - 20, bs_y, 20, 16)
                     bs_txt_r = pygame.Rect(left_bs_r.right + 4, bs_y, right_bs_r.left - left_bs_r.right - 8, 16)
                     pygame.draw.rect(screen, (60, 55, 80), left_bs_r, border_radius=2)
@@ -3005,7 +3021,7 @@ class StatsDialog:
                 elif self._class_name == "Ranger" and self._subclass_name == "Hunter" and lvl >= 3:
                     def _picker(name, label, available, y):
                         screen.blit(self.font_sm.render(label, True, self.C_LABEL), (dlg.x + PAD, y))
-                        l_r = pygame.Rect(dlg.x + PAD + 75, y, 20, 16)
+                        l_r = pygame.Rect(dlg.x + PAD + 95, y, 20, 16)
                         r_r = pygame.Rect(dlg.right - PAD - 20, y, 20, 16)
                         t_r = pygame.Rect(l_r.right + 4, y, r_r.left - l_r.right - 8, 16)
                         for rr, txt in ((l_r, "<"), (t_r, "None" if name == "NONE" else name), (r_r, ">")):
@@ -3073,7 +3089,7 @@ class StatsDialog:
             inv_lbl = self.font_sm.render("Invocations:", True, self.C_LABEL)
             screen.blit(inv_lbl, (dlg.x + self.PAD, inv_y))
             n_sel = len(self._eldritch_invocations)
-            self._invocation_btn_rect = pygame.Rect(dlg.x + self.PAD + 80, inv_y - 2, 150, 18)
+            self._invocation_btn_rect = pygame.Rect(dlg.x + self.PAD + 95, inv_y - 2, 150, 18)
             hov = self._invocation_btn_rect.collidepoint(pygame.mouse.get_pos())
             pygame.draw.rect(screen, (70, 90, 130) if hov else (55, 60, 95), self._invocation_btn_rect, border_radius=3)
             pygame.draw.rect(screen, (120, 150, 180), self._invocation_btn_rect, 1, border_radius=3)
@@ -3093,7 +3109,7 @@ class StatsDialog:
                 mm_lbl = self.font_sm.render("Metamagic:", True, self.C_LABEL)
                 screen.blit(mm_lbl, (dlg.x + self.PAD, mm_y))
                 n_mm = len(self._metamagic_options)
-                self._metamagic_btn_rect = pygame.Rect(dlg.x + self.PAD + 80, mm_y - 2, 150, 18)
+                self._metamagic_btn_rect = pygame.Rect(dlg.x + self.PAD + 95, mm_y - 2, 150, 18)
                 hov = self._metamagic_btn_rect.collidepoint(pygame.mouse.get_pos())
                 pygame.draw.rect(screen, (70, 90, 130) if hov else (55, 60, 95), self._metamagic_btn_rect, border_radius=3)
                 pygame.draw.rect(screen, (120, 150, 180), self._metamagic_btn_rect, 1, border_radius=3)
@@ -3106,7 +3122,7 @@ class StatsDialog:
         if self._char_level_stepper and not self._is_npc:
             feat_y = npc_checkbox_y
             screen.blit(self.font_sm.render("Origin Feat:", True, self.C_LABEL), (dlg.x + self.PAD, feat_y))
-            left_f_r  = pygame.Rect(dlg.x + self.PAD + 75, feat_y, 20, 16)
+            left_f_r  = pygame.Rect(dlg.x + self.PAD + 95, feat_y, 20, 16)
             right_f_r = pygame.Rect(dlg.right - self.PAD - 20, feat_y, 20, 16)
             feat_txt_r = pygame.Rect(left_f_r.right + 4, feat_y, right_f_r.left - left_f_r.right - 8, 16)
             pygame.draw.rect(screen, (60, 55, 80), left_f_r, border_radius=2)
@@ -3127,7 +3143,7 @@ class StatsDialog:
         if self._char_level_stepper and not self._is_npc:
             sp_y = npc_checkbox_y
             screen.blit(self.font_sm.render("Species:", True, self.C_LABEL), (dlg.x + self.PAD, sp_y))
-            left_s_r  = pygame.Rect(dlg.x + self.PAD + 75, sp_y, 20, 16)
+            left_s_r  = pygame.Rect(dlg.x + self.PAD + 95, sp_y, 20, 16)
             right_s_r = pygame.Rect(dlg.right - self.PAD - 20, sp_y, 20, 16)
             sp_txt_r  = pygame.Rect(left_s_r.right + 4, sp_y, right_s_r.left - left_s_r.right - 8, 16)
             for _r in (left_s_r, sp_txt_r, right_s_r):
@@ -3145,7 +3161,7 @@ class StatsDialog:
             gf_y = npc_checkbox_y
             screen.blit(self.font_sm.render("Feats:", True, self.C_LABEL), (dlg.x + self.PAD, gf_y))
             n_sel = len(self._general_feats)
-            self._feat_btn_rect = pygame.Rect(dlg.x + self.PAD + 80, gf_y - 2, 150, 18)
+            self._feat_btn_rect = pygame.Rect(dlg.x + self.PAD + 95, gf_y - 2, 150, 18)
             hov = self._feat_btn_rect.collidepoint(pygame.mouse.get_pos())
             pygame.draw.rect(screen, (70, 90, 130) if hov else (55, 60, 95), self._feat_btn_rect, border_radius=3)
             pygame.draw.rect(screen, (120, 150, 180), self._feat_btn_rect, 1, border_radius=3)
@@ -3185,9 +3201,15 @@ class StatsDialog:
                 label = self.font_sm.render(f"{group_n}/day:", True, self.C_LABEL)
                 screen.blit(label, (dlg.x + self.PAD, spell_y))
 
-                spell_x = dlg.x + self.PAD + 80
+                spell_x0 = dlg.x + self.PAD + 80
+                spell_x = spell_x0
+                right_edge = dlg.right - self.PAD
                 for spell_name in spells:
                     spell_txt = self.font_sm.render(spell_name, True, (200, 200, 220))
+                    # Wrap to a new line rather than run off the dialog's right edge.
+                    if spell_x > spell_x0 and spell_x + spell_txt.get_width() + 4 + 16 > right_edge:
+                        spell_x = spell_x0
+                        spell_y += 22
                     spell_txt_rect = spell_txt.get_rect()
                     spell_txt_rect.topleft = (spell_x, spell_y)
                     screen.blit(spell_txt, spell_txt_rect)
@@ -3202,6 +3224,9 @@ class StatsDialog:
                     spell_x = remove_btn_rect.right + 8
 
                 # Add button for this group
+                if spell_x > spell_x0 and spell_x + 20 > right_edge:
+                    spell_x = spell_x0
+                    spell_y += 22
                 add_btn_rect = pygame.Rect(spell_x, spell_y, 20, 16)
                 pygame.draw.rect(screen, (60, 130, 80), add_btn_rect, border_radius=2)
                 pygame.draw.rect(screen, (100, 180, 120), add_btn_rect, 1, border_radius=2)

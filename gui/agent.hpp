@@ -224,6 +224,9 @@ namespace rpg {
       // When true, prof_bonus is also added to the initiative roll
       // (e.g. the Rogue's "Expertise in Initiative" or similar features).
       bool initiative_prof{false};
+      // Flat adjustment on top of everything else, set from Edit Stats so a stat
+      // block's printed Initiative (e.g. Strahd +14) can be matched exactly.
+      int initiative_bonus{0};
 
       // ── Character Class & Spell Slots ─────────────────────────────────
       // Multiclassing data model (see MULTICLASSING_PLAN.md Phase 0).
@@ -282,7 +285,8 @@ namespace rpg {
       // CombatEngine::rollInitiative() adds a d20 on top of this.
       [[nodiscard]] int initiativeModifier() const noexcept {
 	return _mod(dex) + (initiative_prof ? prof_bonus : 0)
-	     + (dread_ambusher ? _mod(wis) : 0);   // Gloom Stalker Dread Ambusher: Initiative Bonus
+	     + (dread_ambusher ? _mod(wis) : 0)    // Gloom Stalker Dread Ambusher: Initiative Bonus
+	     + initiative_bonus;
       }
 
       // ── Spell Save DCs (computed, read-only) ─────────────────────────
