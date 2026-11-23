@@ -1,6 +1,6 @@
 # Dungeon wizard: building multi-floor dungeons from premade maps
 
-**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 next on go.**
+**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 implemented 2026-11-23 (271/0), uncommitted.**
 
 The problem (user, 2026-11-22): building a multi-floor dungeon from published maps is
 confusing. You open a map, *then* make a dungeon, *then* add a page, *then* set its grid,
@@ -141,7 +141,7 @@ that's left.
 | W2 | **Link existing content** (D24). One-off tool, dry run first, overlay PNGs for the user to check, then `--apply`. | ✅ |
 | W3 | **Dungeon button and menu** (D1–D3). Merge the buttons, add the Floors… entry that holds the old overview/add/align, split out Populate Floor…. | ✅ |
 | W4 | **Wizard shell** (D4–D8). Docked step panel, Back/Next/Cancel/Discard, combat refusal, player placeholder, saving at each step, first screen, Generate path. | ✅ |
-| W5 | **Source, grid, crop, name** (D10–D16). | ☐ |
+| W5 | **Source, grid, crop, name** (D10–D16). | ✅ |
 | W6 | **Placement and alignment** (D17–D19). | ☐ |
 | W7 | **Checklist** (D21), on Finish and in Floors…. | ☐ |
 | W8 | **Floors… → Add** (D22), including re-cropping from a kept source. Replaces Add Page's v2 path. | ☐ |
@@ -276,6 +276,55 @@ that's left.
 - Tests: `tests/test_dungeon_wizard.py` (9 cases, real clicks/keys through
   `_handle_events`); `test_gameview.py` gains `test_held_while_the_dm_builds_a_dungeon`;
   `test_dungeon_menu.py` and `test_new_dungeon_dialog.py` updated for the new entry points.
+
+### W5 as built (2026-11-23)
+- **Steps.** Premade maps → 2. Pick an image (From a file… / From the campaign library…,
+  sources listed first / a sheet already picked this run) → 3. Set Grid → 4. Crop a floor →
+  5. Name the floor → 6. Another floor? (Another floor from this sheet: straight to Crop,
+  grid kept; Another image: back to Pick; **Finish** opens the dungeon on its entry floor).
+- **The working area** (`gui/sheet_canvas.py`): from Set Grid on, the sheet is drawn over
+  the map view, never loaded into the engine. Wheel zooms, right/middle-drag pans,
+  arrows / + / − / 0 as on the map. Big sheets scale only the visible part, from a
+  ≤ 2048 px preview when zoomed out. The scene underneath is untouched.
+- **Set Grid (D13).** Drag a box over whole squares, set Across / Down (how many squares it
+  covers) and 5 ft / 10 ft / Other. The square is a float (box ÷ squares), so a big sheet
+  doesn't drift; the sheet's `manual_grid` gets the whole-pixel cell, and the source block
+  gains an optional **`"square_px"`** (W1 amended: `SourceSheet.square_px`). The default
+  square size is the last sheet's. A **library map that already has a grid keeps it**
+  (other dungeons may read that `map.json`): Set Grid shows it and Next goes on; the map
+  is only marked as a source.
+- **Crop (D14).** A drag snaps to the nearest drawn grid lines inside the sheet; **Whole
+  image** is every whole square. The brush (Off / Paint / Erase) blackens whole drawn
+  squares inside the crop. Floors already cut from the sheet are outlined on it.
+- **Size (D15).** The sheet's resolution, rounded to a **whole number of pixels per 5-ft
+  cell**, so every floor's grid is `{"cell_px": c, "anchor": [0, 0]}` and sits on the
+  drawn lines; shrunk when the longest side is over 2048. `crop.scale` records it.
+- **Name (D16).** Default `<dungeon>-floor-<N>`, N from 1. Refused when the campaign
+  library (or, loose, the dungeon's folder) already has that name.
+- **Saving (D7, D9).** Naming a floor writes it, and the dungeon around it is whole and
+  openable from then on (Discard is offered from the first floor). A picked sheet is
+  copied in when its **first floor is written**, not on pick, so Cancel before any floor
+  still leaves nothing. Campaign: sheet and floors are library maps (`maps/<name>/`, image
+  + `map.json` with grid and crop), plus `dungeon.json`, `runs/main/run.json` and
+  `session.json`; loose: `maps/<dungeon>/` holds the sheet (in the manifest's `sources`),
+  each floor's `.png` / `_terrain.json` / `_agents.json` and the version-1 manifest.
+- **Back (D7).** Reopens an earlier step for the floor it was about: a re-crop overwrites
+  that floor's image and design and keeps its place; a new name renames it (library
+  folder, page, entry, run section). Once a floor is written Back stops at Pick an image
+  (the first screen's answers are fixed).
+- **Discard** now also archives the campaign library folders this run made (floors,
+  copied sheets) under `_archive/<slug>-<stamp>/library/`.
+- **Placement, interim until W6:** each later floor goes one floor above the highest, at
+  the same corner as the floor written before it (D19's Skip).
+- `main.py`: the file browser takes events ahead of the wizard while it is open.
+- Code: `gui/wizard_floors.py` (geometry + `FloorWriter`), `gui/sheet_canvas.py`,
+  `gui/dungeon_wizard.py` (steps). Tests: `tests/test_wizard_floors.py` (6 cases, new);
+  `tests/test_dungeon_wizard.py` +2 (loose click-through with real drags; campaign +
+  Discard). Headless screenshots of Ravenloft's spires sheet checked by eye.
+- **Open question for the user:** D15 keeps a low-resolution sheet's resolution, so a
+  floor cut from `spires-of-ravenloft` (11.3 px squares at 10 ft) is 6 px per cell, where
+  W2's existing crops were enlarged to 16. Raise a minimum cell size (enlarge small
+  sheets) if that plays badly.
 
 ### D25 commands (for the user to run; Claude never runs `rm -rf`)
 ```bash

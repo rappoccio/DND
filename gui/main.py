@@ -8955,10 +8955,13 @@ class App:
                 self._npc_auto_dialog.handle(event)
                 continue
 
-            # ── New Dungeon wizard: docked over the panel, the map stays live. Its
-            # Discard confirm is a popup over it, which takes events first. ──
+            # ── New Dungeon wizard: docked over the panel, the map stays live (from
+            # Set Grid on, the map view is its sheet). Its file browser and its popups
+            # (the library list, the Discard confirm) take events first. ──
             if self.dungeon_wizard.visible:
-                if self.context_menu.visible:
+                if self.file_browser.active:            # its Pick an image step
+                    self.file_browser.handle(event, self.screen)
+                elif self.context_menu.visible:
                     if self.context_menu.handle(event):
                         self.prompts.renderer_dismissed()
                 elif not self.dungeon_wizard.handle(event):

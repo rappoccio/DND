@@ -96,6 +96,8 @@ _DIR_DELTAS = {
 #   "source": {"square_ft": 5}      this image is a source sheet (D12). Its grid is the
 #                                   document's own ``manual_grid``; ``square_ft`` is the
 #                                   size of one drawn square (D13). ``true`` reads as 5 ft.
+#                                   An optional ``"square_px"`` (W5) is the drawn square's
+#                                   exact size in sheet pixels.
 #   "crop":   {"sheet": "<source>", "rect": [x, y, w, h], "scale": s}
 #                                   this floor was cut from a sheet (D14–D15). ``sheet`` is
 #                                   the source's library map name in a campaign, its PNG
@@ -120,9 +122,17 @@ class SourceSheet:
     """A source sheet's own metadata; its grid is the document's ``manual_grid``."""
 
     square_ft: int = 5
+    # The drawn square's exact size in sheet pixels (W5). ``manual_grid.cell_px`` is a
+    # whole number of pixels per 5-ft cell, which drifts across a big sheet whose squares
+    # are a fraction of a pixel off; crops are cut on this instead. None: not recorded
+    # (W2's links, older files), read as ``cell_px × square_ft / 5``.
+    square_px: Optional[float] = None
 
     def to_dict(self) -> dict:
-        return {"square_ft": int(self.square_ft)}
+        d = {"square_ft": int(self.square_ft)}
+        if self.square_px is not None:
+            d["square_px"] = float(self.square_px)
+        return d
 
     @classmethod
     def from_value(cls, v) -> Optional["SourceSheet"]:
@@ -133,9 +143,13 @@ class SourceSheet:
             return None
         try:
             ft = int(v.get("square_ft", 5))
+            px = v.get("square_px")
+            px = float(px) if px is not None else None
         except (TypeError, ValueError):
             return None
-        return cls(square_ft=ft) if ft > 0 else None
+        if px is not None and not 0 < px < float("inf"):
+            px = None
+        return cls(square_ft=ft, square_px=px) if ft > 0 else None
 
 
 @dataclass(frozen=True)

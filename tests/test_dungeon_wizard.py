@@ -10,7 +10,9 @@
   · Generate builds into the dungeon just named: in a campaign (a new one here), and
     loose in maps/<slug>/, from whatever map was showing (the blank map is loaded);
   · Discard dungeon is offered only once something is saved, and archives the folder;
-  · while the wizard is open players are held: no image for them (D6).
+  · while the wizard is open players are held: no image for them (D6);
+  · W5, the premade steps (D10–D16): pick, Set Grid, crop + brush, name, another floor,
+    Back to rename, Finish; in a campaign the floors go in its library.
 """
 
 import json
@@ -298,6 +300,145 @@ def test_discard_archives_the_saved_dungeon():
         assert os.path.isdir(os.path.join(sb.camp.root, "vault"))
         assert dw.CONTINUE_HINT in app._status_msg, app._status_msg
     print("  ✅ Discard (after asking) archives a saved dungeon; Cancel keeps it")
+
+
+def _drag(app, p0, p1, button=1):
+    p0, p1 = (int(p0[0]), int(p0[1])), (int(p1[0]), int(p1[1]))
+    pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, pos=p0, button=button))
+    pygame.event.post(pygame.event.Event(pygame.MOUSEMOTION, pos=p1, rel=(p1[0] - p0[0],
+                                         p1[1] - p0[1]), buttons=(1, 0, 0)))
+    pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONUP, pos=p1, button=button))
+    app._handle_events()
+
+
+def _sheet_png(path, size=(400, 300), sq=20, anchor=(10, 10)):
+    """A light sheet with dark lines every ``sq`` px from ``anchor``."""
+    surf = pygame.Surface(size)
+    surf.fill((230, 225, 215))
+    for x in range(anchor[0], size[0], sq):
+        pygame.draw.line(surf, (30, 30, 30), (x, 0), (x, size[1]))
+    for y in range(anchor[1], size[1], sq):
+        pygame.draw.line(surf, (30, 30, 30), (0, y), (size[0], y))
+    pygame.image.save(surf, path)
+    return path
+
+
+def _screen(wiz, x, y):
+    return wiz.canvas.to_screen(x, y)
+
+
+def test_premade_loose_click_through():
+    """Pick → Set Grid (a 3×2-square drag) → crop (drag, brush) → name → another floor
+    from the sheet (Whole image) → Back renames it → Finish opens the dungeon."""
+    with _Sandbox() as sb:
+        sheet = _sheet_png(os.path.join(sb.tmp, "levels.png"))
+        app = sb.app()
+        wiz = app.dungeon_wizard
+        wiz.start(app)
+        wiz.choice = dw.LOOSE
+        wiz.name_input.text = "Keep"
+        wiz.next()
+        assert wiz.step == "source" and not wiz._enabled("next")
+        pygame.event.clear()
+        gui_driver.post_click(app, wiz.button_rect("file").center)
+        assert app.file_browser.active
+        app.file_browser.active = False
+        wiz.on_file_chosen(sheet)                         # what the browser calls back
+        assert wiz.step == "grid" and not wiz._enabled("next")
+
+        # Set Grid: a box over 3 × 2 squares, 10-ft squares.
+        _drag(app, _screen(wiz, 30, 50), _screen(wiz, 90, 90))
+        assert wiz.sheet.grid is not None
+        for _ in range(2):
+            gui_driver.post_click(app, wiz.button_rect(("across", +1)).center)
+        gui_driver.post_click(app, wiz.button_rect(("down", +1)).center)
+        gui_driver.post_click(app, wiz.button_rect(10).center)
+        g = wiz.sheet.grid
+        assert (wiz.across, wiz.down, g.square_ft) == (3, 2, 10), (wiz.across, wiz.down, g)
+        tol = 1.5 / wiz.canvas.zoom                      # one screen pixel, in sheet px
+        assert abs(g.square_px - 20) < tol and abs(g.anchor[0] - 30) < tol, (g, tol)
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "crop" and not wiz._enabled("next")
+
+        # Crop: drag over 4 × 3 squares (it snaps to the lines at x 30…110, y 30…90;
+        # square indices count from the anchor (30, 50)); brush one square black.
+        _drag(app, _screen(wiz, 32, 28), _screen(wiz, 108, 92))
+        assert wiz.cur.squares == (0, -1, 4, 2), wiz.cur.squares
+        gui_driver.post_click(app, wiz.button_rect("paint").center)
+        _drag(app, _screen(wiz, 40, 40), _screen(wiz, 40, 40))
+        assert wiz.cur.blanks == {(0, -1)}, wiz.cur.blanks
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "name" and wiz.floor_input.text == "keep-floor-1"
+        assert wiz.button_rect("discard") is None
+        _key(app, pygame.K_RETURN)                         # writes the floor
+        assert wiz.step == "more" and wiz.saved, wiz.error
+        root = os.path.join(sb.maps, "keep")
+        assert os.path.isfile(os.path.join(root, "keep.dungeon.json"))
+        assert wiz.button_rect("discard") is not None
+
+        # Another floor from the same sheet: no grid step; Whole image.
+        gui_driver.post_click(app, wiz.button_rect("same").center)
+        assert wiz.step == "crop" and wiz.cur.squares is None
+        gui_driver.post_click(app, wiz.button_rect("whole").center)
+        assert wiz.cur.squares[2] > 5
+        _key(app, pygame.K_RETURN)
+        assert wiz.floor_input.text == "keep-floor-2"
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "more", wiz.error
+
+        # Back reopens the name: a new one renames the floor.
+        gui_driver.post_click(app, wiz.button_rect("back").center)
+        assert wiz.step == "name" and wiz.floor_input.text == "keep-floor-2"
+        wiz.floor_input.text = "roof"
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "more" and [f.written for f in wiz.floors] == ["keep-floor-1", "roof"]
+        assert not os.path.exists(os.path.join(root, "keep-floor-2.png"))
+
+        gui_driver.post_click(app, wiz.button_rect("next").center)     # Finish
+        assert not wiz.visible
+        assert app._dungeon_manifest_path == os.path.join(root, "keep.dungeon.json")
+        assert [(p.id, p.origin) for p in app.dungeon.pages] == \
+            [("keep-floor-1", [0, 0, 0]), ("roof", [0, 0, 1])]
+        assert app.dungeon_page.id == "keep-floor-1"
+        assert (app.bm.grid_cols, app.bm.grid_rows) == (8, 6), (app.bm.grid_cols, app.bm.grid_rows)
+    print("  ✅ premade, loose: pick, Set Grid, crop + brush, name, another, rename, Finish")
+
+
+def test_premade_campaign_discard():
+    """In a new campaign: a floor in the library; Discard archives the dungeon and the
+    library folders the wizard made, keeping the campaign."""
+    with _Sandbox() as sb:
+        sheet = _sheet_png(os.path.join(sb.tmp, "Crypt Map.png"))
+        app = sb.app()
+        wiz = app.dungeon_wizard
+        wiz.start(app)
+        wiz.choice = dw.NEW_CAMPAIGN
+        wiz.camp_input.text = "Barovia"
+        wiz.name_input.text = "Crypt"
+        wiz.next()
+        wiz.on_file_chosen(sheet)
+        wiz.set_grid_box((10, 10), (50, 50))
+        wiz.across = wiz.down = 2
+        wiz._regrid()
+        wiz.next()
+        wiz.whole_image()
+        wiz.next()
+        wiz.next()
+        assert wiz.step == "more", wiz.error
+        camp = sl.Campaign(os.path.join(sb.encounters, "barovia"))
+        assert camp.list_library_maps() == ["crypt-floor-1", "crypt-map"]
+        assert camp.list_dungeons() == ["crypt"]
+        # The library offers its maps on the next Pick an image, sheets first.
+        gui_driver.post_click(app, wiz.button_rect("another").center)
+        assert wiz.step == "source" and wiz.library() == ["crypt-map", "crypt-floor-1"]
+        wiz.discard()
+        assert not wiz.visible
+        assert camp.list_dungeons() == [] and camp.list_library_maps() == []
+        arch = os.listdir(os.path.join(camp.root, "_archive"))
+        assert len(arch) == 1
+        kept = os.listdir(os.path.join(camp.root, "_archive", arch[0], "library"))
+        assert sorted(kept) == ["crypt-floor-1", "crypt-map"], kept
+    print("  ✅ premade, campaign: floors in the library; Discard archives them too")
 
 
 def test_players_held_while_open():
