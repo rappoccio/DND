@@ -31,6 +31,7 @@ import pc_sheets
 import run_state as rs
 import save_layout as sl
 from atomic_io import atomic_write_json
+from dungeon import carry_meta
 
 
 def _read_json(path):
@@ -69,7 +70,13 @@ class LegacyStore:
         return _read_json(self.terrain_path(page))
 
     def write_terrain(self, doc, page=None) -> None:
-        atomic_write_json(self.terrain_path(page), doc)
+        path = self.terrain_path(page)
+        try:
+            old = _read_json(path)
+        except ValueError:
+            old = None
+        # Keep the wizard's source / crop blocks, which the live scene does not hold.
+        atomic_write_json(path, carry_meta(doc, old if isinstance(old, dict) else None))
 
     # ── Creatures ─────────────────────────────────────────────────────────
     def has_creatures(self, page=None) -> bool:

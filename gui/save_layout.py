@@ -32,6 +32,7 @@ import re
 from dataclasses import dataclass
 
 from atomic_io import atomic_write_json
+import dungeon as dg
 
 LAYOUT_VERSION = 1
 
@@ -104,6 +105,17 @@ def _json_stems(path: str) -> list[str]:
                       and not e.name.startswith("."))
     except OSError:
         return []
+
+
+def _read_doc(path: str | None) -> dict | None:
+    if not path:
+        return None
+    try:
+        with open(path) as f:
+            doc = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return doc if isinstance(doc, dict) else None
 
 
 def find_image(folder: str, map_name: str) -> str | None:
@@ -197,6 +209,18 @@ class Campaign:
     def list_library_maps(self) -> list[str]:
         return _subdirs(self.maps_dir)
 
+    def library_map_doc(self, map_name: str) -> dict | None:
+        """The library copy of a map's ``map.json``, or None (absent or unreadable)."""
+        return _read_doc(os.path.join(self.library_map_dir(map_name), MAP_FILE))
+
+    def source_sheet(self, map_name: str) -> "dg.SourceSheet | None":
+        """The map's source-sheet mark (DUNGEON_WIZARD_PLAN D12), or None."""
+        return dg.read_source(self.library_map_doc(map_name))
+
+    def list_sources(self) -> list[str]:
+        """Library maps marked as source sheets, by name."""
+        return [m for m in self.list_library_maps() if self.source_sheet(m) is not None]
+
     # ── Dungeons ──────────────────────────────────────────────────────────
     def dungeon(self, dungeon_name: str) -> "DungeonLayout":
         return DungeonLayout(self, _check_name(dungeon_name, "dungeon"))
@@ -258,6 +282,14 @@ class DungeonLayout:
             return None
         return (f"{self.name}/{MAPS_DIR}/{map_name} has its own image but no "
                 f"{MAP_FILE}; the grid may not match it")
+
+    def map_doc(self, map_name: str) -> dict | None:
+        """The map's ``map.json`` as read (the dungeon's copy, else the library's)."""
+        return _read_doc(self.resolve(map_name, MAP_FILE))
+
+    def crop(self, map_name: str) -> "dg.Crop | None":
+        """Where the map was cut from (DUNGEON_WIZARD_PLAN D14–D15), or None."""
+        return dg.read_crop(self.map_doc(map_name))
 
     def list_maps(self) -> list[str]:
         """Maps with a folder in this dungeon. ``dungeon.json`` is the authority on which

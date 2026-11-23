@@ -43,6 +43,7 @@ import copy
 import json
 
 from atomic_io import atomic_write_json
+from dungeon import META_KEYS, carry_meta
 
 RUN_VERSION = 1
 
@@ -113,6 +114,10 @@ def split_terrain(terrain: dict, design: dict | None = None) -> tuple[dict, dict
         if lt and "cells" in geom:
             door_links.append({"cells": geom["cells"], "target": [int(v) for v in lt[:3]]})
     map_doc["doors"] = doors
+    # The wizard's source / crop blocks (DUNGEON_WIZARD_PLAN W1) are not terrain: they ride
+    # over from the map.json on disk, or from the document when it carries them.
+    map_doc = carry_meta(map_doc, {k: t[k] for k in META_KEYS if k in t})
+    map_doc = carry_meta(map_doc, design)
     extras = {
         "ladders": copy.deepcopy(t.get("ladders", []) or []),
         "door_links": door_links,

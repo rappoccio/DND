@@ -88,6 +88,128 @@ _DIR_DELTAS = {
 }
 
 
+# ── Source sheets and floor crops (plans/DUNGEON_WIZARD_PLAN.md W1) ─────────────────
+# A map's design document (``map.json`` in a campaign, ``_terrain.json`` when loose) may
+# carry two optional blocks the New Dungeon wizard writes. Both are absent from every
+# older file, which reads exactly as before (D26).
+#
+#   "source": {"square_ft": 5}      this image is a source sheet (D12). Its grid is the
+#                                   document's own ``manual_grid``; ``square_ft`` is the
+#                                   size of one drawn square (D13). ``true`` reads as 5 ft.
+#   "crop":   {"sheet": "<source>", "rect": [x, y, w, h], "scale": s}
+#                                   this floor was cut from a sheet (D14–D15). ``sheet`` is
+#                                   the source's library map name in a campaign, its PNG
+#                                   path (as in the manifest's ``sources``) when loose;
+#                                   ``rect`` is in sheet pixels; ``s`` is floor pixels per
+#                                   sheet pixel (below 1 when shrunk, above 1 when enlarged).
+#
+# A map can be both: a single-level image is its own source (D24).
+SOURCE_KEY = "source"
+CROP_KEY = "crop"
+# Keys of a design document that belong to the wizard and not to the terrain editor. The
+# terrain writers rebuild the document from the live scene, so they carry these over from
+# the file on disk (:func:`carry_meta`).
+META_KEYS = (SOURCE_KEY, CROP_KEY)
+
+
+@dataclass(frozen=True)
+class SourceSheet:
+    """A source sheet's own metadata; its grid is the document's ``manual_grid``."""
+
+    square_ft: int = 5
+
+    def to_dict(self) -> dict:
+        return {"square_ft": int(self.square_ft)}
+
+    @classmethod
+    def from_value(cls, v) -> Optional["SourceSheet"]:
+        """The ``"source"`` value, or None when absent or unreadable."""
+        if v is True:
+            return cls()
+        if not isinstance(v, dict):
+            return None
+        try:
+            ft = int(v.get("square_ft", 5))
+        except (TypeError, ValueError):
+            return None
+        return cls(square_ft=ft) if ft > 0 else None
+
+
+@dataclass(frozen=True)
+class Crop:
+    """Where a floor's image was cut from: ``rect`` on ``sheet``, resized by ``scale``."""
+
+    sheet: str
+    rect: tuple[int, int, int, int]
+    scale: float = 1.0
+
+    @property
+    def floor_size(self) -> tuple[int, int]:
+        """The floor image's (width, height) in pixels."""
+        return (max(1, round(self.rect[2] * self.scale)),
+                max(1, round(self.rect[3] * self.scale)))
+
+    def to_dict(self) -> dict:
+        return {"sheet": self.sheet, "rect": [int(v) for v in self.rect],
+                "scale": float(self.scale)}
+
+    @classmethod
+    def from_value(cls, v) -> Optional["Crop"]:
+        """The ``"crop"`` value, or None when absent or malformed (a bad hand edit is
+        treated as no crop rather than failing the map's load)."""
+        if not isinstance(v, dict):
+            return None
+        sheet, rect = v.get("sheet"), v.get("rect")
+        if not isinstance(sheet, str) or not sheet:
+            return None
+        try:
+            r = tuple(int(x) for x in rect)
+            scale = float(v.get("scale", 1.0))
+        except (TypeError, ValueError):
+            return None
+        if len(r) != 4 or r[0] < 0 or r[1] < 0 or r[2] <= 0 or r[3] <= 0:
+            return None
+        if not scale > 0 or scale == float("inf"):
+            return None
+        return cls(sheet=sheet, rect=r, scale=scale)
+
+
+def read_source(doc: Optional[dict]) -> Optional[SourceSheet]:
+    return SourceSheet.from_value((doc or {}).get(SOURCE_KEY))
+
+
+def read_crop(doc: Optional[dict]) -> Optional[Crop]:
+    return Crop.from_value((doc or {}).get(CROP_KEY))
+
+
+def set_meta(doc: dict, source=..., crop=...) -> dict:
+    """``doc`` with its source / crop blocks set (a SourceSheet / Crop) or removed (None).
+    An argument left out leaves that block as it is. Returns a new dict."""
+    out = dict(doc or {})
+    for key, val in ((SOURCE_KEY, source), (CROP_KEY, crop)):
+        if val is ...:
+            continue
+        if val is None:
+            out.pop(key, None)
+        else:
+            out[key] = val.to_dict()
+    return out
+
+
+def carry_meta(new_doc: dict, old_doc: Optional[dict]) -> dict:
+    """``new_doc`` with any wizard block it lacks taken from ``old_doc`` (the document on
+    disk), so a terrain save never drops a floor's crop or a sheet's source mark."""
+    if not old_doc:
+        return new_doc
+    missing = [k for k in META_KEYS if k in old_doc and k not in new_doc]
+    if not missing:
+        return new_doc
+    out = dict(new_doc)
+    for k in missing:
+        out[k] = old_doc[k]
+    return out
+
+
 @dataclass
 class RoomLabel:
     """One room key on a page, e.g. ``K10`` / ``Dining Hall`` at a local cell."""
@@ -304,6 +426,10 @@ class Dungeon:
     # Campaign dungeons only: the PCs who join this dungeon's runs, overriding the
     # campaign's party (plans/NEW_DUNGEON_PLAN.md D3). None ⇒ the campaign's.
     party: Optional[list[str]] = None
+    # Loose (version 1) dungeons only: source sheets kept beside the manifest (D12), each
+    # ``{"png": <path>, "terrain": <path>}``; the sheet's grid is in its terrain file.
+    # Campaign sheets are library maps instead (``Campaign.list_sources``).
+    sources: list[dict] = field(default_factory=list)
 
     @classmethod
     def single_map(cls, map_name: str, cols: int = 0, rows: int = 0) -> "Dungeon":
@@ -536,6 +662,8 @@ class Dungeon:
         if self.staircases or self.next_staircase_id > 1:
             d["staircases"] = [st.to_dict() for st in self.staircases]
             d["next_staircase_id"] = int(self.next_staircase_id)
+        if self.sources:
+            d["sources"] = [_source_entry(e) for e in self.sources]
         return d
 
     @classmethod
@@ -556,10 +684,14 @@ class Dungeon:
         # truncated manifest still can't hand out a live id twice.
         nxt = max([int(d.get("next_staircase_id", 1))] + [st.id + 1 for st in stairs])
         party = d.get("party") if version >= DUNGEON_LAYOUT_VERSION else None
+        sources = ([_source_entry(e) for e in d.get("sources", []) or []
+                    if isinstance(e, dict) and e.get("png")]
+                   if version < DUNGEON_LAYOUT_VERSION else [])
         dung = cls(pages=pages, entry_page_id=entry, staircases=stairs,
                    next_staircase_id=nxt,
                    version=min(version, DUNGEON_LAYOUT_VERSION),
-                   party=[str(n) for n in party] if isinstance(party, list) else None)
+                   party=[str(n) for n in party] if isinstance(party, list) else None,
+                   sources=sources)
         # Repair a dangling/missing entry pointer so entry_page() is always valid.
         if dung.page_by_id(entry) is None:
             dung.entry_page_id = pages[0].id if pages else None
@@ -588,6 +720,11 @@ def _portal(d: dict) -> dict:
     int (X, Y, Z) triple."""
     return {"cells": [[int(c[0]), int(c[1])] for c in d.get("cells", [])],
             "target": [int(v) for v in list(d["target"])[:3]]}
+
+
+def _source_entry(e: dict) -> dict:
+    """A loose manifest's ``sources`` entry, normalised to its two paths."""
+    return {"png": str(e["png"]), "terrain": str(e.get("terrain", ""))}
 
 
 def _span_overlap(a0: int, a_len: int, b0: int, b_len: int) -> int:
