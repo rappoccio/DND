@@ -160,6 +160,44 @@ def draw_ghosts(screen, ghosts, cur_lines, cur_origin, map_scale, pan, viewport,
         screen.set_clip(prev_clip)
 
 
+def load_floor_ghosts(app, z: int):
+    """(ghosts, skipped) for the pages of floor ``z`` of the app's dungeon, or None when
+    that floor has no pages. ``skipped`` names pages with no usable grid or image.
+    Shared by Align Floor and the terrain editor's Staircase tool (DUNGEON_WIZARD D23)."""
+    pages = app.dungeon.pages_on_floor(z)
+    if not pages:
+        return None
+    ghosts, skipped = [], []
+    for p in pages:
+        png = app.store.image(p)
+        try:
+            terrain = app.store.terrain(p)
+        except ValueError:
+            terrain = None
+        lines = load_ghost_lines(png, terrain) if os.path.exists(png) else None
+        if lines is None:
+            skipped.append(p.id)
+            continue
+        try:
+            img = pygame.image.load(png).convert()
+        except pygame.error:
+            skipped.append(p.id)
+            continue
+        ghosts.append(Ghost(p.id, (p.gx, p.gy, p.z), lines, img))
+    return ghosts, skipped
+
+
+def ghost_cell_at(ghosts, cur_origin, cell):
+    """The ghost page under ``cell`` of the current page: (page_id, (c, r)) in that page's
+    own cells, or None. Cells line up by global origin, as ``ghost_placement`` draws them."""
+    gx, gy = int(cur_origin[0]) + int(cell[0]), int(cur_origin[1]) + int(cell[1])
+    for g in ghosts:
+        c, r = gx - int(g.origin[0]), gy - int(g.origin[1])
+        if 0 <= c < len(g.lines[0]) - 1 and 0 <= r < len(g.lines[1]) - 1:
+            return g.page_id, (c, r)
+    return None
+
+
 class FloorAlign:
     """The Align Floor mode: ghost the floor below (Tab: above) and nudge the current
     page's origin one cell per arrow key. Enter saves the manifest; Esc restores the
@@ -218,31 +256,11 @@ class FloorAlign:
     # ── Ghost floor ─────────────────────────────────────────────────────────
     def _load(self, app, direction: int) -> bool:
         """Load the ghosts for floor z + direction; False if that floor has no pages."""
-        page = app.dungeon_page
-        z = page.z + direction
-        pages = app.dungeon.pages_on_floor(z)
-        if not pages:
+        loaded = load_floor_ghosts(app, app.dungeon_page.z + direction)
+        if loaded is None:
             return False
-        ghosts, skipped = [], []
-        for p in pages:
-            png = app.store.image(p)
-            try:
-                terrain = app.store.terrain(p)
-            except ValueError:
-                terrain = None
-            lines = load_ghost_lines(png, terrain) if os.path.exists(png) else None
-            if lines is None:
-                skipped.append(p.id)
-                continue
-            try:
-                img = pygame.image.load(png).convert()
-            except pygame.error:
-                skipped.append(p.id)
-                continue
-            ghosts.append(Ghost(p.id, (p.gx, p.gy, p.z), lines, img))
         self.direction = direction
-        self.ghosts = ghosts
-        self.skipped = skipped
+        self.ghosts, self.skipped = loaded
         return True
 
     def toggle_floor(self, app):

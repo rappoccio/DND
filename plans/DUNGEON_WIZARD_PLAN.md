@@ -1,6 +1,6 @@
 # Dungeon wizard: building multi-floor dungeons from premade maps
 
-**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 committed 6149629 (271/0). W6 committed a21e915 (272/0). W7 committed (273/0). W8 committed (273/0). W9 next on go.**
+**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), committed dc6021a. W3 committed a66a434 (269/0). W4 committed d7d6596 (270/0). W5 committed 6149629 (271/0). W6 committed a21e915 (272/0). W7 committed (273/0). W8 committed (273/0). W9 committed (273/0). W10 (live check) next.**
 
 The problem (user, 2026-11-22): building a multi-floor dungeon from published maps is
 confusing. You open a map, *then* make a dungeon, *then* add a page, *then* set its grid,
@@ -145,7 +145,7 @@ that's left.
 | W6 | **Placement and alignment** (D17–D19). | ✅ |
 | W7 | **Checklist** (D21), on Finish and in Floors…. | ✅ |
 | W8 | **Floors… → Add** (D22), including re-cropping from a kept source. Replaces Add Page's v2 path. | ✅ |
-| W9 | **Staircase tool with the other floor faded in** (D23). | ☐ |
+| W9 | **Staircase tool with the other floor faded in** (D23). | ✅ |
 | W10 | **Live check.** Build a dungeon from a fresh sheet in the real app, run by the user. | ☐ |
 
 ### W1 as built (2026-11-22)
@@ -404,6 +404,27 @@ that's left.
   button, taken name refused, place below + align, Finish; campaign Add from a new file,
   combat refusal, Cancel reopens and a later save keeps the floor in the run);
   `test_floor_checklist.py` Add button updated.
+
+### W9 as built (2026-11-23)
+- The terrain editor's **Staircase tool** fades in the floor above or below, drawn by Align
+  Floor's renderer (`floor_overlay.draw_ghosts`) onto the editor's canvas, cell for cell
+  by global origin. The page loading moved out of `FloorAlign._load` into
+  `floor_overlay.load_floor_ghosts(app, z)`, which both use; `ghost_cell_at` maps a cell
+  of this page to the faded page under it. `main._open_terrain_editor` passes
+  `ghost_loader`; each floor is loaded once per editor visit.
+- **Default floor:** the one holding end A of the staircase the editor offers to finish,
+  else the floor below, else above. **[Tab]** cycles below → above → off, skipping a floor
+  that isn't there. The HUD names the faded floor's pages (and any with no grid).
+- **Both ends in one visit:** with a floor faded in, placing end A arms end B; the next
+  click puts B on the faded page under that cell (in that page's own cells). A click off
+  every faded page is refused and stays armed; **right-click** leaves the staircase
+  unfinished; **[B]** arms end B for a selected unfinished end. Ctrl+Z undoes B as one
+  step. With the floor off, the tool works as before (one end per visit, Link/[F]).
+- The faded floor's own staircase ends are drawn faded, outlined blue.
+- Clicks land only on this page's map, so end B must sit where the two floors overlap.
+- Tests: `test_staircase_editor.py` +2 (both ends in one visit through real clicks, with
+  an offset page, refusal, right-click, [B], undo, off; default floor and Tab skipping);
+  the older cases turn the faded floor off first. `test_floor_align.py` unchanged, green.
 
 ### D25 commands (for the user to run; Claude never runs `rm -rf`)
 ```bash

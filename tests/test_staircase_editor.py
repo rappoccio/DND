@@ -74,13 +74,20 @@ def _go(app, pid):
     assert app._switch_to_page(app.dungeon.page_by_id(pid))
 
 
-def _editor(app):
-    """Open the terrain editor with the Staircase tool picked."""
+def _editor(app, faded=False):
+    """Open the terrain editor with the Staircase tool picked. The other floor is faded
+    in by default (DUNGEON_WIZARD D23); unless ``faded``, [Tab] turns it off, so a click
+    places one end per visit as these tests were written for."""
     app._open_terrain_editor()
     ed = app.terrain_editor
     assert ed.active
     _key(app, pygame.K_9)
     assert ed.selected_type == "Staircase"
+    if not faded:
+        for _ in range(3):
+            if ed._ghost_init and ed.stair_ghost_dir is None:
+                break
+            _key(app, pygame.K_TAB)
     return ed
 
 
@@ -362,12 +369,95 @@ def test_right_click_link_unlink_goto():
     print("  ✅ right-click an end: link up / down, unlink, undo, go to the other end")
 
 
+def _click(app, ed, cell, button=1):
+    """A click on ``cell`` through the app's event loop (an editor at zoom 1)."""
+    ed.draw(app.screen)                                     # sets the viewport
+    v, h = ed.bm.v_line_positions, ed.bm.h_line_positions
+    pos = (v[cell[0]] + CELL // 2, h[cell[1]] + CELL // 2)
+    pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN, button=button, pos=pos))
+    pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONUP, button=button, pos=pos))
+    assert app._handle_events() is not False
+
+
+def test_both_ends_in_one_visit():
+    """W9 (D23): the other floor faded in; end A here, end B on the faded floor."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon(tmp)
+        d = app.dungeon
+        d.page_by_id("U").origin = [2, 1, 1]                # U sits 2 east, 1 south of M
+        ed = _editor(app, faded=True)
+        ed.draw(app.screen)
+        assert ed.stair_ghost_dir == -1                     # the floor below, by default
+        assert [g.page_id for g in ed.stair_ghosts] == ["B"]
+        _key(app, pygame.K_TAB)                             # Tab: the floor above
+        assert ed.stair_ghost_dir == 1
+        assert [g.page_id for g in ed.stair_ghosts] == ["U"]
+
+        _click(app, ed, (5, 4))                             # end A on M arms end B
+        st = d.staircase_by_id(1)
+        assert _ends(st) == [("M", (5, 4))] and ed.stair_b_pending == 1
+        _click(app, ed, (1, 5))                             # off U's map: refused, still armed
+        assert not st.finished and ed.stair_b_pending == 1
+        assert ed.stair_message.startswith("No map of floor 1"), ed.stair_message
+        _click(app, ed, (5, 4))                             # U's own cell (3, 3)
+        assert _ends(st) == [("M", (5, 4)), ("U", (3, 3))] and ed.stair_b_pending is None
+        ed.draw(app.screen)                                 # the faded floor's end draws
+
+        _click(app, ed, (1, 6))                             # another; right-click drops B
+        assert ed.stair_b_pending == 2
+        _click(app, ed, (1, 6), button=3)
+        assert ed.stair_b_pending is None and not d.staircase_by_id(2).finished
+        _click(app, ed, (1, 6))                             # select it, [B] arms end B again
+        assert ed.stair_selected == (2, 0)
+        _key(app, pygame.K_b)
+        assert ed.stair_b_pending == 2
+        _click(app, ed, (9, 7))
+        assert _ends(d.staircase_by_id(2)) == [("M", (1, 6)), ("U", (7, 6))]
+        _key(app, pygame.K_z, mod=pygame.KMOD_CTRL)         # undo takes end B back off
+        assert _ends(d.staircase_by_id(2)) == [("M", (1, 6))]
+
+        _key(app, pygame.K_TAB)                             # off: a click places one end only
+        assert ed.stair_ghost_dir is None and ed.stair_ghosts == []
+        _click(app, ed, (8, 1))
+        assert ed.stair_b_pending is None and not d.staircase_by_id(3).finished
+
+        _key(app, pygame.K_ESCAPE)                          # close writes the manifest
+        on_disk = _on_disk(app)
+        assert _ends(on_disk.staircase_by_id(1)) == [("M", (5, 4)), ("U", (3, 3))]
+    print("  ✅ the other floor faded in: both ends placed in one editor visit")
+
+
+def test_faded_floor_follows_the_offered_finish():
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon(tmp)
+        d = app.dungeon
+        st = d.new_staircase("U", (6, 5))                   # end A one floor up
+        ed = _editor(app, faded=True)
+        ed.draw(app.screen)
+        assert ed.stair_finish_id == st.id and ed.stair_ghost_dir == 1
+        _click(app, ed, (2, 2))                             # finishing here, as before
+        assert _ends(st) == [("U", (6, 5)), ("M", (2, 2))] and ed.stair_b_pending is None
+        _key(app, pygame.K_ESCAPE)
+
+        _go(app, "U")                                       # top floor: only below to show
+        ed = _editor(app, faded=True)
+        ed.draw(app.screen)
+        assert ed.stair_ghost_dir == -1
+        _key(app, pygame.K_TAB)                             # above doesn't exist: off
+        assert ed.stair_ghost_dir is None
+        _key(app, pygame.K_TAB)
+        assert ed.stair_ghost_dir == -1
+        _key(app, pygame.K_ESCAPE)
+    print("  ✅ the faded floor defaults to the offered staircase's floor; Tab skips gaps")
+
+
 def main():
     pygame.init()
     tests = [test_two_phase_placement, test_finish_refused_off_adjacent_floor,
              test_delete_removes_both_ends, test_edit_and_undo, test_shared_landing,
              test_staircases_list, test_without_a_dungeon, test_drag_moves_an_end,
-             test_right_click_link_unlink_goto]
+             test_right_click_link_unlink_goto, test_both_ends_in_one_visit,
+             test_faded_floor_follows_the_offered_finish]
     failed = 0
     for t in tests:
         try:

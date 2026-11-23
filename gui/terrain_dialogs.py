@@ -9,6 +9,7 @@ from constants import *
 from widgets import Button
 from helpers import edge_key, edge_from_key
 from dungeon import Staircase
+from floor_overlay import GHOST_OUTLINE as GHOST_STAIR, draw_ghosts, ghost_cell_at
 
 
 def door_link_key(cells):
@@ -496,6 +497,19 @@ class TerrainEditorDialog:
         self.stair_moving = False
         self.stair_message = ""
         self._stair_undo = []
+        # The other floor faded in (DUNGEON_WIZARD_PLAN.md D23, reusing Align Floor's
+        # ghosts). ``ghost_loader(z)`` is the app's ``load_floor_ghosts`` → (ghosts,
+        # skipped) or None. ``stair_ghost_dir`` is -1 (floor below), +1 (above) or None
+        # (off); [Tab] cycles. With a floor faded in, placing end A arms
+        # ``stair_b_pending`` (a staircase id): the next click puts end B on the faded
+        # floor's page under that cell, so both ends are placed in one editor visit.
+        self.ghost_loader = None
+        self.stair_ghost_dir = None
+        self.stair_ghosts = []
+        self.stair_ghost_skipped = []
+        self.stair_b_pending = None
+        self._ghost_cache = {}
+        self._ghost_init = False
         # Drag-to-move for ladders and staircase ends: a press on one starts it, the
         # release on another cell moves it there, and a release where it started is the
         # ordinary click. {"kind": "ladder"|"stair", "key": ladder index | (id, end),
@@ -512,7 +526,7 @@ class TerrainEditorDialog:
              on_regions_changed=None, edge_overrides=None, edges_enabled=False,
              on_edges_changed=None, edge_review=None, edge_review_source="",
              dungeon=None, page_id=None, ask_text=None, ask_menu=None, on_stair_goto=None,
-             grid_scale=1.0):
+             grid_scale=1.0, ghost_loader=None):
         """Open the terrain editor with existing terrain data.
 
         ``ladders`` is the app's live ladder list (Python-only cell objects); the editor
@@ -526,7 +540,8 @@ class TerrainEditorDialog:
         carried from another floor that still need a decision (drawn blue). ``dungeon``
         and ``page_id`` enable the Staircase tool: its edits go straight into
         ``dungeon.staircases``, and the app writes the manifest when the editor closes.
-        ``grid_scale`` is map_surf's size over the image's (the app's fit scale)."""
+        ``grid_scale`` is map_surf's size over the image's (the app's fit scale).
+        ``ghost_loader(z)`` loads floor z's pages for the Staircase tool's faded floor."""
         self.active = True
         self.grid_scale = grid_scale
         self.edge_review = edge_review if edge_review is not None else []
@@ -555,6 +570,13 @@ class TerrainEditorDialog:
         self.stair_message = ""
         self._stair_undo = []
         self.portal_drag = None
+        self.ghost_loader = ghost_loader
+        self.stair_ghost_dir = None
+        self.stair_ghosts = []
+        self.stair_ghost_skipped = []
+        self.stair_b_pending = None
+        self._ghost_cache = {}
+        self._ghost_init = False
         self.stair_finish_id = self._default_finish_id() if self._stairs_ok() else None
         self.reset_view()
 
@@ -710,6 +732,9 @@ class TerrainEditorDialog:
                 if event.button == 3:
                     self.stair_moving = False
                     self.portal_drag = None
+                    if self.stair_b_pending is not None:
+                        self._cancel_end_b()
+                        return
                     cell = self._pos_to_cell(pos)
                     if not (cell is not None and self._stair_menu(cell, event.pos)):
                         self.stair_selected = None
@@ -717,7 +742,9 @@ class TerrainEditorDialog:
                 cell = self._pos_to_cell(pos)
                 if cell is not None:
                     shift = bool(pygame.key.get_mods() & pygame.KMOD_SHIFT)
-                    if not (shift or self.stair_moving or self._start_stair_drag(cell)):
+                    if self.stair_b_pending is not None:      # end B: never a drag
+                        self._stair_click(cell)
+                    elif not (shift or self.stair_moving or self._start_stair_drag(cell)):
                         self._stair_click(cell, place=shift)
                 return
             if event.button == 1 and self.selected_type == "Ladder":
@@ -1118,6 +1145,7 @@ class TerrainEditorDialog:
         self.dungeon.staircases[:] = [Staircase.from_dict(d) for d in self._stair_undo.pop()]
         self.stair_selected = None
         self.stair_moving = False
+        self.stair_b_pending = None
         if self.stair_finish_id is not None:
             st = self.dungeon.staircase_by_id(self.stair_finish_id)
             if st is None or st.finished:
@@ -1143,7 +1171,11 @@ class TerrainEditorDialog:
             self.stair_message = ("Staircases need a dungeon: Dungeon → "
                                   "New Dungeon or Open Dungeon.")
             return
+        self._ensure_stair_ghosts()
         c = (int(cell.col), int(cell.row))
+        if self.stair_b_pending is not None:
+            self._place_end_b(c)
+            return
         if self.stair_moving:
             st, i = self._selected_stair()
             self.stair_moving = False
@@ -1174,8 +1206,148 @@ class TerrainEditorDialog:
             st = self.dungeon.new_staircase(self.page_id, c)
             self.stair_selected = (st.id, 0)
             z = self.dungeon.page_by_id(self.page_id).z
-            self.stair_message = (f"{st.name}: end A placed. Right-click it to link it to an "
-                                  f"unfinished staircase on floor {z - 1} or {z + 1}.")
+            if self.stair_ghost_dir is not None and self.stair_ghosts:
+                self.stair_b_pending = st.id
+                self.stair_message = (f"{st.name}: end A placed. Click end B on floor "
+                                      f"{z + self.stair_ghost_dir} (faded); right-click "
+                                      f"leaves it unfinished.")
+            else:
+                self.stair_message = (f"{st.name}: end A placed. Right-click it to link it "
+                                      f"to an unfinished staircase on floor {z - 1} or "
+                                      f"{z + 1}.")
+
+    # ── The other floor, faded in (D23) ─────────────────────────────────
+    def _ghost_floor(self, direction):
+        """(ghosts, skipped) of floor z + ``direction``, loaded once per editor visit;
+        None when there is no such floor (or no loader)."""
+        if direction not in self._ghost_cache:
+            z = self.dungeon.page_by_id(self.page_id).z + direction
+            self._ghost_cache[direction] = (self.ghost_loader(z)
+                                            if self.ghost_loader is not None else None)
+        return self._ghost_cache[direction]
+
+    def _set_stair_ghost(self, direction):
+        loaded = self._ghost_floor(direction) if direction is not None else None
+        if loaded is None:
+            self.stair_ghost_dir, self.stair_ghosts, self.stair_ghost_skipped = None, [], []
+        else:
+            self.stair_ghost_dir = direction
+            self.stair_ghosts, self.stair_ghost_skipped = loaded
+        if self.stair_b_pending is not None:
+            st = self.dungeon.staircase_by_id(self.stair_b_pending)
+            if st is None or st.finished or not self.stair_ghosts:
+                self.stair_b_pending = None
+
+    def _ensure_stair_ghosts(self):
+        """The first time the Staircase tool is used this visit, fade in a floor: the one
+        holding end A of the staircase offered to finish, else the floor below, else the
+        floor above."""
+        if self._ghost_init or not self._stairs_ok() or self.ghost_loader is None:
+            return
+        self._ghost_init = True
+        order = [-1, 1]
+        if self.stair_finish_id is not None:
+            st = self.dungeon.staircase_by_id(self.stair_finish_id)
+            a = self.dungeon.page_by_id(st.ends[0].page) if st is not None else None
+            z = self.dungeon.page_by_id(self.page_id).z
+            if a is not None and a.z - z == 1:
+                order = [1, -1]
+        for d in order:
+            if self._ghost_floor(d) is not None:
+                self._set_stair_ghost(d)
+                return
+
+    def _cycle_stair_ghost(self):
+        """[Tab]: floor below → floor above → off, skipping a floor that isn't there."""
+        self._ensure_stair_ghosts()
+        order = [-1, 1, None]
+        i = order.index(self.stair_ghost_dir)
+        for k in range(1, 4):
+            d = order[(i + k) % 3]
+            if d is None or self._ghost_floor(d) is not None:
+                self._set_stair_ghost(d)
+                break
+        if self.stair_ghost_dir is None:
+            self.stair_message = "Other floor hidden."
+        else:
+            z = self.dungeon.page_by_id(self.page_id).z + self.stair_ghost_dir
+            self.stair_message = f"Showing floor {z} faded in."
+
+    def _arm_end_b(self):
+        """[B]: place end B of the selected unfinished staircase on the faded floor."""
+        st, i = self._selected_stair()
+        if st is None or st.finished:
+            self.stair_message = "Select an unfinished staircase's end first."
+            return
+        self._ensure_stair_ghosts()
+        if self.stair_ghost_dir is None or not self.stair_ghosts:
+            self.stair_message = "No floor faded in: [Tab] shows the floor below / above."
+            return
+        self.stair_b_pending = st.id
+        self.stair_moving = False
+        z = self.dungeon.page_by_id(self.page_id).z + self.stair_ghost_dir
+        self.stair_message = f"Click end B of {st.name} on floor {z} (faded)."
+
+    def _cancel_end_b(self):
+        st = self.dungeon.staircase_by_id(self.stair_b_pending)
+        self.stair_b_pending = None
+        if st is not None:
+            self.stair_message = f"{st.name} left unfinished: end B not placed."
+
+    def _place_end_b(self, c):
+        """Put end B of ``stair_b_pending`` on the faded floor's page under cell ``c``."""
+        sid = self.stair_b_pending
+        st = self.dungeon.staircase_by_id(sid)
+        if st is None or st.finished:
+            self.stair_b_pending = None
+            return
+        here = self.dungeon.page_by_id(self.page_id)
+        hit = ghost_cell_at(self.stair_ghosts, here.origin, c)
+        z = here.z + (self.stair_ghost_dir or 0)
+        if hit is None:
+            self.stair_message = (f"No map of floor {z} under {c}: click inside a faded "
+                                  f"page (right-click leaves {st.name} unfinished).")
+            return
+        page_id, cell = hit
+        self._stair_snapshot()
+        try:
+            self.dungeon.finish_staircase(sid, page_id, cell)
+        except ValueError as e:
+            self._stair_undo.pop()
+            self.stair_message = f"Refused: {e}."
+            return
+        self.stair_b_pending = None
+        if self.stair_finish_id == sid:
+            self.stair_finish_id = self._default_finish_id()
+        self.stair_selected = (sid, 0) if st.ends[0].page == self.page_id else None
+        self.stair_message = (f"{st.name} finished: end B on {page_id} {cell}, "
+                              f"floor {z}.")
+
+    def _draw_ghost_floor(self, canvas):
+        """The faded floor under this page, cell for cell (Align Floor's renderer)."""
+        if not self.stair_ghosts or self.bm is None:
+            return
+        here = self.dungeon.page_by_id(self.page_id)
+        draw_ghosts(canvas, self.stair_ghosts,
+                    (self.bm.v_line_positions, self.bm.h_line_positions), here.origin,
+                    self.grid_scale, (0, 0), canvas.get_rect(), font=self.font_sm)
+
+    def _draw_ghost_stairs(self, canvas, v, h, size):
+        """The faded floor's staircase ends, faded, on this page's cells."""
+        here = self.dungeon.page_by_id(self.page_id)
+        for g in self.stair_ghosts:
+            for st, i in self.dungeon.staircase_ends_on(g.page_id):
+                c = int(g.origin[0]) + st.ends[i].cell[0] - here.gx
+                r = int(g.origin[1]) + st.ends[i].cell[1] - here.gy
+                if not (0 <= c < len(v) - 1 and 0 <= r < len(h) - 1):
+                    continue
+                d = self.dungeon.staircase_direction(st, i)
+                glyph = pygame.Surface((size, size), pygame.SRCALPHA)
+                draw_stair_glyph(glyph, 0, 0, size, directions=(d,) if d else (),
+                                 ids=[st.id], font_sm=self.font_sm)
+                glyph.set_alpha(150)
+                canvas.blit(glyph, (v[c], h[r]))
+                pygame.draw.rect(canvas, GHOST_STAIR, pygame.Rect(v[c], h[r], size, size), 2)
 
     def _link_candidates(self, st):
         """Unfinished staircases ``st`` (unfinished) could link to: end A one floor up
@@ -1270,6 +1442,8 @@ class TerrainEditorDialog:
         self.dungeon.remove_staircase(st.id)
         self.stair_selected = None
         self.stair_moving = False
+        if self.stair_b_pending == st.id:
+            self.stair_b_pending = None
         if self.stair_finish_id == st.id:
             self.stair_finish_id = self._default_finish_id()
         self.stair_message = f"Deleted {st.name} (both ends)."
@@ -1303,7 +1477,14 @@ class TerrainEditorDialog:
             return True
         if k == pygame.K_f:
             self.stair_moving = False
+            self.stair_b_pending = None
             self._cycle_finish()
+            return True
+        if k == pygame.K_TAB:
+            self._cycle_stair_ghost()
+            return True
+        if k == pygame.K_b:
+            self._arm_end_b()
             return True
         has_sel = self._selected_stair()[0] is not None
         if k == pygame.K_m and has_sel:
@@ -1346,7 +1527,13 @@ class TerrainEditorDialog:
         d = self.dungeon
         z = d.page_by_id(self.page_id).z
         st, i = self._selected_stair()
-        if self.stair_moving and st is not None:
+        pend = (d.staircase_by_id(self.stair_b_pending)
+                if self.stair_b_pending is not None else None)
+        if pend is not None:
+            nxt = (f"Next click: end B of {pend.name} on floor "
+                   f"{z + (self.stair_ghost_dir or 0)} (faded) — right-click: leave it "
+                   f"unfinished")
+        elif self.stair_moving and st is not None:
             nxt = f"Next click: move {st.name}'s end {'AB'[i]} here ([M] cancels)"
         elif self.stair_finish_id is not None:
             fin = d.staircase_by_id(self.stair_finish_id)
@@ -1356,6 +1543,15 @@ class TerrainEditorDialog:
         else:
             nxt = f"Next click: end A of a new staircase (Staircase {d.next_staircase_id})"
         lines = [(nxt, (220, 200, 120))]
+        if self.stair_ghost_dir is not None:
+            gz = z + self.stair_ghost_dir
+            pages = ", ".join(g.page_id for g in self.stair_ghosts) or "no usable page"
+            ghost = f"Faded in: floor {gz} ({pages})"
+            if self.stair_ghost_skipped:
+                ghost += f"; no grid: {', '.join(self.stair_ghost_skipped)}"
+            lines.append((ghost + "   [Tab] below / above / off", GHOST_STAIR))
+        elif self.ghost_loader is not None:
+            lines.append(("No other floor faded in   [Tab] below / above", (170, 170, 170)))
         if st is not None:
             label = f" ({st.label})" if st.label else ""
             other = st.other_end(i)
@@ -1370,8 +1566,8 @@ class TerrainEditorDialog:
         lines.append(("Click an end to select it (again: the next one on a shared cell); "
                       "Ctrl+drag an end to move it; Shift+click places on an end",
                       (170, 170, 170)))
-        lines.append(("[F] new / finish  [M] move end  [N] rename  [L] label  "
-                      "[Del] delete staircase  [Ctrl+Z] undo",
+        lines.append(("[F] new / finish  [B] end B on the faded floor  [M] move end  "
+                      "[N] rename  [L] label  [Del] delete  [Ctrl+Z] undo",
                       (170, 170, 170)))
         lines.append(("[Right click] an end: link to floor above / below, unlink, go to "
                       "its other end; elsewhere: deselect", (170, 170, 170)))
@@ -1810,6 +2006,9 @@ class TerrainEditorDialog:
             self._canvas = pygame.Surface(surf_size, 0, 32)
         canvas = self._canvas
         canvas.blit(self.map_surf, (0, 0))
+        if self.selected_type == "Staircase" and self._stairs_ok():
+            self._ensure_stair_ghosts()
+            self._draw_ghost_floor(canvas)
         self._draw_detected(canvas)
         self._draw_edge_review(canvas)
         if self.selected_type == "Edge":
@@ -1877,6 +2076,8 @@ class TerrainEditorDialog:
                     draw_ladder_glyph(canvas, v[c], h[r], size,
                                       going_up=(tz > z_here), font_sm=self.font_sm)
             if self._stairs_ok() and v and h:
+                if self.selected_type == "Staircase" and self.stair_ghosts:
+                    self._draw_ghost_stairs(canvas, v, h, size)
                 self._draw_staircases(canvas, v, h, size)
             # Where a dragged ladder / staircase end will land.
             drag = self.portal_drag

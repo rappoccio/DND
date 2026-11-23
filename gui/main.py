@@ -72,7 +72,7 @@ from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
 from dungeon import Dungeon, MapPage, dungeon_path_for
 import grid_rescale
-from floor_overlay import FloorAlign
+from floor_overlay import FloorAlign, load_floor_ghosts
 from xp import compute_encounter_xp, cr_to_xp, level_for_xp, xp_for_level
 from tracker import Tracker
 # S1: every save that a crash could tear goes through this (MULTIPLAYER_PLAN.md).
@@ -1906,7 +1906,9 @@ class App:
                                  ask_menu=lambda title, pairs, anchor:
                                      self._ask_dm("action", title, pairs, anchor=anchor),
                                  on_stair_goto=self._editor_stair_goto,
-                                 grid_scale=self.base_map_scale)
+                                 grid_scale=self.base_map_scale,
+                                 ghost_loader=(lambda z: load_floor_ghosts(self, z))
+                                 if self.dungeon is not None else None)
         self.terrain_editor.set_view(*view)
 
     def _editor_stair_goto(self, sid: int, end_index: int):
