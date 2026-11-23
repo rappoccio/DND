@@ -635,7 +635,7 @@ class App:
         self.show_lighting_overlay = False  # Toggle for lighting visualization
         # The DM's room keys ("K10") from the dungeon manifest's per-page "rooms". DM-only:
         # the player screen is served the page PNG, never this screen. On by default; the
-        # Dungeon Configuration menu's Show/Hide Room Labels flips it for the session.
+        # Dungeon menu's Show/Hide Room Labels flips it for the session.
         self.show_room_labels = True
         self._room_label_hits: list = []     # [(screen Rect, RoomLabel)] from the last draw
         self._room_label_surfs: dict = {}    # key -> outlined text surface (cached)
@@ -883,7 +883,7 @@ class App:
         self._net_pumping = False
         # NOT started here. `__init__` builds an App; `run()` starts one (see `net.link`).
 
-        # NOTE: dungeon manifests are opened explicitly (Dungeon Configuration →
+        # NOTE: dungeon manifests are opened explicitly (Dungeon →
         # Open Dungeon…). Startup stays a blank single-map scene even when a
         # <base>.dungeon.json sits beside this map's encounter.
 
@@ -1259,17 +1259,11 @@ class App:
         # Items… (plans/ITEMS_AND_CHESTS_PLAN.md I4) shares the Lighting row.
         self.btn_items = Button(pygame.Rect(px, light_y, W, B), "Items…",
                                 (105, 95, 60), (145, 130, 85), font=self.font_md)
-        # DM-mode: carve a fresh terrain floor plan AND fill its rooms with a
-        # progressive-difficulty encounter in one shot ("Terrain: Keep (mobs only)" in the
-        # dialog populates the existing terrain instead — the old two-step via
-        # Terrain… → Generate…, which still works for hand-made maps).
-        gen_y = light_y + B + self._BTN_GAP
-        self.btn_generate_dungeon = Button(pygame.Rect(px, gen_y, W, B), "Generate Dungeon",
-                                           (110, 85, 60), (150, 115, 80), font=self.font_md)
-        # Multi-map dungeons (FLOORS_IMPLEMENTATION_PLAN.md Phase 6): New/Open/Save a
-        # .dungeon.json manifest, add/remove pages, place pages on the global grid.
-        dung_y = gen_y + B + self._BTN_GAP
-        self.btn_dungeon = Button(pygame.Rect(px, dung_y, W, B), "Dungeon Configuration",
+        # One Dungeon button (plans/DUNGEON_WIZARD_PLAN.md D1): New / Open / Floors… /
+        # Populate Floor… and the rest. It replaced Generate Dungeon and Dungeon
+        # Configuration (W3).
+        dung_y = light_y + B + self._BTN_GAP
+        self.btn_dungeon = Button(pygame.Rect(px, dung_y, W, B), "Dungeon…",
                                   (95, 80, 115), (130, 110, 155), font=self.font_md)
         toggle_walls_y = dung_y + B + self._BTN_GAP
         self.btn_toggle_walls = Button(pygame.Rect(px, toggle_walls_y, W, B),
@@ -6681,8 +6675,8 @@ class App:
     def _modal_select_items(self, title: str, items: list[str], selection: set[str] | list, multi_select: bool=True) -> None:
         return app_dungeon_gen.modal_select_items(self, title, items, selection, multi_select)
 
-    def _modal_generate_dungeon(self) -> dict | None:
-        return app_dungeon_gen.modal_generate_dungeon(self)
+    def _modal_generate_dungeon(self, populate: bool = False) -> dict | None:
+        return app_dungeon_gen.modal_generate_dungeon(self, populate=populate)
 
     def _modal_pick_mobs(self, bestiary, cr, types, languages, boss_on, excluded: set, boss: list) -> dict | None:
         return app_dungeon_gen.modal_pick_mobs(self, bestiary, cr, types, languages, boss_on, excluded, boss)
@@ -9696,12 +9690,7 @@ class App:
                     items_play.show_items_menu(self, anchor=(self.btn_items.rect.x,
                                                              self.btn_items.rect.y))
 
-                # Generate Dungeon — fill the map's rooms with a progressive encounter
-                if _hit(self.btn_generate_dungeon):
-                    app_dungeon_gen.on_generate_dungeon(self)
-
-                # Dungeon Configuration — New / Open / Save a multi-map dungeon
-                # manifest, edit pages
+                # Dungeon… — New / Open / Floors… / Populate Floor… and the rest
                 if _hit(self.btn_dungeon):
                     dm.show_dungeon_menu(self)
 
@@ -10098,6 +10087,6 @@ if __name__ == "__main__":
         sys.exit(str(e))
     app = App(start_png, seed=seed)
     if start_manifest is not None:
-        # Same path as Dungeon Configuration → Open: loads the entry page's encounter.
+        # Same path as Dungeon → Open Dungeon…: loads the entry page's encounter.
         app._on_open_dungeon_chosen(start_manifest)
     app.run()

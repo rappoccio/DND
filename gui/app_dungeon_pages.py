@@ -765,7 +765,7 @@ def new_dungeon_write(app, camp_root, camp_name, name, *, scene=None,
 def dungeon_new_loose(app):
     """"No campaign (loose)" (D7): a version-1 manifest beside the map, with the
     CURRENT map + encounter as its (entry) first page at global origin (0, 0, 0).
-    Further pages come from Add Page…."""
+    Further pages come from Dungeon → Floors… → Add…."""
     cols, rows = app._grid_size()
     app._confirm_overwrite([dungeon_path_for(app._save_path)], "New Dungeon",
                             lambda: dungeon_new_write(app, cols, rows))
@@ -1285,7 +1285,7 @@ def staircases_snapshot(app):
             app.dungeon.next_staircase_id)
 
 
-# ── The Staircases… list (Dungeon Configuration) ─────────────────────────
+# ── The Staircases… list (Dungeon menu) ─────────────────────────
 def staircase_summary(app, st) -> str:
     """"Staircase 7 (K21): M (2, 2) floor 0 ↔ U (6, 5) floor 1", or "…, unfinished"."""
     ends = []

@@ -905,8 +905,12 @@ def modal_select_items(app, title: str, items: list[str], selection: set[str] | 
         app.clock.tick(60)
 
 
-def modal_generate_dungeon(app) -> dict | None:
+def modal_generate_dungeon(app, populate: bool = False) -> dict | None:
     """Blocking dialog for the Generate Dungeon (DM-mode) parameters.
+
+    ``populate`` is Dungeon → Populate Floor… (plans/DUNGEON_WIZARD_PLAN.md D3): the
+    same dialog, titled for it, with the carve rows (Floors, Rooms/map, N×M, Terrain)
+    left out and carve forced off.
 
     Returns {cr, min_room, start, end, boss, seed, carve, ...} or None on
     cancel. The start/peak difficulties are the endpoints of the per-room
@@ -939,60 +943,71 @@ def modal_generate_dungeon(app) -> dict | None:
     fw = 180
     row_h = 40
     y0 = box.y + 60
+    # Rows by name; Populate Floor leaves the carve rows out and closes the gaps, and a
+    # row it leaves out is parked off-screen (never drawn or handled).
+    labels = ["Target CR", "Min room cells", "Start difficulty",
+              "Peak difficulty", "Boss finale", "Seed", "Mob type", "Languages",
+              "Floors", "Rooms/map", "Mob groups/map (0=all)", "Each floor (N×M)",
+              "NPC automation",
+              "Terrain"]
+    all_rows = list(labels)
+    if populate:
+        labels = [lab for lab in labels
+                  if lab not in ("Floors", "Rooms/map", "Each floor (N×M)", "Terrain")]
+    row_y = {lab: y0 + i * row_h for i, lab in enumerate(labels)}
 
-    cr_step   = IntStepper(pygame.Rect(fx, y0 + 0 * row_h, fw, 30), 5, 0, 30, font=app.font_md)
-    room_step = IntStepper(pygame.Rect(fx, y0 + 1 * row_h, fw, 30), 9, 1, 99, font=app.font_md)
-    seed_inp  = TextInput(pygame.Rect(fx, y0 + 5 * row_h, fw, 30), placeholder="random", font=app.font_md)
+    def ry(i):
+        return row_y.get(all_rows[i], -1000)
+
+    cr_step   = IntStepper(pygame.Rect(fx, ry(0), fw, 30), 5, 0, 30, font=app.font_md)
+    room_step = IntStepper(pygame.Rect(fx, ry(1), fw, 30), 9, 1, 99, font=app.font_md)
+    seed_inp  = TextInput(pygame.Rect(fx, ry(5), fw, 30), placeholder="random", font=app.font_md)
     # Floors > 1 builds a stacked multi-floor dungeon (fresh layout + encounter per
     # floor, linked by ladders); Rooms/floor is the carver's per-floor room count.
-    floors_step = IntStepper(pygame.Rect(fx, y0 + 8 * row_h, fw, 30), 1, 1, 8, font=app.font_md)
-    roomsfloor_step = IntStepper(pygame.Rect(fx, y0 + 9 * row_h, fw, 30), 4, 3, 12, font=app.font_md)
+    floors_step = IntStepper(pygame.Rect(fx, ry(8), fw, 30), 1, 1, 8, font=app.font_md)
+    roomsfloor_step = IntStepper(pygame.Rect(fx, ry(9), fw, 30), 4, 3, 12, font=app.font_md)
     # "Each floor: N×M" — tile each floor with N (across) by M (down) maps, laid out
     # edge-to-edge and reachable via the map-paging HUD (both 1 = single map/floor).
-    nm_y = y0 + 11 * row_h
+    nm_y = ry(11)
     mapsx_step = IntStepper(pygame.Rect(fx,           nm_y, 82, 30), 1, 1, 4, font=app.font_md)
     mapsy_step = IntStepper(pygame.Rect(fx + fw - 82, nm_y, 82, 30), 1, 1, 4, font=app.font_md)
     # npc_automation_difficulty_level written on every mob. Level 1+ hands the strategy choice to the
     # engine's difficulty resolver (role + level at turn time; 4 = best heuristics — casters pick
     # Heal/Control/Support/AoE dynamically). Level 0 keeps the generator's fixed per-category
     # strategies (the legacy Simple/PreferRange/PreferAOE table in encounter_generator.py).
-    auto_step = IntStepper(pygame.Rect(fx, y0 + 12 * row_h, fw, 30), 4, 0, 6, font=app.font_md)
+    auto_step = IntStepper(pygame.Rect(fx, ry(12), fw, 30), 4, 0, 6, font=app.font_md)
     # How many rooms per map get a mob group (0 = every room). The entrance stays
     # empty regardless, and a boss finale always counts as one of the groups.
-    groups_step = IntStepper(pygame.Rect(fx, y0 + 10 * row_h, fw, 30), 0, 0, 99, font=app.font_md)
+    groups_step = IntStepper(pygame.Rect(fx, ry(10), fw, 30), 0, 0, 99, font=app.font_md)
     start_i, end_i, boss_on = [0], [2], [True]     # Easy -> Hard, boss on
     # Carve a fresh floor plan, or keep the map's terrain and generate mobs only.
     # A premade dungeon (manifest open) defaults to mobs only: its floors are drawn.
-    carve_on = [app.dungeon is None]
+    carve_on = [app.dungeon is None and not populate]
     CARVE_TXT = {True: "New", False: "Keep (mobs only)"}
     type_selection, lang_selection = set(), set()  # multi-select for both
     # The mob picker's choices, kept across Back so a tweak here doesn't lose them.
     mob_excluded, mob_boss = set(), [None]
 
-    btn_start = Button(pygame.Rect(fx, y0 + 2 * row_h, fw, 30), DIFFS[start_i[0]],
+    btn_start = Button(pygame.Rect(fx, ry(2), fw, 30), DIFFS[start_i[0]],
                        (70, 90, 120), (95, 115, 150), font=app.font_md)
-    btn_end   = Button(pygame.Rect(fx, y0 + 3 * row_h, fw, 30), DIFFS[end_i[0]],
+    btn_end   = Button(pygame.Rect(fx, ry(3), fw, 30), DIFFS[end_i[0]],
                        (70, 90, 120), (95, 115, 150), font=app.font_md)
-    btn_boss  = Button(pygame.Rect(fx, y0 + 4 * row_h, fw, 30), "ON",
+    btn_boss  = Button(pygame.Rect(fx, ry(4), fw, 30), "ON",
                        (60, 110, 70), (80, 140, 90), font=app.font_md)
-    btn_carve = Button(pygame.Rect(fx, y0 + 13 * row_h, fw, 30), CARVE_TXT[carve_on[0]],
+    btn_carve = Button(pygame.Rect(fx, ry(13), fw, 30), CARVE_TXT[carve_on[0]],
                        (60, 110, 70), (80, 140, 90), font=app.font_md)
     type_label = ["Any type"]
-    btn_type = Button(pygame.Rect(fx, y0 + 6 * row_h, fw, 30), type_label[0],
+    btn_type = Button(pygame.Rect(fx, ry(6), fw, 30), type_label[0],
                       (70, 90, 120), (95, 115, 150), font=app.font_md)
     lang_label = ["Any language"]
-    btn_lang = Button(pygame.Rect(fx, y0 + 7 * row_h, fw, 30), lang_label[0],
+    btn_lang = Button(pygame.Rect(fx, ry(7), fw, 30), lang_label[0],
                       (70, 90, 120), (95, 115, 150), font=app.font_md)
-    gen    = Button(pygame.Rect(box.right - 220, box.bottom - 46, 95, 32), "Generate",
+    gen    = Button(pygame.Rect(box.right - 220, box.bottom - 46, 95, 32),
+                    "Populate" if populate else "Generate",
                     (60, 110, 70), (80, 140, 90), font=app.font_md)
     cancel = Button(pygame.Rect(box.right - 115, box.bottom - 46, 95, 32), "Cancel",
                     (110, 60, 60), (150, 80, 80), font=app.font_md)
 
-    labels = ["Target CR", "Min room cells", "Start difficulty",
-              "Peak difficulty", "Boss finale", "Seed", "Mob type", "Languages",
-              "Floors", "Rooms/map", "Mob groups/map (0=all)", "Each floor (N×M)",
-              "NPC automation",
-              "Terrain"]
     overlay = pygame.Surface((sw, sh), pygame.SRCALPHA)
     overlay.fill((0, 0, 0, 170))
     while True:
@@ -1005,10 +1020,11 @@ def modal_generate_dungeon(app) -> dict | None:
             cr_step.handle(event)
             room_step.handle(event)
             seed_inp.handle(event)
-            floors_step.handle(event)
-            roomsfloor_step.handle(event)
-            mapsx_step.handle(event)
-            mapsy_step.handle(event)
+            if not populate:
+                floors_step.handle(event)
+                roomsfloor_step.handle(event)
+                mapsx_step.handle(event)
+                mapsy_step.handle(event)
             auto_step.handle(event)
             groups_step.handle(event)
             if btn_start.clicked(event):
@@ -1020,7 +1036,7 @@ def modal_generate_dungeon(app) -> dict | None:
             if btn_boss.clicked(event):
                 boss_on[0] = not boss_on[0]
                 btn_boss.text = "ON" if boss_on[0] else "OFF"
-            if btn_carve.clicked(event):
+            if not populate and btn_carve.clicked(event):
                 carve_on[0] = not carve_on[0]
                 btn_carve.text = CARVE_TXT[carve_on[0]]
             if btn_type.clicked(event):
@@ -1073,20 +1089,24 @@ def modal_generate_dungeon(app) -> dict | None:
         app.screen.blit(overlay, (0, 0))
         pygame.draw.rect(app.screen, (35, 35, 50), box, border_radius=8)
         pygame.draw.rect(app.screen, (90, 90, 110), box, 1, border_radius=8)
-        app.screen.blit(app.font_lg.render("Generate Dungeon", True, (235, 235, 245)),
+        app.screen.blit(app.font_lg.render("Populate Floor" if populate else "Generate Dungeon",
+                                           True, (235, 235, 245)),
                          (lx, box.y + 18))
         for i, lab in enumerate(labels):
             # Floors / Rooms/map / N×M only shape a carve; dim them when mobs only.
             dim = not carve_on[0] and lab in ("Floors", "Rooms/map", "Each floor (N×M)")
             app.screen.blit(app.font_md.render(lab, True,
                                                  (110, 110, 125) if dim else (185, 185, 200)),
-                             (lx, y0 + i * row_h + 6))
+                             (lx, row_y[lab] + 6))
         # "×" separator between the two N×M steppers.
         xt = app.font_md.render("×", True, (185, 185, 200))
-        app.screen.blit(xt, (fx + fw // 2 - xt.get_width() // 2, nm_y + 6))
-        for w in (cr_step, room_step, seed_inp, btn_start, btn_end, btn_boss, btn_type,
-                  btn_lang, floors_step, roomsfloor_step, mapsx_step, mapsy_step,
-                  auto_step, groups_step, btn_carve, gen, cancel):
+        if not populate:
+            app.screen.blit(xt, (fx + fw // 2 - xt.get_width() // 2, nm_y + 6))
+        shown = [cr_step, room_step, seed_inp, btn_start, btn_end, btn_boss, btn_type,
+                 btn_lang, auto_step, groups_step, gen, cancel]
+        if not populate:
+            shown += [floors_step, roomsfloor_step, mapsx_step, mapsy_step, btn_carve]
+        for w in shown:
             w.draw(app.screen)
         pygame.display.flip()
         app.clock.tick(60)
@@ -1321,6 +1341,26 @@ def on_generate_dungeon(app):
     app._confirm_overwrite(
         app._generation_targets(params, multi=multi, agents_path=dungeon_out_path(app)),
         "Generate Dungeon", lambda: generate_dungeon_with(app, params))
+
+
+def on_populate_floor(app):
+    """Dungeon → Populate Floor… (plans/DUNGEON_WIZARD_PLAN.md D3): fill the current
+    floor's map of the open dungeon with a progressive encounter, keeping its terrain.
+    This is the generator's old "Terrain: Keep (mobs only)"."""
+    if app.dungeon is None:
+        app._flash_status("Populate Floor needs an open dungeon.")
+        return
+    if not getattr(app.bm, "grid_cols", 0):
+        app._modal_message(["Populate Floor",
+                             "No grid on this map — set a grid first."])
+        return
+    params = app._modal_generate_dungeon(populate=True)
+    if not params:
+        return
+    params["carve"] = False
+    app._confirm_overwrite(
+        app._generation_targets(params, multi=False, agents_path=dungeon_out_path(app)),
+        "Populate Floor", lambda: generate_dungeon_with(app, params))
 
 
 def generate_dungeon_with(app, params):

@@ -1,6 +1,6 @@
 # Dungeon wizard: building multi-floor dungeons from premade maps
 
-**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 implemented (266/1, the one a known `test_gameview` flake), uncommitted; W2 next on go.**
+**Status 2026-11-22: Step 0 frozen (signed off by the user, after a grilling session). W1 committed 0daac9a. W2 applied 2026-11-23 after the user checked the overlays (268/0), uncommitted. W3 applied 2026-11-23 (269/0), uncommitted. W4 next on go.**
 
 The problem (user, 2026-11-22): building a multi-floor dungeon from published maps is
 confusing. You open a map, *then* make a dungeon, *then* add a page, *then* set its grid,
@@ -138,8 +138,8 @@ that's left.
 | # | Step | Done |
 | --- | ---- | :--: |
 | W1 | **Data model.** Source sheets and floor crop metadata. Readers and writers in `dungeon.py` / `save_layout.py`, all fields optional (D26). | ✅ |
-| W2 | **Link existing content** (D24). One-off tool, dry run first, overlay PNGs for the user to check, then `--apply`. | ☐ |
-| W3 | **Dungeon button and menu** (D1–D3). Merge the buttons, add the Floors… entry that holds the old overview/add/align, split out Populate Floor…. | ☐ |
+| W2 | **Link existing content** (D24). One-off tool, dry run first, overlay PNGs for the user to check, then `--apply`. | ✅ |
+| W3 | **Dungeon button and menu** (D1–D3). Merge the buttons, add the Floors… entry that holds the old overview/add/align, split out Populate Floor…. | ✅ |
 | W4 | **Wizard shell** (D4–D8). Docked step panel, Back/Next/Cancel/Discard, combat refusal, player placeholder, saving at each step, first screen, Generate path. | ☐ |
 | W5 | **Source, grid, crop, name** (D10–D16). | ☐ |
 | W6 | **Placement and alignment** (D17–D19). | ☐ |
@@ -178,6 +178,58 @@ that's left.
   shrunk), so it searches over scale.
 - The tool writes `<floor>_match.png` overlays to a scratch folder and prints rect/scale per
   floor. Nothing is written without `--apply`, which backs up the files it changes.
+
+### W2 as built (2026-11-22)
+- `tools/link_floor_crops.py <dungeon dir> --sheet <library map | image=name> … [--out DIR] [--apply]`.
+  The container has no Python OpenCV, so matching is numpy/scipy: a masked normalised
+  cross-correlation swept over scale (coarse, then ±5 %), then a sub-pixel polish of
+  (x, y, scale). A floor's flat padding canvas is masked out. Scores of real crops are
+  0.99; anything under 0.9 is "no match" and the floor becomes its own source.
+- **W1 amended:** a crop `rect` may reach past the sheet's edge (negative x/y). Castle
+  Ravenloft's floors are the crop pasted on a 1216×992 canvas, so the rect that gives
+  the floor's full size starts off the sheet; that part is blank padding.
+- Writes on `--apply`: the floor's `crop` (or `source`, when unmatched) into the
+  `map.json` the dungeon reads; the sheet's `source` mark, plus its `manual_grid` when
+  the floors' 16 px cells land within 2 % of whole sheet pixels, into the library
+  `maps/<sheet>/map.json`; a loose sheet is copied into `maps/<name>/`. Changed files
+  are backed up once to `<file>.pre-link-crops`.
+- Dry run, Castle Ravenloft (`--sheet spires-of-ravenloft`):
+  spires-map6 `[326, -34, 857, 699]`, spires-map7 `[-233, -103, 857, 699]`,
+  spires-map8 `[-230, 261, 857, 699]`, north-tower-roof-map9 `[34, 441, 857, 699]`, all
+  at scale 1.4189, scores 0.988–0.998. tower-peaks-map9-10 scores 0.725: it is pieced
+  from two places on the sheet (North Tower Peak and High Tower Peak), so it is its own
+  source, with the five single-level floors. Sheet cell 11.276 px is not whole, so no
+  sheet grid is written; Set Grid will ask once.
+- Dry run, Argynvostholt (`--sheet maps/map-07.01-…-lower-player.jpg=argynvostholt-lower
+  --sheet maps/map-07.02-…-upper-player.jpg=argynvostholt-upper`): ground
+  `[120, 2874, 4562, 3609]` and second `[120, 121, 4562, 2728]` on lower at 0.2225;
+  third, rooftop, beacon-1, beacon-2 on upper at ~0.445; scores 0.988–0.998. Sheet
+  grids: lower 72 px anchor (26, 61), upper 36 px anchor (11, 26).
+- Tests: `tests/test_link_floor_crops.py` (4 cases, synthetic sheets).
+- **Applied 2026-11-23** to both dungeons. Each floor's `map.json` gained only its
+  `crop` or `source` key; doors, walls, grid and the rest are byte-identical to the
+  `.pre-link-crops` backups. `dungeon.json` (staircases, origins) was not touched.
+- Also fixed: the DM window is re-centred after a map load resizes it
+  (`app_persist._keep_window_on_screen`); a window that grew from a small first map
+  ran off the right of the Xvfb display, clipping the panel.
+
+### W3 as built (2026-11-23)
+- One **Dungeon…** panel button (`btn_dungeon`, under Lighting / Items) replaces
+  Generate Dungeon and Dungeon Configuration; the panel is one row shorter.
+- `menus/dm.show_dungeon_menu`, titled "Dungeon":
+  - *No dungeon:* New Dungeon…, **Generate Dungeon…**, Open Campaign…, Open Dungeon….
+    Generate Dungeon… is **interim**: it is today's `on_generate_dungeon` (blank map →
+    named dungeon, or a loose map), kept reachable until W4's wizard Generate path
+    replaces it. W4 removes the row.
+  - *Dungeon open:* exactly D1's list.
+- `show_floors_menu` (Floors…): Overview… (the old Pages / Overview, which already holds
+  Set Entry and Remove), Add… (the old Add Page…), Align Floor. W7's checklist takes it over.
+- `app_dungeon_gen.on_populate_floor`: needs an open dungeon and a grid, opens
+  `modal_generate_dungeon(populate=True)` (titled Populate Floor, the Floors / Rooms/map /
+  N×M / Terrain rows left out, button "Populate"), forces `carve` off, and writes the
+  page's own encounter through the usual overwrite confirmation.
+- Strings that named "Dungeon Configuration" (staircase-tool hints, comments) now say "Dungeon".
+- Tests: `tests/test_dungeon_menu.py` (7 cases); headless click-through via `gui_driver`.
 
 ### D25 commands (for the user to run; Claude never runs `rm -rf`)
 ```bash

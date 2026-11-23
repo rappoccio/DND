@@ -162,8 +162,7 @@ def reposition_panel(app):
     ls_y           = rd_y          + B + G
     ter_y          = ls_y          + B + G
     light_y        = ter_y         + B + G
-    gen_y          = light_y       + B + G
-    dung_y         = gen_y         + B + G
+    dung_y         = light_y       + B + G
     toggle_walls_y = dung_y        + B + G
     toggle_fog_y   = toggle_walls_y + B + G
     toggle_anim_y  = toggle_fog_y  + B + G
@@ -199,7 +198,6 @@ def reposition_panel(app):
     app.btn_terrain.rect.update(px, ter_y + off, W, B)
     app.btn_lighting.rect.update(px, light_y + off, SW, B)
     app.btn_items.rect.update(px + SW + 4, light_y + off, SW, B)
-    app.btn_generate_dungeon.rect.update(px, gen_y + off, W, B)
     app.btn_dungeon.rect.update(px, dung_y + off, W, B)
     app.btn_toggle_walls.rect.update(px, toggle_walls_y + off, W, B)
     app.btn_fog.rect.update(px, toggle_fog_y + off, W, B)
@@ -1041,10 +1039,7 @@ def draw_panel(app):
     app.btn_lighting.draw(app.screen)
     app.btn_items.draw(app.screen)
 
-    # ── Generate Dungeon (DM-mode) ─────────────────────────────────────
-    app.btn_generate_dungeon.draw(app.screen)
-
-    # ── Dungeon manifest menu (New / Open / Save / pages) ───────────────
+    # ── Dungeon… (New / Open / Floors… / Populate Floor… / save, releases) ──
     app.btn_dungeon.draw(app.screen)
 
     # ── Toggle Wall Auto-Detection button ──────────────────────────────

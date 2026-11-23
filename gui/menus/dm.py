@@ -420,50 +420,72 @@ def show_lighting_menu(app):
 #  The manifest is placement-only; each page's scene lives in its own
 #  encounter sidecars (agents/terrain/lighting/effects).
 # ─────────────────────────────────────────────────────────────────────
+def _dungeon_gen():
+    # Lazy: app_dungeon_gen → app_dungeon_pages imports this module.
+    import app_dungeon_gen
+    return app_dungeon_gen
+
+
+def _dungeon_anchor(app):
+    return (app.btn_dungeon.rect.x, app.btn_dungeon.rect.y)
+
+
 def show_dungeon_menu(app):
-    """Popup for the "Dungeon Configuration" panel button. The item set depends
-    on whether a manifest is currently open."""
+    """Popup for the "Dungeon…" panel button (plans/DUNGEON_WIZARD_PLAN.md D1). The
+    item set depends on whether a dungeon is open."""
+    anchor = _dungeon_anchor(app)
     if app.dungeon is None:
         items = [
             ("New Dungeon…",           app._dungeon_new),
+            # Until the wizard's Generate path (W4) exists, the generator for a
+            # fresh dungeon (the blank map) or a loose map is reached from here.
+            ("Generate Dungeon…",      lambda: _dungeon_gen().on_generate_dungeon(app)),
             ("Open Campaign…",         app._open_campaign),
             ("Open Dungeon…",          app._dungeon_open_browser),
         ]
     else:
         items = [
-            ("Pages / Overview…", app._dungeon_pages_overview),
-            ("Add Page…",         app._dungeon_add_page_browser),
-            ("Align Floor",       lambda: app.floor_align.start(app)),
+            ("Floors…",           lambda: show_floors_menu(app)),
             ("Staircases…",       lambda: show_staircases_menu(app)),
+            ("Populate Floor…",   lambda: _dungeon_gen().on_populate_floor(app)),
             ("Hide Room Labels" if app.show_room_labels else "Show Room Labels",
                                   app._toggle_room_labels),
             ("Save Dungeon",      app._dungeon_save_confirmed),
             ("Save Game",         lambda: saves.save_game(app)),
             ("Release",           lambda: run_control.make_release(app)),
             ("Releases…",         lambda: run_control.show_releases_menu(
-                app, anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y),
-                parent=app.prompts.answering)),
+                app, anchor=anchor, parent=app.prompts.answering)),
             ("Reset Dungeon",     lambda: run_control.ask_reset(
-                app, anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y),
-                parent=app.prompts.answering)),
+                app, anchor=anchor, parent=app.prompts.answering)),
             ("Undo Reset",        lambda: run_control.ask_undo_reset(
-                app, anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y),
-                parent=app.prompts.answering)),
+                app, anchor=anchor, parent=app.prompts.answering)),
             ("Open Campaign…",    app._open_campaign),
             ("Open Dungeon…",     app._dungeon_open_browser),
             ("Close Dungeon",     app._dungeon_close),
         ]
         if isinstance(app.store, CampaignStore):     # U4: another dungeon of this campaign
             items.insert(-3, ("New Dungeon…", app._dungeon_new))
-    app._ask_dm("action", "Dungeon configuration", items,
-                 anchor=(app.btn_dungeon.rect.x, app.btn_dungeon.rect.y))
+    app._ask_dm("action", "Dungeon", items, anchor=anchor)
+
+
+def show_floors_menu(app, anchor=None):
+    """Dungeon → Floors… (D2): the overview (place pages, set the entry, remove), Add a
+    page to the current floor, and Align Floor. W7's checklist takes this over."""
+    if anchor is None:
+        anchor = _dungeon_anchor(app)
+    items = [
+        ("Overview…",   app._dungeon_pages_overview),
+        ("Add…",        app._dungeon_add_page_browser),
+        ("Align Floor", lambda: app.floor_align.start(app)),
+    ]
+    app._ask_dm("action", "Floors", items, anchor=anchor, parent=app.prompts.answering)
 
 
 def show_staircases_menu(app, anchor=None):
     """Every staircase in the dungeon, with both ends and whether it is unfinished. Each
     row opens its own menu: go to either end, rename, relabel, delete."""
     if anchor is None:
-        anchor = (app.btn_dungeon.rect.x, app.btn_dungeon.rect.y)
+        anchor = _dungeon_anchor(app)
     stairs = sorted(app.dungeon.staircases, key=lambda st: st.id) if app.dungeon else []
     if not stairs:
         app._flash_status("No staircases yet: place one with the terrain editor's "

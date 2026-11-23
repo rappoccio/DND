@@ -6,7 +6,7 @@
   · a headless App draws each key centred on its cell, only on the page that owns it;
   · hovering a key gives "K10. Dining Hall" (the bare key when unnamed), and a token on
     the cell keeps its own tooltip;
-  · the Dungeon Configuration menu's Hide / Show Room Labels turns the layer off and on;
+  · the Dungeon menu's Hide / Show Room Labels turns the layer off and on;
   · nothing of it reaches a player's view.
 """
 

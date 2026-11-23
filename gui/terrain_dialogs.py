@@ -1140,7 +1140,7 @@ class TerrainEditorDialog:
         landing), or place an end. ``place`` (Shift+click) places even on a cell that
         already holds an end, so two staircases can share a landing (D2)."""
         if not self._stairs_ok():
-            self.stair_message = ("Staircases need a dungeon: Dungeon Configuration → "
+            self.stair_message = ("Staircases need a dungeon: Dungeon → "
                                   "New Dungeon or Open Dungeon.")
             return
         c = (int(cell.col), int(cell.row))
@@ -1341,7 +1341,7 @@ class TerrainEditorDialog:
     def _stair_hud_lines(self):
         """(text, colour) lines under the tool list while the Staircase tool is on."""
         if not self._stairs_ok():
-            return [("Staircase: needs a dungeon (Dungeon Configuration → New Dungeon "
+            return [("Staircase: needs a dungeon (Dungeon → New Dungeon "
                      "or Open Dungeon)", (230, 140, 140))]
         d = self.dungeon
         z = d.page_by_id(self.page_id).z
