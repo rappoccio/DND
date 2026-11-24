@@ -23,7 +23,7 @@ reference counts in the combat sources on 2026-07-07.
 | Bard      |   [x]   |    4/4     | Countercharm, Dance/Lore L14 (deferred) |
 | Cleric    |   [x]   |    5/5     | —                                       |
 | Druid     |   [x]   |    4/4     | —                                       |
-| Fighter   |   [x]   |    4/4     | —                                       |
+| Fighter   |   [x]   |    5/5     | —                                       |
 | Monk      |   [x]   |    4/4     | —                                       |
 | Paladin   |   [x]   |    4/4     | —                                       |
 | Ranger    |   [x]   |    4/4     | —                                       |
@@ -72,6 +72,7 @@ reference counts in the combat sources on 2026-07-07.
 - [x] Battle Master
 - [x] Psi Warrior
 - [x] Eldritch Knight (War Magic / Eldritch Strike / Arcane Charge)
+- [x] Arcane Archer (see `ARCANE_ARCHER_PLAN.md`; Enfeebling Shot, Magical Ammunition, Lore, DDB import and NPC use deferred — `known_limitations.md`)
 
 ## Monk
 - [x] Base chassis (L2–L20)

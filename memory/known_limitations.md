@@ -844,6 +844,31 @@ Spellcasting chassis (L3: third-caster INT/Wizard, `compute_third_caster_slots` 
 
 </details>
 
+### Arcane Archer — IMPLEMENTED, with these limits (2026-11-24)
+See `plans/ARCANE_ARCHER_PLAN.md`. Tests `tests/test_banishment.py`, `tests/test_arcane_archer.py`,
+`tests/test_arcane_archer_high.py`. Implemented: Arcane Shot (Banishing, Beguiling, Bursting, Grasping,
+Piercing, Seeking, Shadow), Curving Shot, Ever-Ready Shot, Indomitable Teleport, Masterful Shots, and
+the Banishment spell the Banishing Shot is built on.
+- **[DEFER] Enfeebling Shot** (D4): not in `ArcaneShotOption`. Needs a hook where a Poisoned
+  attacker subtracts one Arcane Shot die from its damage rolls.
+- **[DEFER] Magical Ammunition** (L3, D7): not modelled. Archer attacks don't count as magical for
+  resistance/immunity to nonmagical damage.
+- **[LIMITATION] Ammunition** (D1): no Ammunition property is modelled, so any ranged weapon attack
+  qualifies for the on-hit options (thrown included). Thrown weapons are not offered Piercing/Seeking
+  Shot (no weapon-drop step) and don't trigger Curving Shot.
+- **[LIMITATION] Seeking Shot**: "seen in the past minute" isn't tracked; any creature on the
+  archer's level within long range qualifies.
+- **[LIMITATION] Beguiling Shot** (D6): always Charmed by the archer (no ally choice). The early end
+  fires on the archer's attack, Bursting Shot damage, or a Harm spell aimed at the target; other
+  forced saves from the archer don't end it.
+- **[LIMITATION] Masterful Shots**: weapon attack misses only; the move is a direct placement (no OA,
+  no movement budget). **Indomitable Teleport**: spell saves only, like Indomitable itself.
+- **🚫 Arcane Archer Lore** (L3 cantrip + skill): flavor, not modelled.
+- **[DEFER] D&D Beyond import**: `tools/import_character.py` doesn't map "Arcane Archer" and doesn't
+  read the known Arcane Shot options; set them in character setup.
+- **[DEFER] NPC support** (D9): PC only. No `runNpcTurn` heuristic, no NPC policy; NPC archers never
+  use Arcane Shot.
+
 ### NOT IMPLEMENTED (Model boundary)
 - **[DEFER] Indomitable** (L9): save-reroll resource
 - **[DEFER] Studied Attacks** (L13): advantage on next attack vs missed creature
