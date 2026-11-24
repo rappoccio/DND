@@ -2554,6 +2554,10 @@ void bindTypes(py::module_& m) {
              "physical (-1 = none).")
         .def_readwrite("curse_vuln_prev_mult", &ActiveAgentCondition::curse_vuln_prev_mult,
              "Target's prior damage multiplier for the cursed type, restored when the curse ends.")
+        // ── Banished (Banishment spell / Banishing Shot) ─────────────────────────
+        .def_readwrite("banish_sends_home", &ActiveAgentCondition::banish_sends_home,
+             "Banishment spell: an extraplanar target banished for the full duration doesn't return.")
+        .def_readwrite("banish_prev_untouchable", &ActiveAgentCondition::banish_prev_untouchable)
         .def("__repr__", [](const ActiveAgentCondition& c){
             return "<ActiveAgentCondition '" + c.condition_name
                  + "' on agent[" + std::to_string(c.agent_idx)

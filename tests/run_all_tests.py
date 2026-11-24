@@ -474,6 +474,7 @@ test_scripts = [
     "test_legendary_spells.py",
     "test_strahd_lair.py",
     "test_untouchable.py",
+    "test_banishment.py",
     "test_send_to_floor.py",
     "test_border_doors.py",
     "test_death_burst.py",

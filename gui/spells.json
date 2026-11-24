@@ -616,21 +616,33 @@
     "name": "Banishment",
     "description": "One creature that you can see within range must succeed on a Charisma saving throw or be transported to a harmless demiplane for the duration. While there, the target has the Incapacitated condition. When the spell ends, the target reappears in the space it left or in the nearest unoccupied space if that space is occupied. If the target is an Aberration, a Celestial, an Elemental, a Fey, or a Fiend, the target doesn't return if the spell lasts for 1 minute. The target is instead transported to a random location on a plane (GM's choice) associated with its creature type.",
     "type": "Harm",
-    "geometry": "Single",
+    "geometry": "Multiple",
     "attack_type": "Save",
     "save_ability": "SaveCha",
     "range": 30,
     "radius": 0,
     "width": 0,
     "length": 0,
-    "duration": 1,
+    "duration": 10,
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 4,
     "upcast_dice_bonus": 0,
+    "num_targets": 1,
+    "targets_per_upcast_level": 1,
     "requires_concentration": true,
     "requires_los": true,
     "check_los_on_center": true,
+    "conditions": [
+      {
+        "condition_name": "Banished",
+        "condition_duration": 0,
+        "requires_save": true,
+        "save_ability": "SaveCha",
+        "save_repeat_turns": -1,
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ],
     "school": "abjuration"
   },
   {

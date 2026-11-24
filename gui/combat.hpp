@@ -1621,6 +1621,19 @@ public:
     // they expire as the bard's next turn begins (tickAgentConditionsForCaster).
     void applyCommandEffect(BattleMap& bm, int bard_idx, int target_idx, int word) noexcept;
 
+    // ── Banishment (Banishment spell; Arcane Archer Banishing Shot) ───────
+    // Banish target_idx: a tracked "Banished" condition = Untouchable + Incapacitated (Speed 0,
+    // concentration broken). `turns` ticks at source_idx's turn starts (tickAgentConditionsForCaster):
+    // the spell passes the caster and its duration (concentration drop ends it early); Banishing
+    // Shot passes the TARGET as source with turns = 2, i.e. "until the end of its next turn".
+    // On any end path the creature reappears in its space, or the nearest unoccupied one. With
+    // sends_home, an Aberration/Celestial/Elemental/Fey/Fiend whose banishment runs its full
+    // duration is instead removed from play. Returns the condition id, or -1 if none was applied.
+    int banish(BattleMap& bm, int target_idx, int source_idx, int turns,
+               bool sends_home = false, int spell_idx = -1) noexcept;
+    // Put a creature whose banishment ended back on the board (its space, else the nearest free one).
+    void returnFromBanishment(BattleMap& bm, int idx) noexcept;
+
     // ── Abjurer Wizard Arcane Ward ────────────────────────────────────────
     // Expend a spell slot as a bonus action to charge Arcane Ward (L3+).
     // Adds 2 × slot_level HP to the ward (capped at max = 2 × level + INT mod).

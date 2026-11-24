@@ -2403,6 +2403,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
                     cond.condition_name = spell_cond.condition_name;
                     cond.save_ability = spell_cond.save_ability;
                     cond.on_damage = spell_cond.on_damage;
+                    // The Banishment spell's "doesn't return after 1 minute" clause (an extraplanar
+                    // target that stays banished for the full duration goes home). Banishing Shot
+                    // calls CombatEngine::banish directly and never sets it.
+                    cond.banish_sends_home = (spell_cond.condition_name == "Banished");
 
                     // Condition duration: if condition_duration is 0, use spell duration
                     cond.turns_remaining = (spell_cond.condition_duration > 0) ? spell_cond.condition_duration : sp.duration;
@@ -4216,6 +4220,30 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
         return;
     }
     // Blade Ward — clear the attackers' -1d4 on every end path (concentration drop, expiry, Dispel).
+    // Banished — restore the Untouchable flag and lift the incapacitation, then bring the creature
+    // back. The Banishment spell's planar clause: an extraplanar creature whose banishment EXPIRED
+    // (turns_remaining ran out, i.e. the full duration — every early end path such as a dropped
+    // concentration or Dispel Magic removes it with turns left) is sent home instead.
+    if (n == "Banished") {
+        Agent::Conditions ac = bm.getAgentConditions(cond.agent_idx);
+        ac.untouchable   = cond.banish_prev_untouchable;
+        ac.incapacitated = false;
+        bm.setAgentConditions(cond.agent_idx, ac);
+        constexpr uint32_t kHomeTypes = CT_Aberration | CT_Celestial | CT_Elemental |
+                                        CT_Fey | CT_Fiend;
+        const bool extraplanar =
+            (bm.getAgentStats(cond.agent_idx).creatureTypeMask() & kHomeTypes) != 0;
+        if (cond.banish_sends_home && cond.turns_remaining <= 0 && extraplanar) {
+            (void)dropConcentration(bm, cond.agent_idx);
+            bm.setAgentRemovedFromPlay(cond.agent_idx, true);
+            log_("Banishment: {} stayed banished for the full minute and doesn't return — it is "
+                 "sent to a plane associated with its creature type", agentName(bm, cond.agent_idx));
+            return;
+        }
+        restoreMovementAfterIncapacitation(bm, cond.agent_idx);
+        returnFromBanishment(bm, cond.agent_idx);
+        return;
+    }
     if (n == "BladeWarded") {
         Agent::Stats st = bm.getAgentStats(cond.agent_idx);
         st.blade_warded = false;

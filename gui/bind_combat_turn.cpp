@@ -1001,6 +1001,14 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("condition_id"),
              "Explicitly remove an active agent condition by its ID.\n"
              "Fires the condition's caster kickback (Vistani Curse) before erasing.")
+        .def("banish",
+             &CombatEngine::banish,
+             py::arg("battle_map"), py::arg("target_idx"), py::arg("source_idx"), py::arg("turns"),
+             py::arg("sends_home") = false, py::arg("spell_idx") = -1,
+             "Banish target_idx (Banishment / Banishing Shot): a 'Banished' condition = Untouchable +\n"
+             "Incapacitated, ticking at source_idx's turn starts. On end the creature returns to its\n"
+             "space or the nearest unoccupied one; with sends_home an Aberration/Celestial/Elemental/\n"
+             "Fey/Fiend whose banishment expires is removed from play. Returns the condition id or -1.")
         .def("curse_save_disadvantage",
              &CombatEngine::curseSaveDisadvantage,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("save_ability"),

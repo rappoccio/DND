@@ -100,6 +100,8 @@ nlohmann::json conditionToJson(const ActiveAgentCondition& c)
         {"curse_disadv_ability", c.curse_disadv_ability},
         {"curse_vuln_type_code", c.curse_vuln_type_code},
         {"curse_vuln_prev_mult", c.curse_vuln_prev_mult},
+        {"banish_sends_home", c.banish_sends_home},
+        {"banish_prev_untouchable", c.banish_prev_untouchable},
     };
 }
 
@@ -140,6 +142,8 @@ ActiveAgentCondition conditionFromJson(const nlohmann::json& j)
     c.curse_disadv_ability = j.value("curse_disadv_ability", c.curse_disadv_ability);
     c.curse_vuln_type_code = j.value("curse_vuln_type_code", c.curse_vuln_type_code);
     c.curse_vuln_prev_mult = j.value("curse_vuln_prev_mult", c.curse_vuln_prev_mult);
+    c.banish_sends_home       = j.value("banish_sends_home", c.banish_sends_home);
+    c.banish_prev_untouchable = j.value("banish_prev_untouchable", c.banish_prev_untouchable);
     return c;
 }
 
@@ -1077,6 +1081,80 @@ void CombatEngine::applyCommandEffect(BattleMap& bm, int bard_idx, int target_id
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Banishment (shared by the Banishment spell and the Arcane Archer's Banishing Shot)
+// ─────────────────────────────────────────────────────────────────────────────
+
+int CombatEngine::banish(BattleMap& bm, int target_idx, int source_idx, int turns,
+                         bool sends_home, int spell_idx) noexcept
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (target_idx < 0 || target_idx >= n || turns <= 0) return -1;
+    ActiveAgentCondition c;
+    c.agent_idx         = target_idx;
+    c.caster_idx        = source_idx;   // the duration ticks at THIS agent's turn starts
+    c.spell_idx         = spell_idx;
+    c.condition_name    = "Banished";
+    c.turns_remaining   = turns;
+    c.save_repeat_turns = -1;           // no save to shrug it off
+    c.next_save_turn    = -1;
+    c.banish_sends_home = sends_home;
+    return addAgentCondition(bm, c);
+}
+
+void CombatEngine::returnFromBanishment(BattleMap& bm, int idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return;
+    const Cell home = agents[static_cast<std::size_t>(idx)].origin;
+    const int  size = agents[static_cast<std::size_t>(idx)].agent->getSize();
+
+    // Does an origin fit the creature's whole footprint clear of every other creature still in
+    // play? (Others may have walked into its space while it was away — Untouchable blocks nothing.)
+    auto clearOfOthers = [&](Cell o) -> bool {
+        for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+            if (i == idx) continue;
+            const PlacedAgent& pa = agents[static_cast<std::size_t>(i)];
+            if (pa.removed_from_play || pa.agent->getStats().hp_cur <= 0) continue;
+            if (pa.origin.z != o.z) continue;
+            const Cell oo = pa.origin;
+            const int  os = pa.agent->getSize();
+            const bool overlap = !(o.col + size - 1 < oo.col || oo.col + os - 1 < o.col ||
+                                   o.row + size - 1 < oo.row || oo.row + os - 1 < o.row);
+            if (overlap) return false;
+        }
+        return true;
+    };
+
+    if (clearOfOthers(home)) {
+        log_("{} returns from banishment to the space it left", agentName(bm, idx));
+        return;
+    }
+    // Nearest unoccupied space: grow Chebyshev rings around the old origin.
+    constexpr int kMaxRing = 30;
+    for (int ring = 1; ring <= kMaxRing; ++ring) {
+        for (int dc = -ring; dc <= ring; ++dc) {
+            for (int dr = -ring; dr <= ring; ++dr) {
+                if (std::max(std::abs(dc), std::abs(dr)) != ring) continue;
+                Cell cand{home.col + dc, home.row + dr, home.z};
+                bool passable = true;
+                for (int fc = 0; fc < size && passable; ++fc)
+                    for (int fr = 0; fr < size && passable; ++fr)
+                        passable = isValidTeleportDestination(bm, cand.col + fc, cand.row + fr);
+                if (!passable || !clearOfOthers(cand)) continue;
+                if (bm.setAgentPosition(idx, cand)) {
+                    log_("{} returns from banishment; its space is occupied, so it appears at "
+                         "({}, {})", agentName(bm, idx), cand.col, cand.row);
+                    updateDarknessBlinding(bm, idx);
+                    return;
+                }
+            }
+        }
+    }
+    log_("{} returns from banishment but finds no unoccupied space — it stays where it was",
+         agentName(bm, idx));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Condition lifecycle
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1097,6 +1175,17 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 applyBlinded(bm, cond.agent_idx);
             } else if (cond.condition_name == "Incapacitated") {
                 applyIncapacitated(bm, cond.agent_idx);
+            } else if (cond.condition_name == "Banished") {
+                // Banished (Banishment / Banishing Shot): gone to a harmless demiplane. Modelled as
+                // Untouchable (nothing passes to or from it) + Incapacitated (no actions, Speed 0,
+                // concentration broken). The DM's own Untouchable setting is stashed so the
+                // teardown (clearSpellConditionEffect) restores it rather than clearing it.
+                cond.banish_prev_untouchable = bm.getAgentConditions(cond.agent_idx).untouchable;
+                applyIncapacitated(bm, cond.agent_idx);
+                auto ac = bm.getAgentConditions(cond.agent_idx);
+                ac.untouchable = true;
+                bm.setAgentConditions(cond.agent_idx, ac);
+                log_("{} is banished to a harmless demiplane", agentName(bm, cond.agent_idx));
             } else if (cond.condition_name == "Stunned") {
                 applyStunned(bm, cond.agent_idx);
             } else if (cond.condition_name == "Charmed") {

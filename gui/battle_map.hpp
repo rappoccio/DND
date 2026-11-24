@@ -345,6 +345,16 @@ struct ActiveAgentCondition {
     int   curse_disadv_ability = -1;
     int   curse_vuln_type_code = -1;
     float curse_vuln_prev_mult = 1.0f;
+
+    // ── Banished (Banishment spell, Arcane Archer Banishing Shot) ───────────────
+    // A "Banished" condition makes the creature Untouchable + Incapacitated (Speed 0); when it
+    // ends it reappears in its space or the nearest unoccupied one (CombatEngine::banish).
+    //   banish_sends_home      : the Banishment spell's clause — an Aberration, Celestial,
+    //                            Elemental, Fey, or Fiend banished for the FULL duration (the
+    //                            condition expires rather than being ended early) doesn't return.
+    //   banish_prev_untouchable: the DM-set Untouchable flag before banishment, restored on end.
+    bool  banish_sends_home       = false;
+    bool  banish_prev_untouchable = false;
 };
 
 // ── A placed agent on the map ──────────────────────────────────────────────
