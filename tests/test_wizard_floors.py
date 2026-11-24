@@ -242,6 +242,54 @@ def test_library_map_keeps_its_grid():
     print("  ✅ a library map with its own grid keeps it, and is only marked a source")
 
 
+def test_library_map_grid_redrawn():
+    """Redraw the grid on a library map that has one: the new grid is written over it."""
+    tmp = tempfile.mkdtemp(prefix="wizard_floors_")
+    try:
+        camp = sl.Campaign.create(os.path.join(tmp, "camp"), "Camp")
+        folder = camp.library_map_dir("hall")
+        os.makedirs(folder)
+        _sheet(os.path.join(folder, "hall.png"))
+        with open(os.path.join(folder, sl.MAP_FILE), "w") as f:
+            json.dump({"regions": [], "walls_enabled": True,
+                       "manual_grid": {"cell_px": 20, "anchor": [10, 6], "square_ft": 5}}, f)
+        sheet = wf.sheet_from_library(camp, "hall")
+        sheet.grid_locked = False                                     # Redraw the grid
+        sheet.grid = wf.SheetGrid(19.0, (0, 0), 5)
+        w = wf.FloorWriter(Target(camp.root, None, "Crypt", PREMADE))
+        w.write_floor("crypt-floor-1", sheet, (0, 0, 2, 2), origin=[0, 0, 0])
+        doc = camp.library_map_doc("hall")
+        assert doc["manual_grid"] == sheet.grid.manual_grid(), doc["manual_grid"]
+        assert doc["walls_enabled"] is True
+        assert dg.read_source(doc).square_ft == 5
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("  ✅ a redrawn library grid is written over the map's own")
+
+
+def test_floor_reanchored_grid():
+    """A floor with its own re-anchored grid is cut on it; the sheet keeps its grid."""
+    tmp = tempfile.mkdtemp(prefix="wizard_floors_")
+    try:
+        camp = sl.Campaign.create(os.path.join(tmp, "camp"), "Camp")
+        folder = camp.library_map_dir("hall")
+        os.makedirs(folder)
+        _sheet(os.path.join(folder, "hall.png"))
+        own = {"regions": [], "manual_grid": {"cell_px": 20, "anchor": [10, 6], "square_ft": 5}}
+        with open(os.path.join(folder, sl.MAP_FILE), "w") as f:
+            json.dump(own, f)
+        sheet = wf.sheet_from_library(camp, "hall")
+        w = wf.FloorWriter(Target(camp.root, None, "Crypt", PREMADE))
+        w.write_floor("crypt-floor-1", sheet, (1, 1, 3, 3), origin=[0, 0, 0],
+                      grid=wf.SheetGrid(20.0, (13.0, 9.0), 5))
+        crop = camp.dungeon("crypt").crop("crypt-floor-1")
+        assert tuple(crop.rect) == (33, 29, 40, 40), crop.rect
+        assert camp.library_map_doc("hall")["manual_grid"] == own["manual_grid"]
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    print("  ✅ a re-anchored floor is cut on its own grid; the sheet's is kept")
+
+
 def test_source_square_px_round_trip():
     assert dg.read_source({"source": {"square_ft": 10, "square_px": 11.276}}) == \
         dg.SourceSheet(10, 11.276)

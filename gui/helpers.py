@@ -25,6 +25,33 @@ def edge_from_key(key):
                     rpg.EdgeSide.East if s == "E" else rpg.EdgeSide.South)
 
 
+def border_side(key, cols, rows):
+    """"west" / "east" / "north" / "south" when edge ``key`` (c, r, "E"|"S") is the
+    page's outer grid line, else None. West is the east side of column -1, north the
+    south side of row -1: cells off the page, which only a border edge door names."""
+    c, r, s = key
+    if s == "E" and 0 <= r < rows:
+        return "west" if c == -1 else "east" if c == cols - 1 else None
+    if s == "S" and 0 <= c < cols:
+        return "north" if r == -1 else "south" if r == rows - 1 else None
+    return None
+
+
+def border_link_target(keys, cols, rows, ox, oy, z):
+    """Global ``[X, Y, Z]`` a border edge door leads to: the cell just past the border,
+    across from the door's middle edge, on the same floor (the abutting page holds it,
+    resolved at use time). None unless every edge lies on the border. ``ox, oy`` is the
+    page's global origin."""
+    keys = [tuple(k) for k in keys]
+    if not keys or any(border_side(k, cols, rows) is None for k in keys):
+        return None
+    c, r, s = sorted(keys)[len(keys) // 2]
+    side = border_side((c, r, s), cols, rows)
+    lc, lr = {"west": (-1, r), "east": (cols, r),
+              "north": (c, -1), "south": (c, rows)}[side]
+    return [ox + lc, oy + lr, z]
+
+
 def door_touch_cells(door):
     """The cells a creature acts on ``door`` from: a cell door's own cells, or both
     cells either side of each of an edge door's edges."""

@@ -396,21 +396,25 @@ class FloorWriter:
 
     # ── floors ──
     def write_floor(self, name: str, sheet: Sheet, squares: Squares, blanks=(), *,
-                    origin=None, old_name: str | None = None) -> dg.MapPage:
+                    origin=None, old_name: str | None = None,
+                    grid: SheetGrid | None = None) -> dg.MapPage:
         """Write a floor cut from ``sheet``, and the dungeon around it: its image, its
         design document (grid + crop), its page in the manifest, its section of the run.
         Writing a floor that exists (``old_name``, the name it has now) overwrites its image
         and moves it to ``name`` when that changed; its place in the dungeon is kept.
-        A new floor goes at ``origin`` ([gx, gy, z]). Returns its page."""
+        A new floor goes at ``origin`` ([gx, gy, z]). ``grid`` is this floor's own
+        re-anchored grid, when its level's drawn grid is offset from the sheet's; the
+        sheet keeps its own. Returns its page."""
         problem = self.floor_name_problem(name, own=old_name)
         if problem:
             raise ValueError(problem)
         self.place_sheet(sheet)
         if old_name is not None and old_name != name:
             self.rename_floor(old_name, name)
-        plan = plan_crop(sheet.grid, squares)
-        img = render_floor(sheet.image, plan, sheet.grid, blanks)
-        doc = floor_doc(plan, sheet.grid, self.sheet_ref(sheet))
+        g = grid or sheet.grid
+        plan = plan_crop(g, squares)
+        img = render_floor(sheet.image, plan, g, blanks)
+        doc = floor_doc(plan, g, self.sheet_ref(sheet))
         if self.loose:
             return self._write_loose(name, img, doc, plan, origin, sheet)
         return self._write_campaign(name, img, doc, plan, origin)

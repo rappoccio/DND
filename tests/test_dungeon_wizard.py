@@ -36,6 +36,7 @@ import pygame
 
 import app_dungeon_gen as gen
 import dungeon_wizard as dw
+import dungeon as dg
 import gui_driver
 import save_layout as sl
 from main import App
@@ -417,6 +418,52 @@ def test_premade_loose_click_through():
     print("  ✅ premade, loose: pick, Set Grid, crop + brush, name, another, rename, Finish")
 
 
+def test_reanchor_grid_for_one_floor():
+    """Crop → Re-anchor grid → a click on a drawn corner moves this floor's lines
+    through it (same square); the crop keeps its squares and the sheet its grid."""
+    with _Sandbox() as sb:
+        sheet = _sheet_png(os.path.join(sb.tmp, "levels.png"))
+        app = sb.app()
+        wiz = app.dungeon_wizard
+        wiz.start(app)
+        wiz.choice = dw.LOOSE
+        wiz.name_input.text = "Keep"
+        wiz.next()
+        wiz.on_file_chosen(sheet)
+        _drag(app, _screen(wiz, 30, 50), _screen(wiz, 90, 90))
+        for _ in range(2):
+            gui_driver.post_click(app, wiz.button_rect(("across", +1)).center)
+        gui_driver.post_click(app, wiz.button_rect(("down", +1)).center)
+        _key(app, pygame.K_RETURN)
+        assert wiz.step == "crop"
+        sheet_grid = wiz.sheet.grid
+        _drag(app, _screen(wiz, 32, 28), _screen(wiz, 108, 92))
+        squares = wiz.cur.squares
+        gui_driver.post_click(app, wiz.button_rect("anchor").center)
+        assert wiz.anchoring
+        click = tuple(int(v) for v in _screen(wiz, 236, 167))   # a corner far away
+        pt = wiz.canvas.to_sheet(click)
+        _drag(app, click, click)
+        assert not wiz.anchoring
+        g = wiz.cur.grid
+        assert g is not None and g.square_px == sheet_grid.square_px, g
+        for ax in (0, 1):                                  # a line through the click,
+            n = (pt[ax] - g.anchor[ax]) / g.square_px      # the anchor beside the old one
+            assert abs(n - round(n)) < 1e-6, (pt, g)
+            assert abs(g.anchor[ax] - sheet_grid.anchor[ax]) <= g.square_px / 2, (g, sheet_grid)
+        assert wiz.cur.squares == squares and wiz.sheet.grid is sheet_grid
+        _key(app, pygame.K_RETURN)
+        _key(app, pygame.K_RETURN)                         # writes the floor
+        assert wiz.step == "more", wiz.error
+        with open(os.path.join(sb.maps, "keep", "keep-floor-1_terrain.json")) as f:
+            crop = dg.read_crop(json.load(f))
+        assert abs(crop.rect[0] - round(g.line(squares[0], 0))) <= 1, (crop.rect, g)
+        # Another floor from the sheet starts on the sheet's grid again.
+        gui_driver.post_click(app, wiz.button_rect("same").center)
+        assert wiz.cur.grid is None
+    print("  ✅ Re-anchor grid moves one floor's lines; the sheet keeps its grid")
+
+
 def test_premade_campaign_discard():
     """In a new campaign: a floor in the library; Discard archives the dungeon and the
     library folders the wizard made, keeping the campaign."""
@@ -523,7 +570,38 @@ def test_place_and_align_click_through():
         wiz.next()
         assert wiz.step == "place", wiz.error
         wiz.set_place(ref="pit-floor-1", relation="beside")
+        # Beside shows the Side chips; South puts it under floor 0's map.
+        assert [v for _r, k, v in wiz._hit if k == "side"] == ["east", "west", "north",
+                                                                "south"]
+        wiz.set_place(side="south")
+        ref = wiz.place_preview.page_by_id("pit-floor-1")
+        assert wiz.place_preview.page_by_id("pit-floor-3").origin == [0, ref.rows, 0]
+        # …and the new floor drags anywhere, a cell at a time; Next and Skip keep it.
+        wiz.set_place(side="east")
+        new = wiz.place_preview.page_by_id("pit-floor-3")
+        east = list(new.origin)
+        a = wiz.align
+        grab = a.to_screen(new.gx + 1.5, new.gy + 1.5)
+        to = a.to_screen(new.gx + 1.5 - 3, new.gy + 1.5 + 2)
+        ev = pygame.event.Event
+        for e in (ev(pygame.MOUSEBUTTONDOWN, pos=grab, button=1),
+                  ev(pygame.MOUSEMOTION, pos=to, rel=(0, 0), buttons=(1, 0, 0)),
+                  ev(pygame.MOUSEBUTTONUP, pos=to, button=1)):
+            assert wiz.handle(e)
+        assert wiz.cur.dragged == [east[0] - 3, east[1] + 2], wiz.cur.dragged
+        assert new.origin[:2] == wiz.cur.dragged
+        wiz.set_place(side="east")                 # a Side chip snaps it back
+        assert wiz.cur.dragged is None
+        assert wiz.place_preview.page_by_id("pit-floor-3").origin == east
+        new = wiz.place_preview.page_by_id("pit-floor-3")
+        grab = a.to_screen(new.gx + 1.5, new.gy + 1.5)
+        to = a.to_screen(new.gx + 1.5 - 3, new.gy + 1.5 + 2)
+        for e in (ev(pygame.MOUSEBUTTONDOWN, pos=grab, button=1),
+                  ev(pygame.MOUSEMOTION, pos=to, rel=(0, 0), buttons=(1, 0, 0)),
+                  ev(pygame.MOUSEBUTTONUP, pos=to, button=1)):
+            wiz.handle(e)
         wiz.next()
+        assert wiz.skip_origin == [east[0] - 3, east[1] + 2, 0], wiz.skip_origin
         assert wiz.step == "align"
         faint = [ly.page_id for ly in wiz.align.layers if ly.alpha < 100]
         assert faint == ["pit-floor-2"], faint             # the floor below, for context
@@ -533,7 +611,7 @@ def test_place_and_align_click_through():
         gui_driver.post_click(app, wiz.button_rect("next").center)     # Finish
         assert [(p.id, p.origin) for p in app.dungeon.pages] == \
             [("pit-floor-1", [0, 0, 0]), ("pit-floor-2", [-3, 2, -1]),
-             ("pit-floor-3", [10, 0, 0])]
+             ("pit-floor-3", [7, 2, 0])]
         assert app.dungeon.entry_page_id == "pit-floor-1"
         # W7: the entry is not recorded; the landmark-aligned floor is, Skip is not.
         assert [p.aligned for p in app.dungeon.pages] == [None, True, False]

@@ -7,7 +7,7 @@ import pygame
 import rpg_battle_map as rpg
 from constants import *
 from widgets import Button
-from helpers import edge_key, edge_from_key
+from helpers import edge_key, edge_from_key, border_link_target, border_side
 from dungeon import Staircase
 from floor_overlay import GHOST_OUTLINE as GHOST_STAIR, draw_ghosts, ghost_cell_at
 
@@ -28,19 +28,38 @@ def door_link_key(cells):
     return tuple(sorted(out))
 
 
-def edge_door_rect(door, cell_xy, size):
+def edge_door_rect(door, cell_xy, size, grid=None):
     """(x, y, w, h) of an edge door's slab: a bar half a cell thick, centred on
     its grid line and as long as its edges. ``cell_xy(col, row)`` gives a cell's
-    top-left in the target's px, ``size`` the cell size there."""
+    top-left in the target's px, ``size`` the cell size there. With ``grid`` (cols,
+    rows), a door on the page's outer line sits just inside it, so the map's edge
+    doesn't cut it in half."""
     keys = [edge_key(e) for e in door.edges]
     t = max(6, size // 2)
     c0, r0 = min(k[0] for k in keys), min(k[1] for k in keys)
     n = len(keys)
+    side = border_side(keys[0], *grid) if grid else None
+    shift = {"west": t // 2, "north": t // 2, "east": -(t - t // 2),
+             "south": -(t - t // 2)}.get(side, 0)
     if keys[0][2] == "E":
         x, y = cell_xy(c0 + 1, r0)
-        return x - t // 2, y, t, n * size
+        return x - t // 2 + shift, y, t, n * size
     x, y = cell_xy(c0, r0 + 1)
-    return x, y - t // 2, n * size, t
+    return x, y - t // 2 + shift, n * size, t
+
+
+def border_door_target(bm, door):
+    """Global ``[X, Y, Z]`` that edge door ``door`` on ``bm``'s outer grid line leads to
+    (the cell just past it, on the abutting page), else None. Derived from the door's
+    edges and the page's origin, so nothing extra is saved: moving the page in the
+    dungeon moves where its border doors lead."""
+    if not door.edges or bm is None:
+        return None
+    return border_link_target(
+        [edge_key(e) for e in door.edges],
+        int(getattr(bm, "grid_cols", 0) or 0), int(getattr(bm, "grid_rows", 0) or 0),
+        int(getattr(bm, "origin_col", 0) or 0), int(getattr(bm, "origin_row", 0) or 0),
+        int(getattr(bm, "z_level", 0) or 0))
 
 
 def draw_door_glyph(screen, x, y, size, door, font_sm=None, w=None, h=None, linked=False):
@@ -998,6 +1017,10 @@ class TerrainEditorDialog:
         else:
             self.door_links.pop(key, None)
 
+    def _border_door_target(self, door):
+        """Global ``[X, Y, Z]`` an edge door on the page's border leads to, else None."""
+        return border_door_target(self.bm, door)
+
     def _door_link_target(self, cells):
         """Global ``[X, Y, Z]`` one cell beyond the page edge a door touches, for a
         cross-map staple. Returns None if the door isn't on a page edge (nothing to link
@@ -1577,14 +1600,16 @@ class TerrainEditorDialog:
 
     # ── Edge tool ────────────────────────────────────────────────────────
     # An edge is keyed (c, r, "E"|"S"): the east or south side of cell (c, r), as in the
-    # terrain file's edge_overrides. Edges on the map's border are never keys: the map
-    # edge blocks already.
+    # terrain file's edge_overrides. Edges on the map's border are never wall keys: the
+    # map edge blocks already. A door may sit on the border (``border=True``): it is the
+    # way through to the abutting page (see border_link_target).
 
-    def _edge_ok(self, c, r, s):
+    def _edge_ok(self, c, r, s, border=False):
         cols, rows = self.bm.grid_cols, self.bm.grid_rows
+        lo = -1 if border else 0
         if s == "E":
-            return 0 <= c < cols - 1 and 0 <= r < rows
-        return 0 <= c < cols and 0 <= r < rows - 1
+            return lo <= c < cols - (0 if border else 1) and 0 <= r < rows
+        return 0 <= c < cols and lo <= r < rows - (0 if border else 1)
 
     def _nearest_vertex(self, pos):
         """(i, j): the grid-line crossing nearest ``pos`` (map px)."""
@@ -1593,9 +1618,10 @@ class TerrainEditorDialog:
         j = min(range(len(h)), key=lambda k: abs(h[k] - pos[1]))
         return i, j
 
-    def _edge_run(self, start, end):
+    def _edge_run(self, start, end, border=False):
         """The edges along one grid line, from the crossing nearest ``start`` to the one
-        nearest ``end``, ordered from the start. The line is the drag's dominant axis."""
+        nearest ``end``, ordered from the start. The line is the drag's dominant axis.
+        ``border`` admits the page's outer lines (doors only)."""
         (i0, j0), (i1, j1) = self._nearest_vertex(start), self._nearest_vertex(end)
         if abs(i1 - i0) >= abs(j1 - j0):
             step = 1 if i1 >= i0 else -1
@@ -1603,10 +1629,11 @@ class TerrainEditorDialog:
         else:
             step = 1 if j1 >= j0 else -1
             keys = [(i0 - 1, j if step > 0 else j - 1, "E") for j in range(j0, j1, step)]
-        return [k for k in keys if self._edge_ok(*k)]
+        return [k for k in keys if self._edge_ok(*k, border=border)]
 
-    def _nearest_edge(self, pos):
-        """The edge of the cell under ``pos`` whose grid line is closest, or None."""
+    def _nearest_edge(self, pos, border=False):
+        """The edge of the cell under ``pos`` whose grid line is closest, or None.
+        ``border`` admits the page's outer lines (doors only)."""
         cell = self._pos_to_cell(pos)
         if cell is None:
             return None
@@ -1616,7 +1643,7 @@ class TerrainEditorDialog:
         sides = [(x - v[c], (c - 1, r, "E")), (v[c + 1] - x, (c, r, "E")),
                  (y - h[r], (c, r - 1, "S")), (h[r + 1] - y, (c, r, "S"))]
         for _d, key in sorted(sides, key=lambda t: t[0]):
-            if self._edge_ok(*key):
+            if self._edge_ok(*key, border=border):
                 return key
         return None
 
@@ -1808,10 +1835,11 @@ class TerrainEditorDialog:
 
     def _door_edge_keys(self, start, end):
         """The edges a door dragged from ``start`` to ``end`` spans: the run along the
-        grid line, or the nearest edge for a click, at most MAX_DOOR_WIDTH long."""
-        keys = self._edge_run(start, end)
+        grid line, or the nearest edge for a click, at most MAX_DOOR_WIDTH long. The
+        page's outer line counts: a door there leads to the abutting page."""
+        keys = self._edge_run(start, end, border=True)
         if not keys:
-            e = self._nearest_edge(start)
+            e = self._nearest_edge(start, border=True)
             keys = [e] if e else []
         return keys[:self.MAX_DOOR_WIDTH]
 
@@ -2050,8 +2078,10 @@ class TerrainEditorDialog:
             v, h, size = self._grid()
             for door in self.bm.doors:
                 if door.edges and v and h:
-                    x, y, w, hh = edge_door_rect(door, lambda c, r: (v[c], h[r]), size)
-                    draw_door_glyph(canvas, x, y, size, door, self.font_sm, w=w, h=hh)
+                    x, y, w, hh = edge_door_rect(door, lambda c, r: (v[c], h[r]), size,
+                                                 grid=(self.bm.grid_cols, self.bm.grid_rows))
+                    draw_door_glyph(canvas, x, y, size, door, self.font_sm, w=w, h=hh,
+                                    linked=self._border_door_target(door) is not None)
                     continue
                 cols = [c.col for c in door.cells]
                 rows = [c.row for c in door.cells]
@@ -2154,7 +2184,8 @@ class TerrainEditorDialog:
             self._hud_text(screen, door_text, (220, 200, 120), (10, y + 10))
             if self._edge_doors():
                 hint = ("[L] lock  [A] arcane  [S] secret  [+/-] lock DC  [ [ / ] ] break DC  "
-                        "(click a grid line toggles; Ctrl+drag along it for a wide door, max 4)")
+                        "(click a grid line toggles; Ctrl+drag along it for a wide door, max 4; "
+                        "a door on the map's outer line leads to the map beside it)")
             else:
                 hint = ("[L] lock  [A] arcane  [S] secret  [K] link  [+/-] lock DC  [ [ / ] ] break DC  "
                         "(click toggles; Ctrl+drag for a wide door, max 4)")

@@ -212,6 +212,9 @@ def can_see_door(app, own: int, door) -> bool:
     from menus.dm import door_touch_cells
     pt = app.bm.placed_agents[own]
     cells = list(door.cells) if door.cells else list(door_touch_cells(door))
+    # A door on the page's outer line has one side off the page: look only at this side.
+    cols, rows = app.bm.grid_cols, app.bm.grid_rows
+    cells = [c for c in cells if 0 <= c.col < cols and 0 <= c.row < rows]
     return any(app.bm.has_line_of_sight(pt.origin, pt.size, c, 1) for c in cells)
 
 

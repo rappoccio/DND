@@ -10,7 +10,8 @@ D17–D19).
 * **D19.** Its X/Y comes from a **landmark pair** (a point on the new floor, then the
   same point on the faded floor: ``landmark_origin``), fine-tuned a cell at a time.
   **Skip** is ``default_origin``: the same corner as the floor it was placed against,
-  or, beside, just east of that floor's pages.
+  or, beside, next to it on the chosen side (east / west / north / south), past any
+  map of that floor in the way.
 
 Ladder and door-staple targets are global ``[X, Y, Z]``: every renumbering of Z here
 moves them with their floor. Staircases are page-local and need nothing.
@@ -24,6 +25,8 @@ import dungeon as dg
 
 ABOVE, BELOW, BESIDE = "above", "below", "beside"
 RELATIONS = (ABOVE, BELOW, BESIDE)
+EAST, WEST, NORTH, SOUTH = "east", "west", "north", "south"
+SIDES = (EAST, WEST, NORTH, SOUTH)
 
 
 def _shift(dung: dg.Dungeon, pred, dz: int, skip: str | None) -> None:
@@ -66,17 +69,47 @@ def _close_gap(dung: dg.Dungeon, z: int, skip: str) -> None:
         _shift(dung, lambda v: v > z, -1, skip)
 
 
-def default_origin(dung: dg.Dungeon, page_id: str, ref_id: str, relation: str) -> list[int]:
+def _overlaps(a, ax, ay, b) -> bool:
+    return (ax < b.gx + b.cols and b.gx < ax + a.cols
+            and ay < b.gy + b.rows and b.gy < ay + a.rows)
+
+
+def beside_origin(dung: dg.Dungeon, page_id: str, ref_id: str, side: str = EAST) -> list[int]:
+    """Beside: edge to edge with the reference page on ``side``, aligned with its
+    top (east/west) or left (north/south) edge; while that spot overlaps another map
+    of the floor, it moves on past it in the same direction."""
+    page, ref = dung.page_by_id(page_id), dung.page_by_id(ref_id)
+    if side not in SIDES:
+        raise ValueError(f"East, west, north or south, not {side!r}.")
+    x, y = {EAST: (ref.gx + ref.cols, ref.gy), WEST: (ref.gx - page.cols, ref.gy),
+            NORTH: (ref.gx, ref.gy - page.rows), SOUTH: (ref.gx, ref.gy + ref.rows)}[side]
+    others = [p for p in dung.pages_on_floor(ref.z) if p.id != page_id]
+    while True:
+        hit = [o for o in others if _overlaps(page, x, y, o)]
+        if not hit:
+            return [x, y, page.z]
+        if side == EAST:
+            x = max(o.gx + o.cols for o in hit)
+        elif side == WEST:
+            x = min(o.gx for o in hit) - page.cols
+        elif side == SOUTH:
+            y = max(o.gy + o.rows for o in hit)
+        else:
+            y = min(o.gy for o in hit) - page.rows
+
+
+def default_origin(dung: dg.Dungeon, page_id: str, ref_id: str, relation: str,
+                   side: str = EAST) -> list[int]:
     """D19's Skip, once the page's Z is set: above or below, the reference page's corner;
-    beside, just east of the pages already on that floor, level with the reference."""
+    beside, ``beside_origin`` on ``side``."""
     page, ref = dung.page_by_id(page_id), dung.page_by_id(ref_id)
     if relation != BESIDE:
         return [ref.gx, ref.gy, page.z]
-    others = [p for p in dung.pages_on_floor(ref.z) if p.id != page_id]
-    return [max(p.gx + p.cols for p in others), ref.gy, page.z]
+    return beside_origin(dung, page_id, ref_id, side)
 
 
-def place(dung: dg.Dungeon, page_id: str, ref_id: str, relation: str) -> list[int]:
+def place(dung: dg.Dungeon, page_id: str, ref_id: str, relation: str,
+          side: str = EAST) -> list[int]:
     """Move ``page_id`` above / below / beside ``ref_id`` (D18), at ``default_origin``.
     Mutates ``dung``; returns the page's new origin. ``ValueError`` on a bad request."""
     page, ref = dung.page_by_id(page_id), dung.page_by_id(ref_id)
@@ -86,6 +119,8 @@ def place(dung: dg.Dungeon, page_id: str, ref_id: str, relation: str) -> list[in
         raise ValueError("A floor can't be placed against itself.")
     if relation not in RELATIONS:
         raise ValueError(f"Above, below or beside, not {relation!r}.")
+    if relation == BESIDE and side not in SIDES:
+        raise ValueError(f"East, west, north or south, not {side!r}.")
     _close_gap(dung, page.z, page_id)
     if relation == BESIDE:
         z = ref.z
@@ -97,14 +132,15 @@ def place(dung: dg.Dungeon, page_id: str, ref_id: str, relation: str) -> list[in
         else:
             z = want
     page.origin = [page.gx, page.gy, z]
-    page.origin = default_origin(dung, page_id, ref_id, relation)
+    page.origin = default_origin(dung, page_id, ref_id, relation, side)
     return list(page.origin)
 
 
-def preview(dung: dg.Dungeon, page_id: str, ref_id: str, relation: str) -> dg.Dungeon:
+def preview(dung: dg.Dungeon, page_id: str, ref_id: str, relation: str,
+            side: str = EAST) -> dg.Dungeon:
     """``place`` on a copy: the stack as it would be."""
     d = copy.deepcopy(dung)
-    place(d, page_id, ref_id, relation)
+    place(d, page_id, ref_id, relation, side)
     return d
 
 

@@ -32,6 +32,7 @@ import run_state as rs
 import save_layout as sl
 from dungeon import Dungeon, dungeon_path_for
 from main import App
+from menus import dm
 from scene_store import CampaignStore
 
 CELL = 30
@@ -228,6 +229,34 @@ def test_open_campaign():
     print("  ✅ Open Campaign lists its dungeons and makes a new one from its library")
 
 
+def test_new_campaign_menu():
+    """Dungeon → New Campaign…: makes an empty campaign, then the wizard on it."""
+    tmp = tempfile.mkdtemp(prefix="new_dungeon_dialog_")
+    try:
+        png = _loose_map(tmp)
+        sl.Campaign.create(os.path.join(tmp, "encounters", "my-campaign"), "Taken")
+        app = _app(png)
+        script = Script(app, picks=["New Campaign…"], names=["My Campaign"])
+        dm.show_dungeon_menu(app)
+        assert "New Campaign…" in script.menus[0][1], script.menus
+        camp = sl.Campaign(os.path.join(tmp, "encounters", "my-campaign-2"))
+        assert camp.name == "My Campaign" and camp.list_dungeons() == []
+        assert os.path.isdir(os.path.join(camp.root, sl.PCS_DIR))
+        assert app.dungeon_wizard.visible
+        assert os.path.samefile(app.dungeon_wizard.choice, camp.root)
+        app.dungeon_wizard.cancel()
+        assert os.path.isfile(camp.manifest_path)      # the campaign stays
+
+        app = _app(png)                                # a blank name makes nothing
+        Script(app, picks=["New Campaign…"], names=[""])
+        dm.show_dungeon_menu(app)
+        assert sorted(os.listdir(os.path.join(tmp, "encounters"))) == [
+            "my-campaign", "my-campaign-2"]
+    finally:
+        shutil.rmtree(tmp)
+    print("  ✅ Dungeon → New Campaign… makes an empty campaign and opens the wizard on it")
+
+
 def test_map_inside_a_campaign():
     """A loose image sitting in encounters/<campaign>/maps/ finds the campaigns beside
     its own, not an encounters/ folder inside the campaign."""
@@ -261,7 +290,8 @@ def test_map_inside_a_campaign():
 def main():
     pygame.init()
     tests = [test_new_campaign_then_second_dungeon, test_existing_sheet_keep_or_update,
-             test_loose_and_refusals, test_open_campaign, test_map_inside_a_campaign]
+             test_loose_and_refusals, test_open_campaign, test_new_campaign_menu,
+             test_map_inside_a_campaign]
     print("Running New Dungeon dialog tests…")
     for t in tests:
         t()

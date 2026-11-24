@@ -1285,8 +1285,10 @@ def draw_doors(app, cpx: int):
             continue
         if door.edges:
             # An edge door is a bar on its grid line.
-            x, y, w, h = edge_door_rect(door, app._cell_to_screen, cpx)
-            draw_door_glyph(app.screen, x, y, cpx, door, app.font_sm, w=w, h=h)
+            x, y, w, h = edge_door_rect(door, app._cell_to_screen, cpx,
+                                        grid=(app.bm.grid_cols, app.bm.grid_rows))
+            draw_door_glyph(app.screen, x, y, cpx, door, app.font_sm, w=w, h=h,
+                            linked=app._door_link_at(door) is not None)
             continue
         # A wide door is drawn as one elongated slab over its full bounding rect
         # (the cells are contiguous along a single axis), not a glyph per cell.

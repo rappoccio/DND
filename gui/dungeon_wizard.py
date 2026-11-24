@@ -185,6 +185,13 @@ class Floor:
     written: str | None = None
     ref: str | None = None                 # W6: the floor it is placed against
     relation: str = fp.ABOVE
+    side: str = fp.EAST                    # beside: which side of ``ref``
+    dragged: list | None = None            # beside: [x, y] the DM dragged it to on Place
+    grid: wf.SheetGrid | None = None       # re-anchored for this level; None: the sheet's
+
+    @property
+    def the_grid(self) -> wf.SheetGrid | None:
+        return self.grid or self.sheet.grid
 
 
 def _same_dir(a: str, b: str) -> bool:
@@ -249,6 +256,7 @@ class DungeonWizard:
         self.floor_input = TextInput(pygame.Rect(0, 0, 10, 10), "floor name", self.font_md)
         self.grid_box = None                   # (x, y, w, h) in sheet px, the last Set Grid drag
         self.brush = None                      # None, "paint" or "erase"
+        self.anchoring = False                 # Crop: the next click re-anchors the grid
         self._drag = None                      # ("box" | "pan" | "brush", start, current)
         self.canvas.clear()
         # Placement and alignment (W6).
@@ -386,6 +394,7 @@ class DungeonWizard:
         if self._enabled("back"):
             self.step, self.cur, self.sheet = self.history.pop()
             self._drag = None
+            self.anchoring = False
             if self.step == "name" and self.cur is not None:
                 self.floor_input.text = self.cur.written or self._default_name()
             if self.step == "align":
@@ -485,6 +494,7 @@ class DungeonWizard:
         self.history.append((self.step, self.cur, self.sheet))
         self.step = step
         self._drag = None
+        self.anchoring = False
         self._layout()
 
     # ── The premade steps (W5) ────────────────────────────────────────────
@@ -577,6 +587,16 @@ class DungeonWizard:
     def _grid_locked(self) -> bool:
         return bool(self.sheet and self.sheet.grid_locked)
 
+    def unlock_grid(self):
+        """Redraw a library map's own grid: the box and steppers come back, and the new
+        grid is written to that map, for every dungeon that uses it."""
+        if not self._grid_locked():
+            return
+        self.sheet.grid_locked = False
+        self.grid_box = None
+        self.across = self.down = 1
+        self._layout()
+
     def _chosen_ft(self) -> int | None:
         if not self.ft_other:
             return self.square_ft
@@ -610,7 +630,7 @@ class DungeonWizard:
 
     def set_crop(self, p0, p1):
         """A crop drag from ``p0`` to ``p1``, sheet pixels, snapped to the grid (D14)."""
-        sq = wf.snap_squares(self.sheet.grid, self.sheet.size, p0, p1)
+        sq = wf.snap_squares(self.cur.the_grid, self.sheet.size, p0, p1)
         if sq is None:
             self.error = "That covers no whole square."
             return
@@ -618,19 +638,37 @@ class DungeonWizard:
         self.cur.squares = sq
 
     def whole_image(self):
-        sq = wf.whole_image(self.sheet.grid, self.sheet.size)
+        sq = wf.whole_image(self.cur.the_grid, self.sheet.size)
         if sq is None:
             self.error = "The grid has no whole square on this image."
             return
         self.error = ""
         self.cur.squares = sq
 
+    def toggle_anchoring(self):
+        self.anchoring = not self.anchoring
+        if self.anchoring:
+            self.brush = None
+
+    def reanchor(self, pt):
+        """Re-anchor this floor's grid on ``pt`` (sheet pixels), a drawn grid corner of its
+        level: same square, its lines moved through ``pt``. The anchor is the grid line
+        nearest the old one, so the crop and blanks keep their squares."""
+        if self.cur is None or self.sheet is None or self.sheet.grid is None:
+            return
+        g = self.cur.the_grid
+        s = g.square_px
+        anchor = tuple(p + round((a - p) / s) * s for p, a in zip(pt, g.anchor))
+        self.cur.grid = wf.SheetGrid(s, anchor, g.square_ft)
+        self.anchoring = False
+        self.error = ""
+
     def brush_at(self, pt):
         """The blank-outside brush (D14) at ``pt`` (sheet pixels): paint or erase the
         drawn square there, inside the crop."""
         if self.cur is None or self.cur.squares is None or self.brush is None:
             return
-        g = self.sheet.grid
+        g = self.cur.the_grid
         k = int((pt[0] - g.anchor[0]) // g.square_px)
         j = int((pt[1] - g.anchor[1]) // g.square_px)
         k0, j0, k1, j1 = self.cur.squares
@@ -673,7 +711,7 @@ class DungeonWizard:
             origin = wf.next_floor_origin(pages)
         try:
             self.writer.write_floor(name, f.sheet, f.squares, f.blanks, origin=origin,
-                                    old_name=f.written)
+                                    old_name=f.written, grid=f.grid)
         except (OSError, ValueError) as e:
             self.error = str(e)
             return
@@ -713,12 +751,15 @@ class DungeonWizard:
             return self.home_page
         return refs[0] if refs else None
 
-    def set_place(self, ref=None, relation=None):
+    def set_place(self, ref=None, relation=None, side=None):
         """Choose what the floor is placed against, and how (a chip click)."""
         if ref is not None:
             self.cur.ref = ref
         if relation is not None:
             self.cur.relation = relation
+        if side is not None:
+            self.cur.side = side
+        self.cur.dragged = None            # a chip snaps it back to the chosen side
         self._refresh_align()
 
     def _refresh_align(self, fit: bool = True):
@@ -730,7 +771,7 @@ class DungeonWizard:
             f.ref = self._default_ref()
             dung = self.writer.load_dungeon()
             try:
-                d = fp.preview(dung, f.written, f.ref, f.relation)
+                d = fp.preview(dung, f.written, f.ref, f.relation, f.side)
             except (ValueError, AttributeError) as e:
                 self.error = str(e)
                 self.place_preview = None
@@ -739,6 +780,8 @@ class DungeonWizard:
                 return
             self.place_preview = d
             page = d.page_by_id(f.written)
+            if f.relation == fp.BESIDE and f.dragged is not None:
+                page.origin = [f.dragged[0], f.dragged[1], page.z]
         else:
             d, page = self.align_dung, self.align_page
         faded, faint = fp.faded_floor(d, page.id, f.relation)
@@ -757,8 +800,11 @@ class DungeonWizard:
         f = self.cur
         dung = self.writer.load_dungeon()
         try:
-            fp.place(dung, f.written, f.ref, f.relation)
-            dung.page_by_id(f.written).aligned = False     # until Align accepts (W7)
+            fp.place(dung, f.written, f.ref, f.relation, f.side)
+            page = dung.page_by_id(f.written)
+            if f.relation == fp.BESIDE and f.dragged is not None:
+                page.origin = [f.dragged[0], f.dragged[1], page.z]
+            page.aligned = False                           # until Align accepts (W7)
             self.writer.save_dungeon(dung)
         except (OSError, ValueError) as e:
             self.error = str(e)
@@ -771,7 +817,10 @@ class DungeonWizard:
         f = self.cur
         self.align_dung = self.writer.load_dungeon()
         self.align_page = self.align_dung.page_by_id(f.written)
-        self.skip_origin = fp.default_origin(self.align_dung, f.written, f.ref, f.relation)
+        self.skip_origin = fp.default_origin(self.align_dung, f.written, f.ref, f.relation,
+                                              f.side)
+        if f.relation == fp.BESIDE and f.dragged is not None:
+            self.skip_origin = [f.dragged[0], f.dragged[1], self.align_page.z]
         self.mark_a = self.mark_b = None
 
     def nudge(self, dx: int, dy: int):
@@ -880,6 +929,9 @@ class DungeonWizard:
                     self._hit.append((pygame.Rect(ix, y, iw, rh), "sheet", i))
                     y += self.ROW_H
         elif self.step == "grid":
+            if self._grid_locked():
+                self._hit.append((pygame.Rect(ix, y, iw, rh), "act", "regrid"))
+                y += self.ROW_H + 6
             self._labels.append(("Squares inside the box", (ix, y)))
             y += 22
             for key, lbl in (("across", "Across"), ("down", "Down")):
@@ -900,6 +952,8 @@ class DungeonWizard:
                 y += self.ROW_H
         elif self.step == "crop":
             self._hit.append((pygame.Rect(ix, y, iw, rh), "act", "whole"))
+            y += self.ROW_H
+            self._hit.append((pygame.Rect(ix, y, iw, rh), "act", "anchor"))
             y += self.ROW_H + 6
             self._labels.append(("Blank-outside brush", (ix, y)))
             y += 22
@@ -919,6 +973,13 @@ class DungeonWizard:
             for i, v in enumerate(fp.RELATIONS):
                 self._hit.append((pygame.Rect(ix + i * (cw + 6), y, cw, rh), "rel", v))
             y += self.ROW_H + 6
+            if self.cur.relation == fp.BESIDE:
+                self._labels.append(("Side", (ix, y)))
+                y += 22
+                sw = (iw - 18) // 4
+                for i, v in enumerate(fp.SIDES):
+                    self._hit.append((pygame.Rect(ix + i * (sw + 6), y, sw, rh), "side", v))
+                y += self.ROW_H + 6
             self._labels.append(("Against", (ix, y)))
             y += 22
             self._refs = dict(self.place_refs())
@@ -1057,7 +1118,8 @@ class DungeonWizard:
             {"file": self.pick_file, "library": self.pick_library,
              "whole": self.whole_image, "same": self.another_from_sheet,
              "another": self.another_image, "skip": self.skip_align,
-             "fit": self.align.fit}[val]()
+             "fit": self.align.fit, "regrid": self.unlock_grid,
+             "anchor": self.toggle_anchoring}[val]()
         elif kind == "sheet":
             self._use_sheet(self.sheets[val])
         elif kind == "step" and not self._grid_locked():
@@ -1075,8 +1137,12 @@ class DungeonWizard:
             self._regrid()
         elif kind == "brush":
             self.brush = val
+            if val is not None:
+                self.anchoring = False
         elif kind == "rel":
             self.set_place(relation=val)
+        elif kind == "side":
+            self.set_place(side=val)
         elif kind == "ref":
             self.set_place(ref=val)
         elif kind == "button" and self._enabled(val):
@@ -1141,9 +1207,15 @@ class DungeonWizard:
             elif event.button == 1 and self.step == "align" and self.align_page is not None:
                 self.landmark(a.to_world(event.pos))
                 self._layout()
+            elif event.button == 1 and self._beside_layer_at(event.pos) is not None:
+                ly = self._beside_layer_at(event.pos)
+                self._drag = ("move", a.to_world(event.pos), list(ly.origin[:2]))
             return True
         if event.type == pygame.MOUSEMOTION and self._drag is not None:
-            _kind, start, last = self._drag
+            kind, start, last = self._drag
+            if kind == "move":
+                self.drag_beside(start, last, a.to_world(event.pos))
+                return True
             a.pan(event.pos[0] - last[0], event.pos[1] - last[1])
             self._drag = ("pan", start, event.pos)
             return True
@@ -1152,6 +1224,27 @@ class DungeonWizard:
             self._drag = None
             return True
         return False
+
+    def _beside_layer_at(self, pos):
+        """On Place, beside: the new floor's layer when ``pos`` is on it, else None."""
+        if self.step != "place" or self.cur is None or self.cur.relation != fp.BESIDE:
+            return None
+        ly = next((ly for ly in self.align.layers if ly.page_id == self.cur.written), None)
+        if ly is None:
+            return None
+        x, y, w, h = ly.world_rect(self.align._image(ly.image)[2])
+        wx, wy = self.align.to_world(pos)
+        return ly if x <= wx <= x + w and y <= wy <= y + h else None
+
+    def drag_beside(self, start, origin0, world):
+        """Place, beside: the floor follows the pointer a whole cell at a time; where it
+        is let go is where Next puts it (and what Align's Skip keeps)."""
+        x = origin0[0] + round(world[0] - start[0])
+        y = origin0[1] + round(world[1] - start[1])
+        self.cur.dragged = [x, y]
+        page = self.place_preview.page_by_id(self.cur.written) if self.place_preview else None
+        if page is not None:
+            page.origin[0], page.origin[1] = x, y    # the layer shares this list
 
     def _canvas_mouse(self, event) -> bool:
         """The canvas's mouse: wheel zooms, right or middle drag pans; a left drag sets
@@ -1173,6 +1266,8 @@ class DungeonWizard:
                 pt = c.to_sheet(event.pos)
                 if self.step == "grid" and not self._grid_locked():
                     self._drag = ("box", pt, pt)
+                elif self.step == "crop" and self.anchoring:
+                    self.reanchor(pt)
                 elif self.step == "crop" and self.brush is not None:
                     self._drag = ("brush", pt, pt)
                     self.brush_at(pt)
@@ -1223,7 +1318,8 @@ class DungeonWizard:
         acts = {"file": "From a file…", "library": "From the campaign library…",
                 "whole": "Whole image", "same": "Another floor from this sheet",
                 "another": "Another image", "skip": "Skip (default corner)",
-                "fit": "Fit the view (0)"}
+                "fit": "Fit the view (0)", "regrid": "Redraw the grid",
+                "anchor": "Re-anchor grid"}
         locked = self._grid_locked()
         for r, kind, val in self._hit:
             if kind == "choice":
@@ -1232,7 +1328,7 @@ class DungeonWizard:
                 self._chip(surf, r, "Premade maps" if val == PREMADE else "Generate",
                            self.start_from == val)
             elif kind == "act":
-                self._chip(surf, r, acts[val], False)
+                self._chip(surf, r, acts[val], val == "anchor" and self.anchoring)
             elif kind == "sheet":
                 s = self.sheets[val]
                 self._chip(surf, r, s.label, s is self.sheet)
@@ -1251,6 +1347,8 @@ class DungeonWizard:
                            self.brush == val)
             elif kind == "rel":
                 self._chip(surf, r, val.capitalize(), self.cur.relation == val)
+            elif kind == "side":
+                self._chip(surf, r, val.capitalize(), self.cur.side == val)
             elif kind == "ref":
                 z = self._refs.get(val, 0)
                 self._chip(surf, r, f"{val}  (floor {z:+d})", self.cur.ref == val)
@@ -1301,10 +1399,14 @@ class DungeonWizard:
             if self._grid_locked():
                 return [f"{self.sheet.label} has its own grid, which other dungeons may "
                         f"use, so it is kept: one square is {g.square_ft} ft, "
-                        f"{g.square_px:.2f} px.", "Next crops the first floor."]
+                        f"{g.square_px:.2f} px.", "Next crops the first floor; "
+                        "Redraw the grid replaces it."]
             out = ["Drag a box over whole squares on the map, its corner on a grid line, "
                    "and say how many squares it covers. The more squares, the more exact. "
                    "Wheel zooms; right-drag pans."]
+            if self.sheet.library:
+                out.append(f"This replaces {self.sheet.label}'s own grid, for every dungeon "
+                           "that uses it.")
             if g is not None:
                 per = g.per_side
                 cells = f" → {per}×{per} cells" if per > 1 else ""
@@ -1314,6 +1416,12 @@ class DungeonWizard:
         if s == "crop":
             out = ["Drag a rectangle around one level; it snaps to the grid. "
                    "Paint blanks stray art from a neighbouring level (black squares)."]
+            if self.anchoring:
+                out.append("Click a drawn grid corner on this level: the blue lines move "
+                           "through it (same square size), for this floor only.")
+            elif self.cur is not None and self.cur.grid is not None:
+                out.append("This floor's grid is re-anchored.")
+            g = self.cur.the_grid if self.cur is not None else g
             if self.cur is not None and self.cur.squares is not None and g is not None:
                 p = wf.plan_crop(g, self.cur.squares)
                 k0, j0, k1, j1 = self.cur.squares
@@ -1331,9 +1439,13 @@ class DungeonWizard:
                 out.append("The name is also its folder in the campaign's maps/.")
             return out
         if s == "place":
-            return ["Pick the floor this one sits above, below or beside. Nobody types a "
-                    "floor number: the stack shows where it goes, and the entry (★) stays "
-                    "floor 0. Next saves it and goes on to align it."]
+            out = ["Pick the floor this one sits above, below or beside. Nobody types a "
+                   "floor number: the stack shows where it goes, and the entry (★) stays "
+                   "floor 0. Next saves it and goes on to align it."]
+            if self.cur is not None and self.cur.relation == fp.BESIDE:
+                out.append("Beside: drag the new floor (gold) anywhere around the others; "
+                           "a Side chip snaps it back next to the floor it is against.")
+            return out
         if s == "align" and self.align_page is not None:
             p = self.align_page
             faded = ("the other maps of its floor" if self.cur.relation == fp.BESIDE
@@ -1365,7 +1477,8 @@ class DungeonWizard:
     def _draw_canvas(self, surf):
         c = self.canvas
         c.set_sheet(self.sheet.image, self.map_area())
-        g = self.sheet.grid
+        g = self.cur.the_grid if (self.cur is not None and self.step != "grid") \
+            else self.sheet.grid
         drag = None
         if self._drag is not None and self._drag[0] == "box":
             drag = (self._drag[1], self._drag[2])

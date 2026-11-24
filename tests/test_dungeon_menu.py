@@ -80,7 +80,7 @@ def test_menu_without_dungeon():
         app = App(_png(tmp, "loose.png"), seed=1)
         dm.show_dungeon_menu(app)
         assert app.prompts.live.title == "Dungeon"
-        assert _labels(app) == ["New Dungeon…", "Open Campaign…", "Open Dungeon…"], \
+        assert _labels(app) == ["New Dungeon…", "Open Dungeon…", "New Campaign…", "Open Campaign…"], \
             _labels(app)
         assert app.prompts.choose_label("New Dungeon…").ok
         assert app.dungeon_wizard.visible          # W4: New Dungeon… is the wizard

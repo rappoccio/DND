@@ -739,6 +739,45 @@ def test_editor_draws_edge_doors_and_the_drag_preview():
 
 
 
+def test_edge_door_goes_on_the_page_border_and_round_trips():
+    """A door may sit on the map's outer grid line (the way to the page beside it); the
+    Edge tool's walls may not (the map edge blocks already)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app, terrain, ed = _door_editor(tmp)
+        _drag(ed, _vx(0, 3), _vx(0, 5))                   # down the west border, two edges
+        _drag(ed, _vx(4, ROWS), _vx(5, ROWS))             # along the south border, one edge
+        east = (COLS * CELL - 3, 2 * CELL + CELL // 2)    # a click by (9,2)'s east side
+        _drag(ed, east, east)
+        got = [sorted((e.cell.col, e.cell.row, e.side) for e in d.edges) for d in app.bm.doors]
+        assert got == [[(-1, 3, E), (-1, 4, E)], [(4, ROWS - 1, S)], [(COLS - 1, 2, E)]], got
+        assert all(ed._border_door_target(d) is not None for d in app.bm.doors)
+        ed.draw(app.screen)
+        app._close_terrain_editor()
+        with open(terrain) as f:
+            recs = json.load(f)["doors"]
+        assert recs[0]["edges"] == [[-1, 3, "E"], [-1, 4, "E"]]
+        assert recs[0]["link_target"] == [-1, 4, 0], "the middle edge, one cell west"
+        app._load_terrain(terrain)
+        assert len(app.bm.doors) == 3 and app._door_link_at(app.bm.doors[0]) == [-1, 4, 0]
+        app._draw_doors(CELL)
+        # The Edge tool still refuses the border line for walls.
+        app._open_terrain_editor()
+        ed = app.terrain_editor
+        ed.selected_type = "Edge"
+        before = _edges(app.bm)
+        _drag(ed, _vx(0, 1), _vx(0, 3))
+        assert _edges(app.bm) == before and not app._edge_overrides["add"]
+    print("✅ test_edge_door_goes_on_the_page_border_and_round_trips passed")
+
+
+def test_an_inner_edge_door_has_no_link():
+    with tempfile.TemporaryDirectory() as tmp:
+        app, _ = _app(tmp, {"detection": DETECTION})
+        app.bm.add_edge_door([rpg.Edge(C(4, 3), E)])
+        assert app._door_link_at(app.bm.doors[0]) is None
+    print("✅ test_an_inner_edge_door_has_no_link passed")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Walls must show on load, and fog must never reveal through a wall-less window
 # ─────────────────────────────────────────────────────────────────────────────

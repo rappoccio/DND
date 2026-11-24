@@ -67,6 +67,7 @@ from spell_dialog import SpellDialog
 from terrain_dialogs import (TemporaryTerrainPlacementDialog, TerrainEditorDialog, draw_door_glyph,
                              draw_chest_glyph,
                              draw_ladder_glyph, draw_stair_glyph, door_link_key,
+                             border_door_target,
                              edge_door_rect)
 from lighting_dialogs import LightingEditorDialog
 from agent_loader import dict_to_stats, restore_class_resources, _dict_to_weapon, apply_damage_multipliers
@@ -3855,7 +3856,8 @@ class App:
         """The global ``[X, Y, Z]`` cross-map target for ``door`` (an rpg.Door), or None
         for an ordinary in-map door. Looked up by the door's cell footprint."""
         if not door.cells:
-            return None   # an edge door is never on the page border, so never a staple
+            # An edge door links only on the page's outer line, derived from where it is.
+            return border_door_target(self.bm, door)
         return self._door_links.get(door_link_key(door.cells))
 
     # Extra screen px around an edge door's drawn slab that still counts as a click on it,
@@ -3876,7 +3878,8 @@ class App:
         for i, door in enumerate(self.bm.doors):
             if not door.edges or not self._door_visible(door):
                 continue
-            x, y, w, h = edge_door_rect(door, self._cell_to_screen, cpx)
+            x, y, w, h = edge_door_rect(door, self._cell_to_screen, cpx,
+                                        grid=(self.bm.grid_cols, self.bm.grid_rows))
             if pygame.Rect(x - pad, y - pad, w + 2 * pad, h + 2 * pad).collidepoint(pos):
                 return i
         return -1
@@ -9877,6 +9880,7 @@ class App:
         running = True
         while running:
             running = self._handle_events() and self._quit_requested is None
+            self.floor_checklist.tick(self)     # W7: back to Floors… once its tool closes
             # Playback (playback.py) shows a trace's board in place of the DM's scene: nothing
             # may act on it, and nothing about it may reach the players. Their submits and
             # reads wait, and are answered from the DM's scene once Playback closes.

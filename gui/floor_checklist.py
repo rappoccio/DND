@@ -148,6 +148,12 @@ def jump(app, page_id: str, col: str) -> bool:
     return True
 
 
+def tool_open(app) -> bool:
+    """Anything an item may have opened is still up: a tool, a dialog, a prompt."""
+    return bool(app._modal_active() or app._grid_sample_mode or app.floor_align.active
+                or app.prompts.live is not None)
+
+
 def _terrain_tool(app, tool: str):
     app._open_terrain_editor()
     app.terrain_editor.selected_type = tool
@@ -174,6 +180,7 @@ class FloorChecklist:
         self._hit: list[tuple[pygame.Rect, str, object]] = []
         self._names: list[tuple[str, tuple[int, int], bool]] = []
         self._list_rect = None
+        self.returning = False                 # reopen once the jumped-to tool closes
 
     def open(self, app) -> bool:
         if app.dungeon is None:
@@ -181,12 +188,25 @@ class FloorChecklist:
             return False
         self.app = app
         self.visible = True
+        self.returning = False
         self.scroll = 0
         self.refresh()
         return True
 
     def close(self):
         self.visible = False
+        self.returning = False
+
+    def tick(self, app) -> None:
+        """Once a frame: after an item's tool closes, the checklist comes back."""
+        if not self.returning or self.visible:
+            return
+        if app.dungeon is None or app.dungeon_wizard.visible:
+            self.returning = False
+            return
+        if tool_open(app):
+            return
+        self.open(app)
 
     def refresh(self):
         self.rows = floor_rows(self.app)
@@ -232,7 +252,7 @@ class FloorChecklist:
         app = self.app
         self.close()
         if kind == "chip":
-            jump(app, *val)
+            self.returning = jump(app, *val)
         elif val == "overview":
             app._dungeon_pages_overview()
         elif val == "add":

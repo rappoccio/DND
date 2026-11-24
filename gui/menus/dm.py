@@ -426,6 +426,11 @@ def _dungeon_gen():
     return app_dungeon_gen
 
 
+def _new_campaign(app):
+    import app_dungeon_pages        # lazy, as above
+    return app_dungeon_pages.new_campaign(app)
+
+
 def _dungeon_anchor(app):
     return (app.btn_dungeon.rect.x, app.btn_dungeon.rect.y)
 
@@ -437,8 +442,9 @@ def show_dungeon_menu(app):
     if app.dungeon is None:
         items = [
             ("New Dungeon…",           lambda: app.dungeon_wizard.start(app)),   # W4
-            ("Open Campaign…",         app._open_campaign),
             ("Open Dungeon…",          app._dungeon_open_browser),
+            ("New Campaign…",          lambda: _new_campaign(app)),
+            ("Open Campaign…",         app._open_campaign),
         ]
     else:
         items = [
@@ -456,12 +462,13 @@ def show_dungeon_menu(app):
                 app, anchor=anchor, parent=app.prompts.answering)),
             ("Undo Reset",        lambda: run_control.ask_undo_reset(
                 app, anchor=anchor, parent=app.prompts.answering)),
-            ("Open Campaign…",    app._open_campaign),
             ("Open Dungeon…",     app._dungeon_open_browser),
+            ("New Campaign…",     lambda: _new_campaign(app)),
+            ("Open Campaign…",    app._open_campaign),
             ("Close Dungeon",     app._dungeon_close),
         ]
         if isinstance(app.store, CampaignStore):     # U4: another dungeon of this campaign
-            items.insert(-3, ("New Dungeon…", lambda: app.dungeon_wizard.start(app)))
+            items.insert(-4, ("New Dungeon…", lambda: app.dungeon_wizard.start(app)))
     app._ask_dm("action", "Dungeon", items, anchor=anchor)
 
 

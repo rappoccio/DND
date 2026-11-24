@@ -344,6 +344,12 @@ that's left.
   moves to the nearest cell. Arrows move it a cell, Enter accepts (saves). **Skip** saves
   the default corner: the reference floor's corner above / below, just east of that
   floor's pages beside. Right-drag pans, wheel / + / − zoom, 0 fits.
+  *Amended 2026-11-23 (user):* beside gets a **Side** row (East / West / North / South,
+  default East): the floor starts edge to edge with the reference map on that side,
+  and moves on past any map of that floor in the way, so maps can sit in any
+  arrangement, not only left to right.
+  On Place, beside, the new floor (gold) also **drags** a cell at a time; Next saves
+  it where it was let go, and Align's Skip keeps that spot. A Side chip snaps it back.
 - `FloorWriter` gains `manifest` / `load_dungeon` / `save_dungeon` / `page_art`.
 - Tests: `tests/test_floor_place.py` (5 cases, new); `test_dungeon_wizard.py` +1
   (place below, landmark clicks on the canvas, nudge, beside + Skip) and the W5

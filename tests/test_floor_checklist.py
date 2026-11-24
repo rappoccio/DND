@@ -171,6 +171,31 @@ def test_clicks_jump_with_the_tool_open():
     print("  ✅ each item goes to its floor with its tool open")
 
 
+def test_returns_after_the_tool_closes():
+    """An item's tool closing brings the checklist back; Close / Esc do not."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon(tmp)
+        ck = _reopen(app)
+        gui_driver.post_click(app, _chip(ck, "U", "doors").center)
+        ck.tick(app)
+        assert not ck.visible and app.terrain_editor.active        # the tool is up
+        app._close_terrain_editor()
+        ck.tick(app)
+        assert ck.visible and not ck.returning                     # back on the list
+
+        gui_driver.post_click(app, _chip(ck, "M", "grid").center)
+        ck.tick(app)
+        assert not ck.visible and app._grid_sample_mode
+        app._toggle_grid_sample_mode()
+        ck.tick(app)
+        assert ck.visible
+
+        gui_driver.post_click(app, _btn(ck, "close").center)
+        ck.tick(app)
+        assert not ck.visible                                      # Close stays closed
+    print("  ✅ the checklist comes back when an item's tool closes")
+
+
 def test_buttons_and_escape():
     with tempfile.TemporaryDirectory() as tmp:
         app = _dungeon(tmp)
@@ -196,7 +221,8 @@ def test_buttons_and_escape():
 if __name__ == "__main__":
     pygame.init()
     tests = [test_walls_state, test_aligned_round_trips, test_rows,
-             test_clicks_jump_with_the_tool_open, test_buttons_and_escape]
+             test_clicks_jump_with_the_tool_open, test_returns_after_the_tool_closes,
+             test_buttons_and_escape]
     failed = 0
     for t in tests:
         try:

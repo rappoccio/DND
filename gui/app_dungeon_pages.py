@@ -599,6 +599,29 @@ def open_campaign(app, anchor=None):
     app._ask_dm("action", "Open Campaign", items, anchor=anchor)
 
 
+def new_campaign(app):
+    """Dungeon → New Campaign…: a typed name makes an empty campaign under
+    encounters/ (folder = its slug, -2, -3 when taken). With no dungeon open the New
+    Dungeon wizard follows, on that campaign, for its first dungeon."""
+    if app.combat_active:
+        app._flash_status("Finish combat before starting a campaign.")
+        return None
+    name = app._modal_text_prompt("New Campaign", "Campaign name:", ok_label="Create")
+    if not name or not name.strip():
+        return None
+    root = campaigns_root(app)
+    try:
+        slug = save_layout.unique_slug(name, os.listdir(root) if os.path.isdir(root) else ())
+        camp = save_layout.Campaign.create(os.path.join(root, slug), name.strip())
+    except (OSError, ValueError) as e:
+        app._flash_status(f"New Campaign: {e}")
+        return None
+    if app.dungeon is None:
+        app.dungeon_wizard.start(app, campaign=camp.root)
+    app._flash_status(f"Created campaign '{camp.name}'.")
+    return camp
+
+
 def open_campaign_menu(app, camp_root, anchor):
     try:
         camp = save_layout.Campaign(camp_root)

@@ -87,6 +87,27 @@ def test_beside_and_faded_floor():
     print("  ✅ beside: east of that floor's pages; the faded / faint floors per relation")
 
 
+def test_beside_sides():
+    # g at the origin, g2 east of it; the new 4x3 floor goes on any side of either.
+    d = _dung(("g", [0, 0, 0], 10, 8), ("g2", [10, 0, 0], 5, 8), ("new", [0, 0, 1], 4, 3))
+    assert fp.place(d, "new", "g", fp.BESIDE, fp.EAST) == [15, 0, 0]    # past g2
+    assert fp.place(d, "new", "g", fp.BESIDE, fp.WEST) == [-4, 0, 0]
+    assert fp.place(d, "new", "g", fp.BESIDE, fp.NORTH) == [0, -3, 0]
+    assert fp.place(d, "new", "g", fp.BESIDE, fp.SOUTH) == [0, 8, 0]
+    assert fp.place(d, "new", "g2", fp.BESIDE, fp.SOUTH) == [10, 8, 0]
+    assert fp.place(d, "new", "g2", fp.BESIDE, fp.WEST) == [-4, 0, 0]   # past g
+    # A 2x2 arrangement: the fourth map south of g2 sits beside the one south of g.
+    d = _dung(("g", [0, 0, 0], 10, 8), ("g2", [10, 0, 0], 10, 8), ("g3", [0, 8, 0], 10, 8),
+              ("new", [0, 0, 1], 10, 8))
+    assert fp.place(d, "new", "g2", fp.BESIDE, fp.SOUTH) == [10, 8, 0]
+    try:
+        fp.place(d, "new", "g2", fp.BESIDE, "up")
+        raise AssertionError("bad side accepted")
+    except ValueError:
+        pass
+    print("  ✅ beside: east / west / north / south of the reference, past maps in the way")
+
+
 def test_landmark_and_refusals():
     assert fp.landmark_origin([0, 0, 3], (2.4, 5.6), (10.2, -1.3)) == [8, -7, 3]
     d = _dung(("g", [0, 0, 0], 4, 4), ("new", [0, 0, 1], 4, 4))
