@@ -1503,6 +1503,33 @@ public:
     // Ever-Ready Shot (Arcane Archer L10, AA4): at combat start, each such archer with no Arcane Shot
     // uses left regains one. RNG-free; call once after initiative.
     void applyEverReadyShot(BattleMap& bm) noexcept;
+    // Indomitable Teleport (Arcane Archer L15, AA5): after an Indomitable reroll SUCCEEDS on a spell
+    // save, the archer may teleport up to 60 ft to an unoccupied space it can see. The cast flow opens
+    // an AfterSave window for it (applySaveFailReaction flags it on the in-flight cast).
+    [[nodiscard]] bool canIndomitableTeleport(const BattleMap& bm, int idx) const noexcept;
+    [[nodiscard]] bool isIndomitableTeleportDestination(const BattleMap& bm, int idx, Cell dest) const;
+    bool applyIndomitableTeleport(BattleMap& bm, int idx, int col, int row);
+    [[nodiscard]] std::vector<ReactionOption> indomitableTeleportOptions() const;
+    // Masterful Shots (Arcane Archer L18, AA5): a Reaction when a creature the archer can see misses
+    // it with an attack roll. The archer moves up to half its Speed away from the attacker without
+    // provoking Opportunity Attacks, then makes one ranged weapon attack against it if it is in range.
+    // Offered through the AfterAttack window (GUI) or the decider (auto).
+    [[nodiscard]] bool canMasterfulShots(const BattleMap& bm, int archer_idx, int attacker_idx) const;
+    // A Ranged weapon slot that can attack attacker_idx from `from` (one without the long-range
+    // Disadvantage first), or -1.
+    [[nodiscard]] int  masterfulShotsWeapon(const BattleMap& bm, int archer_idx, int attacker_idx,
+                                            Cell from) const;
+    // The archer's own cell (no move), or a cell reachable on foot within half its Speed, unoccupied,
+    // and farther from the attacker than where it stands.
+    [[nodiscard]] bool isMasterfulShotsDestination(const BattleMap& bm, int archer_idx, int attacker_idx,
+                                                   Cell dest) const;
+    // The engine's pick: a legal cell from which a weapon reaches the attacker (without long-range
+    // Disadvantage if possible), as far from it as possible, then the shortest move.
+    [[nodiscard]] Cell masterfulShotsDestination(const BattleMap& bm, int archer_idx, int attacker_idx) const;
+    // Spend the Reaction, move to (col,row) (-1,-1 = masterfulShotsDestination), then attack. Returns
+    // the attack (invalid when ineligible, the cell is illegal, or the attacker is out of range).
+    AttackResult applyMasterfulShots(BattleMap& bm, int archer_idx, int attacker_idx, int col, int row);
+    [[nodiscard]] std::vector<ReactionOption> masterfulShotsOptions() const;
     // Grasping Shot escape: an action by the restrained creature, or a creature within 5 ft of it,
     // makes a STR (Athletics) check against the archer's Arcane Shot DC; success ends Restrained.
     // The action cost is the caller's to charge.
@@ -1843,6 +1870,8 @@ public:
     // or out of its line of sight. {-1,-1} when there is none, or when the Ranger already stands in one.
     [[nodiscard]] Cell shadowyDodgeDestination(const BattleMap& bm, int idx) const;
     bool shadowyDodgeTeleport(BattleMap& bm, int idx, Cell dest);
+    // Shared teleport-space test: within range_cells of idx, unoccupied, legal, and seen (not its own).
+    [[nodiscard]] bool isSeenTeleportSpace(const BattleMap& bm, int idx, Cell dest, int range_cells) const;
 
     // Beguiling Defenses (Archfey Warlock L10) — OnHit defender reaction. After a creature the warlock
     // can see hits it, the warlock may reduce the damage by half AND force the attacker to make a WIS

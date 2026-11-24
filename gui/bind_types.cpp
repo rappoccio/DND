@@ -2347,7 +2347,8 @@ void bindTypes(py::module_& m) {
         .value("OnTurnStartNearby", ReactionWindow::OnTurnStartNearby)
         .value("OnAllyAttacked",    ReactionWindow::OnAllyAttacked)
         .value("OnAttackDeclared",  ReactionWindow::OnAttackDeclared)
-        .value("AfterAttack",       ReactionWindow::AfterAttack);
+        .value("AfterAttack",       ReactionWindow::AfterAttack)
+        .value("AfterSave",         ReactionWindow::AfterSave);
 
     py::enum_<ReactionOption::Kind>(m, "ReactionOptionKind")
         .value("Skip",    ReactionOption::Skip)

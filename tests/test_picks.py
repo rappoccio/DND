@@ -504,7 +504,8 @@ def test_every_wired_arm_projects_and_cancels():
     her cancel runs its cancel, which leaves it idle, and the offer comes back. Vitality
     needs a live window, and the jump its own landing set: both are checked on their own (as is
     Shadowy Dodge's cell, which is Vitality's case)."""
-    skip = {"vitality_target", "jump_overlay_active", "shadowy_dodge_cell"}
+    skip = {"vitality_target", "jump_overlay_active", "shadowy_dodge_cell",
+            "masterful_shots_cell", "indomitable_teleport_cell"}
     for arm in net_picks.ARMS:
         if arm.name not in net_picks.WIRED or arm.name in skip:
             continue

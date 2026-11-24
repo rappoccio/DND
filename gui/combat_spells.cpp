@@ -5270,7 +5270,12 @@ void CombatEngine::applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, 
         if (p.target_idx == ctx.source_idx) { ss = &p; break; }
     if (!ss) return;
     if      (opt.feature == "Countercharm")         applyCountercharmToSave(bm, ctx.reactor_idx, *ss);
-    else if (opt.feature == "Indomitable")          applyIndomitableToSave (bm, ctx.reactor_idx, *ss);
+    else if (opt.feature == "Indomitable") {
+        // Indomitable Teleport (Arcane Archer L15): a success owes the archer an AfterSave window.
+        if (applyIndomitableToSave(bm, ctx.reactor_idx, *ss) && ss->saved &&
+            canIndomitableTeleport(bm, ctx.reactor_idx))
+            topCast().indomitable_teleport_reactor = ctx.reactor_idx;
+    }
     else if (opt.feature == "LegendaryResistance")  applyLegendaryResistanceToSave(bm, ctx.reactor_idx, *ss);
     else if (opt.feature == "WarGodsBlessing")      applyWarGodsBlessingToSave(bm, ctx.reactor_idx, *ss);
     else if (opt.feature == "DarkOnesOwnLuck")       applyDarkOnesOwnLuckToSave(bm, ctx.reactor_idx, *ss);

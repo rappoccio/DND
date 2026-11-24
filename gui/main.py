@@ -778,6 +778,7 @@ class App:
         self.pending_mantle_targets    = []    # chosen recipient indices (capped to CHA mod on resolve)
         self.pending_beguiling_bard    = -1    # the Glamour bard who cast the qualifying Enchantment/Illusion spell
         self._shadowy_dodge_option_index = -1   # the chosen AfterAttack option to submit once a cell is picked
+        self._reaction_cell_option_index = -1   # Masterful Shots / Indomitable Teleport: the same, for its pick
         self._vitality_option_index    = -1    # the chosen reaction option index to submit once a target is picked
         self.pending_flurry_atk_idx    = -1    # attacker index for Flurry
         self.pending_flurry_rider_option = -1  # Open Hand rider option (0=Knockdown, 1=Push, 2=DenyReaction, -1=None)
@@ -3140,6 +3141,11 @@ class App:
         # Shadowy Dodge (Gloom Stalker L15): the teleport cell, inside a parked AfterAttack window.
         elif self._picking("shadowy_dodge_cell"):
             self._resolve_shadowy_dodge_cell(cell)
+        # Arcane Archer: Masterful Shots (L18) / Indomitable Teleport (L15) cells, in a parked window.
+        elif self._picking("masterful_shots_cell"):
+            self._resolve_reaction_cell(cell)
+        elif self._picking("indomitable_teleport_cell"):
+            self._resolve_reaction_cell(cell)
         # Blink Steps (Boon of Dimensional Travel): teleport up to 30 ft after the action.
         elif self._picking("blink_steps"):
             self._resolve_blink_steps(cell)
@@ -6042,8 +6048,16 @@ class App:
                     f"{agents[ctx.reactor_idx].name} may react before {agents[ctx.source_idx].name}'s "
                     f"attack roll — Shadowy Dodge!")
             elif ctx.window == rpg.ReactionWindow.AfterAttack:
+                if any(o.feature.startswith("MasterfulShots") for o in ctx.options):
+                    title = (
+                        f"{agents[ctx.reactor_idx].name} may react to {agents[ctx.source_idx].name}'s "
+                        f"miss — Masterful Shots!")
+                else:
+                    title = (
+                        f"{agents[ctx.reactor_idx].name}: Shadowy Dodge — teleport up to 30 ft?")
+            elif ctx.window == rpg.ReactionWindow.AfterSave:
                 title = (
-                    f"{agents[ctx.reactor_idx].name}: Shadowy Dodge — teleport up to 30 ft?")
+                    f"{agents[ctx.reactor_idx].name}: Indomitable Teleport — teleport up to 60 ft?")
             elif ctx.window == rpg.ReactionWindow.OnD20Seen:
                 feats = [o.feature for o in ctx.options
                          if o.kind == rpg.ReactionOptionKind.Feature]
@@ -6099,6 +6113,8 @@ class App:
                 return lambda i=i: self._begin_vitality_target_pick(i)
             if feature == "ShadowyDodgeTeleportPick":
                 return lambda i=i: self._begin_shadowy_dodge_pick(i)
+            if feature in ("MasterfulShotsPick", "IndomitableTeleportPick"):
+                return lambda i=i, f=feature: self._begin_reaction_cell_pick(i, f)
             return lambda i=i: self._submit_reaction(i)
         # The first prompt on the bus (M1 Step 2). The owner is the REACTOR's controller,
         # not the actor's: an opportunity attack belongs to the creature taking it, which
@@ -6175,6 +6191,77 @@ class App:
         self._combat_log_add(f"{name}: click an unoccupied cell you can see within 30 ft "
                              f"(your own cell to stay put) — Shadowy Dodge.")
         self._flush_combat_log()
+
+    # Arcane Archer cell picks inside a parked window: (pick kind, engine validator, prompt, error).
+    # Masterful Shots' own cell shoots without moving; Indomitable Teleport's own cell stays put.
+    _REACTION_CELL_PICKS = {
+        "MasterfulShotsPick": (
+            "masterful_shots_cell",
+            lambda self, pd, cell: self.combat.is_masterful_shots_destination(
+                self.bm, pd.ctx.reactor_idx, pd.ctx.source_idx, cell),
+            "click a cell up to half your Speed away from the attacker (your own cell to shoot "
+            "without moving) — Masterful Shots.",
+            "Masterful Shots: pick an unoccupied cell within half your Speed, farther from the attacker."),
+        "IndomitableTeleportPick": (
+            "indomitable_teleport_cell",
+            lambda self, pd, cell: self.combat.is_indomitable_teleport_destination(
+                self.bm, pd.ctx.reactor_idx, cell),
+            "click an unoccupied cell you can see within 60 ft (your own cell to stay put) — "
+            "Indomitable Teleport.",
+            "Indomitable Teleport: pick an unoccupied cell you can see within 60 ft."),
+    }
+
+    def _begin_reaction_cell_pick(self, option_index: int, feature: str):
+        """Masterful Shots / Indomitable Teleport: the player chose to pick the cell. The parked
+        window stays parked until _resolve_reaction_cell submits it."""
+        kind, _, prompt, _ = self._REACTION_CELL_PICKS[feature]
+        self._reaction_cell_option_index = option_index
+        self._arm_pick(kind, feature)
+        pd = self.combat.pending_decision()
+        idx = pd.ctx.reactor_idx if pd.active else -1
+        agents = self.bm.placed_agents
+        name = agents[idx].name if 0 <= idx < len(agents) else "?"
+        self._combat_log_add(f"{name}: {prompt}")
+        self._flush_combat_log()
+
+    def _resolve_reaction_cell(self, cell):
+        """Submit the parked Masterful Shots / Indomitable Teleport window with the clicked cell. An
+        illegal cell re-prompts; the archer's own cell shoots in place (Masterful Shots) or stays put
+        (Indomitable Teleport)."""
+        kind = ("masterful_shots_cell" if self._picking("masterful_shots_cell")
+                else "indomitable_teleport_cell")
+        feature = self._pick_data(kind)
+        pd = self.combat.pending_decision()
+        if (feature not in self._REACTION_CELL_PICKS or not pd.active or
+                pd.ctx.window not in (rpg.ReactionWindow.AfterAttack, rpg.ReactionWindow.AfterSave)):
+            self._drop_pick(kind)   # stale arm: the window is gone
+            self._reaction_cell_option_index = -1
+            return
+        _, valid, _, error = self._REACTION_CELL_PICKS[feature]
+        origin = self.bm.placed_agents[pd.ctx.reactor_idx].origin
+        own = cell.col == origin.col and cell.row == origin.row
+        resp = rpg.ReactionResponse()
+        if own and feature == "IndomitableTeleportPick":
+            resp.option = next((i for i, o in enumerate(pd.ctx.options)
+                                if o.kind == rpg.ReactionOptionKind.Skip), -1)
+        elif not valid(self, pd, cell):
+            self._combat_log_add(error)
+            self._flush_combat_log()
+            return   # keep the pick armed
+        else:
+            resp.option = self._reaction_cell_option_index
+            resp.cell_col, resp.cell_row = cell.col, cell.row
+        self._drop_pick(kind)
+        self._reaction_cell_option_index = -1
+        status = self.combat.submit_decision(self.bm, resp)
+        self._flush_combat_log()
+        self._mark_fog_dirty()   # the archer moved
+        self._sync_spell_effect_cache()
+        self._update_attack_overlay()
+        if status == rpg.FlowStatus.AwaitingDecision:
+            self._show_pending_reaction_menu()
+        else:
+            self._reaction_finish()
 
     def _resolve_shadowy_dodge_cell(self, cell):
         """Submit the parked Shadowy Dodge teleport with the clicked cell. A click on the Ranger's own

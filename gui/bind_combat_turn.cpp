@@ -838,6 +838,35 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
         .def("apply_ever_ready_shot", &CombatEngine::applyEverReadyShot, py::arg("battle_map"),
              "Ever-Ready Shot (Arcane Archer L10): at combat start, each archer with no Arcane Shot\n"
              "uses left regains one. RNG-free.")
+        .def("can_indomitable_teleport", &CombatEngine::canIndomitableTeleport,
+             py::arg("battle_map"), py::arg("idx"),
+             "Indomitable Teleport (Arcane Archer L15): the archer is an L15+ Arcane Archer, alive and\n"
+             "not Incapacitated. The cast flow opens an AfterSave window after a successful Indomitable.")
+        .def("is_indomitable_teleport_destination", &CombatEngine::isIndomitableTeleportDestination,
+             py::arg("battle_map"), py::arg("idx"), py::arg("dest"),
+             "Indomitable Teleport: an unoccupied cell within 60 ft the archer can see (not its own).")
+        .def("apply_indomitable_teleport", &CombatEngine::applyIndomitableTeleport,
+             py::arg("battle_map"), py::arg("idx"), py::arg("col"), py::arg("row"),
+             "Indomitable Teleport: teleport the archer to (col,row). False if ineligible or illegal.")
+        .def("can_masterful_shots", &CombatEngine::canMasterfulShots,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("attacker_idx"),
+             "Masterful Shots (Arcane Archer L18): the archer has its Reaction, sees the attacker and\n"
+             "carries a Ranged weapon. Offered when the attacker's attack roll misses it.")
+        .def("masterful_shots_weapon", &CombatEngine::masterfulShotsWeapon,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("attacker_idx"), py::arg("from_cell"),
+             "The Ranged weapon slot that reaches the attacker from from_cell (normal range first), or -1.")
+        .def("is_masterful_shots_destination", &CombatEngine::isMasterfulShotsDestination,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("attacker_idx"), py::arg("dest"),
+             "Masterful Shots: the archer's own cell, or one reachable on foot within half its Speed,\n"
+             "unoccupied and farther from the attacker.")
+        .def("masterful_shots_destination", &CombatEngine::masterfulShotsDestination,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("attacker_idx"),
+             "Masterful Shots: the engine's cell (in range, farthest from the attacker, shortest move).")
+        .def("apply_masterful_shots", &CombatEngine::applyMasterfulShots,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("attacker_idx"),
+             py::arg("col") = -1, py::arg("row") = -1,
+             "Masterful Shots: spend the Reaction, move to (col,row) (-1 = the engine's cell) without\n"
+             "provoking, then make a ranged attack at the attacker. Returns the AttackResult.")
         .def("held_by_grasping_shot", &CombatEngine::heldByGraspingShot, py::arg("target_idx"),
              "True if the creature is Restrained by a Grasping Shot.")
         .def("apply_sweeping_attack",

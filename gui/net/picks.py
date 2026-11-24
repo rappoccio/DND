@@ -181,6 +181,16 @@ def cancel_shadowy_dodge(app) -> None:
     app._submit_reaction_skip()
 
 
+def cancel_reaction_cell(app) -> None:
+    """Masterful Shots / Indomitable Teleport's cell pick sits inside a parked window: a cancel
+    submits the window's Skip (no reaction / stay put), as Shadowy Dodge's does."""
+    for kind in ("masterful_shots_cell", "indomitable_teleport_cell"):
+        app._drop_pick(kind)
+    app._reaction_cell_option_index = -1
+    _say(app, "Reaction skipped.")
+    app._submit_reaction_skip()
+
+
 def cancel_summon(app) -> None:
     """Nothing is spent until the creature is placed, so a cancel only disarms. It is also
     what a cancelled form menu runs: the summon is armed before its form is chosen."""
@@ -380,6 +390,12 @@ ARMS: tuple[Arm, ...] = (
     Arm("shadowy_dodge_cell", PICK, CELL,
         _t("Shadowy Dodge: choose where to teleport (30 ft)"), cancel_shadowy_dodge,
         actor=_reactor, in_window=True),
+    Arm("masterful_shots_cell", PICK, CELL,
+        _t("Masterful Shots: choose where to move (half Speed)"), cancel_reaction_cell,
+        actor=_reactor, in_window=True),
+    Arm("indomitable_teleport_cell", PICK, CELL,
+        _t("Indomitable Teleport: choose where to teleport (60 ft)"), cancel_reaction_cell,
+        actor=_reactor, in_window=True),
     Arm("blink_steps", PICK, CELL, _t("Blink Steps: choose where to teleport"),
         _drop("blink_steps", "Blink Steps")),
     Arm("psychic_teleport", PICK, CELL, _t("Psychic Teleportation: choose a destination"),
@@ -514,6 +530,8 @@ WIRED = frozenset({
     "elemental_burst", "jump_overlay_active",
     # Ranger R2 — Shadowy Dodge's teleport, inside its parked AfterAttack window
     "shadowy_dodge_cell",
+    # Arcane Archer AA5 — Masterful Shots' move and Indomitable Teleport's cell, in parked windows
+    "masterful_shots_cell", "indomitable_teleport_cell",
     # Ranger R3 — Misty Wanderer's destination (the passenger question is a bus prompt)
     "misty_wanderer",
     # Arcane Archer AA3 — Piercing Shot's direction and Seeking Shot's creature

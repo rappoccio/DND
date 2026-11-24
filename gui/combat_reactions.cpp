@@ -294,10 +294,18 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
                 ctx.options[static_cast<std::size_t>(resp.option)].feature == "ShadowyDodge")
                 takeShadowyDodge(bm, rx_.attack());
         } else if (ctx.window == ReactionWindow::AfterAttack) {
-            // Shadowy Dodge's teleport: the safest cell, or the one the response names.
+            // Shadowy Dodge's teleport (the safest cell, or the one the response names), or Masterful
+            // Shots (move away — the engine's cell or the named one — then shoot the attacker).
             if (resp.option >= 0 && resp.option < static_cast<int>(ctx.options.size()) &&
-                ctx.options[static_cast<std::size_t>(resp.option)].kind == ReactionOption::Feature)
-                shadowyDodgeFollowUp(bm, ctx.reactor_idx, resp.cell_col, resp.cell_row);
+                ctx.options[static_cast<std::size_t>(resp.option)].kind == ReactionOption::Feature) {
+                const std::string& f = ctx.options[static_cast<std::size_t>(resp.option)].feature;
+                if (f == "MasterfulShots" || f == "MasterfulShotsPick")
+                    (void)applyMasterfulShots(bm, ctx.reactor_idx, ctx.source_idx,
+                                              f == "MasterfulShotsPick" ? resp.cell_col : -1,
+                                              f == "MasterfulShotsPick" ? resp.cell_row : -1);
+                else
+                    shadowyDodgeFollowUp(bm, ctx.reactor_idx, resp.cell_col, resp.cell_row);
+            }
         } else if (ctx.window == ReactionWindow::OnD20Seen) {
             applyD20SeenReaction(bm, ctx, resp);
             ++rx_.attack().d20_cursor;
@@ -318,7 +326,13 @@ CombatEngine::submitDecision(BattleMap& bm, const ReactionResponse& resp)
         // Two windows share the top in-flight cast: OnDeclareCast/OnHit (Counterspell/Shield, `cursor`)
         // and OnSaveFail (reroll a failed save, its own `savefail_cursor`). Advance the matching cursor.
         InFlightCast& c = topCast();
-        if (ctx.window == ReactionWindow::OnSaveFail) {
+        if (ctx.window == ReactionWindow::AfterSave) {
+            // Indomitable Teleport: the cell the response names (none = stay put).
+            if (resp.option >= 0 && resp.option < static_cast<int>(ctx.options.size()) &&
+                ctx.options[static_cast<std::size_t>(resp.option)].kind == ReactionOption::Feature &&
+                !applyIndomitableTeleport(bm, ctx.reactor_idx, resp.cell_col, resp.cell_row))
+                log_("{} stays put (Indomitable Teleport)", agentName(bm, ctx.reactor_idx));
+        } else if (ctx.window == ReactionWindow::OnSaveFail) {
             applySaveFailReaction(bm, ctx, resp);
             ++c.savefail_cursor;
         } else if (isCounterspellChoice(ctx, resp) &&
@@ -482,6 +496,20 @@ FlowStatus CombatEngine::advanceAttack(BattleMap& bm)
             ctx.reactor_idx = d;
             ctx.source_idx  = s.action.attacker_idx;
             ctx.options     = shadowyDodgeTeleportOptions();
+            rx_.park(ctx);
+            return FlowStatus::AwaitingDecision;
+        }
+    }
+    // Masterful Shots (Arcane Archer L18): a missed archer may move away and shoot back. Offered once.
+    if (s.interactive && !s.masterful_offered) {
+        s.masterful_offered = true;
+        if (last_attack_result_.valid && !last_attack_result_.hit &&
+            canMasterfulShots(bm, s.action.target_idx, s.action.attacker_idx)) {
+            ReactionCtx ctx;
+            ctx.window      = ReactionWindow::AfterAttack;
+            ctx.reactor_idx = s.action.target_idx;
+            ctx.source_idx  = s.action.attacker_idx;
+            ctx.options     = masterfulShotsOptions();
             rx_.park(ctx);
             return FlowStatus::AwaitingDecision;
         }
@@ -685,7 +713,30 @@ CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
                     c.savefail_pairs.emplace_back(ss.target_idx, reactor);
         }
     }
-    while (c.savefail_cursor < c.savefail_pairs.size()) {
+    for (;;) {
+        // Indomitable Teleport (Arcane Archer L15): an Indomitable reroll just succeeded, so the archer
+        // may teleport before the next failed save is offered. Owed once per success.
+        if (c.indomitable_teleport_reactor >= 0) {
+            const int who = c.indomitable_teleport_reactor;
+            c.indomitable_teleport_reactor = -1;
+            if (!canIndomitableTeleport(bm, who)) continue;
+            ReactionCtx ctx;
+            ctx.window      = ReactionWindow::AfterSave;
+            ctx.reactor_idx = who;
+            ctx.source_idx  = who;
+            ctx.spell_idx   = c.action.spell_idx;
+            ctx.options     = indomitableTeleportOptions();
+            if (c.interactive) {
+                rx_.park(ctx);    // suspend; submitDecision teleports to the picked cell
+                return CastStep::Awaiting;
+            }
+            const ReactionResponse resp = decider_ ? decider_->chooseReaction(ctx) : ReactionResponse{};
+            if (resp.option >= 0 && resp.option < static_cast<int>(ctx.options.size()) &&
+                ctx.options[static_cast<std::size_t>(resp.option)].kind == ReactionOption::Feature)
+                (void)applyIndomitableTeleport(bm, who, resp.cell_col, resp.cell_row);
+            continue;
+        }
+        if (c.savefail_cursor >= c.savefail_pairs.size()) break;
         const int save_target = c.savefail_pairs[c.savefail_cursor].first;
         const int reactor     = c.savefail_pairs[c.savefail_cursor].second;
         SpellSave* ss = nullptr;

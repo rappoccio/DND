@@ -1699,6 +1699,53 @@ def test_shadowy_dodge_cell_pick_submits_the_parked_window():
     print("✅ test_shadowy_dodge_cell_pick_submits_the_parked_window passed")
 
 
+def test_masterful_shots_cell_pick_submits_the_parked_window():
+    """Masterful Shots' "pick a cell" option arms a map pick inside the parked AfterAttack window;
+    an illegal cell keeps it armed and a legal one moves the archer and shoots back (AA5)."""
+    app = _app()
+    cyra = _reclass(app, "Cyra", rpg.CharacterClass.Fighter, 18,
+                    fighter_subclass=rpg.FighterSubclass.ArcaneArcher)
+    skarn = _idx(app, "Skarn")
+    app.bm.set_agent_faction(cyra, app.bm.get_agent_faction(skarn) + 1)
+    s = app.combat.get_agent_stats(app.bm, cyra); s.base_ac = 100; s.speed_walk = 30
+    app.combat.set_agent_stats(app.bm, cyra, s)
+    bow = rpg.Weapon(); bow.name = "Longbow"; bow.type = rpg.WeaponType.Ranged; bow.proficient = True
+    bow.range_short_feet = 150; bow.range_long_feet = 600
+    app.combat.set_agent_weapons(app.bm, cyra, [bow, rpg.Weapon(), rpg.Weapon()])
+    club = rpg.Weapon(); club.name = "Club"; club.type = rpg.WeaponType.Melee; club.reach_ft = 5
+    club.range_short_feet = 5; club.range_long_feet = 5; club.proficient = True
+    app.combat.set_agent_weapons(app.bm, skarn, [club, rpg.Weapon(), rpg.Weapon()])
+    sk = app.bm.placed_agents[skarn].origin
+    # Find a free cell beside Skarn with room to back away.
+    spot = next(rpg.Cell(sk.col + dc, sk.row + dr) for dr in (0, -1, 1) for dc in (1, -1)
+                if app.combat.teleport_agent(app.bm, cyra, sk.col + dc, sk.row + dr))
+    for _ in range(60):
+        c = app.combat.get_agent_conditions(app.bm, cyra); c.reaction_used = False
+        app.combat.set_agent_conditions(app.bm, cyra, c)
+        app.bm.set_agent_position(cyra, spot)
+        status = app.combat.begin_attack(app.bm, rpg.Attack(skarn, cyra, 0))
+        if status == rpg.FlowStatus.AwaitingDecision:
+            break
+    ctx = app.combat.pending_decision().ctx
+    assert ctx.window == rpg.ReactionWindow.AfterAttack
+    pick = next(i for i, o in enumerate(ctx.options) if o.feature == "MasterfulShotsPick")
+    app._begin_reaction_cell_pick(pick, "MasterfulShotsPick")
+    assert app._picking("masterful_shots_cell")
+
+    app._resolve_reaction_cell(rpg.Cell(sk.col, sk.row))           # occupied, toward it
+    assert app._picking("masterful_shots_cell") and app.combat.pending_decision().active
+    me = app.bm.placed_agents[cyra].origin
+    dest = next(rpg.Cell(me.col + dc, me.row + dr) for dr in range(-3, 4) for dc in range(-3, 4)
+                if (dc or dr) and app.combat.is_masterful_shots_destination(
+                    app.bm, cyra, skarn, rpg.Cell(me.col + dc, me.row + dr)))
+    app._resolve_reaction_cell(dest)
+    at = app.bm.placed_agents[cyra].origin
+    assert (at.col, at.row) == (dest.col, dest.row)
+    assert app.combat.get_agent_conditions(app.bm, cyra).reaction_used
+    assert not app._picking("masterful_shots_cell") and not app.combat.pending_decision().active
+    print("✅ test_masterful_shots_cell_pick_submits_the_parked_window passed")
+
+
 def _fey(app, name, level, **fields):
     """`name` re-classed as a Fey Wanderer of `level`, with Summon Fey known (R3)."""
     idx = _reclass(app, name, rpg.CharacterClass.Ranger, level,
@@ -2121,6 +2168,7 @@ if __name__ == "__main__":
         test_sudden_strike_is_offered_from_the_engine_list_and_checks_the_click()
         test_beast_master_command_and_beasts_strike()
         test_shadowy_dodge_cell_pick_submits_the_parked_window()
+        test_masterful_shots_cell_pick_submits_the_parked_window()
         test_the_fey_wanderer_rows()
         test_fey_reinforcements_casts_a_one_minute_summon_without_a_slot()
         test_misty_wanderer_pick_and_the_passenger_prompt()

@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace rpg {
@@ -2969,6 +2970,203 @@ void CombatEngine::applyEverReadyShot(BattleMap& bm) noexcept
         bm.setAgentStats(i, st);
         log_("{} regains an Arcane Shot use (Ever-Ready Shot)", agentName(bm, i));
     }
+}
+
+// ── Indomitable Teleport (Arcane Archer L15, AA5) ────────────────────────────
+// After the archer succeeds on a saving throw using Indomitable, it can teleport up to 60 ft to an
+// unoccupied space it can see. No action, no Reaction (it rides on Indomitable).
+bool CombatEngine::canIndomitableTeleport(const BattleMap& bm, int idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size()) || bm.isAgentOnDeck(idx)) return false;
+    const Agent::Stats st = bm.getAgentStats(idx);
+    if (st.hp_cur <= 0 || st.fighter_subclass != ArcaneArcherPath ||
+        st.classLevel(CharacterClass::Fighter) < 15) return false;
+    const Agent::Conditions c = bm.getAgentConditions(idx);
+    return !c.dead && !c.incapacitated;
+}
+
+bool CombatEngine::isIndomitableTeleportDestination(const BattleMap& bm, int idx, Cell dest) const
+{
+    return isSeenTeleportSpace(bm, idx, dest, 12);   // 60 ft
+}
+
+bool CombatEngine::applyIndomitableTeleport(BattleMap& bm, int idx, int col, int row)
+{
+    if (!canIndomitableTeleport(bm, idx)) return false;
+    if (!isIndomitableTeleportDestination(bm, idx, Cell{col, row})) return false;
+    const Cell from = bm.placedAgents()[static_cast<std::size_t>(idx)].origin;
+    if (!teleportAgent(bm, idx, col, row)) return false;
+    log_("{} teleports {} ft (Indomitable Teleport)", agentName(bm, idx),
+         5 * std::max(std::abs(col - from.col), std::abs(row - from.row)));
+    return true;
+}
+
+std::vector<ReactionOption> CombatEngine::indomitableTeleportOptions() const
+{
+    std::vector<ReactionOption> opts;
+    opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                  "Indomitable Teleport: teleport up to 60 ft (pick a cell)",
+                                  "IndomitableTeleportPick"});
+    opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Stay put", ""});
+    return opts;
+}
+
+// ── Masterful Shots (Arcane Archer L18, AA5) ─────────────────────────────────
+// Reaction: when a creature the archer can see misses it with an attack roll, the archer moves up to
+// half its Speed away from that creature without provoking Opportunity Attacks, then makes one
+// ranged weapon attack against it if it is within range.
+bool CombatEngine::canMasterfulShots(const BattleMap& bm, int archer_idx, int attacker_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (archer_idx < 0 || archer_idx >= n || attacker_idx < 0 || attacker_idx >= n) return false;
+    if (archer_idx == attacker_idx || bm.isAgentOnDeck(archer_idx)) return false;
+    const Agent::Stats st = bm.getAgentStats(archer_idx);
+    if (st.hp_cur <= 0 || st.fighter_subclass != ArcaneArcherPath ||
+        st.classLevel(CharacterClass::Fighter) < 18) return false;
+    const Agent::Conditions c = bm.getAgentConditions(archer_idx);
+    if (c.dead || !canTakeReaction(c)) return false;
+    const PlacedAgent& apa = agents[static_cast<std::size_t>(archer_idx)];
+    const PlacedAgent& tpa = agents[static_cast<std::size_t>(attacker_idx)];
+    if (tpa.removed_from_play || tpa.origin.z != apa.origin.z) return false;
+    if (bm.getAgentStats(attacker_idx).hp_cur <= 0) return false;
+    if (sealedApart(bm, archer_idx, attacker_idx)) return false;
+    if (!canPerceiveTarget(bm, archer_idx, attacker_idx)) return false;   // "a creature you can see"
+    for (int w = 0; w < static_cast<int>(apa.weapons.size()); ++w)
+        if (arcaneShotWeapon(apa, w)) return true;                         // something to shoot with
+    return false;
+}
+
+int CombatEngine::masterfulShotsWeapon(const BattleMap& bm, int archer_idx, int attacker_idx, Cell from) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (archer_idx < 0 || archer_idx >= n || attacker_idx < 0 || attacker_idx >= n) return -1;
+    const PlacedAgent& apa = agents[static_cast<std::size_t>(archer_idx)];
+    const PlacedAgent& tpa = agents[static_cast<std::size_t>(attacker_idx)];
+    const int asz = apa.agent->getSize(), tsz = tpa.agent->getSize();
+    int at_long = -1;
+    for (int w = 0; w < static_cast<int>(apa.weapons.size()); ++w) {
+        const Weapon* wp = arcaneShotWeapon(apa, w);
+        if (!wp || !canAttack(*wp, bm, from, asz, tpa.origin, tsz)) continue;
+        if (!hasDisadvantage(*wp, bm, from, asz, tpa.origin, tsz)) return w;
+        if (at_long < 0) at_long = w;
+    }
+    return at_long;
+}
+
+namespace {
+// Half the archer's walking Speed in feet, rounded down to a 5-ft square; 0 while its Speed is 0.
+int masterfulHalfSpeed(const Agent::Stats& st, const Agent::Conditions& c) noexcept
+{
+    if (c.grappled || c.restrained || c.branches_speed_zeroed) return 0;
+    return (st.speed_walk / 2) / 5 * 5;
+}
+} // namespace
+
+bool CombatEngine::isMasterfulShotsDestination(const BattleMap& bm, int archer_idx, int attacker_idx,
+                                               Cell dest) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (archer_idx < 0 || archer_idx >= n || attacker_idx < 0 || attacker_idx >= n) return false;
+    const PlacedAgent& apa = agents[static_cast<std::size_t>(archer_idx)];
+    const PlacedAgent& tpa = agents[static_cast<std::size_t>(attacker_idx)];
+    if (dest.col == apa.origin.col && dest.row == apa.origin.row) return true;   // shoot without moving
+    const int sz = apa.agent->getSize(), tsz = tpa.agent->getSize();
+    const Cell at{dest.col, dest.row, apa.origin.z};
+    // "away from the attacker": every legal end cell is farther from it than the start.
+    if (footprintDistance(at, sz, tpa.origin, tsz) <= footprintDistance(apa.origin, sz, tpa.origin, tsz))
+        return false;
+    if (bm.agentOccupancy(at, sz, archer_idx) != 0) return false;
+    const int half = masterfulHalfSpeed(bm.getAgentStats(archer_idx), bm.getAgentConditions(archer_idx));
+    if (half <= 0) return false;
+    const CellSet reach = bm.reachableCells(apa.origin, sz, half, MovementType::Walk, archer_idx);
+    for (const Cell& c : reach)
+        if (c.col == at.col && c.row == at.row) return true;
+    return false;
+}
+
+Cell CombatEngine::masterfulShotsDestination(const BattleMap& bm, int archer_idx, int attacker_idx) const
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (archer_idx < 0 || archer_idx >= n || attacker_idx < 0 || attacker_idx >= n) return Cell{-1, -1};
+    const PlacedAgent& apa = agents[static_cast<std::size_t>(archer_idx)];
+    const PlacedAgent& tpa = agents[static_cast<std::size_t>(attacker_idx)];
+    const int sz = apa.agent->getSize(), tsz = tpa.agent->getSize();
+    std::vector<Cell> cands{apa.origin};
+    const int half = masterfulHalfSpeed(bm.getAgentStats(archer_idx), bm.getAgentConditions(archer_idx));
+    if (half > 0)
+        for (const Cell& c : bm.reachableCells(apa.origin, sz, half, MovementType::Walk, archer_idx))
+            if (isMasterfulShotsDestination(bm, archer_idx, attacker_idx, c))
+                cands.push_back(Cell{c.col, c.row, apa.origin.z});
+    // Rank: a weapon reaches the attacker > no long-range Disadvantage > farther from it > shorter
+    // move > row-major (the CellSet is unordered, so the last key keeps the pick deterministic).
+    auto key = [&](const Cell& c) {
+        const int w = masterfulShotsWeapon(bm, archer_idx, attacker_idx, c);
+        int normal = 0;
+        if (w >= 0) {
+            const Weapon& wp = apa.weapons[static_cast<std::size_t>(w)];
+            normal = hasDisadvantage(wp, bm, c, sz, tpa.origin, tsz) ? 0 : 1;
+        }
+        return std::make_tuple(w >= 0 ? 1 : 0, normal, footprintDistance(c, sz, tpa.origin, tsz),
+                               -footprintDistance(apa.origin, sz, c, sz), -c.row, -c.col);
+    };
+    Cell best = cands.front();
+    auto best_key = key(best);
+    for (const Cell& c : cands) {
+        const auto k = key(c);
+        if (k > best_key) { best = c; best_key = k; }
+    }
+    return best;
+}
+
+AttackResult CombatEngine::applyMasterfulShots(BattleMap& bm, int archer_idx, int attacker_idx, int col, int row)
+{
+    if (!canMasterfulShots(bm, archer_idx, attacker_idx)) return AttackResult{};
+    const Cell origin = bm.placedAgents()[static_cast<std::size_t>(archer_idx)].origin;
+    Cell dest = (col >= 0 && row >= 0) ? Cell{col, row, origin.z}
+                                       : masterfulShotsDestination(bm, archer_idx, attacker_idx);
+    if (dest.col < 0 || !isMasterfulShotsDestination(bm, archer_idx, attacker_idx, dest)) return AttackResult{};
+    dest.z = origin.z;
+    Agent::Conditions c = bm.getAgentConditions(archer_idx);
+    c.reaction_used = true;
+    bm.setAgentConditions(archer_idx, c);
+    if (dest.col != origin.col || dest.row != origin.row) {
+        // A Reaction move that provokes no Opportunity Attacks: placed directly, no budget spent.
+        (void)bm.setAgentPosition(archer_idx, dest);
+        log_("{} uses Masterful Shots: moves {} ft away from {}", agentName(bm, archer_idx),
+             5 * std::max(std::abs(dest.col - origin.col), std::abs(dest.row - origin.row)),
+             agentName(bm, attacker_idx));
+    } else {
+        log_("{} uses Masterful Shots against {}", agentName(bm, archer_idx), agentName(bm, attacker_idx));
+    }
+    const int w = masterfulShotsWeapon(bm, archer_idx, attacker_idx, dest);
+    if (w < 0) {
+        log_("{} is out of range — no Masterful Shots attack", agentName(bm, attacker_idx));
+        return AttackResult{};
+    }
+    AttackResult r = executeAction(bm, Attack{archer_idx, attacker_idx, w});
+    // The shot lands outside the archer's own turn, where no Arcane Shot / Curving Shot prompt follows:
+    // drop the offers so they don't surface on a later attack.
+    Agent::Conditions after = bm.getAgentConditions(archer_idx);
+    after.arcane_shot_available  = false;
+    after.curving_shot_available = false;
+    bm.setAgentConditions(archer_idx, after);
+    return r;
+}
+
+std::vector<ReactionOption> CombatEngine::masterfulShotsOptions() const
+{
+    std::vector<ReactionOption> opts;
+    opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                  "Masterful Shots: move away and shoot back (best cell)", "MasterfulShots"});
+    opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                  "Masterful Shots: move away and shoot back (pick a cell)", "MasterfulShotsPick"});
+    opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
+    return opts;
 }
 
 GraspingEscapeResult CombatEngine::escapeGraspingShot(BattleMap& bm, int actor_idx, int target_idx) noexcept

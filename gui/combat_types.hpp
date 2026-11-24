@@ -638,7 +638,10 @@ enum class ReactionWindow {
     OnTurnStartNearby,  // a creature started its turn within range (future)
     OnAllyAttacked,     // an adjacent enemy attacked someone other than the reactor (Sentinel Guardian)
     OnAttackDeclared,   // an attack roll is about to be made against the reactor, before the d20 (Shadowy Dodge)
-    AfterAttack         // the attack has fully resolved; a follow-up the reactor earned (Shadowy Dodge teleport)
+    AfterAttack,        // the attack has fully resolved; a follow-up the reactor earned (Shadowy Dodge teleport,
+                        // Masterful Shots)
+    AfterSave           // a failed save was just turned into a success; a follow-up the saver earned
+                        // (Arcane Archer Indomitable Teleport)
 };
 
 // One legal thing the reactor may do, ENUMERATED BY THE ENGINE so it is guaranteed
@@ -754,6 +757,8 @@ struct InFlightCast {
     bool                            save_window_built{false}; // failed-save reactor pairs computed once (after the rolls)
     std::vector<std::pair<int,int>> savefail_pairs;          // (failed-save target_idx, eligible reactor_idx), in order
     std::size_t                     savefail_cursor{0};       // next pair to offer
+    int                             indomitable_teleport_reactor{-1}; // Arcane Archer L15 who just succeeded with
+                                                              // Indomitable: the AfterSave teleport window is owed
     // ── Counterspell-as-cast: a nested cast whose effect is a deferred CON
     //    save against counter_target_caster, resolved at pop time so a deeper Counterspell can negate it. ──
     bool is_counterspell{false};     // this in-flight cast is a Counterspell reaction (no AttackRoll/Save phase)
@@ -803,6 +808,7 @@ struct InFlightAttack {
     bool shadowy_dodge{false};      // the target took Shadowy Dodge: Disadvantage on this roll, teleport after
     bool applied{false};            // applyAttackResult has run (a post-attack park must not re-apply it)
     bool after_offered{false};      // the AfterAttack (Shadowy Dodge teleport) window has been opened once
+    bool masterful_offered{false};  // the AfterAttack Masterful Shots window (Arcane Archer L18) was checked once
     // ── OnD20Seen window (nearby creatures may LOWER this attack roll → possible miss) ──
     std::vector<int> d20_reactors;        // eligible OnD20Seen reactors (Bend Luck / Cutting Words / Silvery Barbs)
     std::size_t      d20_cursor{0};       // next reactor to offer

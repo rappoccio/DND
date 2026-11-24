@@ -1099,12 +1099,20 @@ bool CombatEngine::applyShadowyDodge(BattleMap& bm, int defender_idx)
 
 bool CombatEngine::isShadowyDodgeDestination(const BattleMap& bm, int idx, Cell dest) const
 {
+    return isSeenTeleportSpace(bm, idx, dest, 6);   // 30 ft
+}
+
+// A teleport destination within range_cells (5 ft each) of idx's footprint: not its own space, every
+// cell of the footprint a legal teleport cell, unoccupied, and a space it can see. Shared by Shadowy
+// Dodge (30 ft) and Indomitable Teleport (60 ft).
+bool CombatEngine::isSeenTeleportSpace(const BattleMap& bm, int idx, Cell dest, int range_cells) const
+{
     const auto& agents = bm.placedAgents();
     if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
     const PlacedAgent& me = agents[static_cast<std::size_t>(idx)];
     const int sz = me.agent->getSize();
     if (dest.col == me.origin.col && dest.row == me.origin.row) return false;
-    if (footprintDistance(me.origin, sz, Cell{dest.col, dest.row}, sz) > 6) return false;   // 30 ft
+    if (footprintDistance(me.origin, sz, Cell{dest.col, dest.row}, sz) > range_cells) return false;
     for (int r = 0; r < sz; ++r)
         for (int c = 0; c < sz; ++c)
             if (!isValidTeleportDestination(bm, dest.col + c, dest.row + r)) return false;
@@ -3239,6 +3247,18 @@ AttackResult CombatEngine::executeAction(BattleMap& bm, const Attack& action)
         const ReactionResponse resp = decider_->chooseReaction(ctx);
         if (resp.option == 0 || resp.option == 1)
             shadowyDodgeFollowUp(bm, action.target_idx, resp.cell_col, resp.cell_row);
+    }
+    // Auto/RL Masterful Shots (Arcane Archer L18): a missed archer may move away and shoot back.
+    if (decider_ && r.valid && !r.hit && canMasterfulShots(bm, action.target_idx, action.attacker_idx)) {
+        ReactionCtx ctx;
+        ctx.window      = ReactionWindow::AfterAttack;
+        ctx.reactor_idx = action.target_idx;
+        ctx.source_idx  = action.attacker_idx;
+        ctx.options     = masterfulShotsOptions();
+        const ReactionResponse resp = decider_->chooseReaction(ctx);
+        if (resp.option >= 0 && resp.option < static_cast<int>(ctx.options.size()) &&
+            ctx.options[static_cast<std::size_t>(resp.option)].kind == ReactionOption::Feature)
+            (void)applyMasterfulShots(bm, action.target_idx, action.attacker_idx, resp.cell_col, resp.cell_row);
     }
     return r;
 }

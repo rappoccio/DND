@@ -64,6 +64,8 @@ from dataclasses import dataclass, field
 #   flurry_target        pending_flurry_target          Flurry of Blows: target
 #   vitality_target      pending_vitality_target        Vitality of the Tree: target, in a parked window
 #   shadowy_dodge_cell   pending_shadowy_dodge_cell     Shadowy Dodge: teleport cell, in a parked window
+#   masterful_shots_cell (new, AA5)                     Masterful Shots: move cell, in a parked window; data = feature
+#   indomitable_teleport_cell (new, AA5)                Indomitable Teleport: cell, in a parked window; data = feature
 # Companion state (pending_mantle_targets, pending_bastion_sp, …) stays on the app for now.
 
 # The kinds whose old field rested at something other than False.

@@ -133,7 +133,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     active, interactive, action, reactors, cursor, countered, result,
     has_preroll, preroll_target, preroll, attack_window_done,
     has_save_preroll, save_prerolls, save_window_built, savefail_pairs, savefail_cursor,
-    is_counterspell, counter_target_caster)
+    indomitable_teleport_reactor, is_counterspell, counter_target_caster)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     InFlightMove,
@@ -143,7 +143,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     InFlightAttack,
     active, interactive, action, w, r, adv, dis, auto_hit,
-    unerring_fired, peerless_fired, onhit_offered,
+    unerring_fired, peerless_fired, onhit_offered, masterful_offered,
     d20_reactors, d20_cursor, d20_window_built,
     sentinel_reactors, sentinel_cursor, sentinel_window_built, sentinel_parked,
     can_use_brutal_strike, tgt_incapacitated_at_attack, tgt_unconscious_at_attack,
