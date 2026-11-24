@@ -6,7 +6,7 @@ forwarder deletion that closes it), **R4** (all six sub-engine cuts — `Visibil
 both mis-grouping fixes, `combat_contested.cpp` and `combat_reactions.cpp`), and **R5**
 (`snapshot()`/`restore()`) are done and verified. **R4h closed R4** with a pure TU move of the
 park/resume flow into `combat_reactions.cpp`. The floating follow-on (the
-riders+resources class-family split) is now **R6, Step 0 frozen 2026-11-24**; the move is next. See **Handoff (2026-11-18, R4h)** and **R4h** for the
+riders+resources class-family split) became **R6, done 2026-11-24** (14 class/feat/shared TUs, 285/0). See **Handoff (2026-11-18, R4h)** and **R4h** for the
 last step.
 
 **Staleness review (2026-11-18)**: no refactor work since 2026-09-25, but the repo moved on
@@ -446,7 +446,7 @@ therefore buys essentially nothing — the churn is method *additions* in the pu
 | **R3** | Extract `CombatContext` + `rules.hpp` | medium | 1–2 weeks | dissolves the 950-call edge; testable rules — **DONE** *(the residual call-site migration falls out of R4)* |
 | **R4** | Decompose into sub-engines behind a facade | high | multi-week | true modularity — *5 of 6 sub-engines cut (`NpcState` 2026-11-18) + `ContestedActions`; `ReactionArbiter` next* |
 | **R5** | State serialization → snapshot/restore | medium | 1–2 weeks | `MULTIPLAYER_PLAN.md`, mid-combat save — **DONE** |
-| **R6** | Split riders + resources by class (R4 follow-on) | low | ~1 day | a class's features in one TU — *Step 0 frozen 2026-11-24* |
+| **R6** | Split riders + resources by class (R4 follow-on) | low | ~1 day | a class's features in one TU — **done 2026-11-24** |
 
 R0–R2 are mechanical and near-risk-free — do them regardless of whether R4 ever happens.
 R3 is the highest-leverage single step. **R4 should not start until R3 has settled.**
@@ -1428,13 +1428,15 @@ restored engine is indistinguishable from the one the snapshot came from":
 
 ---
 
-### R6 — Riders + resources class-family split — **Step 0 frozen 2026-11-24**
+### R6 — Riders + resources class-family split — **done 2026-11-24**
 
 The R4 follow-on, taken as its own phase: split `combat_riders.cpp` and `combat_resources.cpp`
 by class into `combat_<class>.cpp` ×12 + `combat_feats.cpp`, shared code staying in
 `combat_resources.cpp`, riders deleted. Pure move. **The working plan, decisions D1–D13 and the
 method → file table live in `plans/COMBAT_CLASS_SPLIT_PLAN.md`.** Step 0 committed 57357f0
-(baseline 285/0, with `tests/test_arcane_archer_direct.py`).
+(baseline 285/0, with `tests/test_arcane_archer_direct.py`). The move landed as one commit on
+2026-11-24: line-identity proof passed, build clean with no new warnings, `./test.sh` 285/0, goldens
+byte-identical. R6b (bindings / header by class) stays optional.
 
 ## Rejected options
 

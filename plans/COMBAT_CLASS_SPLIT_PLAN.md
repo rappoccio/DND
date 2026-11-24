@@ -1,7 +1,7 @@
 # Combat class split (`COMBAT_REFACTOR_PLAN.md` R6)
 
-**Status 2026-11-24: Step 0 frozen (D1–D13), committed 57357f0 with the D6 smoke test. Baseline
-`./test.sh` 285/0. Next: S1–S6, the move, as one commit.**
+**Status 2026-11-24: done.** Step 0 (D1–D13 + the D6 smoke test) is 57357f0. The move (S1–S6) is
+one commit: proof passed, build clean, `./test.sh` 285/0, goldens byte-identical. See *Done* below.
 
 Split `gui/combat_riders.cpp` and `gui/combat_resources.cpp` by D&D class, so a class's
 activations and its on-hit riders sit in one translation unit. This is the follow-on that
@@ -166,6 +166,38 @@ All of S1–S6 is one commit (D12). Every command runs in the container (`CLAUDE
   `COMBAT_REFACTOR_PLAN.md`'s phase table. Commit, staging files by name: the 13 new files,
   `combat_resources.cpp`, the `combat_riders.cpp` removal, `CMakeLists.txt` and both plans.
   Never push.
+
+### Done (2026-11-24)
+
+- **S1.** `combat_riders.cpp` (3,211 lines) and `combat_resources.cpp` (3,996) became 14 files,
+  generated from the owner table above. Every item had exactly one owner, and every owner had
+  items. Lines, with the new headers:
+
+  | File | Lines | | File | Lines |
+  | ---- | ----: | - | ---- | ----: |
+  | `combat_barbarian.cpp` | 802 | | `combat_ranger.cpp` | 608 |
+  | `combat_bard.cpp` | 410 | | `combat_resources.cpp` | 561 |
+  | `combat_cleric.cpp` | 666 | | `combat_rogue.cpp` | 432 |
+  | `combat_druid.cpp` | 285 | | `combat_sorcerer.cpp` | 402 |
+  | `combat_feats.cpp` | 350 | | `combat_warlock.cpp` | 530 |
+  | `combat_fighter.cpp` | 1,179 | | `combat_wizard.cpp` | 126 |
+  | `combat_monk.cpp` | 729 | | `combat_paladin.cpp` | 410 |
+
+  D13 dropped 24 banners: 13 blocks (rule … rule) and 11 one-line `// ── Title ──` headings. One block
+  carried real prose, the "OnTurnStartNearby reactions (beginTurn)" banner above
+  `canBranchesOfTree` (now Barbarian). It explains the Branches of the Tree window and why
+  Sentinel isn't there. That is a candidate for the comment-only follow-up below.
+- **S2.** `CMakeLists.txt`: `combat_riders.cpp` replaced by the 13 new TUs, alphabetically, in
+  its slot.
+- **S3.** Independent proof script, reading the old files from `HEAD`:
+  1. multiset of non-blank content lines (banners, headers, includes and namespace lines out):
+     old 6,169 = new 6,169, equal;
+  2. 200 definitions (195 methods + 5 helpers) against 200 table entries, each found once, in its
+     table file, with its body byte-identical;
+  3. definition order matches D10 in all 14 files;
+  4. `combat.hpp`, `bind_*.cpp` and `tests/` unchanged.
+- **S4.** `./build.sh` inside `./test.sh`: 0 compiler warnings, no duplicate or undefined symbols.
+- **S5.** `./test.sh` **285/0**. No golden or `tests/` file changed.
 
 Optional, after the commit: rebuild the graph over `gui/` (code only, as on 2026-11-24) to
 confirm the cluster split. The class files should come out as separate communities, and the

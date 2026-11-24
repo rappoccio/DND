@@ -56,7 +56,19 @@ pybind11_add_module(rpg_battle_map
     combat_conditions.cpp
     combat_contested.cpp
     combat_reactions.cpp
-    combat_riders.cpp
+    combat_barbarian.cpp
+    combat_bard.cpp
+    combat_cleric.cpp
+    combat_druid.cpp
+    combat_feats.cpp
+    combat_fighter.cpp
+    combat_monk.cpp
+    combat_paladin.cpp
+    combat_ranger.cpp
+    combat_rogue.cpp
+    combat_sorcerer.cpp
+    combat_warlock.cpp
+    combat_wizard.cpp
     combat_turn.cpp
     combat_resources.cpp
     combat_spells.cpp
