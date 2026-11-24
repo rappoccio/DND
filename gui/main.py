@@ -3164,6 +3164,9 @@ class App:
             self._resolve_shadow_darkness(cell)
         elif self._pick_data("elemental_burst") >= 0:
             self._resolve_elemental_burst(cell)
+        # Arcane Archer Piercing Shot: the line's direction (AA3).
+        elif self._picking("piercing_shot"):
+            app_attacks.resolve_piercing_shot(self, cell)
         # Trickery Cleric — Invoke Duplicity placement / movement / multi-dup swap.
         elif self._picking("invoke_duplicity"):
             self._resolve_invoke_duplicity(cell)
@@ -3301,6 +3304,8 @@ class App:
             self._resolve_use_item(hit)
         elif self._picking("escape_net") and hit >= 0:
             self._resolve_escape_net(hit)
+        elif self._picking("seeking_shot") and hit >= 0:
+            app_attacks.resolve_seeking_shot(self, hit)
         elif self._picking("grant_inspiration") and hit >= 0:
             self._resolve_grant_inspiration(hit)
         elif self._picking("telekinetic") and hit >= 0:

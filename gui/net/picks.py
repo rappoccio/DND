@@ -402,6 +402,8 @@ ARMS: tuple[Arm, ...] = (
         _drop("shadow_darkness", "Shadow Arts: Darkness")),
     Arm("elemental_burst", PICK, CELL, _t("Elemental Burst: choose the center"),
         _drop("elemental_burst", "Elemental Burst")),
+    Arm("piercing_shot", PICK, CELL, _t("Piercing Shot: choose the line's direction"),
+        _drop("piercing_shot", "Piercing Shot")),
     Arm("invoke_duplicity", PICK, CELL, _t("Invoke Duplicity: place the duplicate"),
         cancel_duplicity,
         done=lambda app: not app._duplicity_cd_pending, finish=cancel_duplicity),
@@ -473,6 +475,8 @@ ARMS: tuple[Arm, ...] = (
         _drop("use_item", "Use Item")),
     Arm("escape_net", PICK, TARGET, _t("Free from Net: choose the netted creature"),
         _drop("escape_net", "Free from Net")),
+    Arm("seeking_shot", PICK, TARGET, _t("Seeking Shot: choose a creature"),
+        _drop("seeking_shot", "Seeking Shot")),
     Arm("grant_inspiration", PICK, TARGET, _t("Bardic Inspiration: choose an ally"),
         _drop("grant_inspiration", "Bardic Inspiration")),
     Arm("telekinetic", PICK, TARGET, _t("Telekinetic Movement: choose a creature"),
@@ -512,6 +516,8 @@ WIRED = frozenset({
     "shadowy_dodge_cell",
     # Ranger R3 — Misty Wanderer's destination (the passenger question is a bus prompt)
     "misty_wanderer",
+    # Arcane Archer AA3 — Piercing Shot's direction and Seeking Shot's creature
+    "piercing_shot", "seeking_shot",
     # M5d.4 — multi-picks
     "mantle", "invoke_duplicity", "move_duplicity",
     "swap_duplicity",

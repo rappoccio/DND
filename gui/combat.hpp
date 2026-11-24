@@ -1467,6 +1467,31 @@ public:
     // → Blinded until the end of its next turn). The target's damage is folded into `result`.
     ArcaneShotResult applyArcaneShot(BattleMap& bm, int archer_idx, int target_idx, int option,
                                      AttackResult& result) noexcept;
+    // Arcane Archer Arcane Shot (AA3), the no-attack-roll options. Each replaces one attack of the
+    // Attack action (the attack budget is the caller's) and spends one use, once per turn, with a
+    // RANGED weapon (weapon_idx). Neither rolls to hit, so neither is affected by cover.
+    // canUseArcaneShot: the shared gate (Fighter L3+ Arcane Archer, knows `option`, a use left,
+    // none used this turn).
+    [[nodiscard]] bool canUseArcaneShot(const BattleMap& bm, int archer_idx, int option) const noexcept;
+    // The cells of a Piercing Shot's 30-ft line from the archer toward (aim_col, aim_row). It passes
+    // through objects (walls don't stop it).
+    [[nodiscard]] std::vector<Cell> piercingShotCells(const BattleMap& bm, int archer_idx,
+                                                      int aim_col, int aim_row) const;
+    // Piercing Shot: each creature in the line makes a DEX save. Fail: weapon damage + 2 dice
+    // Piercing; success: half of that.
+    ArcaneShotSaveResult piercingShot(BattleMap& bm, int archer_idx, int weapon_idx,
+                                      int aim_col, int aim_row) noexcept;
+    // Seeking Shot target legality: a creature within the weapon's long range (no line of sight
+    // needed; "seen in the past minute" isn't tracked, so any creature on the archer's level).
+    [[nodiscard]] bool seekingShotTargetValid(const BattleMap& bm, int archer_idx, int weapon_idx,
+                                              int target_idx) const noexcept;
+    // Seeking Shot: the target makes a DEX save. Fail: weapon damage + 2 dice Force; success: half
+    // the weapon damage.
+    ArcaneShotSaveResult seekingShot(BattleMap& bm, int archer_idx, int weapon_idx, int target_idx) noexcept;
+    // Shared by the two above once their gates pass: spends the use and resolves each DEX save.
+    ArcaneShotSaveResult finishArcaneSaveShot(BattleMap& bm, int archer_idx, const Weapon& w,
+                                              ArcaneShotOption opt, const std::vector<int>& targets,
+                                              ArcaneShotSaveResult res) noexcept;
     // Grasping Shot escape: an action by the restrained creature, or a creature within 5 ft of it,
     // makes a STR (Athletics) check against the archer's Arcane Shot DC; success ends Restrained.
     // The action cost is the caller's to charge.

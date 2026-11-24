@@ -2738,6 +2738,171 @@ ArcaneShotResult CombatEngine::applyArcaneShot(BattleMap& bm, int archer_idx, in
     return res;
 }
 
+// ── Arcane Shot, the no-attack-roll options (ARCANE_ARCHER_PLAN.md AA3) ─────────────────────────
+
+bool CombatEngine::canUseArcaneShot(const BattleMap& bm, int archer_idx, int option) const noexcept
+{
+    if (archer_idx < 0 || archer_idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    if (option <= 0 || option > static_cast<int>(ArcaneShotShadow)) return false;
+    const Agent::Stats as = bm.getAgentStats(archer_idx);
+    if (!as.knowsArcaneShot(static_cast<ArcaneShotOption>(option))) return false;
+    const Resource* uses = as.getResource("Arcane Shot");
+    if (!uses || uses->current <= 0) return false;
+    return !bm.getAgentConditions(archer_idx).arcane_shot_used;
+}
+
+std::vector<Cell> CombatEngine::piercingShotCells(const BattleMap& bm, int archer_idx,
+                                                  int aim_col, int aim_row) const
+{
+    const auto& agents = bm.placedAgents();
+    if (archer_idx < 0 || archer_idx >= static_cast<int>(agents.size())) return {};
+    const PlacedAgent& apa = agents[static_cast<std::size_t>(archer_idx)];
+    // A 30-ft line, one cell wide (the grid's resolution of the 1-ft-wide line), from the archer.
+    // Unfiltered: the shot passes through objects, so walls neither stop nor shorten it.
+    Spell line;
+    line.geometry = Spell::Line;
+    line.length   = 30;
+    line.width    = 5;
+    Cell aim = apa.origin;
+    aim.col = aim_col;
+    aim.row = aim_row;
+    std::vector<Cell> cells = bm.aoeCells(aim, line, apa.origin, Cell{-1, -1}, apa.agent->getSize());
+    for (Cell& c : cells) c.z = apa.origin.z;
+    return cells;
+}
+
+namespace {
+// The shot's ranged weapon, or nullptr. D1 counts thrown weapons as ranged attacks, but a thrown
+// Piercing/Seeking Shot would also have to drop the weapon at the far end; AA3 takes Ranged only.
+const Weapon* arcaneShotWeapon(const PlacedAgent& pa, int weapon_idx) noexcept
+{
+    if (weapon_idx < 0 || weapon_idx >= static_cast<int>(pa.weapons.size())) return nullptr;
+    const Weapon& w = pa.weapons[static_cast<std::size_t>(weapon_idx)];
+    return w.type == WeaponType::Ranged ? &w : nullptr;
+}
+} // namespace
+
+bool CombatEngine::seekingShotTargetValid(const BattleMap& bm, int archer_idx, int weapon_idx,
+                                          int target_idx) const noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (archer_idx < 0 || archer_idx >= n || target_idx < 0 || target_idx >= n || archer_idx == target_idx)
+        return false;
+    const PlacedAgent& apa = agents[static_cast<std::size_t>(archer_idx)];
+    const PlacedAgent& tpa = agents[static_cast<std::size_t>(target_idx)];
+    const Weapon* w = arcaneShotWeapon(apa, weapon_idx);
+    if (!w || tpa.removed_from_play || tpa.origin.z != apa.origin.z) return false;
+    const Agent::Stats ts = bm.getAgentStats(target_idx);
+    if (ts.hp_cur <= 0) return false;
+    if (sealedApart(bm, archer_idx, target_idx)) return false;
+    return footprintDistance(apa.origin, apa.agent->getSize(), tpa.origin, tpa.agent->getSize()) * 5
+           <= w->long_range_ft;
+}
+
+// Shared resolution: commit the use, roll the 2 dice once, then a DEX save per creature.
+// Piercing: fail = weapon + 2 dice Piercing, success = half of that. Seeking: fail = weapon + 2 dice
+// Force, success = half the weapon damage only. The weapon damage is rolled per creature (it runs
+// through rollDamage, which applies each creature's own multipliers as it rolls).
+ArcaneShotSaveResult CombatEngine::finishArcaneSaveShot(BattleMap& bm, int archer_idx, const Weapon& w,
+                                                        ArcaneShotOption opt, const std::vector<int>& targets,
+                                                        ArcaneShotSaveResult res) noexcept
+{
+    // Commit: one use, once per turn.
+    spendResource(bm, archer_idx, "Arcane Shot", 1);
+    Agent::Conditions ac = bm.getAgentConditions(archer_idx);
+    ac.arcane_shot_available = false;
+    ac.arcane_shot_used      = true;
+    bm.setAgentConditions(archer_idx, ac);
+    res.valid = true;
+
+    const Agent::Stats as = bm.getAgentStats(archer_idx);
+    const int die = as.arcane_shot_die_size;
+    res.die_total = roll(die) + roll(die);
+    res.save_dc   = as.arcaneShotDC();
+    const bool piercing = (opt == ArcaneShotPiercing);
+    const char* label = piercing ? "Piercing Shot" : "Seeking Shot";
+    log_("{}: {} looses a {} (2d{} = {}, DEX save DC {})", label, agentName(bm, archer_idx), w.name,
+         die, res.die_total, res.save_dc);
+
+    for (int idx : targets) {
+        // Forcing a save on the creature it charmed ends Beguiling Shot's charm (D6).
+        endBeguilingCharm(bm, archer_idx, idx);
+        const Agent::Stats ts = bm.getAgentStats(idx);
+        AttackResult wr;
+        rollDamage(w, as, ts, wr, false, &bm, idx);
+        const int weapon_dmg = std::max(0, wr.total_damage);
+        const float mult = piercing ? effectivePhysicalDamageMult(as, ts, Piercing, &bm, idx)
+                                    : effectiveMagicDamageMult(as, ts, MagicDamage_t::Force, false, &bm, idx);
+        const int extra = std::max(0, static_cast<int>(static_cast<float>(res.die_total) * mult));
+        const int save  = roll(20, saveModFor(bm, idx, SaveDex));
+        const bool ok   = save >= res.save_dc;
+        int dmg = 0;
+        if (!ok)           dmg = weapon_dmg + extra;
+        else if (piercing) dmg = (weapon_dmg + extra) / 2;
+        else               dmg = weapon_dmg / 2;
+        unsigned mask = 0;
+        for (auto mt : wr.magic_damage_types) mask |= magicTypeBit(static_cast<int>(mt));
+        if (!piercing && !ok) mask |= magicTypeBit(static_cast<int>(MagicDamage_t::Force));
+        if (dmg > 0) {
+            (void)damageAgent(bm, idx, dmg);
+            checkConcentrationOnDamage(bm, idx, dmg, archer_idx);
+            processDamageTaken(bm, idx, dmg, mask);
+        }
+        log_("{}: {} DEX save {} vs DC {} — {}, takes {} damage", label, agentName(bm, idx), save,
+             res.save_dc, ok ? "succeeds" : "fails", dmg);
+        res.targets.push_back(idx);
+        res.save_rolls.push_back(save);
+        res.saved.push_back(ok);
+        res.damage.push_back(dmg);
+    }
+    return res;
+}
+
+ArcaneShotSaveResult CombatEngine::piercingShot(BattleMap& bm, int archer_idx, int weapon_idx,
+                                                int aim_col, int aim_row) noexcept
+{
+    ArcaneShotSaveResult res;
+    res.option = static_cast<int>(ArcaneShotPiercing);
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (!canUseArcaneShot(bm, archer_idx, res.option)) return res;
+    const PlacedAgent& apa = agents[static_cast<std::size_t>(archer_idx)];
+    const Weapon* wp = arcaneShotWeapon(apa, weapon_idx);
+    if (!wp) return res;
+    const std::vector<Cell> cells = piercingShotCells(bm, archer_idx, aim_col, aim_row);
+    if (cells.empty()) return res;   // aimed at the archer's own square: no direction
+
+    std::vector<int> targets;
+    for (int i = 0; i < n; ++i) {
+        if (i == archer_idx) continue;
+        const PlacedAgent& pa = agents[static_cast<std::size_t>(i)];
+        if (pa.removed_from_play || pa.origin.z != apa.origin.z) continue;
+        const Agent::Stats st = bm.getAgentStats(i);
+        if (st.hp_cur <= 0 || (st.hp_max == 0 && st.hp_cur == 0)) continue;
+        if (sealedApart(bm, archer_idx, i)) continue;
+        const int sz = pa.agent->getSize();
+        const bool in_line = std::any_of(cells.begin(), cells.end(), [&](const Cell& c) {
+            return c.col >= pa.origin.col && c.col < pa.origin.col + sz &&
+                   c.row >= pa.origin.row && c.row < pa.origin.row + sz;
+        });
+        if (in_line) targets.push_back(i);
+    }
+    return finishArcaneSaveShot(bm, archer_idx, *wp, ArcaneShotPiercing, targets, res);
+}
+
+ArcaneShotSaveResult CombatEngine::seekingShot(BattleMap& bm, int archer_idx, int weapon_idx,
+                                               int target_idx) noexcept
+{
+    ArcaneShotSaveResult res;
+    res.option = static_cast<int>(ArcaneShotSeeking);
+    if (!canUseArcaneShot(bm, archer_idx, res.option)) return res;
+    if (!seekingShotTargetValid(bm, archer_idx, weapon_idx, target_idx)) return res;
+    const Weapon& w = bm.placedAgents()[static_cast<std::size_t>(archer_idx)]
+                          .weapons[static_cast<std::size_t>(weapon_idx)];
+    return finishArcaneSaveShot(bm, archer_idx, w, ArcaneShotSeeking, {target_idx}, res);
+}
+
 GraspingEscapeResult CombatEngine::escapeGraspingShot(BattleMap& bm, int actor_idx, int target_idx) noexcept
 {
     GraspingEscapeResult res;

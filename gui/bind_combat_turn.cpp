@@ -804,6 +804,27 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("actor_idx"), py::arg("target_idx"),
              "Grasping Shot: STR (Athletics) check vs the Arcane Shot DC by the restrained creature or\n"
              "one within 5 ft; success ends Restrained. The action cost is the caller's.")
+        .def("can_use_arcane_shot", &CombatEngine::canUseArcaneShot,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("option"),
+             "Arcane Archer: True if the archer knows `option` (ArcaneShotOption), has an Arcane Shot\n"
+             "use left and has not used one this turn.")
+        .def("piercing_shot_cells", &CombatEngine::piercingShotCells,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("aim_col"), py::arg("aim_row"),
+             "Piercing Shot: the cells of the 30-ft line from the archer toward the aim cell\n"
+             "(walls don't stop it).")
+        .def("piercing_shot", &CombatEngine::piercingShot,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("weapon_idx"),
+             py::arg("aim_col"), py::arg("aim_row"),
+             "Piercing Shot (replaces an attack, ranged weapon): each creature in the 30-ft line makes a\n"
+             "DEX save; fail = weapon damage + 2 dice Piercing, success = half. Returns ArcaneShotSaveResult.")
+        .def("seeking_shot_target_valid", &CombatEngine::seekingShotTargetValid,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("weapon_idx"), py::arg("target_idx"),
+             "Seeking Shot: True if the creature is within the ranged weapon's long range (no line of\n"
+             "sight needed).")
+        .def("seeking_shot", &CombatEngine::seekingShot,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("weapon_idx"), py::arg("target_idx"),
+             "Seeking Shot (replaces an attack, ranged weapon): the target makes a DEX save; fail =\n"
+             "weapon damage + 2 dice Force, success = half the weapon damage. Returns ArcaneShotSaveResult.")
         .def("held_by_grasping_shot", &CombatEngine::heldByGraspingShot, py::arg("target_idx"),
              "True if the creature is Restrained by a Grasping Shot.")
         .def("apply_sweeping_attack",

@@ -57,6 +57,8 @@ from dataclasses import dataclass, field
 #   hand_of_healing      pending_hand_of_healing        Hand of Healing: target
 #   use_item             pending_use_item               Use Item: target; data = inventory slot
 #   escape_net           pending_escape_net             Free from Net: the netted creature
+#   piercing_shot        (new, AA3)                     Arcane Archer Piercing Shot: aim cell; data = {"weapon"}
+#   seeking_shot         (new, AA3)                     Arcane Archer Seeking Shot: target; data = {"weapon"}
 #   grant_inspiration    pending_grant_inspiration      Bardic Inspiration: ally
 #   telekinetic          pending_telekinetic            Telekinetic Movement: target
 #   flurry_target        pending_flurry_target          Flurry of Blows: target

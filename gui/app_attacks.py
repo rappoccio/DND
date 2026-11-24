@@ -221,7 +221,10 @@ def start_attack(app, slot: str):
             app._start_cast_spell("war_magic")
         war_magic_option = ("War Magic: cast spell (replaces an attack)", _pick_war_magic)
 
-    if len(weapons_to_use) == 1 and war_magic_option is None:
+    # Arcane Archer (AA3): Piercing / Seeking Shot replace one attack of the Attack action.
+    arcane_options = arcane_shot_attack_options(app, idx, weapons) if slot == "action" else []
+
+    if len(weapons_to_use) == 1 and war_magic_option is None and not arcane_options:
         # Auto-select if only one weapon (or one off-hand weapon for bonus)
         only = weapons_to_use[0]
         if not app._weapon_usable(only):
@@ -245,9 +248,95 @@ def start_attack(app, slot: str):
             options.append((weapon_menu_label(w), _pick))
         if war_magic_option is not None:
             options.append(war_magic_option)
+        options += arcane_options
         app._ask_actor(idx, "action",
                         f"{app._agent_name(idx)}: pick a weapon for the {slot} attack",
                         options, anchor=(app._panel_x() + app._PANEL_PAD, 290))
+
+
+def arcane_shot_attack_options(app, idx: int, weapons) -> list:
+    """Arcane Archer Piercing / Seeking Shot (ARCANE_ARCHER_PLAN.md AA3): one picker entry per
+    known option per ranged weapon, while a use is left and none was spent this turn. Each arms
+    its own map pick; the shot replaces one attack of the Attack action when it resolves."""
+    out = []
+    for opt, kind, what in ((rpg.ArcaneShotOption.Piercing, "piercing_shot", "choose the line's direction"),
+                            (rpg.ArcaneShotOption.Seeking, "seeking_shot", "choose a creature")):
+        if not app.combat.can_use_arcane_shot(app.bm, idx, opt):
+            continue
+        name = "Piercing Shot" if kind == "piercing_shot" else "Seeking Shot"
+        for wi, w in enumerate(weapons):
+            if w.type != rpg.WeaponType.Ranged or not app._weapon_usable(w):
+                continue
+            def _arm(k=kind, wi_=wi, nm=name, msg=what):
+                app._arm_pick(k, {"weapon": wi_})
+                app._combat_log_add(f"{nm} ({weapons[wi_].name}): {msg} on the map.")
+            out.append((f"🏹 {name} ({w.name})", _arm))
+    return out
+
+
+def _arcane_save_shot_done(app, atk_idx: int, name: str, res):
+    """Log a Piercing / Seeking Shot's saves and damage, and charge the attack."""
+    atk_name = app.bm.placed_agents[atk_idx].name
+    stats = app.combat.get_agent_stats(app.bm, atk_idx)
+    uses = stats.get_resource("Arcane Shot")
+    app._combat_log_add(f"{atk_name}: {name} (DEX save DC {res.save_dc}; "
+                        f"{uses.current if uses else 0} Arcane Shot left)")
+    if not res.targets:
+        app._combat_log_add(f"  → {name}: no creature in its path.")
+    for i, roll, ok, dmg in zip(res.targets, res.save_rolls, res.saved, res.damage):
+        tgt = app.bm.placed_agents[i].name
+        down = app.combat.get_agent_stats(app.bm, i).hp_cur <= 0
+        app._combat_log_add(f"  → {tgt}: save {roll} — {'saves' if ok else 'fails'}, "
+                            f"takes {dmg}{' — DOWN' if down else ''}")
+        app._spawn_flash(i, "Saved" if ok else "Failed", FLASH_GOOD if ok else FLASH_BAD)
+        if down:
+            app._drop_concentration_for_agent(i)
+    app._flush_combat_log()
+    app._sync_spell_effect_cache()
+    consume_attack_replacement(app, atk_idx)
+    if app.attack_seq.remaining <= 0 and app.attack_seq.slot == "":
+        app._arm_blink_steps(atk_idx)
+    app._update_attack_overlay()
+
+
+def resolve_piercing_shot(app, cell):
+    """Piercing Shot: the clicked cell aims the 30-ft line. Clicking the archer cancels."""
+    data = app._pick_data("piercing_shot")
+    idx = app._current_agent_idx()
+    if idx < 0 or not isinstance(data, dict):
+        app._drop_pick("piercing_shot")
+        return
+    origin = app.bm.placed_agents[idx].origin
+    size = app.bm.placed_agents[idx].size
+    if origin.col <= cell.col < origin.col + size and origin.row <= cell.row < origin.row + size:
+        app._drop_pick("piercing_shot")
+        app._combat_log_add("Piercing Shot cancelled.")
+        return
+    res = app.combat.piercing_shot(app.bm, idx, data["weapon"], cell.col, cell.row)
+    app._drop_pick("piercing_shot")
+    if not res.valid:
+        app._combat_log_add("Piercing Shot: not available (needs a ranged weapon and an Arcane Shot use).")
+        return
+    _arcane_save_shot_done(app, idx, "Piercing Shot", res)
+
+
+def resolve_seeking_shot(app, target_idx: int):
+    """Seeking Shot: the clicked creature, within the weapon's long range (no line of sight needed).
+    An out-of-range or own-token click keeps the pick."""
+    data = app._pick_data("seeking_shot")
+    idx = app._current_agent_idx()
+    if idx < 0 or not isinstance(data, dict):
+        app._drop_pick("seeking_shot")
+        return
+    if not app.combat.seeking_shot_target_valid(app.bm, idx, data["weapon"], target_idx):
+        app._combat_log_add("Seeking Shot: that creature is out of the weapon's long range.")
+        return
+    res = app.combat.seeking_shot(app.bm, idx, data["weapon"], target_idx)
+    app._drop_pick("seeking_shot")
+    if not res.valid:
+        app._combat_log_add("Seeking Shot: not available (needs an Arcane Shot use).")
+        return
+    _arcane_save_shot_done(app, idx, "Seeking Shot", res)
 
 
 def damage_breakdown_str(app, result) -> str:

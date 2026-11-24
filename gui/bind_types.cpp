@@ -2262,6 +2262,15 @@ void bindTypes(py::module_& m) {
         .def_readonly("d20",   &GraspingEscapeResult::d20)
         .def_readonly("total", &GraspingEscapeResult::total)
         .def_readonly("freed", &GraspingEscapeResult::freed);
+    py::class_<ArcaneShotSaveResult>(m, "ArcaneShotSaveResult")
+        .def_readonly("valid",      &ArcaneShotSaveResult::valid)
+        .def_readonly("option",     &ArcaneShotSaveResult::option)
+        .def_readonly("die_total",  &ArcaneShotSaveResult::die_total)
+        .def_readonly("save_dc",    &ArcaneShotSaveResult::save_dc)
+        .def_readonly("targets",    &ArcaneShotSaveResult::targets)
+        .def_readonly("save_rolls", &ArcaneShotSaveResult::save_rolls)
+        .def_readonly("saved",      &ArcaneShotSaveResult::saved)
+        .def_readonly("damage",     &ArcaneShotSaveResult::damage);
 
     // ── OpenHandRiderResult ───────────────────────────────────────────────────
     py::class_<OpenHandRiderResult>(m, "OpenHandRiderResult")

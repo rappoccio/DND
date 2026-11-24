@@ -389,6 +389,18 @@ struct ArcaneShotResult {
     std::vector<int> splash_damage;   // Bursting: damage each of them took (parallel)
 };
 
+// Piercing / Seeking Shot (ARCANE_ARCHER_PLAN.md AA3): no attack roll, a DEX save per creature.
+struct ArcaneShotSaveResult {
+    bool valid = false;               // gate passed: a use was spent and the shot resolved
+    int  option = 0;                  // ArcaneShotOption (Piercing or Seeking)
+    int  die_total = 0;               // raw Arcane Shot dice rolled (2 dice, once for all targets)
+    int  save_dc = 0;                 // Arcane Shot DC
+    std::vector<int>  targets;        // each creature the shot reached
+    std::vector<int>  save_rolls;     // its DEX save total (parallel)
+    std::vector<bool> saved;          // it succeeded (parallel)
+    std::vector<int>  damage;         // damage it took (parallel, after multipliers)
+};
+
 struct GraspingEscapeResult {
     bool valid = false;   // the target is held by a Grasping Shot and the actor can reach it
     int  dc    = 0;       // the archer's Arcane Shot DC
