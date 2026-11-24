@@ -307,6 +307,25 @@ def test_gwm_hew_armed_on_kill():
     print("✅ test_gwm_hew_armed_on_kill passed")
 
 
+def test_gwm_hew_armed_on_auto_crit():
+    """A melee hit on a Paralyzed creature within 5 ft is an automatic crit — that arms Hew too."""
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    a = _place(engine, bm, "GWM", 5, 5)
+    t = _place(engine, bm, "Tgt", 6, 5)
+    _arm(engine, bm, a, [_melee("Greatsword", die=12, heavy=True)], feats=["Great Weapon Master"], prof=3)
+    _target(engine, bm, t, hp=10_000)
+    s = engine.get_agent_stats(bm, a); s.crit_threshold = 20; engine.set_agent_stats(bm, a, s)
+    for _ in range(30):
+        c = engine.get_agent_conditions(bm, t); c.paralyzed = True; engine.set_agent_conditions(bm, t, c)
+        r = engine.execute_action(bm, rpg.Attack(a, t, 0))
+        if r.hit and r.d20 != 20:
+            assert r.critical, "melee hit on a Paralyzed target within 5 ft is an automatic crit"
+            assert engine.get_agent_conditions(bm, a).gwm_hew_available, "an automatic crit arms GWM Hew"
+            print("✅ test_gwm_hew_armed_on_auto_crit passed")
+            return
+    raise AssertionError("no non-natural-20 hit landed")
+
+
 def test_gwm_hew_not_armed_on_plain_hit():
     bm = setup_battle_map(); engine = setup_combat_engine()
     a = _place(engine, bm, "GWM", 5, 5)
@@ -435,6 +454,7 @@ def main():
     test_spell_sniper_firing_in_melee_raises_mean_d20()
     test_gwm_hew_armed_on_crit()
     test_gwm_hew_armed_on_kill()
+    test_gwm_hew_armed_on_auto_crit()
     test_gwm_hew_not_armed_on_plain_hit()
     test_gwm_hew_not_armed_without_heavy()
     test_gwm_hew_not_armed_on_bonus_action()

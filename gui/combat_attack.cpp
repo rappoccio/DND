@@ -3253,6 +3253,11 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     auto agents = bm.placedAgents();
     const PlacedAgent& atk_pt = agents[static_cast<std::size_t>(action.attacker_idx)];
     const PlacedAgent& tgt_pt = agents[static_cast<std::size_t>(action.target_idx)];
+    // `agents` is a live view: a push rider below (Crusher, Tavern Brawler) moves tgt_pt.origin.
+    // Snapshot adjacency now so the automatic-crit check judges the range the attack was made at.
+    const bool tgt_within_5ft_at_attack =
+        footprintDistance(atk_pt.origin, atk_pt.agent->getSize(),
+                          tgt_pt.origin, tgt_pt.agent->getSize()) <= 1;
     Weapon w = s.w;
     AttackResult r = s.r;
     bool adv = s.adv, dis = s.dis;
@@ -3984,19 +3989,6 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             }
             if (dirty) bm.setAgentConditions(action.target_idx, tc);
         }
-
-        // Great Weapon Master — Hew: scoring a Critical Hit, or reducing a creature to 0 HP, with a
-        // Heavy melee weapon as part of the Attack action arms a single bonus-action attack with that
-        // weapon. The bonus-action economy naturally limits it to once per turn (the GUI offers it via
-        // gwm_hew_available and routes it through the shared extra-attack flow).
-        if (r.hit && atk_stats.hasFeat("Great Weapon Master") && w.heavy &&
-            (w.type == WeaponType::Melee || w.thrown) && action.attack_slot != "bonus" &&
-            (r.critical || r.target_down)) {
-            updated_atk_cond.gwm_hew_available = true;
-            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
-            log_("{}: Great Weapon Master — Hew offers a bonus-action attack",
-                 agentName(bm, action.attacker_idx));
-        }
     }
 
     // Zealot Divine Fury: add extra 1d6 + floor(level/2) Necrotic damage on first hit when Raging
@@ -4356,13 +4348,11 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // Uses the pre-attack snapshot so a rider this attack applied (Cunning Strike Knock Out) does not
     // retroactively crit the triggering hit.
     // A crit canceled by Sentinel at Death's Door can't be re-promoted here (its crit effects are void).
+    bool auto_crit_promoted = false;   // set when this block turns a plain hit into a crit
     if (tgt_incapacitated_at_attack && r.hit && !r.crit_canceled) {
-        // Footprint to footprint: a Large/Huge creature is adjacent from every side.
-        int dist = footprintDistance(atk_pt.origin, atk_pt.agent->getSize(),
-                                     tgt_pt.origin, tgt_pt.agent->getSize());
-
-        // Within 5 feet (1 cell on 5ft/cell grid)
-        if (dist <= 1) {
+        // Within 5 feet (footprint to footprint), measured before any push rider moved the target.
+        if (tgt_within_5ft_at_attack) {
+            auto_crit_promoted = !r.critical;
             r.critical = true;
             std::string reason = tgt_cond.paralyzed ? "paralyzed" : "unconscious";
             log_("Automatic critical hit: target is {} and within 5 feet", reason);
@@ -4393,6 +4383,49 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             r.hp_after = tgt_stats.hp_cur;
             r.target_down = (r.hp_after <= 0);
         }
+    }
+
+    // Crusher / Slasher Enhanced Critical for a crit promoted by the automatic-crit block above.
+    // Their on-hit blocks ran earlier, when r.critical was still false, so only the crit mark is
+    // applied here (the once-per-turn push/slow already happened there).
+    if (auto_crit_promoted) {
+        auto deals_phys_ac = [&](PhysicalDamage_t t) {
+            return std::find(r.physical_damage_types.begin(), r.physical_damage_types.end(), t)
+                   != r.physical_damage_types.end();
+        };
+        if (atk_stats.hasFeat("Crusher") && deals_phys_ac(Bludgeoning)) {
+            Agent::Conditions tc = bm.getAgentConditions(action.target_idx);
+            tc.crusher_marked = true;
+            tc.crusher_marked_by = action.attacker_idx;
+            bm.setAgentConditions(action.target_idx, tc);
+            log_("{}: Crusher crit — attacks against {} have Advantage until {}'s next turn",
+                 agentName(bm, action.attacker_idx), agentName(bm, action.target_idx),
+                 agentName(bm, action.attacker_idx));
+        }
+        if (atk_stats.hasFeat("Slasher") && deals_phys_ac(Slashing)) {
+            Agent::Conditions tc = bm.getAgentConditions(action.target_idx);
+            tc.slasher_marked = true;
+            tc.slasher_marked_by = action.attacker_idx;
+            bm.setAgentConditions(action.target_idx, tc);
+            log_("{}: Slasher crit — {} has Disadvantage on attacks until {}'s next turn",
+                 agentName(bm, action.attacker_idx), agentName(bm, action.target_idx),
+                 agentName(bm, action.attacker_idx));
+        }
+    }
+
+    // Great Weapon Master — Hew: scoring a Critical Hit, or reducing a creature to 0 HP, with a
+    // Heavy melee weapon as part of the Attack action arms a single bonus-action attack with that
+    // weapon. The bonus-action economy naturally limits it to once per turn (the GUI offers it via
+    // gwm_hew_available and routes it through the shared extra-attack flow). Checked after the
+    // automatic-crit block above, so promoted crits (melee vs Paralyzed/Unconscious) and kills from
+    // later damage riders count too.
+    if (r.hit && atk_stats.hasFeat("Great Weapon Master") && w.heavy &&
+        (w.type == WeaponType::Melee || w.thrown) && action.attack_slot != "bonus" &&
+        (r.critical || r.target_down)) {
+        updated_atk_cond.gwm_hew_available = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        log_("{}: Great Weapon Master — Hew offers a bonus-action attack",
+             agentName(bm, action.attacker_idx));
     }
 
     // ════ Weapon Mastery ════════════════════════════════════════════════════

@@ -242,6 +242,33 @@ def test_slasher_crit_imposes_disadvantage_until_your_turn():
     print("✅ test_slasher_crit_imposes_disadvantage_until_your_turn passed")
 
 
+def _auto_crit_hit(engine, bm, a, t):
+    """Land a non-natural-20 melee hit on a Paralyzed adjacent target (an automatic crit)."""
+    s = engine.get_agent_stats(bm, a); s.crit_threshold = 20; engine.set_agent_stats(bm, a, s)
+    for _ in range(30):
+        c = engine.get_agent_conditions(bm, t); c.paralyzed = True; engine.set_agent_conditions(bm, t, c)
+        r = engine.execute_action(bm, rpg.Attack(a, t, 0))
+        if r.hit and r.d20 != 20:
+            assert r.critical, "melee hit on a Paralyzed target within 5 ft is an automatic crit"
+            return
+    raise AssertionError("no non-natural-20 hit landed")
+
+
+def test_crusher_and_slasher_mark_on_auto_crit():
+    for feat, dmg, flag in (("Crusher", rpg.PhysicalDamage.Bludgeoning, "crusher_marked"),
+                            ("Slasher", rpg.PhysicalDamage.Slashing, "slasher_marked")):
+        bm = setup_battle_map(); engine = setup_combat_engine()
+        a = _place(engine, bm, feat, 5, 5)
+        t = _place(engine, bm, "Tgt", 6, 5)
+        _arm(engine, bm, a, [_wpn("Maul", dmg, die=6, heavy=True)], feats=[feat])
+        _target(engine, bm, t, hp=10_000_000)
+        _auto_crit_hit(engine, bm, a, t)
+        tc = engine.get_agent_conditions(bm, t)
+        assert getattr(tc, flag), f"{feat}: an automatic crit marks the target"
+        assert getattr(tc, flag + "_by") == a
+    print("✅ test_crusher_and_slasher_mark_on_auto_crit passed")
+
+
 def test_slasher_slows_target():
     bm = setup_battle_map(); engine = setup_combat_engine()
     a = _place(engine, bm, "Slasher", 5, 5)
@@ -422,6 +449,7 @@ def main():
     test_piercer_crit_adds_damage()
     test_crusher_crit_grants_advantage_until_your_turn()
     test_slasher_crit_imposes_disadvantage_until_your_turn()
+    test_crusher_and_slasher_mark_on_auto_crit()
     test_slasher_slows_target()
     test_gui_set_general_feats()
     test_grappler_punch_grab_flag_set_on_unarmed_hit()
