@@ -255,13 +255,13 @@
       "fullName": "Elf",
       "baseRaceId": 1751437,
       "baseRaceTypeId": 1743923279,
-      "description": "<p>The elves&rsquo; curiosity led many of them to explore other planes of existence.</p>\r\n<p style=\"font-family: Roboto Condensed;\"><strong>Elf Traits</strong><br />Darkvision, Elven Lineage, Fey Ancestry, Keen Senses,&nbsp;Trance</p>",
-      "longDescription": "<p>Created by the god Corellon, the first elves could change their forms at will. They lost this ability when Corellon cursed them for plotting with the deity Lolth, who tried and failed to usurp Corellon&rsquo;s dominion. When Lolth was cast into the Abyss, most elves renounced her and earned Corellon&rsquo;s forgiveness, but that which Corellon had taken from them was lost forever.</p>\r\n<p>No longer able to shape-shift at will, the elves retreated to the Feywild, where their sorrow was deepened by that plane&rsquo;s influence. Over time, curiosity led many of them to explore other planes of existence, including worlds in the Material Plane.</p>\r\n<p>Elves have pointed ears and lack facial and body hair. They live for around 750 years, and they don&rsquo;t sleep but instead enter a trance when they need to rest. In that state, they remain aware of their surroundings while immersing themselves in memories and meditations.</p>\r\n<p>An environment subtly transforms elves after they inhabit it for a millennium or more, and it grants them certain kinds of magic. Drow, high elves, and wood elves are examples of elves who have been transformed thus.</p>\r\n<h2 id=\"Drow\" class=\"compendium-hr\">Drow</h2>\r\n<p>Drow typically dwell in the Underdark and have been shaped by it. Some drow individuals and societies avoid the Underdark altogether yet carry its magic. In the Eberron setting, for example, drow dwell in rainforests and cyclopean ruins on the continent of Xen&rsquo;drik.</p>\r\n<h2 id=\"HighElves\" class=\"compendium-hr\">High Elves</h2>\r\n<p>High elves have been infused with the magic of crossings between the Feywild and the Material Plane. On some worlds, high elves refer to themselves by other names. For example, they call themselves sun or moon elves in the Forgotten Realms setting, Silvanesti and Qualinesti in the Dragonlance setting, and Aereni in the Eberron setting.</p>\r\n<h2 id=\"WoodElves\" class=\"compendium-hr\">Wood Elves</h2>\r\n<p>Wood elves carry the magic of primeval forests within themselves. They are known by many other names, including wild elves, green elves, and forest elves. Grugach are reclusive wood elves of the Greyhawk setting, while the Kagonesti and the Tairnadal are wood elves of the Dragonlance and Eberron settings, respectively.</p>\r\n<hr />\r\n<h2 id=\"ElfTraits\" class=\"compendium-hr\">Elf Traits</h2>\r\n<p><strong>Creature Type:</strong> Humanoid<br><strong>Size:</strong> Medium (about 5&ndash;6 feet tall)<br><strong>Speed:</strong> 30 feet</p>",
+      "description": "<p>The elves\u2019 curiosity led many of them to explore other planes of existence.</p>\r\n<p style=\"font-family: Roboto Condensed;\"><strong>Elf Traits</strong><br />Darkvision, Elven Lineage, Fey Ancestry, Keen Senses,&nbsp;Trance</p>",
+      "longDescription": "<p>Created by the god Corellon, the first elves could change their forms at will. They lost this ability when Corellon cursed them for plotting with the deity Lolth, who tried and failed to usurp Corellon\u2019s dominion. When Lolth was cast into the Abyss, most elves renounced her and earned Corellon\u2019s forgiveness, but that which Corellon had taken from them was lost forever.</p>\r\n<p>No longer able to shape-shift at will, the elves retreated to the Feywild, where their sorrow was deepened by that plane\u2019s influence. Over time, curiosity led many of them to explore other planes of existence, including worlds in the Material Plane.</p>\r\n<p>Elves have pointed ears and lack facial and body hair. They live for around 750 years, and they don\u2019t sleep but instead enter a trance when they need to rest. In that state, they remain aware of their surroundings while immersing themselves in memories and meditations.</p>\r\n<p>An environment subtly transforms elves after they inhabit it for a millennium or more, and it grants them certain kinds of magic. Drow, high elves, and wood elves are examples of elves who have been transformed thus.</p>\r\n<h2 id=\"Drow\" class=\"compendium-hr\">Drow</h2>\r\n<p>Drow typically dwell in the Underdark and have been shaped by it. Some drow individuals and societies avoid the Underdark altogether yet carry its magic. In the Eberron setting, for example, drow dwell in rainforests and cyclopean ruins on the continent of Xen\u2019drik.</p>\r\n<h2 id=\"HighElves\" class=\"compendium-hr\">High Elves</h2>\r\n<p>High elves have been infused with the magic of crossings between the Feywild and the Material Plane. On some worlds, high elves refer to themselves by other names. For example, they call themselves sun or moon elves in the Forgotten Realms setting, Silvanesti and Qualinesti in the Dragonlance setting, and Aereni in the Eberron setting.</p>\r\n<h2 id=\"WoodElves\" class=\"compendium-hr\">Wood Elves</h2>\r\n<p>Wood elves carry the magic of primeval forests within themselves. They are known by many other names, including wild elves, green elves, and forest elves. Grugach are reclusive wood elves of the Greyhawk setting, while the Kagonesti and the Tairnadal are wood elves of the Dragonlance and Eberron settings, respectively.</p>\r\n<hr />\r\n<h2 id=\"ElfTraits\" class=\"compendium-hr\">Elf Traits</h2>\r\n<p><strong>Creature Type:</strong> Humanoid<br><strong>Size:</strong> Medium (about 5&ndash;6 feet tall)<br><strong>Speed:</strong> 30 feet</p>",
       "slug": "1751437-elf",
       "avatarUrl": "https://www.dndbeyond.com/avatars/43940/466/638607449392207682.png?width=350&height=350&fit=bounds&quality=95&auto=webp",
       "largeAvatarUrl": "https://www.dndbeyond.com/avatars/43940/467/638607449394457692.png?width=1000&height=1000&fit=bounds&quality=95&auto=webp",
       "portraitAvatarUrl": "https://www.dndbeyond.com/avatars/43940/468/638607449396397760.jpeg?width=1000&height=1000&fit=bounds&quality=95&auto=webp",
-      "detailsBackgroundAvatarUrl": null,
+      "detailsBackgroundAvatarUrl": "https://www.dndbeyond.com/avatars/57774/21/639196527690168207.jpeg",
       "detailsForegroundAvatarUrl": null,
       "moreDetailsUrl": "/species/1751437-elf",
       "isHomebrew": false,
@@ -443,7 +443,7 @@
             "entityTypeId": 1960452172,
             "displayOrder": 5,
             "name": "Elven Lineage",
-            "description": "<p>You are part of a lineage that grants you supernatural abilities. Choose a lineage from the Elven Lineages table. You gain the level 1 benefit of that lineage.</p>\r\n<p>When you reach character levels 3 and 5, you learn a higher-level spell, as shown on the table. You always have that spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast the spell using any spell slots you have of the appropriate level.</p>\r\n<p>Intelligence, Wisdom, or Charisma is your spellcasting ability for the spells you cast with this trait (choose the ability when you select the lineage).</p>\r\n<table class=\"table-compendium table--left-all\" style=\"--sb-table-row-bg-hover: #b3d3df; --sb-table-row-bg-dark: #d7e8ee; --sb-table-row-bg-light: #f1f7f9; --dark-sb-table-row-bg-light: #5e7982; --dark-sb-table-row-bg-dark: #5c7f8c; --dark-sb-table-row-bg-hover: #78a2b0;\"><caption>Elven Lineages</caption>\r\n<thead>\r\n<tr>\r\n<th class=\"table-column-width--20pct\">Lineage</th>\r\n<th>Level 1</th>\r\n<th class=\"table-column-width--20pct\">Level 3</th>\r\n<th class=\"table-column-width--20pct\">Level 5</th>\r\n</tr>\r\n</thead>\r\n<tbody>\r\n<tr>\r\n<td>Drow</td>\r\n<td>The range of your Darkvision increases to 120 feet. You also know the Dancing Lights cantrip.</td>\r\n<td>Faerie Fire</td>\r\n<td>Darkness</td>\r\n</tr>\r\n<tr>\r\n<td>High Elf</td>\r\n<td>You know the Prestidigitation cantrip. Whenever you finish a Long Rest, you can replace that cantrip with a different cantrip from the Wizard spell list.</td>\r\n<td>Detect Magic</td>\r\n<td>Misty Step</td>\r\n</tr>\r\n<tr>\r\n<td>Wood Elf</td>\r\n<td>Your Speed increases to 35 feet. You also know the Druidcraft cantrip.</td>\r\n<td>Longstrider</td>\r\n<td>Pass without Trace</td>\r\n</tr>\r\n</tbody>\r\n</table>",
+            "description": "<p>You are part of a lineage that grants you supernatural abilities. Choose a lineage from the Elven Lineages table. You gain the level 1 benefit of that lineage.</p>\r\n<p>When you reach character levels 3 and 5, you learn a higher-level spell, as shown on the table. You always have that spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast the spell using any spell slots you have of the appropriate level.</p>\r\n<p>Intelligence, Wisdom, or Charisma is your spellcasting ability for the spells you cast with this trait (choose the ability when you select the lineage).</p>\r\n<table class=\"table-compendium table--left-all\" style=\"--sb-table-row-bg-hover: #b3d3df; --sb-table-row-bg-dark: #d7e8ee; --sb-table-row-bg-light: #f1f7f9; --dark-sb-table-row-bg-light: #5e7982; --dark-sb-table-row-bg-dark: #5c7f8c; --dark-sb-table-row-bg-hover: #78a2b0;\"><caption>Elven Lineages</caption>\r\n<thead>\r\n<tr>\r\n<th class=\"table-column-width--20pct\">Lineage</th>\r\n<th>Level 1</th>\r\n<th class=\"table-column-width--20pct\">Level 3</th>\r\n<th class=\"table-column-width--20pct\">Level 5</th>\r\n</tr>\r\n</thead>\r\n<tbody>\r\n<tr>\r\n<td>Drow</td>\r\n<td>The range of your Darkvision increases to 120 feet. You also know the <em>Dancing Lights</em> cantrip.</td>\r\n<td><em>Faerie Fire</em></td>\r\n<td><em>Darkness</em></td>\r\n</tr>\r\n<tr>\r\n<td>High Elf</td>\r\n<td>You know the <em>Prestidigitation</em> cantrip. Whenever you finish a Long Rest, you can replace that cantrip with a different cantrip from the Wizard spell list.</td>\r\n<td><em>Detect Magic</em></td>\r\n<td><em>Misty Step</em></td>\r\n</tr>\r\n<tr>\r\n<td>Wood Elf</td>\r\n<td>Your Speed increases to 35 feet. You also know the <em>Druidcraft</em> cantrip.</td>\r\n<td><em>Longstrider</em></td>\r\n<td><em>Pass without Trace</em></td>\r\n</tr>\r\n</tbody>\r\n</table>",
             "snippet": "Choose a lineage from the Elven Lineages table. You gain the level 1 benefit of that lineage.",
             "hideInBuilder": false,
             "hideInSheet": false,
@@ -751,9 +751,9 @@
       "sizeId": 4,
       "creatureTypeId": 11,
       "cardDescription": "The elves\u2019 curiosity led many of them to explore other planes of existence.",
-      "highlights": null,
+      "highlights": "<ol>\r\n<li>Channel the magic of your elven lineage: drow, high elf, or wood elf.</li>\r\n<li>Notice what others miss and resist mind-influencing effects.</li>\r\n<li>Slip into a trancelike meditation, remaining ever aware when others must sleep.</li>\r\n</ol>",
       "mobileCardImageUrl": null,
-      "desktopCardImageUrl": "https://www.dndbeyond.com/avatars/54962/102/639071282066951292.jpeg",
+      "desktopCardImageUrl": "https://www.dndbeyond.com/avatars/57774/20/639196527687568200.jpeg",
       "sources": [
         {
           "sourceId": 145,
@@ -1158,9 +1158,9 @@
         "displayAsAttack": null,
         "quantity": 1,
         "isAttuned": false,
-        "equipped": true,
-        "equippedEntityTypeId": 1581111423,
-        "equippedEntityId": 165616951,
+        "equipped": false,
+        "equippedEntityTypeId": null,
+        "equippedEntityId": null,
         "chargesUsed": 0,
         "limitedUse": null,
         "containerEntityId": 165616951,
@@ -1379,7 +1379,7 @@
           "weightMultiplier": 1,
           "capacity": null,
           "capacityWeight": 0,
-          "type": "Light Armor",
+          "type": "",
           "description": "<p>The breastplate and shoulder protectors of this armor are made of leather that has been stiffened by being boiled in oil. The rest of the armor is made of softer and more flexible materials.</p>",
           "canAttune": false,
           "attunementDescription": null,
@@ -2049,7 +2049,7 @@
             "Deception"
           ],
           "grantedModifiers": [],
-          "subType": "Tool",
+          "subType": null,
           "isConsumable": false,
           "weaponBehaviors": [],
           "baseItemId": null,
@@ -4284,80 +4284,80 @@
           "cardHeading": null
         },
         "subclassDefinition": {
-          "id": 2190986,
-          "definitionKey": "789467139:2190986",
-          "name": "Soulknife",
-          "description": "<p><em>Strike Foes with Psionic Blades</em></p>\r\n<p>A Soulknife strikes with the mind, cutting through barriers both physical and psychic.</p>",
+          "id": 2190985,
+          "definitionKey": "789467139:2190985",
+          "name": "Assassin",
+          "description": "<p><em>Practice the Grim Art of Death</em></p>\r\n<p>An Assassin\u2019s training focuses on using stealth, poison, and disguise to eliminate foes with deadly efficiency.</p>",
           "equipmentDescription": null,
           "parentClassId": 2190883,
-          "slug": "2190986-soulknife",
+          "slug": "2190985-assassin",
           "avatarUrl": null,
           "largeAvatarUrl": null,
           "portraitAvatarUrl": null,
-          "moreDetailsUrl": "/classes/2190883-rogue#Soulknife",
+          "moreDetailsUrl": "/classes/2190883-rogue#Assassin",
           "spellCastingAbilityId": null,
           "sources": [
             {
               "sourceId": 145,
-              "pageNumber": 135,
+              "pageNumber": 134,
               "sourceType": 1
             }
           ],
           "classFeatures": [
             {
-              "id": 10292921,
-              "name": "Psionic Power",
+              "id": 10292916,
+              "name": "Assassinate",
               "prerequisite": null,
-              "description": "<p>You harbor a wellspring of psionic energy within yourself. It is represented by your Psionic Energy Dice, which fuel certain powers you have from this subclass. The Soulknife Energy Dice table shows the number of these dice you have when you reach certain Rogue levels, and the table shows the die size.</p>\r\n<table class=\"table-compendium\" style=\"--sb-table-row-bg-hover: #b3d3df; --sb-table-row-bg-dark: #d7e8ee; --sb-table-row-bg-light: #f1f7f9; --dark-sb-table-row-bg-light: #5e7982; --dark-sb-table-row-bg-dark: #5c7f8c; --dark-sb-table-row-bg-hover: #78a2b0;\"><caption>Soulknife Energy Dice</caption>\r\n<thead>\r\n<tr>\r\n<th>Rogue Level</th>\r\n<th>Die Size</th>\r\n<th>Number</th>\r\n</tr>\r\n</thead>\r\n<tbody>\r\n<tr>\r\n<td>3</td>\r\n<td>D6</td>\r\n<td>4</td>\r\n</tr>\r\n<tr>\r\n<td>5</td>\r\n<td>D8</td>\r\n<td>6</td>\r\n</tr>\r\n<tr>\r\n<td>9</td>\r\n<td>D8</td>\r\n<td>8</td>\r\n</tr>\r\n<tr>\r\n<td>11</td>\r\n<td>D10</td>\r\n<td>8</td>\r\n</tr>\r\n<tr>\r\n<td>13</td>\r\n<td>D10</td>\r\n<td>10</td>\r\n</tr>\r\n<tr>\r\n<td>17</td>\r\n<td>D12</td>\r\n<td>12</td>\r\n</tr>\r\n</tbody>\r\n</table>\r\n<p>Any features in this subclass that use a Psionic Energy Die use only the dice from this subclass. Some of your powers expend a Psionic Energy Die, as specified in a power\u2019s description, and you can\u2019t use a power if it requires you to use a die when your Psionic Energy Dice are all expended.</p>\r\n<p>You regain one of your expended Psionic Energy Dice when you finish a Short Rest, and you regain all of them when you finish a Long Rest.</p>\r\n<p><strong><em>Psi-Bolstered Knack.</em></strong> If you fail an ability check using a skill or tool with which you have proficiency, you can roll one Psionic Energy Die and add the number rolled to the check, potentially turning failure into success. The die is expended only if the roll then succeeds.</p>\r\n<p><strong><em>Psychic Whispers.</em></strong> You can establish telepathic communication between yourself and others. As a Magic action, choose one or more creatures you can see, up to a number of creatures equal to your Proficiency Bonus, and then roll one Psionic Energy Die. For a number of hours equal to the number rolled, the chosen creatures can speak telepathically with you, and you can speak telepathically with them. To send or receive a message (no action required), you and the other creature must be within 1 mile of each other. A creature can end the telepathic connection at any time (no action required).</p>\r\n<p>The first time you use this power after each Long Rest, you don\u2019t expend the Psionic Energy Die. All other times you use the power, you expend the die.</p>",
+              "description": "<p>You\u2019re adept at ambushing a target, granting you the following benefits.</p>\r\n<p><strong><em>Initiative.</em></strong> You have Advantage on Initiative rolls.</p>\r\n<p><strong><em>Surprising Strikes.</em></strong> During the first round of each combat, you have Advantage on attack rolls against any creature that hasn\u2019t taken a turn. If your Sneak Attack hits any target during that round, the target takes extra damage of the weapon\u2019s type equal to your Rogue level.</p>",
               "requiredLevel": 3,
               "displayOrder": 1,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#PsionicPower-10292921"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#Assassinate-10292916"
             },
             {
-              "id": 10292922,
-              "name": "Psychic Blades",
+              "id": 10292917,
+              "name": "Assassin\u2019s Tools",
               "prerequisite": null,
-              "description": "<p>You can manifest shimmering blades of psychic energy. Whenever you take the Attack action or make an Opportunity Attack, you can manifest a Psychic Blade in your free hand and make the attack with that blade. The magic blade has the following traits:</p>\r\n<div class=\"spell-components\">\r\n<p><strong>Weapon Category:</strong> Simple Melee<br /><strong>Damage on a Hit:</strong> 1d6 Psychic plus the ability modifier used for the attack roll<br /><strong>Properties:</strong> Finesse, Thrown (range 60/120 feet)<br /><strong>Mastery:</strong> Vex (you can use this property, and it doesn\u2019t count against the number of properties you can use with <a href=\"https://www.dndbeyond.com/sources/dnd/phb-2024/equipment#MasteryProperties\">Weapon Mastery</a>)</p>\r\n</div>\r\n<p>The blade vanishes immediately after it hits or misses its target, and it leaves no mark if it deals damage.</p>\r\n<p>After you attack with the blade on your turn, you can make a melee or ranged attack with a second psychic blade as a Bonus Action on the same turn if your other hand is free to create it. The damage die of this bonus attack is 1d4 instead of 1d6.</p>",
+              "description": "<p>You gain a Disguise Kit and a Poisoner\u2019s Kit, and you have proficiency with them.</p>",
               "requiredLevel": 3,
-              "displayOrder": 2,
+              "displayOrder": 1,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#PsychicBlades-10292922"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#Assassin\u2019sTools-10292917"
             },
             {
-              "id": 10292923,
-              "name": "Soul Blades",
+              "id": 10292918,
+              "name": "Infiltration Expertise",
               "prerequisite": null,
-              "description": "<p>You can now use the following powers with your Psychic Blades.</p>\r\n<p><strong><em>Homing Strikes.</em></strong> If you make an attack roll with your Psychic Blade and miss the target, you can roll one Psionic Energy Die and add the number rolled to the attack roll. If this causes the attack to hit, the die is expended.</p>\r\n<p><strong><em>Psychic Teleportation.</em></strong> As a Bonus Action, you manifest a Psychic Blade, expend one Psionic Energy Die and roll it, and throw the blade at an unoccupied space you can see up to a number of feet away equal to 10 times the number rolled. You then teleport to that space, and the blade vanishes.</p>",
+              "description": "<p>You are expert at the following techniques that aid your infiltrations.</p>\r\n<p><strong><em>Masterful Mimicry.</em></strong> You can unerringly mimic another person\u2019s speech, handwriting, or both if you have spent at least 1 hour studying them.</p>\r\n<p><strong><em>Roving Aim.</em></strong> Your Speed isn\u2019t reduced to 0 by using Steady Aim.</p>",
               "requiredLevel": 9,
               "displayOrder": 3,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#SoulBlades-10292923"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#InfiltrationExpertise-10292918"
             },
             {
-              "id": 10292924,
-              "name": "Psychic Veil",
+              "id": 10292919,
+              "name": "Envenom Weapons",
               "prerequisite": null,
-              "description": "<p>You can weave a veil of psychic static to mask yourself. As a Magic action, you gain the Invisible condition for 1 hour or until you dismiss this effect (no action required). This invisibility ends early immediately after you deal damage to a creature or you force a creature to make a saving throw.</p>\r\n<p>Once you use this feature, you can\u2019t do so again until you finish a Long Rest unless you expend a Psionic Energy Die (no action required) to restore your use of it.</p>",
+              "description": "<p>When you use the Poison option of your Cunning Strike, the target also takes 2d6 Poison damage whenever it fails the saving throw. This damage ignores Resistance to Poison damage.</p>",
               "requiredLevel": 13,
               "displayOrder": 4,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#PsychicVeil-10292924"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#EnvenomWeapons-10292919"
             },
             {
-              "id": 10292925,
-              "name": "Rend Mind",
+              "id": 10292920,
+              "name": "Death Strike",
               "prerequisite": null,
-              "description": "<p>You can sweep your Psychic Blades through a creature\u2019s mind. When you use your Psychic Blades to deal Sneak Attack damage to a creature, you can force that target to make a Wisdom saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus). If the save fails, the target has the Stunned condition for 1 minute. The Stunned target repeats the save at the end of each of its turns, ending the effect on itself on a success.</p>\r\n<p>Once you use this feature, you can\u2019t do so again until you finish a Long Rest unless you expend three Psionic Energy Dice (no action required) to restore your use of it.</p>",
+              "description": "<p>When you hit with your Sneak Attack on the first round of a combat, the target must succeed on a Constitution saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus), or the attack\u2019s damage is doubled against the target.</p>",
               "requiredLevel": 17,
               "displayOrder": 5,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#RendMind-10292925"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#DeathStrike-10292920"
             },
             {
               "id": 10292323,
@@ -4368,7 +4368,7 @@
               "displayOrder": 1,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#CoreRogueTraits-10292323"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#CoreRogueTraits-10292323"
             },
             {
               "id": 10292324,
@@ -4379,7 +4379,7 @@
               "displayOrder": 2,
               "summary": "Become an expert in your choice of skills.",
               "featuresSectionType": 1,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#Expertise-10292324"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#Expertise-10292324"
             },
             {
               "id": 10292325,
@@ -4390,7 +4390,7 @@
               "displayOrder": 3,
               "summary": "Strike subtly and exploit a foe's distraction to deal extra damage.",
               "featuresSectionType": 1,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#SneakAttack-10292325"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#SneakAttack-10292325"
             },
             {
               "id": 10292326,
@@ -4401,7 +4401,7 @@
               "displayOrder": 4,
               "summary": "Learn the secret language of the criminal underworld\u2014and one other language.",
               "featuresSectionType": 1,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#Thieves\u2019Cant-10292326"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#Thieves\u2019Cant-10292326"
             },
             {
               "id": 10292327,
@@ -4412,7 +4412,7 @@
               "displayOrder": 5,
               "summary": "Unlock the mastery properties of your chosen weapons.",
               "featuresSectionType": 1,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#WeaponMastery-10292327"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#WeaponMastery-10292327"
             },
             {
               "id": 10292328,
@@ -4423,7 +4423,7 @@
               "displayOrder": 6,
               "summary": "",
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#CunningAction-10292328"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#CunningAction-10292328"
             },
             {
               "id": 10292329,
@@ -4434,7 +4434,7 @@
               "displayOrder": 7,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#RogueSubclass-10292329"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#RogueSubclass-10292329"
             },
             {
               "id": 10292330,
@@ -4445,7 +4445,7 @@
               "displayOrder": 8,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#SteadyAim-10292330"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#SteadyAim-10292330"
             },
             {
               "id": 10292331,
@@ -4456,7 +4456,7 @@
               "displayOrder": 9,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#AbilityScoreImprovement-10292331"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#AbilityScoreImprovement-10292331"
             },
             {
               "id": 10292332,
@@ -4467,7 +4467,7 @@
               "displayOrder": 10,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#CunningStrike-10292332"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#CunningStrike-10292332"
             },
             {
               "id": 10292333,
@@ -4478,7 +4478,7 @@
               "displayOrder": 11,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#UncannyDodge-10292333"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#UncannyDodge-10292333"
             },
             {
               "id": 10292334,
@@ -4489,7 +4489,7 @@
               "displayOrder": 11,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#6:Expertise-10292334"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#6:Expertise-10292334"
             },
             {
               "id": 10292335,
@@ -4500,7 +4500,7 @@
               "displayOrder": 12,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#Evasion-10292335"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#Evasion-10292335"
             },
             {
               "id": 10292336,
@@ -4511,7 +4511,7 @@
               "displayOrder": 13,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#ReliableTalent-10292336"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#ReliableTalent-10292336"
             },
             {
               "id": 10292337,
@@ -4522,7 +4522,7 @@
               "displayOrder": 14,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#8:AbilityScoreImprovement-10292337"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#8:AbilityScoreImprovement-10292337"
             },
             {
               "id": 10292338,
@@ -4533,7 +4533,7 @@
               "displayOrder": 15,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#10:AbilityScoreImprovement-10292338"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#10:AbilityScoreImprovement-10292338"
             },
             {
               "id": 10292339,
@@ -4544,7 +4544,7 @@
               "displayOrder": 16,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#ImprovedCunningStrike-10292339"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#ImprovedCunningStrike-10292339"
             },
             {
               "id": 10292340,
@@ -4555,7 +4555,7 @@
               "displayOrder": 17,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#12:AbilityScoreImprovement-10292340"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#12:AbilityScoreImprovement-10292340"
             },
             {
               "id": 10292341,
@@ -4566,7 +4566,7 @@
               "displayOrder": 18,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#DeviousStrikes-10292341"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#DeviousStrikes-10292341"
             },
             {
               "id": 10292342,
@@ -4577,7 +4577,7 @@
               "displayOrder": 19,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#SlipperyMind-10292342"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#SlipperyMind-10292342"
             },
             {
               "id": 10292343,
@@ -4588,7 +4588,7 @@
               "displayOrder": 20,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#16:AbilityScoreImprovement-10292343"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#16:AbilityScoreImprovement-10292343"
             },
             {
               "id": 10292344,
@@ -4599,7 +4599,7 @@
               "displayOrder": 21,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#Elusive-10292344"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#Elusive-10292344"
             },
             {
               "id": 10292345,
@@ -4610,7 +4610,7 @@
               "displayOrder": 22,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#EpicBoon-10292345"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#EpicBoon-10292345"
             },
             {
               "id": 10292346,
@@ -4621,7 +4621,7 @@
               "displayOrder": 23,
               "summary": null,
               "featuresSectionType": null,
-              "moreDetailsUrl": "/classes/2190883-rogue#Soulknife#StrokeofLuck-10292346"
+              "moreDetailsUrl": "/classes/2190883-rogue#Assassin#StrokeofLuck-10292346"
             }
           ],
           "hitDice": 8,
@@ -4631,19 +4631,19 @@
           "spellPrepareType": null,
           "spellCastingLearningStyle": null,
           "spellContainerName": null,
-          "sourcePageNumber": 135,
+          "sourcePageNumber": 134,
           "subclassDefinition": null,
           "isHomebrew": false,
           "primaryAbilities": null,
           "spellRules": null,
           "prerequisites": null,
-          "desktopCardBackgroundAvatarUrl": "https://www.dndbeyond.com/avatars/54900/101/639068700403462810.jpeg",
-          "mobileCardBackgroundAvatarUrl": "https://www.dndbeyond.com/avatars/54900/102/639068700405302811.jpeg",
+          "desktopCardBackgroundAvatarUrl": "https://www.dndbeyond.com/avatars/54900/98/639068700333202825.jpeg",
+          "mobileCardBackgroundAvatarUrl": "https://www.dndbeyond.com/avatars/54900/99/639068700334922873.jpeg",
           "detailsBackgroundAvatarUrl": null,
           "iconAvatarUrl": null,
           "complexity": null,
           "tagline": null,
-          "cardDescription": "Strike Foes with Psionic Blades",
+          "cardDescription": "Practice the Grim Art of Death",
           "highlights": null,
           "color": null,
           "desktopCardForegroundAvatarUrl": null,
@@ -4662,13 +4662,13 @@
         "classFeatures": [
           {
             "definition": {
-              "id": 10292921,
-              "definitionKey": "class-feature:10292921",
+              "id": 10292916,
+              "definitionKey": "class-feature:10292916",
               "entityTypeId": 12168134,
               "displayOrder": 100,
-              "name": "Psionic Power",
-              "description": "<p>You harbor a wellspring of psionic energy within yourself. It is represented by your Psionic Energy Dice, which fuel certain powers you have from this subclass. The Soulknife Energy Dice table shows the number of these dice you have when you reach certain Rogue levels, and the table shows the die size.</p>\r\n<table class=\"table-compendium\" style=\"--sb-table-row-bg-hover: #b3d3df; --sb-table-row-bg-dark: #d7e8ee; --sb-table-row-bg-light: #f1f7f9; --dark-sb-table-row-bg-light: #5e7982; --dark-sb-table-row-bg-dark: #5c7f8c; --dark-sb-table-row-bg-hover: #78a2b0;\"><caption>Soulknife Energy Dice</caption>\r\n<thead>\r\n<tr>\r\n<th>Rogue Level</th>\r\n<th>Die Size</th>\r\n<th>Number</th>\r\n</tr>\r\n</thead>\r\n<tbody>\r\n<tr>\r\n<td>3</td>\r\n<td>D6</td>\r\n<td>4</td>\r\n</tr>\r\n<tr>\r\n<td>5</td>\r\n<td>D8</td>\r\n<td>6</td>\r\n</tr>\r\n<tr>\r\n<td>9</td>\r\n<td>D8</td>\r\n<td>8</td>\r\n</tr>\r\n<tr>\r\n<td>11</td>\r\n<td>D10</td>\r\n<td>8</td>\r\n</tr>\r\n<tr>\r\n<td>13</td>\r\n<td>D10</td>\r\n<td>10</td>\r\n</tr>\r\n<tr>\r\n<td>17</td>\r\n<td>D12</td>\r\n<td>12</td>\r\n</tr>\r\n</tbody>\r\n</table>\r\n<p>Any features in this subclass that use a Psionic Energy Die use only the dice from this subclass. Some of your powers expend a Psionic Energy Die, as specified in a power\u2019s description, and you can\u2019t use a power if it requires you to use a die when your Psionic Energy Dice are all expended.</p>\r\n<p>You regain one of your expended Psionic Energy Dice when you finish a Short Rest, and you regain all of them when you finish a Long Rest.</p>\r\n<p><strong><em>Psi-Bolstered Knack.</em></strong> If you fail an ability check using a skill or tool with which you have proficiency, you can roll one Psionic Energy Die and add the number rolled to the check, potentially turning failure into success. The die is expended only if the roll then succeeds.</p>\r\n<p><strong><em>Psychic Whispers.</em></strong> You can establish telepathic communication between yourself and others. As a Magic action, choose one or more creatures you can see, up to a number of creatures equal to your Proficiency Bonus, and then roll one Psionic Energy Die. For a number of hours equal to the number rolled, the chosen creatures can speak telepathically with you, and you can speak telepathically with them. To send or receive a message (no action required), you and the other creature must be within 1 mile of each other. A creature can end the telepathic connection at any time (no action required).</p>\r\n<p>The first time you use this power after each Long Rest, you don\u2019t expend the Psionic Energy Die. All other times you use the power, you expend the die.</p>",
-              "snippet": "You harbor a wellspring of psionic energy within yourself, represented by your Psionic Energy Dice, which fuels powers you have from this subclass. \r\n\r\nYou have {{scalevalue}} Psionic Energy Dice, which are expended when used. You regain one expended Psionic Energy Die when you finish a Short Rest, and regain all of them when you finish a Long Rest.",
+              "name": "Assassinate",
+              "description": "<p>You\u2019re adept at ambushing a target, granting you the following benefits.</p>\r\n<p><strong><em>Initiative.</em></strong> You have Advantage on Initiative rolls.</p>\r\n<p><strong><em>Surprising Strikes.</em></strong> During the first round of each combat, you have Advantage on attack rolls against any creature that hasn\u2019t taken a turn. If your Sneak Attack hits any target during that round, the target takes extra damage of the weapon\u2019s type equal to your Rogue level.</p>",
+              "snippet": "You gain the following benefits:\r\n\r\n    \u2022 You have Advantage on Initiative rolls.\r\n    \u2022 During the first round of each combat, you have Advantage on attacks against any creature that hasn\u2019t taken a turn. If your Sneak Attack hits any target during that round, the target takes an additional {{classlevel#unsigned}} damage of the weapon\u2019s type.",
               "activation": null,
               "multiClassDescription": "",
               "requiredLevel": 3,
@@ -4677,153 +4677,28 @@
                 {
                   "level": null,
                   "uses": 1
-                },
-                {
-                  "level": null,
-                  "uses": 1
-                },
-                {
-                  "level": null,
-                  "uses": 1
                 }
               ],
               "hideInBuilder": false,
               "hideInSheet": false,
               "sourceId": 145,
-              "sourcePageNumber": 135,
-              "creatureRules": [],
-              "levelScales": [
-                {
-                  "id": 1605491,
-                  "level": 3,
-                  "description": "Psionic Energy Die",
-                  "dice": {
-                    "diceCount": 1,
-                    "diceValue": 6,
-                    "diceMultiplier": null,
-                    "fixedValue": null,
-                    "diceString": "1d6"
-                  },
-                  "fixedValue": null
-                },
-                {
-                  "id": 1605492,
-                  "level": 5,
-                  "description": "Psionic Energy Die",
-                  "dice": {
-                    "diceCount": 1,
-                    "diceValue": 8,
-                    "diceMultiplier": null,
-                    "fixedValue": null,
-                    "diceString": "1d8"
-                  },
-                  "fixedValue": null
-                },
-                {
-                  "id": 1605493,
-                  "level": 11,
-                  "description": "Psionic Energy Die",
-                  "dice": {
-                    "diceCount": 1,
-                    "diceValue": 10,
-                    "diceMultiplier": null,
-                    "fixedValue": null,
-                    "diceString": "1d10"
-                  },
-                  "fixedValue": null
-                },
-                {
-                  "id": 1605494,
-                  "level": 17,
-                  "description": "Psionic Energy Die",
-                  "dice": {
-                    "diceCount": 1,
-                    "diceValue": 12,
-                    "diceMultiplier": null,
-                    "fixedValue": null,
-                    "diceString": "1d12"
-                  },
-                  "fixedValue": null
-                }
-              ],
-              "infusionRules": [],
-              "spellListIds": [],
-              "classId": 2190986,
-              "featureType": 1,
-              "sources": [
-                {
-                  "sourceId": 145,
-                  "pageNumber": 135,
-                  "sourceType": 1
-                }
-              ],
-              "affectedFeatureDefinitionKeys": [],
-              "entityType": "class-feature",
-              "entityID": "10292921",
-              "hasItemMappings": false,
-              "grantedFeats": []
-            },
-            "levelScale": {
-              "id": 1605493,
-              "level": 11,
-              "description": "Psionic Energy Die",
-              "dice": {
-                "diceCount": 1,
-                "diceValue": 10,
-                "diceMultiplier": null,
-                "fixedValue": null,
-                "diceString": "1d10"
-              },
-              "fixedValue": null
-            }
-          },
-          {
-            "definition": {
-              "id": 10292922,
-              "definitionKey": "class-feature:10292922",
-              "entityTypeId": 12168134,
-              "displayOrder": 200,
-              "name": "Psychic Blades",
-              "description": "<p>You can manifest shimmering blades of psychic energy. Whenever you take the Attack action or make an Opportunity Attack, you can manifest a Psychic Blade in your free hand and make the attack with that blade. The magic blade has the following traits:</p>\r\n<div class=\"spell-components\">\r\n<p><strong>Weapon Category:</strong> Simple Melee<br /><strong>Damage on a Hit:</strong> 1d6 Psychic plus the ability modifier used for the attack roll<br /><strong>Properties:</strong> Finesse, Thrown (range 60/120 feet)<br /><strong>Mastery:</strong> Vex (you can use this property, and it doesn\u2019t count against the number of properties you can use with <a href=\"https://www.dndbeyond.com/sources/dnd/phb-2024/equipment#MasteryProperties\">Weapon Mastery</a>)</p>\r\n</div>\r\n<p>The blade vanishes immediately after it hits or misses its target, and it leaves no mark if it deals damage.</p>\r\n<p>After you attack with the blade on your turn, you can make a melee or ranged attack with a second psychic blade as a Bonus Action on the same turn if your other hand is free to create it. The damage die of this bonus attack is 1d4 instead of 1d6.</p>",
-              "snippet": "You can manifest blades of psychic energy. When you take the Attack action or make an Opportunity Attack, you can manifest a Psychic Blade in your free hand and make the attack with that blade. The blade has the following traits:\r\n\r\n<strong>Weapon Category:</strong> Simple Melee\r\n<strong>Damage on a Hit:</strong> 1d6 + the ability modifier used for the attack Psychic damage.\r\n<strong>Properties:</strong> Finesse, Thrown (range 60/120 ft.)\r\n<strong>Mastery:</strong> Vex\r\n\r\nThe blade vanishes immediately after it hits or misses, and it leaves no mark if it deals damage.\r\n\r\nAfter you attack with the blade on your turn, you can make a melee or ranged attack with a second psychic blade as a Bonus Action, and the damage die of this bonus attack is 1d4.",
-              "activation": null,
-              "multiClassDescription": "",
-              "requiredLevel": 3,
-              "isSubClassFeature": false,
-              "limitedUse": [
-                {
-                  "level": null,
-                  "uses": 1
-                },
-                {
-                  "level": null,
-                  "uses": 1
-                },
-                {
-                  "level": null,
-                  "uses": 1
-                }
-              ],
-              "hideInBuilder": false,
-              "hideInSheet": false,
-              "sourceId": 145,
-              "sourcePageNumber": 135,
+              "sourcePageNumber": 134,
               "creatureRules": [],
               "levelScales": [],
               "infusionRules": [],
               "spellListIds": [],
-              "classId": 2190986,
+              "classId": 2190985,
               "featureType": 1,
               "sources": [
                 {
                   "sourceId": 145,
-                  "pageNumber": 135,
+                  "pageNumber": 134,
                   "sourceType": 1
                 }
               ],
               "affectedFeatureDefinitionKeys": [],
               "entityType": "class-feature",
-              "entityID": "10292922",
+              "entityID": "10292916",
               "hasItemMappings": false,
               "grantedFeats": []
             },
@@ -4831,13 +4706,52 @@
           },
           {
             "definition": {
-              "id": 10292923,
-              "definitionKey": "class-feature:10292923",
+              "id": 10292917,
+              "definitionKey": "class-feature:10292917",
+              "entityTypeId": 12168134,
+              "displayOrder": 100,
+              "name": "Assassin\u2019s Tools",
+              "description": "<p>You gain a Disguise Kit and a Poisoner\u2019s Kit, and you have proficiency with them.</p>",
+              "snippet": "You gain a Disguise Kit and a Poisoner\u2019s Kit, and you have proficiency with them.",
+              "activation": null,
+              "multiClassDescription": "",
+              "requiredLevel": 3,
+              "isSubClassFeature": false,
+              "limitedUse": [],
+              "hideInBuilder": false,
+              "hideInSheet": false,
+              "sourceId": 145,
+              "sourcePageNumber": 134,
+              "creatureRules": [],
+              "levelScales": [],
+              "infusionRules": [],
+              "spellListIds": [],
+              "classId": 2190985,
+              "featureType": 1,
+              "sources": [
+                {
+                  "sourceId": 145,
+                  "pageNumber": 134,
+                  "sourceType": 1
+                }
+              ],
+              "affectedFeatureDefinitionKeys": [],
+              "entityType": "class-feature",
+              "entityID": "10292917",
+              "hasItemMappings": false,
+              "grantedFeats": []
+            },
+            "levelScale": null
+          },
+          {
+            "definition": {
+              "id": 10292918,
+              "definitionKey": "class-feature:10292918",
               "entityTypeId": 12168134,
               "displayOrder": 300,
-              "name": "Soul Blades",
-              "description": "<p>You can now use the following powers with your Psychic Blades.</p>\r\n<p><strong><em>Homing Strikes.</em></strong> If you make an attack roll with your Psychic Blade and miss the target, you can roll one Psionic Energy Die and add the number rolled to the attack roll. If this causes the attack to hit, the die is expended.</p>\r\n<p><strong><em>Psychic Teleportation.</em></strong> As a Bonus Action, you manifest a Psychic Blade, expend one Psionic Energy Die and roll it, and throw the blade at an unoccupied space you can see up to a number of feet away equal to 10 times the number rolled. You then teleport to that space, and the blade vanishes.</p>",
-              "snippet": "You can use the following powers with your Psychic Blades:\r\n\r\n    \u2022 <strong>Homing Strikes.</strong> If you make an attack roll with your Psychic Blade and miss, you can roll {{scalevalue}} and add the number rolled to the attack roll. If it causes the attack to hit, the die is expended.\r\n    \u2022 <strong>Psychic Teleportation.</strong> As a Bonus Action, you manifest a Psychic Blade, expending one Psionic Energy Die {{scalevalue}} and roll it. You throw the blade at an unoccupied space you can see up to a number of feet away equal to 10 times the number rolled. You then teleport to that space, and the blade vanishes.",
+              "name": "Infiltration Expertise",
+              "description": "<p>You are expert at the following techniques that aid your infiltrations.</p>\r\n<p><strong><em>Masterful Mimicry.</em></strong> You can unerringly mimic another person\u2019s speech, handwriting, or both if you have spent at least 1 hour studying them.</p>\r\n<p><strong><em>Roving Aim.</em></strong> Your Speed isn\u2019t reduced to 0 by using Steady Aim.</p>",
+              "snippet": "You\u2019re expert at the following techniques:\r\n    \u2022 You can unerringly mimic another person\u2019s speech, handwriting, or both if you\u2019ve spent at least 1 hour studying them.\r\n    \u2022 Your Speed isn\u2019t reduced to 0 by using Steady Aim.",
               "activation": null,
               "multiClassDescription": "",
               "requiredLevel": 9,
@@ -4855,102 +4769,37 @@
               "hideInBuilder": false,
               "hideInSheet": false,
               "sourceId": 145,
-              "sourcePageNumber": 135,
+              "sourcePageNumber": 134,
               "creatureRules": [],
-              "levelScales": [
-                {
-                  "id": 1605495,
-                  "level": 3,
-                  "description": "Psionic Energy Dice",
-                  "dice": {
-                    "diceCount": 1,
-                    "diceValue": 6,
-                    "diceMultiplier": null,
-                    "fixedValue": null,
-                    "diceString": "1d6"
-                  },
-                  "fixedValue": null
-                },
-                {
-                  "id": 1605496,
-                  "level": 5,
-                  "description": "Psionic Energy Dice",
-                  "dice": {
-                    "diceCount": 1,
-                    "diceValue": 8,
-                    "diceMultiplier": null,
-                    "fixedValue": null,
-                    "diceString": "1d8"
-                  },
-                  "fixedValue": null
-                },
-                {
-                  "id": 1605497,
-                  "level": 11,
-                  "description": "Psionic Energy Dice",
-                  "dice": {
-                    "diceCount": 1,
-                    "diceValue": 10,
-                    "diceMultiplier": null,
-                    "fixedValue": null,
-                    "diceString": "1d10"
-                  },
-                  "fixedValue": null
-                },
-                {
-                  "id": 1605498,
-                  "level": 17,
-                  "description": "Psionic Energy Dice",
-                  "dice": {
-                    "diceCount": 1,
-                    "diceValue": 12,
-                    "diceMultiplier": null,
-                    "fixedValue": null,
-                    "diceString": "1d12"
-                  },
-                  "fixedValue": null
-                }
-              ],
+              "levelScales": [],
               "infusionRules": [],
               "spellListIds": [],
-              "classId": 2190986,
+              "classId": 2190985,
               "featureType": 1,
               "sources": [
                 {
                   "sourceId": 145,
-                  "pageNumber": 135,
+                  "pageNumber": 134,
                   "sourceType": 1
                 }
               ],
               "affectedFeatureDefinitionKeys": [],
               "entityType": "class-feature",
-              "entityID": "10292923",
+              "entityID": "10292918",
               "hasItemMappings": false,
               "grantedFeats": []
             },
-            "levelScale": {
-              "id": 1605497,
-              "level": 11,
-              "description": "Psionic Energy Dice",
-              "dice": {
-                "diceCount": 1,
-                "diceValue": 10,
-                "diceMultiplier": null,
-                "fixedValue": null,
-                "diceString": "1d10"
-              },
-              "fixedValue": null
-            }
+            "levelScale": null
           },
           {
             "definition": {
-              "id": 10292924,
-              "definitionKey": "class-feature:10292924",
+              "id": 10292919,
+              "definitionKey": "class-feature:10292919",
               "entityTypeId": 12168134,
               "displayOrder": 400,
-              "name": "Psychic Veil",
-              "description": "<p>You can weave a veil of psychic static to mask yourself. As a Magic action, you gain the Invisible condition for 1 hour or until you dismiss this effect (no action required). This invisibility ends early immediately after you deal damage to a creature or you force a creature to make a saving throw.</p>\r\n<p>Once you use this feature, you can\u2019t do so again until you finish a Long Rest unless you expend a Psionic Energy Die (no action required) to restore your use of it.</p>",
-              "snippet": "As a Magic action, you gain the Invisible condition for 1 hour, or until you dismiss the effect. This invisibility ends early after you deal damage to a creature or force a creature to make a saving throw.\r\n\r\nYou can\u2019t use this feature again until you finish a Long Rest, unless you expend a Psionic Energy Die to restore your use of it.",
+              "name": "Envenom Weapons",
+              "description": "<p>When you use the Poison option of your Cunning Strike, the target also takes 2d6 Poison damage whenever it fails the saving throw. This damage ignores Resistance to Poison damage.</p>",
+              "snippet": "When you use the Poison option of your Cunning Strike, the target also takes 2d6 Poison damage whenever it fails the saving throw and this damage ignores Resistance to Poison damage.",
               "activation": null,
               "multiClassDescription": "",
               "requiredLevel": 13,
@@ -4964,23 +4813,23 @@
               "hideInBuilder": false,
               "hideInSheet": false,
               "sourceId": 145,
-              "sourcePageNumber": 135,
+              "sourcePageNumber": 134,
               "creatureRules": [],
               "levelScales": [],
               "infusionRules": [],
               "spellListIds": [],
-              "classId": 2190986,
+              "classId": 2190985,
               "featureType": 1,
               "sources": [
                 {
                   "sourceId": 145,
-                  "pageNumber": 135,
+                  "pageNumber": 134,
                   "sourceType": 1
                 }
               ],
               "affectedFeatureDefinitionKeys": [],
               "entityType": "class-feature",
-              "entityID": "10292924",
+              "entityID": "10292919",
               "hasItemMappings": false,
               "grantedFeats": []
             },
@@ -4988,13 +4837,13 @@
           },
           {
             "definition": {
-              "id": 10292925,
-              "definitionKey": "class-feature:10292925",
+              "id": 10292920,
+              "definitionKey": "class-feature:10292920",
               "entityTypeId": 12168134,
               "displayOrder": 500,
-              "name": "Rend Mind",
-              "description": "<p>You can sweep your Psychic Blades through a creature\u2019s mind. When you use your Psychic Blades to deal Sneak Attack damage to a creature, you can force that target to make a Wisdom saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus). If the save fails, the target has the Stunned condition for 1 minute. The Stunned target repeats the save at the end of each of its turns, ending the effect on itself on a success.</p>\r\n<p>Once you use this feature, you can\u2019t do so again until you finish a Long Rest unless you expend three Psionic Energy Dice (no action required) to restore your use of it.</p>",
-              "snippet": "When you use your Psychic Blades to deal Sneak Attack, you force that target to make a DC {{savedc:dex}} Wis. saving throw. On a failed save, the target has the Stunned condition for 1 minute. The Stunned target repeats the save at the end of each of its turns, ending the effect on itself on a success.\r\n\r\nOnce you use this feature, you can\u2019t do so again until you finish a Long Rest, or unless you expend 3 Psionic Energy Dice.",
+              "name": "Death Strike",
+              "description": "<p>When you hit with your Sneak Attack on the first round of a combat, the target must succeed on a Constitution saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus), or the attack\u2019s damage is doubled against the target.</p>",
+              "snippet": "When you hit with Sneak Attack on the first round of combat, the target must succeed on a DC {{savedc:dex}} Con. saving throw, or the attack\u2019s damage is doubled.",
               "activation": null,
               "multiClassDescription": "",
               "requiredLevel": 17,
@@ -5008,23 +4857,23 @@
               "hideInBuilder": false,
               "hideInSheet": false,
               "sourceId": 145,
-              "sourcePageNumber": 135,
+              "sourcePageNumber": 134,
               "creatureRules": [],
               "levelScales": [],
               "infusionRules": [],
               "spellListIds": [],
-              "classId": 2190986,
+              "classId": 2190985,
               "featureType": 1,
               "sources": [
                 {
                   "sourceId": 145,
-                  "pageNumber": 135,
+                  "pageNumber": 134,
                   "sourceType": 1
                 }
               ],
               "affectedFeatureDefinitionKeys": [],
               "entityType": "class-feature",
-              "entityID": "10292925",
+              "entityID": "10292920",
               "hasItemMappings": false,
               "grantedFeats": []
             },
@@ -6662,7 +6511,12 @@
       40,
       41,
       42,
-      43
+      43,
+      45,
+      46,
+      47,
+      51,
+      52
     ],
     "spells": {
       "race": [
@@ -7936,7 +7790,7 @@
           "parentChoiceId": null,
           "type": 7,
           "subType": null,
-          "optionValue": 2190986,
+          "optionValue": 2190985,
           "label": null,
           "isOptional": false,
           "isInfinite": false,
@@ -8153,34 +8007,33 @@
           "itemDefinitionKey": null,
           "options": [],
           "optionIds": [
+            4045,
+            4049,
             4050,
+            4051,
+            4052,
             4054,
             4055,
             4056,
             4061,
             4062,
             4063,
-            4066,
-            4045,
-            4049,
-            4052,
-            4051,
             4065,
+            4066,
             4068,
             4071,
             4074,
             5064,
-            5172,
-            5109,
             5108,
+            5109,
             5110,
             5111,
+            5172,
             5173,
             5174,
-            6153,
-            5199,
-            5198,
             5197,
+            5198,
+            5199,
             5206,
             5928,
             5929,
@@ -8209,27 +8062,13 @@
             6048,
             6049,
             6050,
+            6153,
             6327,
             6329,
-            6350,
-            6351,
-            6352,
-            6353,
-            6354,
-            6355,
-            6356,
-            6357,
-            6358,
-            6359,
-            6360,
             6361,
             6362,
             6363,
             6364,
-            6486,
-            6487,
-            6488,
-            6489,
             6879,
             6880,
             6881,
@@ -8246,7 +8085,11 @@
             6892,
             6893,
             6894,
-            6895
+            6895,
+            7327,
+            7328,
+            7329,
+            7330
           ],
           "tagConstraints": []
         },
@@ -8531,8 +8374,8 @@
             3964,
             4345,
             4346,
-            4378,
             4377,
+            4378,
             5888,
             6563,
             6564,
@@ -8542,14 +8385,33 @@
             6568,
             6569,
             6754,
-            6759,
-            6822,
             7132,
             7133,
             7134,
             7135,
+            7194,
             7195,
-            7194
+            7519,
+            7520,
+            7521,
+            7565,
+            7566,
+            7567,
+            7568,
+            7569,
+            7570,
+            7571,
+            7572,
+            7573,
+            7574,
+            7575,
+            7576,
+            7577,
+            7580,
+            7581,
+            7582,
+            7583,
+            7584
           ],
           "tagConstraints": []
         }
@@ -8792,6 +8654,7 @@
             4344,
             4347,
             4348,
+            5946,
             5947,
             5948,
             6330,
@@ -8805,7 +8668,6 @@
             6338,
             6339,
             6340,
-            5946,
             6704,
             6705,
             6706,
@@ -8813,10 +8675,23 @@
             6708,
             6709,
             6710,
-            7077,
             6758,
+            7077,
             7193,
-            7196
+            7196,
+            7522,
+            7523,
+            7524,
+            7526,
+            7527,
+            7528,
+            7529,
+            7530,
+            7531,
+            7532,
+            7533,
+            7534,
+            7535
           ],
           "tagConstraints": []
         },
@@ -8891,6 +8766,7 @@
             4344,
             4347,
             4348,
+            5946,
             5947,
             5948,
             6330,
@@ -8904,7 +8780,6 @@
             6338,
             6339,
             6340,
-            5946,
             6704,
             6705,
             6706,
@@ -8912,10 +8787,23 @@
             6708,
             6709,
             6710,
-            7077,
             6758,
+            7077,
             7193,
-            7196
+            7196,
+            7522,
+            7523,
+            7524,
+            7526,
+            7527,
+            7528,
+            7529,
+            7530,
+            7531,
+            7532,
+            7533,
+            7534,
+            7535
           ],
           "tagConstraints": []
         },
@@ -8990,6 +8878,7 @@
             4344,
             4347,
             4348,
+            5946,
             5947,
             5948,
             6330,
@@ -9003,7 +8892,6 @@
             6338,
             6339,
             6340,
-            5946,
             6704,
             6705,
             6706,
@@ -9011,10 +8899,23 @@
             6708,
             6709,
             6710,
-            7077,
             6758,
+            7077,
             7193,
-            7196
+            7196,
+            7522,
+            7523,
+            7524,
+            7526,
+            7527,
+            7528,
+            7529,
+            7530,
+            7531,
+            7532,
+            7533,
+            7534,
+            7535
           ],
           "tagConstraints": []
         },
@@ -9100,6 +9001,15 @@
             4643012,
             4643013,
             4643014,
+            6145729,
+            6145730,
+            6145731,
+            6145732,
+            6145733,
+            6228350,
+            6272638,
+            6272655,
+            6272656,
             4496723
           ],
           "tagConstraints": []
@@ -9164,6 +9074,15 @@
             4643012,
             4643013,
             4643014,
+            6145729,
+            6145730,
+            6145731,
+            6145732,
+            6145733,
+            6228350,
+            6272638,
+            6272655,
+            6272656,
             4496709
           ],
           "tagConstraints": []
@@ -9542,14 +9461,14 @@
               "sourceId": null
             },
             {
-              "id": 4378,
-              "label": "Three-Dragon Ante Set",
+              "id": 4377,
+              "label": "Dragonchess Set",
               "description": null,
               "sourceId": null
             },
             {
-              "id": 4377,
-              "label": "Dragonchess Set",
+              "id": 4378,
+              "label": "Three-Dragon Ante Set",
               "description": null,
               "sourceId": null
             },
@@ -9608,18 +9527,6 @@
               "sourceId": null
             },
             {
-              "id": 6759,
-              "label": "Monster Harvesting Tools",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6822,
-              "label": "Monster Harvesting Tools",
-              "description": null,
-              "sourceId": null
-            },
-            {
               "id": 7132,
               "label": "Research Scrolls",
               "description": null,
@@ -9644,14 +9551,140 @@
               "sourceId": null
             },
             {
+              "id": 7194,
+              "label": "Witchboard",
+              "description": null,
+              "sourceId": null
+            },
+            {
               "id": 7195,
               "label": "Fingerprint Kit",
               "description": null,
               "sourceId": null
             },
             {
-              "id": 7194,
-              "label": "Witchboard",
+              "id": 7519,
+              "label": "Bandore",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7520,
+              "label": "Cittern",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7521,
+              "label": "Yarting",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7565,
+              "label": "Birdpipes",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7566,
+              "label": "Dice",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7567,
+              "label": "Dragonchess",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7568,
+              "label": "Glaur",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7569,
+              "label": "Hand Drum",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7570,
+              "label": "Longhorn",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7571,
+              "label": "Pipe",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7572,
+              "label": "Playing Cards",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7573,
+              "label": "Songhorn",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7574,
+              "label": "Surgeon\u2019s Tools",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7575,
+              "label": "Tantan",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7576,
+              "label": "Thelarr",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7577,
+              "label": "Three-Dragon Ante",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7580,
+              "label": "Tocken",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7581,
+              "label": "Torture Tools",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7582,
+              "label": "Wargong",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7583,
+              "label": "Whistle-Stick",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7584,
+              "label": "Zulkoon",
               "description": null,
               "sourceId": null
             }
@@ -9833,8 +9866,32 @@
               "sourceId": null
             },
             {
+              "id": 4045,
+              "label": "Abyssal",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 4049,
+              "label": "Celestial",
+              "description": null,
+              "sourceId": null
+            },
+            {
               "id": 4050,
               "label": "Common",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 4051,
+              "label": "Deep Speech",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 4052,
+              "label": "Draconic",
               "description": null,
               "sourceId": null
             },
@@ -9875,38 +9932,14 @@
               "sourceId": null
             },
             {
-              "id": 4066,
-              "label": "Orc",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 4045,
-              "label": "Abyssal",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 4049,
-              "label": "Celestial",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 4052,
-              "label": "Draconic",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 4051,
-              "label": "Deep Speech",
-              "description": null,
-              "sourceId": null
-            },
-            {
               "id": 4065,
               "label": "Infernal",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 4066,
+              "label": "Orc",
               "description": null,
               "sourceId": null
             },
@@ -9935,20 +9968,14 @@
               "sourceId": null
             },
             {
-              "id": 5172,
-              "label": "Quori",
+              "id": 5108,
+              "label": "Minotaur",
               "description": null,
               "sourceId": null
             },
             {
               "id": 5109,
               "label": "Loxodon",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 5108,
-              "label": "Minotaur",
               "description": null,
               "sourceId": null
             },
@@ -9965,6 +9992,12 @@
               "sourceId": null
             },
             {
+              "id": 5172,
+              "label": "Quori",
+              "description": null,
+              "sourceId": null
+            },
+            {
               "id": 5173,
               "label": "Daelkyr",
               "description": null,
@@ -9977,14 +10010,8 @@
               "sourceId": null
             },
             {
-              "id": 6153,
-              "label": "Thieves\u2019 Cant",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 5199,
-              "label": "Zemnian",
+              "id": 5197,
+              "label": "Naush",
               "description": null,
               "sourceId": null
             },
@@ -9995,8 +10022,8 @@
               "sourceId": null
             },
             {
-              "id": 5197,
-              "label": "Naush",
+              "id": 5199,
+              "label": "Zemnian",
               "description": null,
               "sourceId": null
             },
@@ -10169,6 +10196,12 @@
               "sourceId": null
             },
             {
+              "id": 6153,
+              "label": "Thieves\u2019 Cant",
+              "description": null,
+              "sourceId": null
+            },
+            {
               "id": 6327,
               "label": "Common Sign Language",
               "description": null,
@@ -10177,72 +10210,6 @@
             {
               "id": 6329,
               "label": "Yeti",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6350,
-              "label": "Birdfolk",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6351,
-              "label": "Cervan",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6352,
-              "label": "Hedge",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6353,
-              "label": "Jerbeen",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6354,
-              "label": "Mapach",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6355,
-              "label": "Vulpin",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6356,
-              "label": "Umbral",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6357,
-              "label": "Darakhul",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6358,
-              "label": "Erina",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6359,
-              "label": "Void Speech",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6360,
-              "label": "Northern Tongue",
               "description": null,
               "sourceId": null
             },
@@ -10266,30 +10233,6 @@
             },
             {
               "id": 6364,
-              "label": "Dalish",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6486,
-              "label": "Sindarin",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6487,
-              "label": "Westron",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6488,
-              "label": "Khuzdul",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6489,
               "label": "Dalish",
               "description": null,
               "sourceId": null
@@ -10393,6 +10336,30 @@
             {
               "id": 6895,
               "label": "Untheric",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7327,
+              "label": "Naku Naku",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7328,
+              "label": "Dara",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7329,
+              "label": "Howler",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7330,
+              "label": "Torum",
               "description": null,
               "sourceId": null
             }
@@ -10808,6 +10775,12 @@
               "sourceId": null
             },
             {
+              "id": 5946,
+              "label": "Vehicles (Space)",
+              "description": null,
+              "sourceId": null
+            },
+            {
               "id": 5947,
               "label": "Three-Dragon Ante Set",
               "description": null,
@@ -10886,12 +10859,6 @@
               "sourceId": null
             },
             {
-              "id": 5946,
-              "label": "Vehicles (Space)",
-              "description": null,
-              "sourceId": null
-            },
-            {
               "id": 6704,
               "label": "Trumpet",
               "description": null,
@@ -10934,14 +10901,14 @@
               "sourceId": null
             },
             {
-              "id": 7077,
-              "label": "Surgeon\u2019s Tools",
+              "id": 6758,
+              "label": "Monster Harvesting Tools",
               "description": null,
               "sourceId": null
             },
             {
-              "id": 6758,
-              "label": "Monster Harvesting Tools",
+              "id": 7077,
+              "label": "Surgeon\u2019s Tools",
               "description": null,
               "sourceId": null
             },
@@ -10954,6 +10921,84 @@
             {
               "id": 7196,
               "label": "Witchboard",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7522,
+              "label": "Analysis Tools",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7523,
+              "label": "Bandore",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7524,
+              "label": "Cittern",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7526,
+              "label": "Dice",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7527,
+              "label": "Dragonchess",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7528,
+              "label": "Excavator's Tools",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7529,
+              "label": "Pipe",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7530,
+              "label": "Research Scrolls",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7531,
+              "label": "Survivalist's Kit",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7532,
+              "label": "Torture Tools",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7533,
+              "label": "Whistle-Stick",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7534,
+              "label": "Playing Cards",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7535,
+              "label": "Three-Dragon Ante",
               "description": null,
               "sourceId": null
             }
@@ -11019,7 +11064,7 @@
             {
               "id": 4496692,
               "label": "Dagger (Nick)",
-              "description": "<p>Your training with weapons allows you to use the mastery property of Daggers:</p><p><strong><em>Nick.</em></strong> When you make the extra attack of the Light property, you can make it as part of the Attack action instead of as a Bonus Action. You can make this extra attack only once per turn.</p>",
+              "description": "<p>Your training with weapons allows you to use the mastery property of Daggers:</p>\r\n<p><strong><em>Nick.</em></strong> When you make the extra attack of the Light property, you can make it as part of the Attack action instead of as a Bonus Action. You can make this extra attack only once per turn.</p>",
               "sourceId": null
             },
             {
@@ -11254,6 +11299,60 @@
               "id": 4643014,
               "label": "Shotgun (Push)",
               "description": "<p>Your training with weapons allows you to use the mastery property of Shotguns:</p>\r\n<p><strong><em>Push.</em></strong>&nbsp;If you hit a creature with a Shotgun, you can push the creature up to 10 feet straight away from yourself if it is Large or smaller.</p>",
+              "sourceId": null
+            },
+            {
+              "id": 6145729,
+              "label": "Blunderbuss (Topple)",
+              "description": "<p>Your training with weapons allows you to use the mastery property of Blunderbuss:</p>\r\n<p><strong><em>Topple.</em></strong> If you hit a creature with a Lance, you can force the creature to make a Constitution saving throw (DC 8 plus the ability modifier used to make the attack roll and your Proficiency Bonus). On a failed save, the creature has the Prone condition.</p>",
+              "sourceId": null
+            },
+            {
+              "id": 6145730,
+              "label": "Flintlock (Sap)",
+              "description": "<p>Your training with weapons allows you to use the mastery property of the Flintlock:</p>\r\n<p><strong><em>Sap.</em></strong> If you hit a creature with a Flintlock, that creature has Disadvantage on its next attack roll before the start of your next turn.</p>",
+              "sourceId": null
+            },
+            {
+              "id": 6145731,
+              "label": "Scythe (Cleave)",
+              "description": "<p>Your training with weapons allows you to use the mastery property of Scythes:</p>\r\n<p><strong><em>Cleave.</em></strong> If you hit a creature with a melee attack roll using a Scythe, you can make a melee attack roll with the Scythe against a second creature within 5 feet of the first that is also within your reach. On a hit, the second creature takes the Scythe\u2019s damage, but don\u2019t add your ability modifier to that damage unless that modifier is negative. You can make this extra attack only once per turn.</p>",
+              "sourceId": null
+            },
+            {
+              "id": 6145732,
+              "label": "Cleaver (Graze)",
+              "description": "<p>Your training with weapons allows you to use the mastery property of Cleavers:</p>\r\n<p><strong><em>Graze.</em></strong> If your attack roll with a&nbsp;Cleaver misses a creature, you can deal damage to that creature equal to the ability modifier you used to make the attack roll. This damage is the same type dealt by the Cleaver, and the damage can be increased only by increasing the ability modifier.</p>",
+              "sourceId": null
+            },
+            {
+              "id": 6145733,
+              "label": "Cannon (Push)",
+              "description": "<p>Your training with weapons allows you to use the mastery property of Cannons:</p>\r\n<p><strong><em>Push.</em></strong> If you hit a creature with Cannon, you can push the creature up to 10 feet straight away from yourself if it is Large or smaller.</p>",
+              "sourceId": null
+            },
+            {
+              "id": 6228350,
+              "label": "Atgeir (Pull)",
+              "description": "<p>Your training with weapons allows you to use the mastery property of Atgeir:</p>\r\n<p><strong><em>Pull.</em></strong> If you hit a creature with this weapon, you can pull the creature 5 feet toward yourself if it is Large or smaller. When you do so, you can also move back 5 feet without provoking Opportunity Attacks, and this does not use any of your normal movement speed.</p>",
+              "sourceId": null
+            },
+            {
+              "id": 6272638,
+              "label": "Bola (Topple)",
+              "description": "<p>Your training with weapons allows you to use the mastery property of Bolas:</p>\r\n<p><strong><em>Topple.</em></strong> If you hit a creature with a Bola, you can force the creature to make a Constitution saving throw (DC 8 plus the ability modifier used to make the attack roll and your Proficiency Bonus). On a failed save, the creature has the Prone condition.</p>",
+              "sourceId": null
+            },
+            {
+              "id": 6272655,
+              "label": "Pitchfork (Push)",
+              "description": "<p>Your training with weapons allows you to use the mastery property of Pitchforks:</p>\r\n<p><strong><em>Push.</em></strong>&nbsp;If you hit a creature with a Pitchfork, you can push the creature up to 10 feet straight away from yourself if it is Large or smaller.</p>",
+              "sourceId": null
+            },
+            {
+              "id": 6272656,
+              "label": "Weighted Chain (Graze)",
+              "description": "<p>Your training with weapons allows you to use the mastery property of Weighted Chains:</p>\r\n<p><strong><em>Graze.</em></strong> If your attack roll with a Weighted Chain misses a creature, you can deal damage to that creature equal to the ability modifier you used to make the attack roll. This damage is the same type dealt by the Weighted Chain, and the damage can be increased only by increasing the ability modifier.</p>",
               "sourceId": null
             },
             {
@@ -11999,7 +12098,11 @@
         "feat:1789214": "Weapon Mastery",
         "feat:2048517": "Dark Bargain",
         "feat:2331889": "Runestones",
-        "feat:2331813": "Character Threads"
+        "feat:2331813": "Character Threads",
+        "feat:1970713": "Hero's Journey Boon",
+        "feat:2468514": "Faction Renown",
+        "feat:2468523": "Subfaction Renown",
+        "feat:2468519": "Neutral Faction Renown"
       }
     },
     "actions": {
@@ -12299,14 +12402,14 @@
           "ammunition": null
         },
         {
-          "componentId": 10292921,
+          "componentId": 10292916,
           "componentTypeId": 12168134,
-          "id": "9414602",
+          "id": "9414597",
           "entityTypeId": "222216831",
           "limitedUse": null,
-          "name": "Psionic Power: Psi-Bolstered Knack",
-          "description": "<p><strong><em>Psi-Bolstered Knack.</em></strong> If you fail an ability check using a skill or tool with which you have proficiency, you can roll one Psionic Energy Die and add the number rolled to the check, potentially turning failure into success. The die is expended only if the roll then succeeds.</p>",
-          "snippet": "If you fail an ability check using a skill or tool with which you\u2019re proficient, you can roll {{scalevalue}} and add the result to the check, potentially turning failure into success. The die is expended only if the roll then succeeds.",
+          "name": "Sneak Attack: Assassinate",
+          "description": "<p>You&rsquo;re adept at ambushing a target, granting you the following benefits.</p>\r\n<p><strong><em>Initiative.</em></strong> You have [rules]Advantage[/rules] on Initiative rolls.</p>\r\n<p><strong><em>Surprising Strikes.</em></strong> During the first round of each combat, you have [rules]Advantage[/rules] on attack rolls against any creature that hasn&rsquo;t taken a turn. If your Sneak Attack hits any target during that round, the target takes extra damage of the weapon&rsquo;s type equal to your Rogue level.</p>",
+          "snippet": "During the first round of each combat, you have Advantage on attacks against any creature that hasn\u2019t taken a turn. If your Sneak Attack hits any target during that round, the target takes an additional {{classlevel#unsigned}} damage of the weapon\u2019s type.",
           "abilityModifierStatId": null,
           "onMissDescription": "",
           "saveFailDescription": "",
@@ -12316,120 +12419,8 @@
           "attackTypeRange": null,
           "actionType": 3,
           "attackSubtype": null,
-          "dice": {
-            "diceCount": 1,
-            "diceValue": 10,
-            "diceMultiplier": null,
-            "fixedValue": null,
-            "diceString": "1d10"
-          },
-          "value": null,
-          "damageTypeId": null,
-          "isMartialArts": false,
-          "isProficient": false,
-          "spellRangeType": null,
-          "displayAsAttack": true,
-          "range": {
-            "range": null,
-            "longRange": null,
-            "aoeType": null,
-            "aoeSize": null,
-            "hasAoeSpecialDescription": false,
-            "minimumRange": null
-          },
-          "activation": {
-            "activationTime": null,
-            "activationType": 8
-          },
-          "numberOfTargets": null,
-          "fixedToHit": null,
-          "ammunition": null
-        },
-        {
-          "componentId": 10292921,
-          "componentTypeId": 12168134,
-          "id": "9414603",
-          "entityTypeId": "222216831",
-          "limitedUse": null,
-          "name": "Psionic Power: Psychic Whispers",
-          "description": "<p><strong><em>Psychic Whispers.</em></strong> You can establish telepathic communication between yourself and others. As a [action]Magic[/action] action, choose one or more creatures you can see, up to a number of creatures equal to your Proficiency Bonus, and then roll one Psionic Energy Die. For a number of hours equal to the number rolled, the chosen creatures can speak telepathically with you, and you can speak telepathically with them. To send or receive a message (no action required), you and the other creature must be within 1 mile of each other. A creature can end the telepathic connection at any time (no action required).</p>\r\n<p>The first time you use this power after each [rules]Long Rest[/rules], you don&rsquo;t expend the Psionic Energy Die. All other times you use the power, you expend the die.</p>",
-          "snippet": "As a Magic action, choose up to {{proficiency#unsigned}} creatures you can see, then roll {{scalevalue}}. For a number of hours equal to the number rolled, the chosen creatures can speak telepathically with you, and you can speak telepathically with them, as long as you\u2019re within 1 mile. A creature can end the telepathic connection at any time (no action required).\r\n\r\nThe first time you use this power after each Long Rest doesn\u2019t expend a Psionic Energy Die, all other times you use the power expends a die.",
-          "abilityModifierStatId": null,
-          "onMissDescription": "",
-          "saveFailDescription": "",
-          "saveSuccessDescription": "",
-          "saveStatId": null,
-          "fixedSaveDc": null,
-          "attackTypeRange": null,
-          "actionType": 3,
-          "attackSubtype": null,
-          "dice": {
-            "diceCount": 1,
-            "diceValue": 10,
-            "diceMultiplier": null,
-            "fixedValue": null,
-            "diceString": "1d10"
-          },
-          "value": null,
-          "damageTypeId": null,
-          "isMartialArts": false,
-          "isProficient": false,
-          "spellRangeType": null,
-          "displayAsAttack": true,
-          "range": {
-            "range": null,
-            "longRange": null,
-            "aoeType": null,
-            "aoeSize": null,
-            "hasAoeSpecialDescription": false,
-            "minimumRange": null
-          },
-          "activation": {
-            "activationTime": null,
-            "activationType": 1
-          },
-          "numberOfTargets": null,
-          "fixedToHit": null,
-          "ammunition": null
-        },
-        {
-          "componentId": 10292921,
-          "componentTypeId": 12168134,
-          "id": "9414604",
-          "entityTypeId": "222216831",
-          "limitedUse": {
-            "name": null,
-            "statModifierUsesId": null,
-            "resetType": 2,
-            "numberUsed": 0,
-            "minNumberConsumed": 1,
-            "maxNumberConsumed": 1,
-            "maxUses": 10,
-            "operator": 1,
-            "useProficiencyBonus": false,
-            "proficiencyBonusOperator": 1,
-            "resetDice": null
-          },
-          "name": "Psionic Power: Psionic Energy Dice",
-          "description": "<p>You harbor a wellspring of psionic energy within yourself. It is represented by your Psionic Energy Dice, which fuel certain powers you have from this subclass. The Soulknife Energy Dice table shows the number of these dice you have when you reach certain Rogue levels, and the table shows the die size.</p>\r\n<table class=\"table-compendium\" style=\"--sb-table-row-bg-hover: #b3d3df; --sb-table-row-bg-dark: #d7e8ee; --sb-table-row-bg-light: #f1f7f9; --dark-sb-table-row-bg-light: #5e7982; --dark-sb-table-row-bg-dark: #5c7f8c; --dark-sb-table-row-bg-hover: #78a2b0;\"><caption>Soulknife Energy Dice</caption>\r\n<thead>\r\n<tr>\r\n<th>Rogue Level</th>\r\n<th>Die Size</th>\r\n<th>Number</th>\r\n</tr>\r\n</thead>\r\n<tbody>\r\n<tr>\r\n<td>3</td>\r\n<td>D6</td>\r\n<td>4</td>\r\n</tr>\r\n<tr>\r\n<td>5</td>\r\n<td>D8</td>\r\n<td>6</td>\r\n</tr>\r\n<tr>\r\n<td>9</td>\r\n<td>D8</td>\r\n<td>8</td>\r\n</tr>\r\n<tr>\r\n<td>11</td>\r\n<td>D10</td>\r\n<td>8</td>\r\n</tr>\r\n<tr>\r\n<td>13</td>\r\n<td>D10</td>\r\n<td>10</td>\r\n</tr>\r\n<tr>\r\n<td>17</td>\r\n<td>D12</td>\r\n<td>12</td>\r\n</tr>\r\n</tbody>\r\n</table>\r\n<p>Any features in this subclass that use a Psionic Energy Die use only the dice from this subclass. Some of your powers expend a Psionic Energy Die, as specified in a power&rsquo;s description, and you can&rsquo;t use a power if it requires you to use a die when your Psionic Energy Dice are all expended.</p>\r\n<p>You regain one of your expended Psionic Energy Dice when you finish a [rules]Short Rest[/rules], and you regain all of them when you finish a [rules]Long Rest[/rules].</p>",
-          "snippet": "You harbor a wellspring of psionic energy within yourself, represented by your Psionic Energy Dice, which fuels powers you have from this subclass. \r\n\r\nYou have a pool of {{limiteduse}} Psionic Energy Dice, which are expended when used. You regain one expended Psionic Energy Die when you finish a Short Rest, and regain all of them when you finish a Long Rest.",
-          "abilityModifierStatId": null,
-          "onMissDescription": "",
-          "saveFailDescription": "",
-          "saveSuccessDescription": "",
-          "saveStatId": null,
-          "fixedSaveDc": null,
-          "attackTypeRange": null,
-          "actionType": 3,
-          "attackSubtype": null,
-          "dice": {
-            "diceCount": 1,
-            "diceValue": 10,
-            "diceMultiplier": null,
-            "fixedValue": null,
-            "diceString": "1d10"
-          },
-          "value": null,
+          "dice": null,
+          "value": 3,
           "damageTypeId": null,
           "isMartialArts": false,
           "isProficient": false,
@@ -12445,53 +12436,6 @@
           },
           "activation": {
             "activationTime": null,
-            "activationType": 8
-          },
-          "numberOfTargets": null,
-          "fixedToHit": null,
-          "ammunition": null
-        },
-        {
-          "componentId": 10292922,
-          "componentTypeId": 12168134,
-          "id": "9414605",
-          "entityTypeId": "222216831",
-          "limitedUse": null,
-          "name": "Psychic Blades",
-          "description": "<p>You can manifest shimmering blades of psychic energy. Whenever you take the [action]Attack[/action] action or make an [action]Opportunity Attack[/action], you can manifest a Psychic Blade in your free hand and make the attack with that blade. The magic blade has the following traits:</p>\r\n<div class=\"spell-components\">\r\n<p><strong>Weapon Category:</strong> Simple Melee<br /><strong>Damage on a Hit:</strong> 1d6 Psychic plus the ability modifier used for the attack roll<br /><strong>Properties:</strong> [wprop]Finesse[/wprop], [wprop]Thrown[/wprop] (range 60/120 feet)<br /><strong>Mastery:</strong> [wprop]Vex[/wprop] (you can use this property, and it doesn&rsquo;t count against the number of properties you can use with Weapon Mastery)</p>\r\n</div>\r\n<p>The blade vanishes immediately after it hits or misses its target, and it leaves no mark if it deals damage.</p>\r\n<p>After you attack with the blade on your turn, you can make a melee or ranged attack with a second psychic blade as a Bonus Action on the same turn if your other hand is free to create it. The damage die of this bonus attack is 1d4 instead of 1d6.</p>",
-          "snippet": "You can manifest blades of psychic energy. When you take the Attack action or make an Opportunity Attack, you can manifest a Psychic Blade in your free hand and make the attack with that blade. The blade has the following traits:\r\n\r\n<strong>Weapon Category:</strong> Simple Melee\r\n<strong>Damage on a Hit:</strong> 1d6 Psychic + the ability modifier used for the attack.\r\n<strong>Properties:</strong> Finesse, Thrown (range 60/120 ft.)\r\n<strong>Mastery:</strong> Vex\r\n\r\nThe blade vanishes immediately after it hits or misses, and it leaves no mark if it deals damage.",
-          "abilityModifierStatId": 2,
-          "onMissDescription": "",
-          "saveFailDescription": "",
-          "saveSuccessDescription": "",
-          "saveStatId": null,
-          "fixedSaveDc": null,
-          "attackTypeRange": 1,
-          "actionType": 1,
-          "attackSubtype": null,
-          "dice": {
-            "diceCount": 1,
-            "diceValue": 6,
-            "diceMultiplier": null,
-            "fixedValue": null,
-            "diceString": "1d6"
-          },
-          "value": null,
-          "damageTypeId": 11,
-          "isMartialArts": false,
-          "isProficient": true,
-          "spellRangeType": null,
-          "displayAsAttack": true,
-          "range": {
-            "range": 60,
-            "longRange": 120,
-            "aoeType": null,
-            "aoeSize": null,
-            "hasAoeSpecialDescription": false,
-            "minimumRange": null
-          },
-          "activation": {
-            "activationTime": null,
             "activationType": 1
           },
           "numberOfTargets": null,
@@ -12499,14 +12443,14 @@
           "ammunition": null
         },
         {
-          "componentId": 10292922,
+          "componentId": 10292918,
           "componentTypeId": 12168134,
-          "id": "9414606",
+          "id": "9414598",
           "entityTypeId": "222216831",
           "limitedUse": null,
-          "name": "Vex (Psychic Blades)",
-          "description": "<p><strong><em>Vex.</em></strong> If you hit a creature with a Psychic Blade and deal damage to the creature, you have Advantage on your next attack roll against that creature before the end of your next turn.</p>",
-          "snippet": "<strong><em>Vex.</em></strong> If you hit a creature with a Psychic Blade and deal damage to it, you have Advantage on your next attack roll against that creature before the end of your next turn.",
+          "name": "Masterful Mimicry",
+          "description": "<p>You are expert at the following techniques that aid your infiltrations.</p>\r\n<p><strong><em>Masterful Mimicry.</em></strong> You can unerringly mimic another person&rsquo;s speech, handwriting, or both if you have spent at least 1 hour studying them.</p>\r\n<p><strong><em>Roving Aim.</em></strong> Your Speed isn&rsquo;t reduced to 0 by using Steady Aim.</p>",
+          "snippet": "You can unerringly mimic another person\u2019s speech, handwriting, or both if you\u2019ve spent at least 1 hour studying them.",
           "abilityModifierStatId": null,
           "onMissDescription": "",
           "saveFailDescription": "",
@@ -12532,116 +12476,22 @@
             "minimumRange": null
           },
           "activation": {
-            "activationTime": null,
-            "activationType": 1
+            "activationTime": 1,
+            "activationType": 7
           },
           "numberOfTargets": null,
           "fixedToHit": null,
           "ammunition": null
         },
         {
-          "componentId": 10292922,
+          "componentId": 10292918,
           "componentTypeId": 12168134,
-          "id": "9842722",
+          "id": "9414599",
           "entityTypeId": "222216831",
           "limitedUse": null,
-          "name": "Psychic Blades",
-          "description": "<p>You can manifest shimmering blades of psychic energy. Whenever you take the [action]Attack[/action] action or make an [action]Opportunity Attack[/action], you can manifest a Psychic Blade in your free hand and make the attack with that blade. The magic blade has the following traits:</p>\r\n<div class=\"spell-components\">\r\n<p><strong>Weapon Category:</strong> Simple Melee<br /><strong>Damage on a Hit:</strong> 1d6 Psychic plus the ability modifier used for the attack roll<br /><strong>Properties:</strong> [wprop]Finesse[/wprop], [wprop]Thrown[/wprop] (range 60/120 feet)<br /><strong>Mastery:</strong> [wprop]Vex[/wprop] (you can use this property, and it doesn&rsquo;t count against the number of properties you can use with Weapon Mastery)</p>\r\n</div>\r\n<p>The blade vanishes immediately after it hits or misses its target, and it leaves no mark if it deals damage.</p>\r\n<p>After you attack with the blade on your turn, you can make a melee or ranged attack with a second psychic blade as a Bonus Action on the same turn if your other hand is free to create it. The damage die of this bonus attack is 1d4 instead of 1d6.</p>",
-          "snippet": "After attacking with the psychic blade on your turn, you can make a melee or ranged attack with a second psychic blade as a Bonus Action on the same turn if your other hand is free to create it. The blade vanishes immediately after it hits or misses its target, and it leaves no mark if it deals damage.",
-          "abilityModifierStatId": 2,
-          "onMissDescription": "",
-          "saveFailDescription": "",
-          "saveSuccessDescription": "",
-          "saveStatId": null,
-          "fixedSaveDc": null,
-          "attackTypeRange": 1,
-          "actionType": 1,
-          "attackSubtype": null,
-          "dice": {
-            "diceCount": 1,
-            "diceValue": 4,
-            "diceMultiplier": null,
-            "fixedValue": null,
-            "diceString": "1d4"
-          },
-          "value": null,
-          "damageTypeId": 11,
-          "isMartialArts": false,
-          "isProficient": true,
-          "spellRangeType": null,
-          "displayAsAttack": true,
-          "range": {
-            "range": 60,
-            "longRange": 120,
-            "aoeType": null,
-            "aoeSize": null,
-            "hasAoeSpecialDescription": false,
-            "minimumRange": null
-          },
-          "activation": {
-            "activationTime": null,
-            "activationType": 3
-          },
-          "numberOfTargets": null,
-          "fixedToHit": null,
-          "ammunition": null
-        },
-        {
-          "componentId": 10292923,
-          "componentTypeId": 12168134,
-          "id": "9414607",
-          "entityTypeId": "222216831",
-          "limitedUse": null,
-          "name": "Psychic Blades: Homing Strikes",
-          "description": "<p>You can now use the following powers with your Psychic Blades.</p>\r\n<p><strong><em>Homing Strikes.</em></strong> If you make an attack roll with your Psychic Blade and miss the target, you can roll one Psionic Energy Die and add the number rolled to the attack roll. If this causes the attack to hit, the die is expended.</p>\r\n<p><strong><em>Psychic Teleportation.</em></strong> As a Bonus Action, you manifest a Psychic Blade, expend one Psionic Energy Die and roll it, and throw the blade at an unoccupied space you can see up to a number of feet away equal to 10 times the number rolled. You then teleport to that space, and the blade vanishes.</p>",
-          "snippet": "If you make an attack roll with your Psychic Blade and miss, you can roll {{scalevalue}} and add the number rolled to the attack roll. If it causes the attack to hit, the die is expended.",
-          "abilityModifierStatId": null,
-          "onMissDescription": "",
-          "saveFailDescription": "",
-          "saveSuccessDescription": "",
-          "saveStatId": null,
-          "fixedSaveDc": null,
-          "attackTypeRange": null,
-          "actionType": 3,
-          "attackSubtype": null,
-          "dice": {
-            "diceCount": 1,
-            "diceValue": 6,
-            "diceMultiplier": null,
-            "fixedValue": null,
-            "diceString": "1d6"
-          },
-          "value": null,
-          "damageTypeId": null,
-          "isMartialArts": false,
-          "isProficient": false,
-          "spellRangeType": null,
-          "displayAsAttack": null,
-          "range": {
-            "range": null,
-            "longRange": null,
-            "aoeType": null,
-            "aoeSize": null,
-            "hasAoeSpecialDescription": false,
-            "minimumRange": null
-          },
-          "activation": {
-            "activationTime": null,
-            "activationType": 1
-          },
-          "numberOfTargets": null,
-          "fixedToHit": null,
-          "ammunition": null
-        },
-        {
-          "componentId": 10292923,
-          "componentTypeId": 12168134,
-          "id": "9414608",
-          "entityTypeId": "222216831",
-          "limitedUse": null,
-          "name": "Psychic Teleportation",
-          "description": "<p>You can now use the following powers with your Psychic Blades.</p>\r\n<p><strong><em>Homing Strikes.</em></strong> If you make an attack roll with your Psychic Blade and miss the target, you can roll one Psionic Energy Die and add the number rolled to the attack roll. If this causes the attack to hit, the die is expended.</p>\r\n<p><strong><em>Psychic Teleportation.</em></strong> As a Bonus Action, you manifest a Psychic Blade, expend one Psionic Energy Die and roll it, and throw the blade at an unoccupied space you can see up to a number of feet away equal to 10 times the number rolled. You then teleport to that space, and the blade vanishes.</p>",
-          "snippet": "You manifest a Psychic Blade, expending one Psionic Energy Die {{scalevalue}} and roll it. You throw the blade at an unoccupied space you can see up to a number of feet away equal to 10 times the number rolled. You then teleport to that space, and the blade vanishes.",
+          "name": "Steady Aim: Roving Aim",
+          "description": "<p>You are expert at the following techniques that aid your infiltrations.</p>\r\n<p><strong><em>Masterful Mimicry.</em></strong> You can unerringly mimic another person&rsquo;s speech, handwriting, or both if you have spent at least 1 hour studying them.</p>\r\n<p><strong><em>Roving Aim.</em></strong> Your Speed isn&rsquo;t reduced to 0 by using Steady Aim.</p>",
+          "snippet": "Your Speed isn\u2019t reduced to 0 by using Steady Aim.",
           "abilityModifierStatId": null,
           "onMissDescription": "",
           "saveFailDescription": "",
@@ -12675,26 +12525,14 @@
           "ammunition": null
         },
         {
-          "componentId": 10292924,
+          "componentId": 10292919,
           "componentTypeId": 12168134,
-          "id": "9414609",
+          "id": "9414600",
           "entityTypeId": "222216831",
-          "limitedUse": {
-            "name": null,
-            "statModifierUsesId": null,
-            "resetType": 2,
-            "numberUsed": 0,
-            "minNumberConsumed": 1,
-            "maxNumberConsumed": 1,
-            "maxUses": 1,
-            "operator": 1,
-            "useProficiencyBonus": false,
-            "proficiencyBonusOperator": 1,
-            "resetDice": null
-          },
-          "name": "Psychic Veil",
-          "description": "<p>You can weave a veil of psychic static to mask yourself. As a [action]Magic[/action] action, you gain the [condition]Invisible[/condition] condition for 1 hour or until you dismiss this effect (no action required). This invisibility ends early immediately after you deal damage to a creature or you force a creature to make a saving throw.</p>\r\n<p>Once you use this feature, you can&rsquo;t do so again until you finish a [rules]Long Rest[/rules] unless you expend a Psionic Energy Die (no action required) to restore your use of it.</p>",
-          "snippet": "As a Magic action, you gain the Invisible condition for 1 hour, or until you dismiss the effect. This invisibility ends early after you deal damage to a creature or force a creature to make a saving throw.\r\n\r\nOnce used, you can\u2019t do so again until you finish a Long Rest, unless you expend a Psionic Energy Die to restore your use of it.",
+          "limitedUse": null,
+          "name": "Sneak Attack: Poison (Envenom)",
+          "description": "<p>When you use the Poison option of your Cunning Strike, the target also takes 2d6 Poison damage whenever it fails the saving throw. This damage ignores Resistance to Poison damage.</p>",
+          "snippet": "When you use the Poison option of Cunning Strike, the target also takes 2d6 Poison damage whenever it fails the saving throw, which ignores Resistance to Poison damage.",
           "abilityModifierStatId": null,
           "onMissDescription": "",
           "saveFailDescription": "",
@@ -12704,13 +12542,19 @@
           "attackTypeRange": null,
           "actionType": 3,
           "attackSubtype": null,
-          "dice": null,
+          "dice": {
+            "diceCount": 2,
+            "diceValue": 6,
+            "diceMultiplier": null,
+            "fixedValue": null,
+            "diceString": "2d6"
+          },
           "value": null,
-          "damageTypeId": null,
+          "damageTypeId": 10,
           "isMartialArts": false,
           "isProficient": false,
           "spellRangeType": null,
-          "displayAsAttack": null,
+          "displayAsAttack": true,
           "range": {
             "range": null,
             "longRange": null,
@@ -13414,6 +13258,54 @@
         },
         {
           "fixedValue": null,
+          "id": "81212043",
+          "entityId": 233,
+          "entityTypeId": 1782728300,
+          "type": "proficiency",
+          "subType": "weighted-chain",
+          "dice": null,
+          "restriction": "",
+          "statId": null,
+          "requiresAttunement": false,
+          "duration": null,
+          "friendlyTypeName": "Proficiency",
+          "friendlySubtypeName": "Weighted Chain",
+          "isGranted": true,
+          "bonusTypes": [],
+          "value": null,
+          "availableToMulticlass": false,
+          "modifierTypeId": 10,
+          "modifierSubTypeId": 2581,
+          "componentId": 10292323,
+          "componentTypeId": 12168134,
+          "tagConstraints": []
+        },
+        {
+          "fixedValue": null,
+          "id": "81212048",
+          "entityId": 232,
+          "entityTypeId": 1782728300,
+          "type": "proficiency",
+          "subType": "bola",
+          "dice": null,
+          "restriction": "",
+          "statId": null,
+          "requiresAttunement": false,
+          "duration": null,
+          "friendlyTypeName": "Proficiency",
+          "friendlySubtypeName": "Bola",
+          "isGranted": true,
+          "bonusTypes": [],
+          "value": null,
+          "availableToMulticlass": false,
+          "modifierTypeId": 10,
+          "modifierSubTypeId": 2579,
+          "componentId": 10292323,
+          "componentTypeId": 12168134,
+          "tagConstraints": []
+        },
+        {
+          "fixedValue": null,
           "id": "62627800",
           "entityId": 4,
           "entityTypeId": 1958004211,
@@ -13577,6 +13469,78 @@
           "modifierTypeId": 12,
           "modifierSubTypeId": 426,
           "componentId": 10292334,
+          "componentTypeId": 12168134,
+          "tagConstraints": []
+        },
+        {
+          "fixedValue": null,
+          "id": "62628239",
+          "entityId": null,
+          "entityTypeId": null,
+          "type": "advantage",
+          "subType": "initiative",
+          "dice": null,
+          "restriction": "",
+          "statId": null,
+          "requiresAttunement": false,
+          "duration": null,
+          "friendlyTypeName": "Advantage",
+          "friendlySubtypeName": "Initiative",
+          "isGranted": true,
+          "bonusTypes": [],
+          "value": null,
+          "availableToMulticlass": true,
+          "modifierTypeId": 3,
+          "modifierSubTypeId": 217,
+          "componentId": 10292916,
+          "componentTypeId": 12168134,
+          "tagConstraints": []
+        },
+        {
+          "fixedValue": null,
+          "id": "62628240",
+          "entityId": 119,
+          "entityTypeId": 2103445194,
+          "type": "proficiency",
+          "subType": "disguise-kit",
+          "dice": null,
+          "restriction": "",
+          "statId": null,
+          "requiresAttunement": false,
+          "duration": null,
+          "friendlyTypeName": "Proficiency",
+          "friendlySubtypeName": "Disguise Kit",
+          "isGranted": true,
+          "bonusTypes": [],
+          "value": null,
+          "availableToMulticlass": true,
+          "modifierTypeId": 10,
+          "modifierSubTypeId": 337,
+          "componentId": 10292917,
+          "componentTypeId": 12168134,
+          "tagConstraints": []
+        },
+        {
+          "fixedValue": null,
+          "id": "62628241",
+          "entityId": 125,
+          "entityTypeId": 2103445194,
+          "type": "proficiency",
+          "subType": "poisoners-kit",
+          "dice": null,
+          "restriction": "",
+          "statId": null,
+          "requiresAttunement": false,
+          "duration": null,
+          "friendlyTypeName": "Proficiency",
+          "friendlySubtypeName": "Poisoner's Kit",
+          "isGranted": true,
+          "bonusTypes": [],
+          "value": null,
+          "availableToMulticlass": true,
+          "modifierTypeId": 10,
+          "modifierSubTypeId": 341,
+          "componentId": 10292917,
           "componentTypeId": 12168134,
           "tagConstraints": []
         }
@@ -14193,6 +14157,54 @@
         },
         {
           "fixedValue": null,
+          "id": "79266340",
+          "entityId": 208,
+          "entityTypeId": 1782728300,
+          "type": "weapon-mastery",
+          "subType": "vex-rapier-silver",
+          "dice": null,
+          "restriction": "",
+          "statId": null,
+          "requiresAttunement": false,
+          "duration": null,
+          "friendlyTypeName": "Weapon Mastery",
+          "friendlySubtypeName": "Vex (Rapier, Silver)",
+          "isGranted": true,
+          "bonusTypes": [],
+          "value": null,
+          "availableToMulticlass": true,
+          "modifierTypeId": 43,
+          "modifierSubTypeId": 2456,
+          "componentId": 1789214,
+          "componentTypeId": 1088085227,
+          "tagConstraints": []
+        },
+        {
+          "fixedValue": null,
+          "id": "79266341",
+          "entityId": 223,
+          "entityTypeId": 1782728300,
+          "type": "weapon-mastery",
+          "subType": "vex-rapier-wooden",
+          "dice": null,
+          "restriction": "",
+          "statId": null,
+          "requiresAttunement": false,
+          "duration": null,
+          "friendlyTypeName": "Weapon Mastery",
+          "friendlySubtypeName": "Vex (Rapier, Wooden)",
+          "isGranted": true,
+          "bonusTypes": [],
+          "value": null,
+          "availableToMulticlass": true,
+          "modifierTypeId": 43,
+          "modifierSubTypeId": 2457,
+          "componentId": 1789214,
+          "componentTypeId": 1088085227,
+          "tagConstraints": []
+        },
+        {
+          "fixedValue": null,
           "id": "62627896",
           "entityId": 37,
           "entityTypeId": 1782728300,
@@ -14238,6 +14250,30 @@
           "componentId": 1789214,
           "componentTypeId": 1088085227,
           "tagConstraints": []
+        },
+        {
+          "fixedValue": null,
+          "id": "79266325",
+          "entityId": 229,
+          "entityTypeId": 1782728300,
+          "type": "weapon-mastery",
+          "subType": "slow-longbow-wooden-arrows",
+          "dice": null,
+          "restriction": "",
+          "statId": null,
+          "requiresAttunement": false,
+          "duration": null,
+          "friendlyTypeName": "Weapon Mastery",
+          "friendlySubtypeName": "Slow (Longbow (Wooden Arrows))",
+          "isGranted": true,
+          "bonusTypes": [],
+          "value": null,
+          "availableToMulticlass": true,
+          "modifierTypeId": 43,
+          "modifierSubTypeId": 2443,
+          "componentId": 1789214,
+          "componentTypeId": 1088085227,
+          "tagConstraints": []
         }
       ],
       "condition": []
@@ -14254,7 +14290,7 @@
     "creatures": [],
     "optionalOrigins": [],
     "optionalClassFeatures": [],
-    "dateModified": "2026-07-02T00:50:40.821402Z",
+    "dateModified": "2026-11-24T00:46:21.073797Z",
     "providedFrom": "database",
     "canEdit": false,
     "status": 0,

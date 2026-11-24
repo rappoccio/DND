@@ -364,13 +364,13 @@
       "fullName": "Elf",
       "baseRaceId": 1751437,
       "baseRaceTypeId": 1743923279,
-      "description": "<p>The elves&rsquo; curiosity led many of them to explore other planes of existence.</p>\r\n<p style=\"font-family: Roboto Condensed;\"><strong>Elf Traits</strong><br />Darkvision, Elven Lineage, Fey Ancestry, Keen Senses,&nbsp;Trance</p>",
-      "longDescription": "<p>Created by the god Corellon, the first elves could change their forms at will. They lost this ability when Corellon cursed them for plotting with the deity Lolth, who tried and failed to usurp Corellon&rsquo;s dominion. When Lolth was cast into the Abyss, most elves renounced her and earned Corellon&rsquo;s forgiveness, but that which Corellon had taken from them was lost forever.</p>\r\n<p>No longer able to shape-shift at will, the elves retreated to the Feywild, where their sorrow was deepened by that plane&rsquo;s influence. Over time, curiosity led many of them to explore other planes of existence, including worlds in the Material Plane.</p>\r\n<p>Elves have pointed ears and lack facial and body hair. They live for around 750 years, and they don&rsquo;t sleep but instead enter a trance when they need to rest. In that state, they remain aware of their surroundings while immersing themselves in memories and meditations.</p>\r\n<p>An environment subtly transforms elves after they inhabit it for a millennium or more, and it grants them certain kinds of magic. Drow, high elves, and wood elves are examples of elves who have been transformed thus.</p>\r\n<h2 id=\"Drow\" class=\"compendium-hr\">Drow</h2>\r\n<p>Drow typically dwell in the Underdark and have been shaped by it. Some drow individuals and societies avoid the Underdark altogether yet carry its magic. In the Eberron setting, for example, drow dwell in rainforests and cyclopean ruins on the continent of Xen&rsquo;drik.</p>\r\n<h2 id=\"HighElves\" class=\"compendium-hr\">High Elves</h2>\r\n<p>High elves have been infused with the magic of crossings between the Feywild and the Material Plane. On some worlds, high elves refer to themselves by other names. For example, they call themselves sun or moon elves in the Forgotten Realms setting, Silvanesti and Qualinesti in the Dragonlance setting, and Aereni in the Eberron setting.</p>\r\n<h2 id=\"WoodElves\" class=\"compendium-hr\">Wood Elves</h2>\r\n<p>Wood elves carry the magic of primeval forests within themselves. They are known by many other names, including wild elves, green elves, and forest elves. Grugach are reclusive wood elves of the Greyhawk setting, while the Kagonesti and the Tairnadal are wood elves of the Dragonlance and Eberron settings, respectively.</p>\r\n<hr />\r\n<h2 id=\"ElfTraits\" class=\"compendium-hr\">Elf Traits</h2>\r\n<p><strong>Creature Type:</strong> Humanoid<br><strong>Size:</strong> Medium (about 5&ndash;6 feet tall)<br><strong>Speed:</strong> 30 feet</p>",
+      "description": "<p>The elves\u2019 curiosity led many of them to explore other planes of existence.</p>\r\n<p style=\"font-family: Roboto Condensed;\"><strong>Elf Traits</strong><br />Darkvision, Elven Lineage, Fey Ancestry, Keen Senses,&nbsp;Trance</p>",
+      "longDescription": "<p>Created by the god Corellon, the first elves could change their forms at will. They lost this ability when Corellon cursed them for plotting with the deity Lolth, who tried and failed to usurp Corellon\u2019s dominion. When Lolth was cast into the Abyss, most elves renounced her and earned Corellon\u2019s forgiveness, but that which Corellon had taken from them was lost forever.</p>\r\n<p>No longer able to shape-shift at will, the elves retreated to the Feywild, where their sorrow was deepened by that plane\u2019s influence. Over time, curiosity led many of them to explore other planes of existence, including worlds in the Material Plane.</p>\r\n<p>Elves have pointed ears and lack facial and body hair. They live for around 750 years, and they don\u2019t sleep but instead enter a trance when they need to rest. In that state, they remain aware of their surroundings while immersing themselves in memories and meditations.</p>\r\n<p>An environment subtly transforms elves after they inhabit it for a millennium or more, and it grants them certain kinds of magic. Drow, high elves, and wood elves are examples of elves who have been transformed thus.</p>\r\n<h2 id=\"Drow\" class=\"compendium-hr\">Drow</h2>\r\n<p>Drow typically dwell in the Underdark and have been shaped by it. Some drow individuals and societies avoid the Underdark altogether yet carry its magic. In the Eberron setting, for example, drow dwell in rainforests and cyclopean ruins on the continent of Xen\u2019drik.</p>\r\n<h2 id=\"HighElves\" class=\"compendium-hr\">High Elves</h2>\r\n<p>High elves have been infused with the magic of crossings between the Feywild and the Material Plane. On some worlds, high elves refer to themselves by other names. For example, they call themselves sun or moon elves in the Forgotten Realms setting, Silvanesti and Qualinesti in the Dragonlance setting, and Aereni in the Eberron setting.</p>\r\n<h2 id=\"WoodElves\" class=\"compendium-hr\">Wood Elves</h2>\r\n<p>Wood elves carry the magic of primeval forests within themselves. They are known by many other names, including wild elves, green elves, and forest elves. Grugach are reclusive wood elves of the Greyhawk setting, while the Kagonesti and the Tairnadal are wood elves of the Dragonlance and Eberron settings, respectively.</p>\r\n<hr />\r\n<h2 id=\"ElfTraits\" class=\"compendium-hr\">Elf Traits</h2>\r\n<p><strong>Creature Type:</strong> Humanoid<br><strong>Size:</strong> Medium (about 5&ndash;6 feet tall)<br><strong>Speed:</strong> 30 feet</p>",
       "slug": "1751437-elf",
       "avatarUrl": "https://www.dndbeyond.com/avatars/43940/466/638607449392207682.png?width=350&height=350&fit=bounds&quality=95&auto=webp",
       "largeAvatarUrl": "https://www.dndbeyond.com/avatars/43940/467/638607449394457692.png?width=1000&height=1000&fit=bounds&quality=95&auto=webp",
       "portraitAvatarUrl": "https://www.dndbeyond.com/avatars/43940/468/638607449396397760.jpeg?width=1000&height=1000&fit=bounds&quality=95&auto=webp",
-      "detailsBackgroundAvatarUrl": null,
+      "detailsBackgroundAvatarUrl": "https://www.dndbeyond.com/avatars/57774/21/639196527690168207.jpeg",
       "detailsForegroundAvatarUrl": null,
       "moreDetailsUrl": "/species/1751437-elf",
       "isHomebrew": false,
@@ -552,7 +552,7 @@
             "entityTypeId": 1960452172,
             "displayOrder": 5,
             "name": "Elven Lineage",
-            "description": "<p>You are part of a lineage that grants you supernatural abilities. Choose a lineage from the Elven Lineages table. You gain the level 1 benefit of that lineage.</p>\r\n<p>When you reach character levels 3 and 5, you learn a higher-level spell, as shown on the table. You always have that spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast the spell using any spell slots you have of the appropriate level.</p>\r\n<p>Intelligence, Wisdom, or Charisma is your spellcasting ability for the spells you cast with this trait (choose the ability when you select the lineage).</p>\r\n<table class=\"table-compendium table--left-all\" style=\"--sb-table-row-bg-hover: #b3d3df; --sb-table-row-bg-dark: #d7e8ee; --sb-table-row-bg-light: #f1f7f9; --dark-sb-table-row-bg-light: #5e7982; --dark-sb-table-row-bg-dark: #5c7f8c; --dark-sb-table-row-bg-hover: #78a2b0;\"><caption>Elven Lineages</caption>\r\n<thead>\r\n<tr>\r\n<th class=\"table-column-width--20pct\">Lineage</th>\r\n<th>Level 1</th>\r\n<th class=\"table-column-width--20pct\">Level 3</th>\r\n<th class=\"table-column-width--20pct\">Level 5</th>\r\n</tr>\r\n</thead>\r\n<tbody>\r\n<tr>\r\n<td>Drow</td>\r\n<td>The range of your Darkvision increases to 120 feet. You also know the Dancing Lights cantrip.</td>\r\n<td>Faerie Fire</td>\r\n<td>Darkness</td>\r\n</tr>\r\n<tr>\r\n<td>High Elf</td>\r\n<td>You know the Prestidigitation cantrip. Whenever you finish a Long Rest, you can replace that cantrip with a different cantrip from the Wizard spell list.</td>\r\n<td>Detect Magic</td>\r\n<td>Misty Step</td>\r\n</tr>\r\n<tr>\r\n<td>Wood Elf</td>\r\n<td>Your Speed increases to 35 feet. You also know the Druidcraft cantrip.</td>\r\n<td>Longstrider</td>\r\n<td>Pass without Trace</td>\r\n</tr>\r\n</tbody>\r\n</table>",
+            "description": "<p>You are part of a lineage that grants you supernatural abilities. Choose a lineage from the Elven Lineages table. You gain the level 1 benefit of that lineage.</p>\r\n<p>When you reach character levels 3 and 5, you learn a higher-level spell, as shown on the table. You always have that spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast the spell using any spell slots you have of the appropriate level.</p>\r\n<p>Intelligence, Wisdom, or Charisma is your spellcasting ability for the spells you cast with this trait (choose the ability when you select the lineage).</p>\r\n<table class=\"table-compendium table--left-all\" style=\"--sb-table-row-bg-hover: #b3d3df; --sb-table-row-bg-dark: #d7e8ee; --sb-table-row-bg-light: #f1f7f9; --dark-sb-table-row-bg-light: #5e7982; --dark-sb-table-row-bg-dark: #5c7f8c; --dark-sb-table-row-bg-hover: #78a2b0;\"><caption>Elven Lineages</caption>\r\n<thead>\r\n<tr>\r\n<th class=\"table-column-width--20pct\">Lineage</th>\r\n<th>Level 1</th>\r\n<th class=\"table-column-width--20pct\">Level 3</th>\r\n<th class=\"table-column-width--20pct\">Level 5</th>\r\n</tr>\r\n</thead>\r\n<tbody>\r\n<tr>\r\n<td>Drow</td>\r\n<td>The range of your Darkvision increases to 120 feet. You also know the <em>Dancing Lights</em> cantrip.</td>\r\n<td><em>Faerie Fire</em></td>\r\n<td><em>Darkness</em></td>\r\n</tr>\r\n<tr>\r\n<td>High Elf</td>\r\n<td>You know the <em>Prestidigitation</em> cantrip. Whenever you finish a Long Rest, you can replace that cantrip with a different cantrip from the Wizard spell list.</td>\r\n<td><em>Detect Magic</em></td>\r\n<td><em>Misty Step</em></td>\r\n</tr>\r\n<tr>\r\n<td>Wood Elf</td>\r\n<td>Your Speed increases to 35 feet. You also know the <em>Druidcraft</em> cantrip.</td>\r\n<td><em>Longstrider</em></td>\r\n<td><em>Pass without Trace</em></td>\r\n</tr>\r\n</tbody>\r\n</table>",
             "snippet": "Choose a lineage from the Elven Lineages table. You gain the level 1 benefit of that lineage.",
             "hideInBuilder": false,
             "hideInSheet": false,
@@ -860,9 +860,9 @@
       "sizeId": 4,
       "creatureTypeId": 11,
       "cardDescription": "The elves\u2019 curiosity led many of them to explore other planes of existence.",
-      "highlights": null,
+      "highlights": "<ol>\r\n<li>Channel the magic of your elven lineage: drow, high elf, or wood elf.</li>\r\n<li>Notice what others miss and resist mind-influencing effects.</li>\r\n<li>Slip into a trancelike meditation, remaining ever aware when others must sleep.</li>\r\n</ol>",
       "mobileCardImageUrl": null,
-      "desktopCardImageUrl": "https://www.dndbeyond.com/avatars/54962/102/639071282066951292.jpeg",
+      "desktopCardImageUrl": "https://www.dndbeyond.com/avatars/57774/20/639196527687568200.jpeg",
       "sources": [
         {
           "sourceId": 145,
@@ -1154,9 +1154,9 @@
         "displayAsAttack": null,
         "quantity": 1,
         "isAttuned": false,
-        "equipped": true,
-        "equippedEntityTypeId": 1581111423,
-        "equippedEntityId": 165848631,
+        "equipped": false,
+        "equippedEntityTypeId": null,
+        "equippedEntityId": null,
         "chargesUsed": 0,
         "limitedUse": {
           "maxUses": 1,
@@ -1490,9 +1490,9 @@
         "displayAsAttack": null,
         "quantity": 1,
         "isAttuned": false,
-        "equipped": true,
-        "equippedEntityTypeId": 1581111423,
-        "equippedEntityId": 165848631,
+        "equipped": false,
+        "equippedEntityTypeId": null,
+        "equippedEntityId": null,
         "chargesUsed": 0,
         "limitedUse": null,
         "containerEntityId": 165848631,
@@ -1623,7 +1623,7 @@
           "weightMultiplier": 1,
           "capacity": null,
           "capacityWeight": 0,
-          "type": "Shield",
+          "type": "",
           "description": "<p>Shields require the Utilize action to Don or Doff. You gain the Armor Class benefit of a Shield only if you have training with it.</p>",
           "canAttune": false,
           "attunementDescription": null,
@@ -3069,10 +3069,10 @@
               "id": 10292207,
               "name": "Improved Blessed Strikes",
               "prerequisite": null,
-              "description": "<p>The option you chose for Blessed Strikes grows more powerful.</p>",
+              "description": "<p>The option you chose for Blessed Strikes grows more powerful.</p>\r\n<p><strong><em>Divine Strike.</em></strong> The extra damage of your Divine Strike increases to 2d8.</p>\r\n<p><strong><em>Potent Spellcasting.</em></strong> When you cast a Cleric cantrip and deal damage to a creature with it, you can give vitality to yourself or another creature within 60 feet of yourself, granting a number of Temporary Hit Points equal to twice your Wisdom modifier.</p>",
               "requiredLevel": 14,
               "displayOrder": 12,
-              "summary": null,
+              "summary": "",
               "featuresSectionType": null,
               "moreDetailsUrl": "/classes/2190877-cleric#ImprovedBlessedStrikes-10292207"
             },
@@ -3554,6 +3554,17 @@
                   "friendlyTypeName": "Class",
                   "friendlySubTypeName": "Wizard (Legacy)",
                   "shouldExclude": true
+                },
+                {
+                  "id": 1224718,
+                  "entityId": 2921845,
+                  "entityTypeId": 789467139,
+                  "type": "class",
+                  "subType": "priest",
+                  "value": null,
+                  "friendlyTypeName": "Class",
+                  "friendlySubTypeName": "Priest",
+                  "shouldExclude": true
                 }
               ],
               "hidePrerequisite": false
@@ -3778,10 +3789,10 @@
               "id": 10292207,
               "name": "Improved Blessed Strikes",
               "prerequisite": null,
-              "description": "<p>The option you chose for Blessed Strikes grows more powerful.</p>",
+              "description": "<p>The option you chose for Blessed Strikes grows more powerful.</p>\r\n<p><strong><em>Divine Strike.</em></strong> The extra damage of your Divine Strike increases to 2d8.</p>\r\n<p><strong><em>Potent Spellcasting.</em></strong> When you cast a Cleric cantrip and deal damage to a creature with it, you can give vitality to yourself or another creature within 60 feet of yourself, granting a number of Temporary Hit Points equal to twice your Wisdom modifier.</p>",
               "requiredLevel": 14,
               "displayOrder": 12,
-              "summary": null,
+              "summary": "",
               "featuresSectionType": null,
               "moreDetailsUrl": "/classes/2190877-cleric#LightDomain#ImprovedBlessedStrikes-10292207"
             },
@@ -4620,7 +4631,7 @@
               "entityTypeId": 12168134,
               "displayOrder": 12,
               "name": "Improved Blessed Strikes",
-              "description": "<p>The option you chose for Blessed Strikes grows more powerful.</p>",
+              "description": "<p>The option you chose for Blessed Strikes grows more powerful.</p>\r\n<p><strong><em>Divine Strike.</em></strong> The extra damage of your Divine Strike increases to 2d8.</p>\r\n<p><strong><em>Potent Spellcasting.</em></strong> When you cast a Cleric cantrip and deal damage to a creature with it, you can give vitality to yourself or another creature within 60 feet of yourself, granting a number of Temporary Hit Points equal to twice your Wisdom modifier.</p>",
               "snippet": "The option you chose for Blessed Strikes grows more powerful.",
               "activation": null,
               "multiClassDescription": "",
@@ -4855,14 +4866,14 @@
         "componentTypeId": 12168134,
         "componentId": 10292206,
         "definition": {
-          "id": 1789206,
+          "id": 1789092,
           "entityTypeId": 1088085227,
-          "definitionKey": "1088085227:1789206",
-          "name": "Tough",
-          "description": "<p><em>Origin Feat</em></p>\r\n<p>Your Hit Point maximum increases by an amount equal to twice your character level when you gain this feat. Whenever you gain a character level thereafter, your Hit Point maximum increases by an additional 2 Hit Points.</p>",
-          "snippet": "When you take this feat, your HP maximum increases by {{2*characterlevel}}. Whenever you gain a character level thereafter, your HP maximum increases an additional 2 HP.",
-          "slug": "1789206-tough",
-          "moreDetailsUrl": "/feats/1789206-tough",
+          "definitionKey": "1088085227:1789092",
+          "name": "Ability Score Improvement",
+          "description": "<p><em>General Feat (Prerequisite: Level 4+)</em></p>\r\n<p>Increase one ability score of your choice by 2, or increase two ability scores of your choice by 1. This feat can\u2019t increase an ability score above 20.</p>\r\n<p><em><strong>Repeatable.</strong></em> You can take this feat more than once.</p>",
+          "snippet": "Increase one ability score by 2 or two ability scores by 1.",
+          "slug": "1789092-ability-score-improvement",
+          "moreDetailsUrl": "/feats/1789092-ability-score-improvement",
           "activation": {
             "activationTime": null,
             "activationType": null
@@ -4870,7 +4881,25 @@
           "sourceId": null,
           "sourcePageNumber": null,
           "creatureRules": [],
-          "prerequisites": [],
+          "prerequisites": [
+            {
+              "description": "Level 4+",
+              "prerequisiteMappings": [
+                {
+                  "id": 597198,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            }
+          ],
           "isHomebrew": false,
           "sources": [
             {
@@ -4880,16 +4909,16 @@
             }
           ],
           "spellListIds": [],
-          "isRepeatable": false,
+          "isRepeatable": true,
           "repeatableParentId": null,
           "categories": [
             {
-              "id": 486,
+              "id": 344,
               "entityTypeId": 1088085227,
-              "entityId": 1789206,
-              "definitionKey": "1088085227:1789206",
-              "entityTagId": 11,
-              "tagName": "Origin"
+              "entityId": 1789092,
+              "definitionKey": "1088085227:1789092",
+              "entityTagId": 12,
+              "tagName": "General"
             }
           ]
         },
@@ -5000,7 +5029,7 @@
               "hidePrerequisite": true
             },
             {
-              "description": "Bard Spellcasting 1",
+              "description": "Level 4+, Bard Spellcasting (Legacy)",
               "prerequisiteMappings": [
                 {
                   "id": 597734,
@@ -5028,7 +5057,7 @@
               "hidePrerequisite": true
             },
             {
-              "description": "Bard 2024 Spellcasting",
+              "description": "Level 4+, Bard Spellcasting",
               "prerequisiteMappings": [
                 {
                   "id": 597737,
@@ -5588,34 +5617,6 @@
               "hidePrerequisite": true
             },
             {
-              "description": "Level 4+, Pact Magic (Order of the Profane Soul)",
-              "prerequisiteMappings": [
-                {
-                  "id": 847595,
-                  "entityId": null,
-                  "entityTypeId": null,
-                  "type": "level",
-                  "subType": "character-level",
-                  "value": 4,
-                  "friendlyTypeName": "Level",
-                  "friendlySubTypeName": "Character Level",
-                  "shouldExclude": false
-                },
-                {
-                  "id": 847596,
-                  "entityId": 5463385,
-                  "entityTypeId": 12168134,
-                  "type": "class-feature",
-                  "subType": "blood-hunter-order-of-the-profane-soul-level-03-pact-magic",
-                  "value": null,
-                  "friendlyTypeName": "Class Feature",
-                  "friendlySubTypeName": "Blood Hunter - Order of the Profane Soul - Level 03: Pact Magic",
-                  "shouldExclude": false
-                }
-              ],
-              "hidePrerequisite": true
-            },
-            {
               "description": "Occultist Spellcasting (Level 4+)",
               "prerequisiteMappings": [
                 {
@@ -5666,6 +5667,370 @@
                   "value": 4,
                   "friendlyTypeName": "Level",
                   "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Level 4+, [Monk] Warrior of the Mystic Arts Spellcasting",
+              "prerequisiteMappings": [
+                {
+                  "id": 1156906,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1156907,
+                  "entityId": 13536541,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "monk-warrior-of-the-mystic-arts-level-03-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Monk - Warrior of the Mystic Arts - Level 03: Spellcasting",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Level 4+, [Gunslinger] Spellslinger",
+              "prerequisiteMappings": [
+                {
+                  "id": 1156924,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1156925,
+                  "entityId": 11751317,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "gunslinger-spellslinger-level-03-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Gunslinger - Spellslinger - Level 03: Spellcasting",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Level 4+, [Gunslinger] Spellslinger Spellcasting",
+              "prerequisiteMappings": [
+                {
+                  "id": 1167690,
+                  "entityId": 11751317,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "gunslinger-spellslinger-level-03-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Gunslinger - Spellslinger - Level 03: Spellcasting",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1167691,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Magus Spellcasting",
+              "prerequisiteMappings": [
+                {
+                  "id": 1182382,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1182384,
+                  "entityId": 13593899,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "magus-level-01-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Magus - Level 01: Spellcasting",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Death Knight Spellcasting",
+              "prerequisiteMappings": [
+                {
+                  "id": 1212224,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1212225,
+                  "entityId": 13747829,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "death-knight-level-01-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Death Knight - Level 01: Spellcasting",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Demon Hunter Spellcasting",
+              "prerequisiteMappings": [
+                {
+                  "id": 1212226,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1212227,
+                  "entityId": 13747672,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "demon-hunter-level-01-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Demon Hunter - Level 01: Spellcasting",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Druid Spellcasting (WoW)",
+              "prerequisiteMappings": [
+                {
+                  "id": 1212228,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1212229,
+                  "entityId": 13747762,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "druid-level-01-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Druid - Level 01: Spellcasting",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Evoker Spellcasting",
+              "prerequisiteMappings": [
+                {
+                  "id": 1212230,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1212231,
+                  "entityId": 13747899,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "evoker-level-01-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Evoker - Level 01: Spellcasting",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Hunter Spellcasting",
+              "prerequisiteMappings": [
+                {
+                  "id": 1212232,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1212233,
+                  "entityId": 13747854,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "hunter-level-01-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Hunter - Level 01: Spellcasting",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Mage Spellcasting",
+              "prerequisiteMappings": [
+                {
+                  "id": 1212234,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1212235,
+                  "entityId": 13747934,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "mage-level-01-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Mage - Level 01: Spellcasting",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Palading Spellcasting (WoW)",
+              "prerequisiteMappings": [
+                {
+                  "id": 1212236,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1212237,
+                  "entityId": 13747695,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "paladin-level-01-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Paladin - Level 01: Spellcasting",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Priest Spellcasting",
+              "prerequisiteMappings": [
+                {
+                  "id": 1212238,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1212239,
+                  "entityId": 13747744,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "priest-level-01-spellcasting",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Priest - Level 01: Spellcasting",
+                  "shouldExclude": false
+                }
+              ],
+              "hidePrerequisite": true
+            },
+            {
+              "description": "Warlock Pact Magic (WoW)",
+              "prerequisiteMappings": [
+                {
+                  "id": 1212240,
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "level",
+                  "subType": "character-level",
+                  "value": 4,
+                  "friendlyTypeName": "Level",
+                  "friendlySubTypeName": "Character Level",
+                  "shouldExclude": false
+                },
+                {
+                  "id": 1212241,
+                  "entityId": 13747916,
+                  "entityTypeId": 12168134,
+                  "type": "class-feature",
+                  "subType": "warlock-level-01-pact-magic",
+                  "value": null,
+                  "friendlyTypeName": "Class Feature",
+                  "friendlySubTypeName": "Warlock - Level 01: Pact Magic",
                   "shouldExclude": false
                 }
               ],
@@ -5929,7 +6294,12 @@
       40,
       41,
       42,
-      43
+      43,
+      45,
+      46,
+      47,
+      51,
+      52
     ],
     "spells": {
       "race": [
@@ -6966,6 +7336,22 @@
     "options": {
       "race": [
         {
+          "componentId": 13856115,
+          "componentTypeId": 1960452172,
+          "definition": {
+            "id": 3727523,
+            "entityTypeId": 306912077,
+            "name": "Increase two scores (+2 / +1)",
+            "description": "<p>Increase one scores by 2 and a different score by 1.</p>",
+            "snippet": "Increase one scores by 2 and a different score by 1.",
+            "activation": null,
+            "sourceId": null,
+            "sourcePageNumber": null,
+            "creatureRules": [],
+            "spellListIds": []
+          }
+        },
+        {
           "componentId": 13856110,
           "componentTypeId": 1960452172,
           "definition": {
@@ -6993,22 +7379,6 @@
             "activation": null,
             "sourceId": null,
             "sourcePageNumber": 189,
-            "creatureRules": [],
-            "spellListIds": []
-          }
-        },
-        {
-          "componentId": 13856115,
-          "componentTypeId": 1960452172,
-          "definition": {
-            "id": 3727523,
-            "entityTypeId": 306912077,
-            "name": "Increase two scores (+2 / +1)",
-            "description": "<p>Increase one scores by 2 and a different score by 1.</p>",
-            "snippet": "Increase one scores by 2 and a different score by 1.",
-            "activation": null,
-            "sourceId": null,
-            "sourcePageNumber": null,
             "creatureRules": [],
             "spellListIds": []
           }
@@ -7050,7 +7420,24 @@
       ],
       "background": null,
       "item": null,
-      "feat": []
+      "feat": [
+        {
+          "componentId": 1878696,
+          "componentTypeId": 1088085227,
+          "definition": {
+            "id": 4496903,
+            "entityTypeId": 258900837,
+            "name": "Constitution",
+            "description": "<p>Constitution&nbsp;is your chosen ability score.</p>",
+            "snippet": "Increase your CON score by 1 and you gain proficiency in CON saving throws.",
+            "activation": null,
+            "sourceId": null,
+            "sourcePageNumber": null,
+            "creatureRules": [],
+            "spellListIds": []
+          }
+        }
+      ]
     },
     "choices": {
       "race": [
@@ -7503,7 +7890,7 @@
           "parentChoiceId": null,
           "type": 6,
           "subType": null,
-          "optionValue": 1789206,
+          "optionValue": 1789092,
           "label": "Choose a Feat",
           "isOptional": false,
           "isInfinite": false,
@@ -7628,7 +8015,10 @@
             3078530,
             3269390,
             3269402,
-            3294072
+            3294072,
+            3360224,
+            3360229,
+            3360241
           ],
           "tagConstraints": []
         }
@@ -7689,34 +8079,33 @@
           "itemDefinitionKey": null,
           "options": [],
           "optionIds": [
+            4045,
+            4049,
             4050,
+            4051,
+            4052,
             4054,
             4055,
             4056,
             4061,
             4062,
             4063,
-            4066,
-            4045,
-            4049,
-            4052,
-            4051,
             4065,
+            4066,
             4068,
             4071,
             4074,
             5064,
-            5172,
-            5109,
             5108,
+            5109,
             5110,
             5111,
+            5172,
             5173,
             5174,
-            6153,
-            5199,
-            5198,
             5197,
+            5198,
+            5199,
             5206,
             5928,
             5929,
@@ -7745,27 +8134,13 @@
             6048,
             6049,
             6050,
+            6153,
             6327,
             6329,
-            6350,
-            6351,
-            6352,
-            6353,
-            6354,
-            6355,
-            6356,
-            6357,
-            6358,
-            6359,
-            6360,
             6361,
             6362,
             6363,
             6364,
-            6486,
-            6487,
-            6488,
-            6489,
             6879,
             6880,
             6881,
@@ -7782,7 +8157,11 @@
             6892,
             6893,
             6894,
-            6895
+            6895,
+            7327,
+            7328,
+            7329,
+            7330
           ],
           "tagConstraints": []
         },
@@ -7802,34 +8181,33 @@
           "itemDefinitionKey": null,
           "options": [],
           "optionIds": [
+            4045,
+            4049,
             4050,
+            4051,
+            4052,
             4054,
             4055,
             4056,
             4061,
             4062,
             4063,
-            4066,
-            4045,
-            4049,
-            4052,
-            4051,
             4065,
+            4066,
             4068,
             4071,
             4074,
             5064,
-            5172,
-            5109,
             5108,
+            5109,
             5110,
             5111,
+            5172,
             5173,
             5174,
-            6153,
-            5199,
-            5198,
             5197,
+            5198,
+            5199,
             5206,
             5928,
             5929,
@@ -7858,27 +8236,13 @@
             6048,
             6049,
             6050,
+            6153,
             6327,
             6329,
-            6350,
-            6351,
-            6352,
-            6353,
-            6354,
-            6355,
-            6356,
-            6357,
-            6358,
-            6359,
-            6360,
             6361,
             6362,
             6363,
             6364,
-            6486,
-            6487,
-            6488,
-            6489,
             6879,
             6880,
             6881,
@@ -7895,7 +8259,11 @@
             6892,
             6893,
             6894,
-            6895
+            6895,
+            7327,
+            7328,
+            7329,
+            7330
           ],
           "tagConstraints": []
         },
@@ -7942,6 +8310,56 @@
       "item": null,
       "feat": [
         {
+          "componentId": 1789092,
+          "componentTypeId": 1088085227,
+          "id": "2-62627296",
+          "parentChoiceId": null,
+          "type": 2,
+          "subType": 5,
+          "optionValue": 3524,
+          "label": "Choose an Ability Score",
+          "isOptional": false,
+          "isInfinite": false,
+          "defaultSubtypes": [],
+          "displayOrder": null,
+          "itemDefinitionKey": null,
+          "options": [],
+          "optionIds": [
+            3520,
+            3521,
+            3522,
+            3523,
+            3524,
+            3525
+          ],
+          "tagConstraints": []
+        },
+        {
+          "componentId": 1789092,
+          "componentTypeId": 1088085227,
+          "id": "2-62627297",
+          "parentChoiceId": null,
+          "type": 2,
+          "subType": 5,
+          "optionValue": 3524,
+          "label": "Choose an Ability Score",
+          "isOptional": false,
+          "isInfinite": false,
+          "defaultSubtypes": [],
+          "displayOrder": null,
+          "itemDefinitionKey": null,
+          "options": [],
+          "optionIds": [
+            3520,
+            3521,
+            3522,
+            3523,
+            3524,
+            3525
+          ],
+          "tagConstraints": []
+        },
+        {
           "componentId": 1789209,
           "componentTypeId": 1088085227,
           "id": "2-62627506",
@@ -7966,11 +8384,11 @@
         {
           "componentId": 1878696,
           "componentTypeId": 1088085227,
-          "id": "3-281779",
+          "id": "3-281779-127450046",
           "parentChoiceId": null,
           "type": 3,
           "subType": null,
-          "optionValue": null,
+          "optionValue": 4496903,
           "label": null,
           "isOptional": false,
           "isInfinite": false,
@@ -7981,10 +8399,10 @@
           "optionIds": [
             4496901,
             4496902,
-            4496903,
             4496904,
             4496905,
-            4496906
+            4496906,
+            4496903
           ],
           "tagConstraints": []
         },
@@ -8140,8 +8558,32 @@
               "sourceId": null
             },
             {
+              "id": 4045,
+              "label": "Abyssal",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 4049,
+              "label": "Celestial",
+              "description": null,
+              "sourceId": null
+            },
+            {
               "id": 4050,
               "label": "Common",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 4051,
+              "label": "Deep Speech",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 4052,
+              "label": "Draconic",
               "description": null,
               "sourceId": null
             },
@@ -8182,38 +8624,14 @@
               "sourceId": null
             },
             {
-              "id": 4066,
-              "label": "Orc",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 4045,
-              "label": "Abyssal",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 4049,
-              "label": "Celestial",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 4052,
-              "label": "Draconic",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 4051,
-              "label": "Deep Speech",
-              "description": null,
-              "sourceId": null
-            },
-            {
               "id": 4065,
               "label": "Infernal",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 4066,
+              "label": "Orc",
               "description": null,
               "sourceId": null
             },
@@ -8242,20 +8660,14 @@
               "sourceId": null
             },
             {
-              "id": 5172,
-              "label": "Quori",
+              "id": 5108,
+              "label": "Minotaur",
               "description": null,
               "sourceId": null
             },
             {
               "id": 5109,
               "label": "Loxodon",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 5108,
-              "label": "Minotaur",
               "description": null,
               "sourceId": null
             },
@@ -8272,6 +8684,12 @@
               "sourceId": null
             },
             {
+              "id": 5172,
+              "label": "Quori",
+              "description": null,
+              "sourceId": null
+            },
+            {
               "id": 5173,
               "label": "Daelkyr",
               "description": null,
@@ -8284,14 +8702,8 @@
               "sourceId": null
             },
             {
-              "id": 6153,
-              "label": "Thieves\u2019 Cant",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 5199,
-              "label": "Zemnian",
+              "id": 5197,
+              "label": "Naush",
               "description": null,
               "sourceId": null
             },
@@ -8302,8 +8714,8 @@
               "sourceId": null
             },
             {
-              "id": 5197,
-              "label": "Naush",
+              "id": 5199,
+              "label": "Zemnian",
               "description": null,
               "sourceId": null
             },
@@ -8476,6 +8888,12 @@
               "sourceId": null
             },
             {
+              "id": 6153,
+              "label": "Thieves\u2019 Cant",
+              "description": null,
+              "sourceId": null
+            },
+            {
               "id": 6327,
               "label": "Common Sign Language",
               "description": null,
@@ -8484,72 +8902,6 @@
             {
               "id": 6329,
               "label": "Yeti",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6350,
-              "label": "Birdfolk",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6351,
-              "label": "Cervan",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6352,
-              "label": "Hedge",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6353,
-              "label": "Jerbeen",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6354,
-              "label": "Mapach",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6355,
-              "label": "Vulpin",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6356,
-              "label": "Umbral",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6357,
-              "label": "Darakhul",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6358,
-              "label": "Erina",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6359,
-              "label": "Void Speech",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6360,
-              "label": "Northern Tongue",
               "description": null,
               "sourceId": null
             },
@@ -8573,30 +8925,6 @@
             },
             {
               "id": 6364,
-              "label": "Dalish",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6486,
-              "label": "Sindarin",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6487,
-              "label": "Westron",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6488,
-              "label": "Khuzdul",
-              "description": null,
-              "sourceId": null
-            },
-            {
-              "id": 6489,
               "label": "Dalish",
               "description": null,
               "sourceId": null
@@ -8700,6 +9028,30 @@
             {
               "id": 6895,
               "label": "Untheric",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7327,
+              "label": "Naku Naku",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7328,
+              "label": "Dara",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7329,
+              "label": "Howler",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 7330,
+              "label": "Torum",
               "description": null,
               "sourceId": null
             }
@@ -9365,7 +9717,7 @@
             {
               "id": 3269402,
               "label": "Astral Flood",
-              "description": "<p>You channel energy from the Astral Sea to unleash a torrent of magic from you in a 30-foot Cone. Each creature in the Cone must succeed on a Dexterity saving throw or take 4d10 Cold or Radiant damage (chosen when you cast this spell). Your choice of damage type determines an additional effect:</p>\r\n<p><strong>Cold Damage.</strong> The target has Disadvantage on the next D20 Test it makes before the end of your next turn.</p>\r\n<p><strong>Radiant Damage.</strong> The target can see only within 15 feet of itself, and it has the Blinded condition for everything beyond that distance until the end of your next turn.</p>\r\n<p><em><strong>Using a Higher-Level Spell Slot.</strong></em> The damage increases by 1d10 for each spell slot level above 3.</p>",
+              "description": "<p>You channel energy from the Astral Sea to unleash a torrent of magic from yourself. Choose Cold or Radiant for the type of energy channeled. Each creature in a 30-foot Cone originating from you makes a Dexterity saving throw. On a failed save, the target takes 4d10 damage of the chosen type and suffers an additional effect determined by the damage type:</p>\r\n<p><strong>Cold Damage.</strong> The target has Disadvantage on the next D20 Test it makes before the end of your next turn.<br /><strong>Radiant Damage.</strong> The target has the Blinded condition until the end of your next turn.</p>\r\n<p>On a successful save, the target takes half as much damage only.</p>\r\n<p><em><strong>Using a Higher-Level Spell Slot.</strong></em> The damage increases by 1d10 for each spell slot level above 3.</p>",
               "sourceId": 272
             },
             {
@@ -9373,12 +9725,66 @@
               "label": "Searing Orb",
               "description": "<p>You create and hurl a pulsing orb of energy at one creature within range. Make a ranged spell attack against the target. On a hit, the target takes 3d4 Radiant damage. Hit or miss, the orb then explodes in a flash of light. The target and each creature within 10 feet of it make a Constitution saving throw. On a failed save, a creature has the Blinded condition until the end of its next turn.</p>\r\n<p><em><strong>Using a Higher-Level Spell Slot.</strong></em> The damage increases by 1d4 for each spell slot level above 2.</p>",
               "sourceId": 272
+            },
+            {
+              "id": 3360224,
+              "label": "Dueling Ground",
+              "description": "<p>You create a magical dueling ground bounded by a glowing, rune-scribed circle in a 15-foot-radius Sphere centered on a point on the ground you touch.</p>\r\n<p>As part of creating the dueling ground, you designate two willing creatures within the Sphere as the targets. The spell ends early if a creature other than one of the targets enters the Sphere.</p>\r\n<p>If a target drops to 0 Hit Points while in the dueling ground, the target is Stable and teleports to the nearest unoccupied space outside the dueling ground. If a target is subjected to an effect that would kill it instantly without dealing damage while in the dueling ground, the target doesn\u2019t die and instead has 0 Hit Points and the Unconscious condition, is Stable, and teleports to the nearest unoccupied space outside the dueling ground.</p>\r\n<p>When only one target remains in the dueling ground, runes matching those on the ground around the Sphere briefly flash around the remaining target\u2019s head like a crown.</p>\r\n<p><strong><em>Using a Higher-Level Spell Slot.</em></strong> You can target one additional willing creature for each spell slot level above 2.</p>",
+              "sourceId": 301
+            },
+            {
+              "id": 3360229,
+              "label": "Grave Ground",
+              "description": "<p>Skeletal hands burst from an area on the ground within range. The area consists of up to four 10-foot squares, which you arrange as you like. Each square must be contiguous with at least one other square. That area is Difficult Terrain for your enemies.</p>\r\n<p>Any enemy in that area when the skeletal hands appear makes a Strength saving throw. On a failed save, a creature takes 6d6 Necrotic damage, and until the end of its next turn, the creature subtracts 1d6 from all its damage rolls. An enemy also makes this save if it enters the area or ends its turn there. A creature makes this save only once per turn.</p>\r\n<p><strong><em>Using a Higher-Level Spell Slot.</em></strong> The damage increases by 1d6 for each spell slot level above 5.</p>",
+              "sourceId": 301
+            },
+            {
+              "id": 3360241,
+              "label": "Spirit Lantern",
+              "description": "<p>You conjure a floating, ghostly black lantern that hovers above you and sheds Dim Light in a 60-foot radius. When an enemy dies within this Dim Light, a fragment of the creature\u2019s soul flies into the lantern. The lantern can hold a number of soul fragments equal to your spellcasting ability modifier, and those fragments dissipate when the spell ends.</p>\r\n<p>As a Bonus Action, you can expend a soul fragment to create one of the following effects.</p>\r\n<p><strong><em>Drain Life.</em></strong> The soul fragment darts at a creature of your choice that you can see within 60 feet of yourself. The target makes a Constitution saving throw, taking Necrotic damage equal to 4d8 plus your spellcasting ability modifier on a failed save or half as much damage on a successful one.</p>\r\n<p><strong><em>Repair Undead.</em></strong> The soul fragment flies into an Undead creature of your choice that you can see within 60 feet of yourself. That creature regains Hit Points equal to 4d8 plus your spellcasting ability modifier.</p>\r\n<p><strong><em>Ward Ally.</em></strong> The soul fragment darts around a creature of your choice that you can see within 60 feet of yourself. Other creatures have Disadvantage on attack rolls against the chosen creature until the start of your next turn.</p>",
+              "sourceId": 301
             }
           ]
         },
         {
           "id": "1088085227-2",
           "options": [
+            {
+              "id": 3520,
+              "label": "Strength Score",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 3521,
+              "label": "Dexterity Score",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 3522,
+              "label": "Constitution Score",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 3523,
+              "label": "Intelligence Score",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 3524,
+              "label": "Wisdom Score",
+              "description": null,
+              "sourceId": null
+            },
+            {
+              "id": 3525,
+              "label": "Charisma Score",
+              "description": null,
+              "sourceId": null
+            },
             {
               "id": 5951,
               "label": "Intelligence Score",
@@ -9415,12 +9821,6 @@
               "sourceId": null
             },
             {
-              "id": 4496903,
-              "label": "Constitution",
-              "description": "<p>Constitution&nbsp;is your chosen ability score.</p>",
-              "sourceId": null
-            },
-            {
               "id": 4496904,
               "label": "Intelligence",
               "description": "<p>Intelligence&nbsp;is your chosen ability score.</p>",
@@ -9436,6 +9836,12 @@
               "id": 4496906,
               "label": "Charisma",
               "description": "<p>Charisma&nbsp;is your chosen ability score.</p>",
+              "sourceId": null
+            },
+            {
+              "id": 4496903,
+              "label": "Constitution",
+              "description": "<p>Constitution&nbsp;is your chosen ability score.</p>",
               "sourceId": null
             },
             {
@@ -10166,7 +10572,11 @@
       "definitionKeyNameMap": {
         "feat:2048517": "Dark Bargain",
         "feat:2331889": "Runestones",
-        "feat:2331813": "Character Threads"
+        "feat:2331813": "Character Threads",
+        "feat:1970713": "Hero's Journey Boon",
+        "feat:2468514": "Faction Renown",
+        "feat:2468523": "Subfaction Renown",
+        "feat:2468519": "Neutral Faction Renown"
       }
     },
     "actions": {
@@ -11710,26 +12120,50 @@
       ],
       "feat": [
         {
-          "fixedValue": 2,
-          "id": "62627503",
-          "entityId": null,
-          "entityTypeId": null,
+          "fixedValue": 1,
+          "id": "62627296",
+          "entityId": 5,
+          "entityTypeId": 1472902489,
           "type": "bonus",
-          "subType": "hit-points-per-level",
+          "subType": "wisdom-score",
           "dice": null,
           "restriction": "",
           "statId": null,
           "requiresAttunement": false,
           "duration": null,
           "friendlyTypeName": "Bonus",
-          "friendlySubtypeName": "Hit Points per Level",
-          "isGranted": true,
+          "friendlySubtypeName": "Wisdom Score",
+          "isGranted": false,
           "bonusTypes": [],
-          "value": 2,
+          "value": 1,
           "availableToMulticlass": true,
           "modifierTypeId": 1,
-          "modifierSubTypeId": 752,
-          "componentId": 1789206,
+          "modifierSubTypeId": 6,
+          "componentId": 1789092,
+          "componentTypeId": 1088085227,
+          "tagConstraints": []
+        },
+        {
+          "fixedValue": 1,
+          "id": "62627297",
+          "entityId": 5,
+          "entityTypeId": 1472902489,
+          "type": "bonus",
+          "subType": "wisdom-score",
+          "dice": null,
+          "restriction": "",
+          "statId": null,
+          "requiresAttunement": false,
+          "duration": null,
+          "friendlyTypeName": "Bonus",
+          "friendlySubtypeName": "Wisdom Score",
+          "isGranted": false,
+          "bonusTypes": [],
+          "value": 1,
+          "availableToMulticlass": true,
+          "modifierTypeId": 1,
+          "modifierSubTypeId": 6,
+          "componentId": 1789092,
           "componentTypeId": 1088085227,
           "tagConstraints": []
         },
@@ -11778,6 +12212,54 @@
           "modifierTypeId": 3,
           "modifierSubTypeId": 64,
           "componentId": 1789209,
+          "componentTypeId": 1088085227,
+          "tagConstraints": []
+        },
+        {
+          "fixedValue": 1,
+          "id": "62627867",
+          "entityId": 3,
+          "entityTypeId": 1472902489,
+          "type": "bonus",
+          "subType": "constitution-score",
+          "dice": null,
+          "restriction": "",
+          "statId": null,
+          "requiresAttunement": false,
+          "duration": null,
+          "friendlyTypeName": "Bonus",
+          "friendlySubtypeName": "Constitution Score",
+          "isGranted": true,
+          "bonusTypes": [],
+          "value": 1,
+          "availableToMulticlass": true,
+          "modifierTypeId": 1,
+          "modifierSubTypeId": 4,
+          "componentId": 1878696,
+          "componentTypeId": 1088085227,
+          "tagConstraints": []
+        },
+        {
+          "fixedValue": null,
+          "id": "62627868",
+          "entityId": null,
+          "entityTypeId": null,
+          "type": "proficiency",
+          "subType": "constitution-saving-throws",
+          "dice": null,
+          "restriction": "",
+          "statId": null,
+          "requiresAttunement": false,
+          "duration": null,
+          "friendlyTypeName": "Proficiency",
+          "friendlySubtypeName": "Constitution Saving Throws",
+          "isGranted": true,
+          "bonusTypes": [],
+          "value": null,
+          "availableToMulticlass": true,
+          "modifierTypeId": 10,
+          "modifierSubTypeId": 225,
+          "componentId": 1878696,
           "componentTypeId": 1088085227,
           "tagConstraints": []
         }
@@ -15865,6 +16347,421 @@
           {
             "overrideSaveDc": null,
             "limitedUse": null,
+            "id": 21171527,
+            "entityTypeId": 435869154,
+            "definition": {
+              "id": 2618977,
+              "definitionKey": "1118725998:2618977",
+              "name": "Harm",
+              "level": 6,
+              "school": "Necromancy",
+              "duration": {
+                "durationInterval": 0,
+                "durationUnit": null,
+                "durationType": "Instantaneous"
+              },
+              "activation": {
+                "activationTime": 1,
+                "activationType": 1
+              },
+              "range": {
+                "origin": "Ranged",
+                "rangeValue": 60,
+                "aoeType": null,
+                "aoeValue": null
+              },
+              "asPartOfWeaponAttack": false,
+              "description": "<p>You unleash virulent magic on a creature you can see within range. The target makes a Constitution saving throw. On a failed save, it takes 14d6 Necrotic damage, and its Hit Point maximum is reduced by an amount equal to the Necrotic damage it took. On a successful save, it takes half as much damage only. This spell can\u2019t reduce a target\u2019s Hit Point maximum below 1.</p>",
+              "snippet": "",
+              "concentration": false,
+              "ritual": false,
+              "rangeArea": null,
+              "damageEffect": null,
+              "components": [
+                1,
+                2
+              ],
+              "componentsDescription": "",
+              "saveDcAbilityId": 3,
+              "healing": null,
+              "healingDice": [],
+              "tempHpDice": [],
+              "attackType": null,
+              "canCastAtHigherLevel": false,
+              "isHomebrew": false,
+              "version": null,
+              "sourceId": null,
+              "sourcePageNumber": 283,
+              "requiresSavingThrow": true,
+              "requiresAttackRoll": false,
+              "atHigherLevels": {
+                "higherLevelDefinitions": [],
+                "additionalAttacks": [],
+                "additionalTargets": [],
+                "areaOfEffect": [],
+                "duration": [],
+                "creatures": [],
+                "special": [],
+                "points": [],
+                "range": []
+              },
+              "modifiers": [
+                {
+                  "fixedValue": null,
+                  "id": "spell_2618977_2142099",
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "damage",
+                  "subType": "necrotic",
+                  "dice": null,
+                  "restriction": "Damage can't reduce the target's hit points below 1",
+                  "statId": null,
+                  "requiresAttunement": false,
+                  "duration": null,
+                  "friendlyTypeName": "Damage",
+                  "friendlySubtypeName": "Necrotic",
+                  "isGranted": false,
+                  "bonusTypes": [],
+                  "value": null,
+                  "availableToMulticlass": null,
+                  "modifierTypeId": 0,
+                  "modifierSubTypeId": 0,
+                  "componentId": 0,
+                  "componentTypeId": 0,
+                  "die": {
+                    "diceCount": 14,
+                    "diceValue": 6,
+                    "diceMultiplier": null,
+                    "fixedValue": null,
+                    "diceString": "14d6"
+                  },
+                  "count": 1,
+                  "durationUnit": null,
+                  "usePrimaryStat": false,
+                  "atHigherLevels": {
+                    "higherLevelDefinitions": [],
+                    "additionalAttacks": [],
+                    "additionalTargets": [],
+                    "areaOfEffect": [],
+                    "duration": [],
+                    "creatures": [],
+                    "special": [],
+                    "points": [],
+                    "range": []
+                  }
+                }
+              ],
+              "conditions": [],
+              "tags": [
+                "Damage",
+                "Debuff"
+              ],
+              "castingTimeDescription": "",
+              "scaleType": null,
+              "sources": [
+                {
+                  "sourceId": 145,
+                  "pageNumber": 283,
+                  "sourceType": 1
+                }
+              ],
+              "spellGroups": [],
+              "isLegacy": false
+            },
+            "definitionId": 0,
+            "prepared": true,
+            "countsAsKnownSpell": true,
+            "usesSpellSlot": true,
+            "castAtLevel": null,
+            "alwaysPrepared": false,
+            "restriction": null,
+            "spellCastingAbilityId": null,
+            "displayAsAttack": null,
+            "additionalDescription": null,
+            "castOnlyAsRitual": false,
+            "ritualCastingType": null,
+            "range": {
+              "origin": "Ranged",
+              "rangeValue": 60,
+              "aoeType": null,
+              "aoeValue": null
+            },
+            "activation": {
+              "activationTime": 1,
+              "activationType": 1
+            },
+            "baseLevelAtWill": false,
+            "atWillLimitedUseLevel": null,
+            "isSignatureSpell": null,
+            "componentId": 0,
+            "componentTypeId": 0,
+            "spellListId": null
+          },
+          {
+            "overrideSaveDc": null,
+            "limitedUse": null,
+            "id": 21172464,
+            "entityTypeId": 435869154,
+            "definition": {
+              "id": 2619138,
+              "definitionKey": "1118725998:2619138",
+              "name": "Hallow",
+              "level": 5,
+              "school": "Abjuration",
+              "duration": {
+                "durationInterval": 0,
+                "durationUnit": null,
+                "durationType": "Until Dispelled"
+              },
+              "activation": {
+                "activationTime": 24,
+                "activationType": 7
+              },
+              "range": {
+                "origin": "Touch",
+                "rangeValue": 0,
+                "aoeType": null,
+                "aoeValue": null
+              },
+              "asPartOfWeaponAttack": false,
+              "description": "<p>You touch a point and infuse an area around it with holy or unholy power. The area can have a radius up to 60 feet, and the spell fails if the radius includes an area already under the effect of <em>Hallow</em>. The affected area has the following effects.</p>\r\n<p><strong><em>Hallowed Ward.</em></strong> Choose any of these creature types: Aberration, Celestial, Elemental, Fey, Fiend, or Undead. Creatures of the chosen types can\u2019t willingly enter the area, and any creature that is possessed by or that has the Charmed or Frightened condition from such creatures isn\u2019t possessed, Charmed, or Frightened by them while in the area.</p>\r\n<p><strong><em>Extra Effect.</em></strong> You bind an extra effect to the area from the list below:</p>\r\n<p><strong>Courage.</strong> Creatures of any types you choose can\u2019t gain the Frightened condition while in the area.</p>\r\n<p><strong>Darkness.</strong> Darkness fills the area. Normal light, as well as magical light created by spells of a level lower than this spell, can\u2019t illuminate the area.</p>\r\n<p><strong>Daylight.</strong> Bright light fills the area. Magical Darkness created by spells of a level lower than this spell can\u2019t extinguish the light.</p>\r\n<p><strong>Peaceful Rest.</strong> Dead bodies interred in the area can\u2019t be turned into Undead.</p>\r\n<p><strong>Extradimensional Interference.</strong> Creatures of any types you choose can\u2019t enter or exit the area using teleportation or interplanar travel.</p>\r\n<p><strong>Fear.</strong> Creatures of any types you choose have the Frightened condition while in the area.</p>\r\n<p><strong>Resistance.</strong> Creatures of any types you choose have Resistance to one damage type of your choice while in the area.</p>\r\n<p><strong>Silence.</strong> No sound can emanate from within the area, and no sound can reach into it.</p>\r\n<p><strong>Tongues.</strong> Creatures of any types you choose can communicate with any other creature in the area even if they don\u2019t share a common language.</p>\r\n<p><strong>Vulnerability.</strong> Creatures of any types you choose have Vulnerability to one damage type of your choice while in the area.</p>",
+              "snippet": "",
+              "concentration": false,
+              "ritual": false,
+              "rangeArea": null,
+              "damageEffect": null,
+              "components": [
+                1,
+                2,
+                3
+              ],
+              "componentsDescription": "incense worth 1,000+ GP, which the spell consumes",
+              "saveDcAbilityId": null,
+              "healing": null,
+              "healingDice": [],
+              "tempHpDice": [],
+              "attackType": null,
+              "canCastAtHigherLevel": false,
+              "isHomebrew": false,
+              "version": null,
+              "sourceId": null,
+              "sourcePageNumber": 283,
+              "requiresSavingThrow": false,
+              "requiresAttackRoll": false,
+              "atHigherLevels": {
+                "higherLevelDefinitions": [],
+                "additionalAttacks": [],
+                "additionalTargets": [],
+                "areaOfEffect": [],
+                "duration": [],
+                "creatures": [],
+                "special": [],
+                "points": [],
+                "range": []
+              },
+              "modifiers": [],
+              "conditions": [],
+              "tags": [
+                "Control",
+                "Buff",
+                "Debuff",
+                "Environment"
+              ],
+              "castingTimeDescription": "",
+              "scaleType": null,
+              "sources": [
+                {
+                  "sourceId": 145,
+                  "pageNumber": 283,
+                  "sourceType": 1
+                }
+              ],
+              "spellGroups": [],
+              "isLegacy": false
+            },
+            "definitionId": 0,
+            "prepared": true,
+            "countsAsKnownSpell": true,
+            "usesSpellSlot": true,
+            "castAtLevel": null,
+            "alwaysPrepared": false,
+            "restriction": null,
+            "spellCastingAbilityId": null,
+            "displayAsAttack": null,
+            "additionalDescription": null,
+            "castOnlyAsRitual": false,
+            "ritualCastingType": null,
+            "range": {
+              "origin": "Touch",
+              "rangeValue": 0,
+              "aoeType": null,
+              "aoeValue": null
+            },
+            "activation": {
+              "activationTime": 24,
+              "activationType": 7
+            },
+            "baseLevelAtWill": false,
+            "atWillLimitedUseLevel": null,
+            "isSignatureSpell": null,
+            "componentId": 0,
+            "componentTypeId": 0,
+            "spellListId": null
+          },
+          {
+            "overrideSaveDc": null,
+            "limitedUse": null,
+            "id": 21170735,
+            "entityTypeId": 435869154,
+            "definition": {
+              "id": 2618837,
+              "definitionKey": "1118725998:2618837",
+              "name": "Power Word Fortify",
+              "level": 7,
+              "school": "Enchantment",
+              "duration": {
+                "durationInterval": 0,
+                "durationUnit": null,
+                "durationType": "Instantaneous"
+              },
+              "activation": {
+                "activationTime": 1,
+                "activationType": 1
+              },
+              "range": {
+                "origin": "Ranged",
+                "rangeValue": 60,
+                "aoeType": null,
+                "aoeValue": null
+              },
+              "asPartOfWeaponAttack": false,
+              "description": "<p>You fortify up to six creatures you can see within range. The spell bestows 120 Temporary Hit Points, which you divide among the spell\u2019s recipients.</p>",
+              "snippet": "",
+              "concentration": false,
+              "ritual": false,
+              "rangeArea": null,
+              "damageEffect": null,
+              "components": [
+                1
+              ],
+              "componentsDescription": "",
+              "saveDcAbilityId": null,
+              "healing": null,
+              "healingDice": [],
+              "tempHpDice": [],
+              "attackType": null,
+              "canCastAtHigherLevel": false,
+              "isHomebrew": false,
+              "version": null,
+              "sourceId": null,
+              "sourcePageNumber": 306,
+              "requiresSavingThrow": false,
+              "requiresAttackRoll": false,
+              "atHigherLevels": {
+                "higherLevelDefinitions": [],
+                "additionalAttacks": [],
+                "additionalTargets": [],
+                "areaOfEffect": [],
+                "duration": [],
+                "creatures": [],
+                "special": [],
+                "points": [],
+                "range": []
+              },
+              "modifiers": [
+                {
+                  "fixedValue": null,
+                  "id": "spell_2618837_2141935",
+                  "entityId": null,
+                  "entityTypeId": null,
+                  "type": "bonus",
+                  "subType": "temporary-hit-points",
+                  "dice": null,
+                  "restriction": "Divided among up to six creatures",
+                  "statId": null,
+                  "requiresAttunement": false,
+                  "duration": null,
+                  "friendlyTypeName": "Bonus",
+                  "friendlySubtypeName": "Temporary Hit Points",
+                  "isGranted": false,
+                  "bonusTypes": [],
+                  "value": null,
+                  "availableToMulticlass": null,
+                  "modifierTypeId": 0,
+                  "modifierSubTypeId": 0,
+                  "componentId": 0,
+                  "componentTypeId": 0,
+                  "die": {
+                    "diceCount": null,
+                    "diceValue": null,
+                    "diceMultiplier": null,
+                    "fixedValue": 120,
+                    "diceString": null
+                  },
+                  "count": 1,
+                  "durationUnit": null,
+                  "usePrimaryStat": false,
+                  "atHigherLevels": {
+                    "higherLevelDefinitions": [],
+                    "additionalAttacks": [],
+                    "additionalTargets": [],
+                    "areaOfEffect": [],
+                    "duration": [],
+                    "creatures": [],
+                    "special": [],
+                    "points": [],
+                    "range": []
+                  }
+                }
+              ],
+              "conditions": [],
+              "tags": [
+                "Buff"
+              ],
+              "castingTimeDescription": "",
+              "scaleType": null,
+              "sources": [
+                {
+                  "sourceId": 145,
+                  "pageNumber": 306,
+                  "sourceType": 1
+                }
+              ],
+              "spellGroups": [],
+              "isLegacy": false
+            },
+            "definitionId": 0,
+            "prepared": true,
+            "countsAsKnownSpell": true,
+            "usesSpellSlot": true,
+            "castAtLevel": null,
+            "alwaysPrepared": false,
+            "restriction": null,
+            "spellCastingAbilityId": null,
+            "displayAsAttack": null,
+            "additionalDescription": null,
+            "castOnlyAsRitual": false,
+            "ritualCastingType": null,
+            "range": {
+              "origin": "Ranged",
+              "rangeValue": 60,
+              "aoeType": null,
+              "aoeValue": null
+            },
+            "activation": {
+              "activationTime": 1,
+              "activationType": 1
+            },
+            "baseLevelAtWill": false,
+            "atWillLimitedUseLevel": null,
+            "isSignatureSpell": null,
+            "componentId": 0,
+            "componentTypeId": 0,
+            "spellListId": null
+          },
+          {
+            "overrideSaveDc": null,
+            "limitedUse": null,
             "id": 21171546,
             "entityTypeId": 435869154,
             "definition": {
@@ -16074,159 +16971,6 @@
             "componentId": 0,
             "componentTypeId": 0,
             "spellListId": null
-          },
-          {
-            "overrideSaveDc": null,
-            "limitedUse": null,
-            "id": 21171527,
-            "entityTypeId": 435869154,
-            "definition": {
-              "id": 2618977,
-              "definitionKey": "1118725998:2618977",
-              "name": "Harm",
-              "level": 6,
-              "school": "Necromancy",
-              "duration": {
-                "durationInterval": 0,
-                "durationUnit": null,
-                "durationType": "Instantaneous"
-              },
-              "activation": {
-                "activationTime": 1,
-                "activationType": 1
-              },
-              "range": {
-                "origin": "Ranged",
-                "rangeValue": 60,
-                "aoeType": null,
-                "aoeValue": null
-              },
-              "asPartOfWeaponAttack": false,
-              "description": "<p>You unleash virulent magic on a creature you can see within range. The target makes a Constitution saving throw. On a failed save, it takes 14d6 Necrotic damage, and its Hit Point maximum is reduced by an amount equal to the Necrotic damage it took. On a successful save, it takes half as much damage only. This spell can\u2019t reduce a target\u2019s Hit Point maximum below 1.</p>",
-              "snippet": "",
-              "concentration": false,
-              "ritual": false,
-              "rangeArea": null,
-              "damageEffect": null,
-              "components": [
-                1,
-                2
-              ],
-              "componentsDescription": "",
-              "saveDcAbilityId": 3,
-              "healing": null,
-              "healingDice": [],
-              "tempHpDice": [],
-              "attackType": null,
-              "canCastAtHigherLevel": false,
-              "isHomebrew": false,
-              "version": null,
-              "sourceId": null,
-              "sourcePageNumber": 283,
-              "requiresSavingThrow": true,
-              "requiresAttackRoll": false,
-              "atHigherLevels": {
-                "higherLevelDefinitions": [],
-                "additionalAttacks": [],
-                "additionalTargets": [],
-                "areaOfEffect": [],
-                "duration": [],
-                "creatures": [],
-                "special": [],
-                "points": [],
-                "range": []
-              },
-              "modifiers": [
-                {
-                  "fixedValue": null,
-                  "id": "spell_2618977_2142099",
-                  "entityId": null,
-                  "entityTypeId": null,
-                  "type": "damage",
-                  "subType": "necrotic",
-                  "dice": null,
-                  "restriction": "Damage can't reduce the target's hit points below 1",
-                  "statId": null,
-                  "requiresAttunement": false,
-                  "duration": null,
-                  "friendlyTypeName": "Damage",
-                  "friendlySubtypeName": "Necrotic",
-                  "isGranted": false,
-                  "bonusTypes": [],
-                  "value": null,
-                  "availableToMulticlass": null,
-                  "modifierTypeId": 0,
-                  "modifierSubTypeId": 0,
-                  "componentId": 0,
-                  "componentTypeId": 0,
-                  "die": {
-                    "diceCount": 14,
-                    "diceValue": 6,
-                    "diceMultiplier": null,
-                    "fixedValue": null,
-                    "diceString": "14d6"
-                  },
-                  "count": 1,
-                  "durationUnit": null,
-                  "usePrimaryStat": false,
-                  "atHigherLevels": {
-                    "higherLevelDefinitions": [],
-                    "additionalAttacks": [],
-                    "additionalTargets": [],
-                    "areaOfEffect": [],
-                    "duration": [],
-                    "creatures": [],
-                    "special": [],
-                    "points": [],
-                    "range": []
-                  }
-                }
-              ],
-              "conditions": [],
-              "tags": [
-                "Damage",
-                "Debuff"
-              ],
-              "castingTimeDescription": "",
-              "scaleType": null,
-              "sources": [
-                {
-                  "sourceId": 145,
-                  "pageNumber": 283,
-                  "sourceType": 1
-                }
-              ],
-              "spellGroups": [],
-              "isLegacy": false
-            },
-            "definitionId": 0,
-            "prepared": true,
-            "countsAsKnownSpell": true,
-            "usesSpellSlot": true,
-            "castAtLevel": null,
-            "alwaysPrepared": false,
-            "restriction": null,
-            "spellCastingAbilityId": null,
-            "displayAsAttack": null,
-            "additionalDescription": null,
-            "castOnlyAsRitual": false,
-            "ritualCastingType": null,
-            "range": {
-              "origin": "Ranged",
-              "rangeValue": 60,
-              "aoeType": null,
-              "aoeValue": null
-            },
-            "activation": {
-              "activationTime": 1,
-              "activationType": 1
-            },
-            "baseLevelAtWill": false,
-            "atWillLimitedUseLevel": null,
-            "isSignatureSpell": null,
-            "componentId": 0,
-            "componentTypeId": 0,
-            "spellListId": null
           }
         ]
       }
@@ -16236,8 +16980,8 @@
     "creatures": [],
     "optionalOrigins": [],
     "optionalClassFeatures": [],
-    "dateModified": "2026-07-02T00:53:17.704972Z",
-    "providedFrom": "cache",
+    "dateModified": "2026-11-24T00:50:11.241254Z",
+    "providedFrom": "database",
     "canEdit": false,
     "status": 0,
     "statusSlug": null,
