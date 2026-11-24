@@ -120,6 +120,16 @@ AttackResult CombatEngine::applyRecklessReroll(BattleMap& bm, int attacker_idx,
     return executeAction(bm, Attack{attacker_idx, target_idx, weapon_idx});
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  OnTurnStartNearby reactions (beginTurn)
+//  When a creature starts its turn within a reactor's 5 ft reach, the reactor may spend its reaction:
+//  Branches of the Tree → the creature makes a STR save vs the reactor's spell save DC or is Grappled.
+//  A post-effect interrupt that does not alter the TurnStartResult, so the flow is the simplest of the
+//  seven windows (no pre-roll / re-evaluation). The apply rolls directly → no nested window opens.
+//  (Sentinel is NOT here — RAW it provokes an OA when a creature Disengages out of reach; that lives in
+//  detectProvokes' LeftReach path, gated on Agent::Stats::has_sentinel.)
+// ─────────────────────────────────────────────────────────────────────────────
+
 bool CombatEngine::canBranchesOfTree(const BattleMap& bm, int reactor, int source) const
 {
     const auto& agents = bm.placedAgents();
