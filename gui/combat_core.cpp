@@ -81,7 +81,7 @@ int CombatEngine::damageAbilityMod(const Weapon& w,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Paladin auras (team-scoped emanations)
+//  Held advantage, condition immunity, advantage emanations
 // ─────────────────────────────────────────────────────────────────────────────
 
 // dndMod (floor-rounding ability modifier) now lives in combat_internal.hpp so every
@@ -100,16 +100,6 @@ void CombatEngine::foldHeldAdvantage(const BattleMap& bm, int idx, bool& adv, bo
     }
 }
 
-int CombatEngine::auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept
-{
-    return rules::auraSaveBonus(bm, agent_idx);
-}
-
-bool CombatEngine::hasAuraOfCourage(const BattleMap& bm, int agent_idx) const noexcept
-{
-    return rules::hasAuraOfCourage(bm, agent_idx);
-}
-
 bool CombatEngine::conditionImmune(const BattleMap& bm, int agent_idx,
                                    std::string_view condition_name) const noexcept
 {
@@ -117,16 +107,6 @@ bool CombatEngine::conditionImmune(const BattleMap& bm, int agent_idx,
     if (!bm.getAgentStats(agent_idx).immuneToCondition(condition_name)) return false;
     log_("{} is immune to the {} condition", agentName(bm, agent_idx), condition_name);
     return true;
-}
-
-bool CombatEngine::hasAuraOfWarding(const BattleMap& bm, int agent_idx) const noexcept
-{
-    return rules::hasAuraOfWarding(bm, agent_idx);
-}
-
-bool CombatEngine::hasAuraOfAlacrity(const BattleMap& bm, int agent_idx) const noexcept
-{
-    return rules::hasAuraOfAlacrity(bm, agent_idx);
 }
 
 bool CombatEngine::hasAdvantageAura(const BattleMap& bm, int agent_idx) const noexcept

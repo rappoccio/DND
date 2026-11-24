@@ -39,5 +39,12 @@ void bindCombatWizard(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("agent_idx"),
              "Regenerate Portent Dice pool after long rest (for Diviner Wizards).\n"
              "Rolls new d20s and populates agent's portent_dice deque.")
+        .def("expend_arcane_ward_slot",
+             &CombatEngine::expendArcaneWardSlot,
+             py::arg("battle_map"), py::arg("agent_idx"), py::arg("slot_level"),
+             "Expend a spell slot as bonus action to charge Arcane Ward (for Abjurer Wizards L3+).\n"
+             "Adds 2 × slot_level HP to the ward (capped at max = 2 × level + INT mod).\n"
+             "slot_level: 1-9 (spell slot level to expend).\n"
+             "Returns true on success, false if agent is not Abjurer L3+ or has no ward.")
         ;
 }

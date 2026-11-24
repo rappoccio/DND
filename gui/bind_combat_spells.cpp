@@ -26,88 +26,6 @@ using namespace rpg;
 
 void bindCombatSpells(py::class_<CombatEngine>& engine) {
     engine
-        .def("convert_slot_to_sorcery_points",
-             &CombatEngine::convertSlotToSorceryPoints,
-             py::arg("battle_map"), py::arg("idx"), py::arg("slot_level"),
-             "Font of Magic (L2): convert a remaining spell slot (level 1-9) into that many\n"
-             "Sorcery Points (capped at max). Returns the new SP total, or -1 if it could not\n"
-             "be done (not a Sorcerer, or no slot of that level).")
-        .def("create_spell_slot",
-             &CombatEngine::createSpellSlot,
-             py::arg("battle_map"), py::arg("idx"), py::arg("slot_level"),
-             "Font of Magic (L2): spend Sorcery Points to create a temporary spell slot of\n"
-             "level 1-5 (cost 2/3/5/6/7). The slot is cleared at the next long rest. Returns\n"
-             "remaining SP, or -1 if it could not be done (not a Sorcerer, or not enough SP).")
-        .def("spend_sorcery_points_for_spell",
-             &CombatEngine::spendSorceryPointsForSpell,
-             py::arg("battle_map"), py::arg("idx"), py::arg("spell_level"),
-             "Aberrant Mind L3+ Psionic Sorcery: spend SP equal to spell_level to cast an\n"
-             "always-prepared psionic spell without expending a slot (free_cast path).\n"
-             "Returns True if SP were spent, False if gating fails (wrong class/subclass/level,\n"
-             "spell_level < 1, or insufficient SP).")
-        .def_static("metamagic_sp_cost",
-                    &CombatEngine::metamagicSpCost,
-                    py::arg("option"),
-                    "Sorcery Point cost for a Metamagic option (2024 PHB).")
-        .def("sorcerer_bend_luck",
-             &CombatEngine::sorcererBendLuck,
-             py::arg("battle_map"), py::arg("idx"), py::arg("boost"),
-             "Bend Luck (Wild Magic Sorcerer L6+): spend 1 Sorcery Point to roll 1d4 and apply\n"
-             "it as a bonus (boost=True) or penalty (boost=False) to the next D20 Test. Returns\n"
-             "the 1d4 value, or 0 on failure (not a L6+ Wild Magic Sorcerer, or no Sorcery Point).")
-        .def("apply_boon_of_fate",
-             &CombatEngine::applyBoonOfFate,
-             py::arg("battle_map"), py::arg("idx"), py::arg("boost"),
-             "Boon of Fate (epic boon — Improve Fate): once per short-or-long rest (refreshed at\n"
-             "initiative), roll 2d4 and apply it as a bonus (boost=True) or penalty (boost=False)\n"
-             "to the next D20 Test (attack roll or saving throw). Returns the 2d4 value, or 0 on\n"
-             "failure (no Boon of Fate feat, or the use is already spent this rest).")
-        .def("roll_wild_magic_surge",
-             &CombatEngine::rollWildMagicSurge,
-             py::arg("battle_map"), py::arg("idx"),
-             "Wild Magic Surge (Wild Magic Sorcerer L3+): roll d100 on the curated surge table\n"
-             "and return a WildMagicSurgeResult (d100_roll, effect band 1-10, description). The\n"
-             "effect is applied by the caller. effect == 0 if not a L3+ Wild Magic Sorcerer.")
-        .def_static("wild_magic_surge_description",
-                    &CombatEngine::wildMagicSurgeDescription,
-                    py::arg("effect"),
-                    "Curated Wild Magic Surge table text for an effect band (1-10); '' if out of range.")
-        .def("apply_wild_magic_surge_effect",
-             &CombatEngine::applyWildMagicSurgeEffect,
-             py::arg("battle_map"), py::arg("idx"), py::arg("effect"),
-             "Apply the engine-handled part of a surge band. Currently band 1 (Plant Growth —\n"
-             "Quartered difficult terrain in a sphere on the caster); other bands return False.")
-        .def("activate_tides_of_chaos",
-             &CombatEngine::activateTidesOfChaos,
-             py::arg("battle_map"), py::arg("idx"),
-             "Tides of Chaos (Wild Magic Sorcerer L3+): spend the use to grant Advantage on the\n"
-             "caster's next D20 Test. Returns True if spent. Recharges on a long rest or when a\n"
-             "Wild Magic Surge fires (see maybe_wild_magic_surge).")
-        .def("arm_tides_for_initiative",
-             &CombatEngine::armTidesForInitiative,
-             py::arg("battle_map"), py::arg("idx"),
-             "Tides of Chaos spent on the caster's coming Initiative roll instead: same check and\n"
-             "spend as activate_tides_of_chaos, but the Advantage is held for this agent and used\n"
-             "by roll_initiative / roll_initiative_for. Returns True if spent.")
-        .def("maybe_wild_magic_surge",
-             &CombatEngine::maybeWildMagicSurge,
-             py::arg("battle_map"), py::arg("idx"),
-             "Wild Magic Surge trigger: call right after a Wild Magic Sorcerer resolves a spell\n"
-             "cast with a spell slot. Rolls 1d20 — on a 20, OR automatically if Tides of Chaos is\n"
-             "expended, it rolls + applies a surge and recharges Tides of Chaos. Returns the\n"
-             "applied WildMagicSurgeResult (effect == 0 if no surge occurred).")
-        .def("offer_wild_magic_surge",
-             &CombatEngine::offerWildMagicSurge,
-             py::arg("battle_map"), py::arg("idx"),
-             "Wild Magic Surge OFFER: same trigger as maybe_wild_magic_surge but only rolls, it does\n"
-             "not apply. Returns a WildMagicSurgeOffer — with Controlled Chaos (L14) options holds two\n"
-             "rolled bands, and with Tamed Surge (L18) can_choose_any lets you pick any band 1-10.\n"
-             "Pair with resolve_wild_magic_surge to apply the chosen band.")
-        .def("resolve_wild_magic_surge",
-             &CombatEngine::resolveWildMagicSurge,
-             py::arg("battle_map"), py::arg("idx"), py::arg("effect"), py::arg("tides_expended"),
-             "Apply a Wild Magic Surge band (1-10) chosen from a WildMagicSurgeOffer, recharging\n"
-             "Tides of Chaos if tides_expended. Returns the applied WildMagicSurgeResult.")
         .def("begin_cast",
              &CombatEngine::beginCast,
              py::arg("battle_map"), py::arg("action"),
@@ -207,11 +125,6 @@ void bindCombatSpells(py::class_<CombatEngine>& engine) {
              &CombatEngine::clearAllConcentration,
              py::arg("battle_map"),
              "Drop concentration for every concentrating agent (e.g. on End Combat).")
-        .def("clear_wild_magic_surge_effects",
-             &CombatEngine::clearWildMagicSurgeEffects,
-             py::arg("battle_map"),
-             "End every lingering Wild Magic Surge effect on every agent (End Combat): shield\n"
-             "(and its +2 AC), regen, bonus-action casting, teleport, skip-next-turn, extra action.")
         .def("can_countercharm", &CombatEngine::canCountercharm,
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("save_target_idx"), py::arg("action"),
              "True iff reactor (L7+ Bard, reaction free, alive, within 30ft+LoS of the save target — or the\n"
@@ -221,13 +134,6 @@ void bindCombatSpells(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("save_target_idx"),
              "True iff reactor == save_target, is a L9+ Fighter with >=1 Indomitable use, and is alive\n"
              "(reroll your OWN failed save; costs the use, not the reaction).")
-        .def("expend_arcane_ward_slot",
-             &CombatEngine::expendArcaneWardSlot,
-             py::arg("battle_map"), py::arg("agent_idx"), py::arg("slot_level"),
-             "Expend a spell slot as bonus action to charge Arcane Ward (for Abjurer Wizards L3+).\n"
-             "Adds 2 × slot_level HP to the ward (capped at max = 2 × level + INT mod).\n"
-             "slot_level: 1-9 (spell slot level to expend).\n"
-             "Returns true on success, false if agent is not Abjurer L3+ or has no ward.")
         .def("tick_effects",
              &CombatEngine::tickEffects,
              py::arg("battle_map"),

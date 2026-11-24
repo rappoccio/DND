@@ -5,7 +5,8 @@
 //  Part of the split-out CombatEngine implementation (see combat_internal.hpp).
 //  Subclasses: Draconic, Clockwork, Aberrant.
 //  Contents: Innate Sorcery, Sorcery Incarnate, Dragon Wings, Draconic Resistance, Trance
-//  of Order, Bastion of Law, Clockwork Cavalcade, Revelation in Flesh, Warping Implosion.
+//  of Order, Bastion of Law, Clockwork Cavalcade, Revelation in Flesh, Warping Implosion;
+//  Font of Magic, Metamagic costs, Psionic Sorcery, Bend Luck, Tides of Chaos, Wild Magic Surge.
 //
 //  Split out of combat_riders.cpp and combat_resources.cpp in COMBAT_REFACTOR_PLAN.md R6
 //  (plans/COMBAT_CLASS_SPLIT_PLAN.md).
@@ -398,5 +399,399 @@ int CombatEngine::warpingImplosion(BattleMap& bm, int caster_idx, int dest_col, 
          agentName(bm, caster_idx), affected);
     return affected;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Moved from combat_spells.cpp (COMBAT_CLASS_SPLIT_PLAN.md R6c)
+// ─────────────────────────────────────────────────────────────────────────────
+
+int CombatEngine::convertSlotToSorceryPoints(BattleMap& bm, int idx, int slot_level) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return -1;
+    if (slot_level < 1 || slot_level > 9) return -1;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.lacksClass(CharacterClass::Sorcerer)) return -1;
+
+    auto si = static_cast<std::size_t>(slot_level - 1);
+    if (stats.spell_slots_remaining[si] <= 0) return -1;   // no slot of that level to spend
+
+    Resource* sp = stats.getResource("Sorcery Points");
+    if (!sp) return -1;
+
+    stats.spell_slots_remaining[si] -= 1;
+    sp->gain(slot_level);  // gain SP equal to the slot level (capped at max by Resource::gain)
+    bm.setAgentStats(idx, stats);
+
+    log_("{} converts a level-{} slot into Sorcery Points (now {}/{})",
+         agentName(bm, idx), slot_level, sp->current, sp->max);
+    return sp->current;
+}
+
+int CombatEngine::createSpellSlot(BattleMap& bm, int idx, int slot_level) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return -1;
+    // Font of Magic creates only level 1-5 slots.
+    if (slot_level < 1 || slot_level > 5) return -1;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.lacksClass(CharacterClass::Sorcerer)) return -1;
+
+    static const int cost_by_level[6] = {0, 2, 3, 5, 6, 7};  // SP cost; index = slot level
+    int cost = cost_by_level[slot_level];
+
+    Resource* sp = stats.getResource("Sorcery Points");
+    if (!sp || sp->current < cost) return -1;
+
+    sp->spend(cost);
+    auto si = static_cast<std::size_t>(slot_level - 1);
+    stats.spell_slots_remaining[si] += 1;  // temporary slot; cleared at the next long rest
+    bm.setAgentStats(idx, stats);
+
+    log_("{} spends {} Sorcery Points to create a level-{} slot",
+         agentName(bm, idx), cost, slot_level);
+    return sp->current;
+}
+
+// Sorcerer Metamagic — Sorcery Point cost per option (2024 PHB).
+int CombatEngine::metamagicSpCost(MetamagicOption opt) noexcept
+{
+    switch (opt) {
+        case MetamagicHeightened:
+        case MetamagicQuickened:   return 2;
+        case MetamagicCareful:
+        case MetamagicDistant:
+        case MetamagicEmpowered:
+        case MetamagicExtended:
+        case MetamagicSeeking:
+        case MetamagicSubtle:
+        case MetamagicTransmuted:
+        case MetamagicTwinned:     return 1;
+        default:                   return 0;  // MetamagicNone
+    }
+}
+
+int CombatEngine::sorcererBendLuck(BattleMap& bm, int idx, bool boost) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return 0;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.classLevel(CharacterClass::Sorcerer) < 6) {
+        log_("{} cannot use Bend Luck (not a L6+ Wild Magic Sorcerer)", agentName(bm, idx));
+        return 0;
+    }
+
+    Resource* sp = stats.getResource("Sorcery Points");
+    if (!sp || sp->current < 1) {
+        log_("{} has no Sorcery Point for Bend Luck", agentName(bm, idx));
+        return 0;
+    }
+
+    sp->current -= 1;
+    int value = roll(4);                                 // 1d4
+    ctx_.pending_roll_bonus_ = boost ? value : -value;        // bonus or penalty to the next D20 Test
+    bm.setAgentStats(idx, stats);
+
+    log_("{} uses Bend Luck: {}{} to the next D20 Test ({} Sorcery Points left)",
+         agentName(bm, idx), boost ? "+" : "-", value, sp->current);
+    return value;
+}
+
+WildMagicSurgeResult CombatEngine::rollWildMagicSurge(BattleMap& bm, int idx) noexcept
+{
+    WildMagicSurgeResult res;
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return res;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.classLevel(CharacterClass::Sorcerer) < 3) {
+        log_("{} cannot surge (not a L3+ Wild Magic Sorcerer)", agentName(bm, idx));
+        return res;  // effect = 0
+    }
+
+    res.d100_roll  = roll(100);                       // 1-100
+    res.effect      = (res.d100_roll - 1) / 10 + 1;   // → band 1-10
+    res.description = wildMagicSurgeDescription(res.effect);
+
+    log_("{} Wild Magic Surge (d100={}, effect {}): {}",
+         agentName(bm, idx), res.d100_roll, res.effect, res.description);
+    return res;
+}
+
+std::string CombatEngine::wildMagicSurgeDescription(int effect) noexcept
+{
+    // Curated d100 surge table (bands of 10 → effect 1-10). Applying each effect is the
+    // caller's job; some bands are placeholders pending easier replacements (see notes).
+    switch (effect) {
+        case 1:  return "Plant Growth sprouts around your feet (difficult terrain in a sphere "
+                        "centered on you).";
+        case 2:  return "A spectral shield hovers near you for the next minute, granting you a "
+                        "+2 bonus to AC and immunity to Magic Missile.";
+        case 3:  return "For the next minute, you regain 5 Hit Points at the start of each of "
+                        "your turns.";
+        case 4:  return "Up to three creatures of your choice within 30 ft take 4d10 Lightning "
+                        "damage.";
+        case 5:  return "You cast Blindness on a creature you can see within range "
+                        "(Constitution save or the Blinded condition).";
+        case 6:  return "For the next minute, your spells that take an action to cast can be "
+                        "cast as a Bonus Action.";
+        case 7:  return "Your next turn is skipped.";
+        case 8:  return "You can take one extra action on this turn.";
+        case 9:  return "Your weapons are all dropped and appear on a random square you can see.";
+        case 10: return "For the next minute, you can teleport up to 20 ft as a Bonus Action on "
+                        "each of your turns.";
+        default: return "";
+    }
+}
+
+bool CombatEngine::applyWildMagicSurgeEffect(BattleMap& bm, int idx, int effect) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    if (effect == 1) {  // "Plant Growth sprouts around your feet" — cast Plant Growth on the caster.
+        Cell origin = agents[static_cast<std::size_t>(idx)].origin;
+        const int size = agents[static_cast<std::size_t>(idx)].agent->getSize();
+        // 10-ft radius Sphere centered on the caster, pruned to what that point can reach —
+        // Total Cover blocks it like any other area.
+        auto cells = bm.pruneBlockedCells(AreaOrigin{origin, size},
+                                          sphereCellsAround(origin.col, origin.row, 10));
+        [[maybe_unused]] int id = bm.placeTerrainEffect(
+            "Plant Growth (Wild Magic Surge)", cells,
+            TerrainDifficulty::Quartered, 10 /* rounds ≈ 1 minute */, idx);
+        log_("{}: Plant Growth sprouts — difficult terrain over {} cells",
+             agentName(bm, idx), cells.size());
+        return true;
+    }
+
+    if (effect == 9) {  // "Your weapons are all dropped and appear on a random square you can see."
+        // Simplified: the weapons land on the caster's own cell as ground items.
+        Cell origin = agents[static_cast<std::size_t>(idx)].origin;
+        auto weapons = bm.getAgentWeapons(idx);
+        int dropped = 0;
+        for (auto& w : weapons) {
+            // Only real weapons drop — natural/innate attacks stay (Weapon::droppable()).
+            if (w.droppable()) {
+                [[maybe_unused]] int item_id = bm.placeItem(origin, w);
+                w = Weapon{};  // clear the slot back to the default (Unarmed)
+                ++dropped;
+            }
+        }
+        if (dropped > 0) bm.setAgentWeapons(idx, weapons);
+        log_("{}: Wild Magic Surge drops {} weapon(s) to the ground", agentName(bm, idx), dropped);
+        return true;
+    }
+
+    // Bands 2/3/6/7/8/10 are per-agent state effects, ticked at the start of the agent's turns.
+    constexpr int kMinuteRounds = 10;
+    Agent::Stats stats = bm.getAgentStats(idx);
+    switch (effect) {
+        case 2:  // Spectral shield: +2 AC + Magic Missile immunity for 1 minute.
+            stats.ac_temporary_modifications += 2;       // removed when wild_magic_shield_turns hits 0
+            stats.wild_magic_shield_turns = kMinuteRounds;
+            log_("{}: a spectral shield grants +2 AC and Magic Missile immunity for 1 minute",
+                 agentName(bm, idx));
+            break;
+        case 3:  // Regain 5 HP at the start of each of your turns for 1 minute.
+            stats.wild_magic_regen_turns = kMinuteRounds;
+            log_("{}: surging vitality — regain 5 HP at the start of each turn for 1 minute",
+                 agentName(bm, idx));
+            break;
+        case 6:  // For 1 minute, action-cast spells can be cast as a Bonus Action (GUI-enforced).
+            stats.wild_magic_bonus_cast_turns = kMinuteRounds;
+            log_("{}: for 1 minute, spells that take an action can be cast as a Bonus Action",
+                 agentName(bm, idx));
+            break;
+        case 7:  // Your next turn is skipped.
+            stats.wild_magic_skip_next_turn = true;
+            log_("{}: the surge will skip their next turn", agentName(bm, idx));
+            break;
+        case 8:  // You can take one extra action on this turn (enforced by the GUI turn economy).
+            stats.wild_magic_extra_action = true;
+            log_("{}: the surge grants one extra action this turn", agentName(bm, idx));
+            break;
+        case 10: // For 1 minute, teleport up to 20 ft as a Bonus Action each turn (GUI-enforced).
+            stats.wild_magic_teleport_bonus_turns = kMinuteRounds;
+            log_("{}: for 1 minute, can teleport up to 20 ft as a Bonus Action each turn",
+                 agentName(bm, idx));
+            break;
+        default:
+            return false;  // applied by the caller / not yet wired
+    }
+    bm.setAgentStats(idx, stats);
+    return true;
+}
+
+bool CombatEngine::activateTidesOfChaos(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.classLevel(CharacterClass::Sorcerer) < 3) {
+        log_("{} cannot use Tides of Chaos (not a L3+ Wild Magic Sorcerer)", agentName(bm, idx));
+        return false;
+    }
+
+    Resource* tides = stats.getResource("Tides of Chaos");
+    if (!tides || tides->current < 1) {
+        log_("{} has no Tides of Chaos use left (recharges on a long rest or a Wild Magic Surge)",
+             agentName(bm, idx));
+        return false;
+    }
+
+    tides->current -= 1;
+    grantPendingAdvantage(true, idx);            // Advantage on idx's next D20 Test, nobody else's
+    bm.setAgentStats(idx, stats);
+
+    log_("{} uses Tides of Chaos: Advantage on the next D20 Test", agentName(bm, idx));
+    return true;
+}
+
+bool CombatEngine::armTidesForInitiative(BattleMap& bm, int idx) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.classLevel(CharacterClass::Sorcerer) < 3) {
+        log_("{} cannot use Tides of Chaos (not a L3+ Wild Magic Sorcerer)", agentName(bm, idx));
+        return false;
+    }
+
+    auto& armed = ctx_.tides_on_initiative_;
+    if (std::find(armed.begin(), armed.end(), idx) != armed.end()) return true;  // already spent
+
+    Resource* tides = stats.getResource("Tides of Chaos");
+    if (!tides || tides->current < 1) {
+        log_("{} has no Tides of Chaos use left (recharges on a long rest or a Wild Magic Surge)",
+             agentName(bm, idx));
+        return false;
+    }
+
+    tides->current -= 1;
+    bm.setAgentStats(idx, stats);
+    armed.push_back(idx);
+    return true;
+}
+
+bool CombatEngine::spendSorceryPointsForSpell(BattleMap& bm, int idx, int spell_level) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return false;
+    if (spell_level < 1) return false;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
+        stats.sorcerer_subclass != SorcererSubclass::AberrantPath ||
+        stats.classLevel(CharacterClass::Sorcerer) < 3) {
+        return false;
+    }
+
+    Resource* sp = stats.getResource("Sorcery Points");
+    if (!sp || sp->current < spell_level) return false;
+
+    sp->spend(spell_level);
+    bm.setAgentStats(idx, stats);
+
+    log_("{} spends {} Sorcery Points to cast a level-{} psionic spell",
+         agentName(bm, idx), spell_level, spell_level);
+    return true;
+}
+
+WildMagicSurgeResult CombatEngine::maybeWildMagicSurge(BattleMap& bm, int idx) noexcept
+{
+    // Non-interactive path: offer, then auto-apply the first rolled band (no Controlled Chaos /
+    // Tamed Surge choice — the GUI uses offerWildMagicSurge + resolveWildMagicSurge for those).
+    WildMagicSurgeOffer offer = offerWildMagicSurge(bm, idx);
+    if (!offer.surged || offer.options.empty()) return WildMagicSurgeResult{};
+    return resolveWildMagicSurge(bm, idx, offer.options.front(), offer.tides_expended);
+}
+
+WildMagicSurgeOffer CombatEngine::offerWildMagicSurge(BattleMap& bm, int idx) noexcept
+{
+    WildMagicSurgeOffer offer;                   // surged == false → no surge
+    auto agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return offer;
+
+    Agent::Stats stats = bm.getAgentStats(idx);
+    if (stats.lacksClass(CharacterClass::Sorcerer) ||
+        stats.sorcerer_subclass != SorcererSubclass::WildMagicPath || stats.classLevel(CharacterClass::Sorcerer) < 3) {
+        return offer;                            // silent: only Wild Magic Sorcerers surge
+    }
+
+    // Tides of Chaos: if it is currently expended, the next slot-spell cast forces a surge
+    // (and the surge then recharges it). Otherwise a surge needs a natural 20 on a d20.
+    Resource* tides = stats.getResource("Tides of Chaos");
+    offer.tides_expended = tides && tides->current < tides->max;
+
+    const int d20 = roll(20);
+    const bool surge = offer.tides_expended || (d20 == 20);
+    log_("{}: Wild Magic Surge check — d20={}{}", agentName(bm, idx), d20,
+         offer.tides_expended ? " (Tides of Chaos forces a surge)" : "");
+    if (!surge) return offer;
+
+    offer.surged = true;
+    // Roll the table. Controlled Chaos (L14): roll twice and keep both bands so the caller may use
+    // either result.
+    const int rolls = (stats.classLevel(CharacterClass::Sorcerer) >= 14) ? 2 : 1;
+    for (int i = 0; i < rolls; ++i) {
+        WildMagicSurgeResult r = rollWildMagicSurge(bm, idx);   // rolls d100, classifies, logs
+        if (r.effect > 0 &&
+            std::find(offer.options.begin(), offer.options.end(), r.effect) == offer.options.end())
+            offer.options.push_back(r.effect);
+    }
+    // Tamed Surge (L18): the caller may replace the rolled result with any band 1-10.
+    offer.can_choose_any = (stats.classLevel(CharacterClass::Sorcerer) >= 18);
+    return offer;
+}
+
+WildMagicSurgeResult CombatEngine::resolveWildMagicSurge(BattleMap& bm, int idx, int effect,
+                                                         bool tides_expended) noexcept
+{
+    WildMagicSurgeResult res;                    // effect == 0 → nothing applied
+    if (effect < 1 || effect > 10) return res;
+
+    res.effect      = effect;
+    res.description = wildMagicSurgeDescription(effect);
+    applyWildMagicSurgeEffect(bm, idx, effect);  // mutates + persists stats internally
+    if (tides_expended) {
+        // Re-fetch (applyWildMagicSurgeEffect may have written stats) before recharging Tides
+        // so the surge's own state changes aren't clobbered.
+        Agent::Stats fresh = bm.getAgentStats(idx);
+        if (Resource* t2 = fresh.getResource("Tides of Chaos")) {
+            t2->current = t2->max;
+            bm.setAgentStats(idx, fresh);
+            log_("{}: the surge recharges Tides of Chaos", agentName(bm, idx));
+        }
+    }
+    return res;
+}
+
+void CombatEngine::clearWildMagicSurgeEffects(BattleMap& bm) noexcept
+{
+    for (int i = 0; i < static_cast<int>(bm.placedAgents().size()); ++i) {
+        Agent::Stats st = bm.getAgentStats(i);
+        if (st.wild_magic_shield_turns == 0 && st.wild_magic_regen_turns == 0 &&
+            st.wild_magic_bonus_cast_turns == 0 && st.wild_magic_teleport_bonus_turns == 0 &&
+            !st.wild_magic_skip_next_turn && !st.wild_magic_extra_action)
+            continue;
+        if (st.wild_magic_shield_turns > 0) st.ac_temporary_modifications -= 2;  // band 2's +2 AC
+        st.wild_magic_shield_turns         = 0;
+        st.wild_magic_regen_turns          = 0;
+        st.wild_magic_bonus_cast_turns     = 0;
+        st.wild_magic_teleport_bonus_turns = 0;
+        st.wild_magic_skip_next_turn       = false;
+        st.wild_magic_extra_action         = false;
+        bm.setAgentStats(i, st);
+    }
+}
+
 
 } // namespace rpg

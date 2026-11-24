@@ -123,4 +123,47 @@ void CombatEngine::regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept
          }());
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Moved from combat_spells.cpp (COMBAT_CLASS_SPLIT_PLAN.md R6c)
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool CombatEngine::expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept
+{
+    auto agents = bm.placedAgents();
+    if (agent_idx < 0 || agent_idx >= static_cast<int>(agents.size())) return false;
+
+    Agent::Stats stats = bm.getAgentStats(agent_idx);
+
+    // Validate: Abjurer L3+ with active ward
+    if (stats.lacksClass(Wizard) || stats.wizard_subclass != AbjurerPath ||
+        stats.classLevel(CharacterClass::Wizard) < 3 || stats.temp_hp <= 0) {
+        return false;
+    }
+
+    // Validate: slot_level is valid (1-9)
+    if (slot_level < 1 || slot_level > 9) return false;
+
+    // Validate: agent has remaining spell slot at this level
+    if (stats.spell_slots_remaining[static_cast<std::size_t>(slot_level - 1)] <= 0) {
+        return false;
+    }
+
+    // Expend the slot
+    stats.spell_slots_remaining[static_cast<std::size_t>(slot_level - 1)]--;
+
+    // Charge the ward
+    int max_ward = 2 * stats.classLevel(CharacterClass::Wizard) + (stats.intel - 10) / 2;
+    int ward_gain = 2 * slot_level;
+    stats.temp_hp = std::min(stats.temp_hp + ward_gain, max_ward);
+
+    // Save stats back
+    bm.setAgentStats(agent_idx, stats);
+
+    log_("{} expends Level {} slot, Arcane Ward now {}/{}",
+         agentName(bm, agent_idx), slot_level, stats.temp_hp, max_ward);
+
+    return true;
+}
+
+
 } // namespace rpg

@@ -81,5 +81,12 @@ void bindCombatFeats(py::class_<CombatEngine>& engine) {
              "Interception fighting style (reaction): spend the interceptor's reaction to prevent\n"
              "(1d10 + Proficiency Bonus) damage to the target, capped at damage_taken (modeled as a\n"
              "heal-back, like Protective Field). Returns the damage prevented, or -1 if it could not be used.")
+        .def("apply_boon_of_fate",
+             &CombatEngine::applyBoonOfFate,
+             py::arg("battle_map"), py::arg("idx"), py::arg("boost"),
+             "Boon of Fate (epic boon — Improve Fate): once per short-or-long rest (refreshed at\n"
+             "initiative), roll 2d4 and apply it as a bonus (boost=True) or penalty (boost=False)\n"
+             "to the next D20 Test (attack roll or saving throw). Returns the 2d4 value, or 0 on\n"
+             "failure (no Boon of Fate feat, or the use is already spent this rest).")
         ;
 }

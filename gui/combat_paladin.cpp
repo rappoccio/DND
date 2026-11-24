@@ -407,4 +407,29 @@ bool CombatEngine::activateLivingLegend(BattleMap& bm, int idx) noexcept
     return true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Moved from combat_core.cpp (COMBAT_CLASS_SPLIT_PLAN.md R6c)
+// ─────────────────────────────────────────────────────────────────────────────
+
+int CombatEngine::auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept
+{
+    return rules::auraSaveBonus(bm, agent_idx);
+}
+
+bool CombatEngine::hasAuraOfCourage(const BattleMap& bm, int agent_idx) const noexcept
+{
+    return rules::hasAuraOfCourage(bm, agent_idx);
+}
+
+bool CombatEngine::hasAuraOfWarding(const BattleMap& bm, int agent_idx) const noexcept
+{
+    return rules::hasAuraOfWarding(bm, agent_idx);
+}
+
+bool CombatEngine::hasAuraOfAlacrity(const BattleMap& bm, int agent_idx) const noexcept
+{
+    return rules::hasAuraOfAlacrity(bm, agent_idx);
+}
+
+
 } // namespace rpg

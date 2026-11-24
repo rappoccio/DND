@@ -311,26 +311,6 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("agent_idx"),
              "RAVENLOFT M1: the summed passive bonuses of the agent's carried, switched-on items\n"
              "(class-limited spell bonuses only when the agent has that class).")
-        .def("aura_save_bonus",
-             &CombatEngine::auraSaveBonus,
-             py::arg("battle_map"), py::arg("agent_idx"),
-             "Aura of Protection: the bonus this agent adds to every saving throw from a Paladin\n"
-             "L6+ (itself or a same-team ally within 10 ft, 30 ft at L18). 0 if none in range.")
-        .def("has_aura_of_courage",
-             &CombatEngine::hasAuraOfCourage,
-             py::arg("battle_map"), py::arg("agent_idx"),
-             "Aura of Courage: True iff this agent is immune to Frightened (a Paladin L10+ aura\n"
-             "reaches it — itself or a same-team ally in range).")
-        .def("has_aura_of_warding",
-             &CombatEngine::hasAuraOfWarding,
-             py::arg("battle_map"), py::arg("agent_idx"),
-             "Aura of Warding (Oath of the Ancients L7+): True iff this agent has Resistance to\n"
-             "Necrotic/Psychic/Radiant (an allied Ancients Paladin L7+ aura reaches it).")
-        .def("has_aura_of_alacrity",
-             &CombatEngine::hasAuraOfAlacrity,
-             py::arg("battle_map"), py::arg("agent_idx"),
-             "Aura of Alacrity (Oath of Glory L7+): True iff this agent's Speed is +10 ft (an allied\n"
-             "Glory Paladin L7+ aura reaches it — itself or a same-team ally in range).")
         .def("save_mod_for",
              &CombatEngine::saveModFor,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("ability"),

@@ -239,6 +239,14 @@ confirm the cluster split. The class files should come out as separate communiti
     after is byte-identical; 0 compiler warnings; `./test.sh` 285/0, no golden changed.
   - Adding a class feature now touches `combat_<class>.cpp`, that class's block in
     `combat.hpp`, and `bind_combat_<class>.cpp`.
+- **R6c. Done 2026-11-24.** The Sorcerer/Wild Magic and Paladin-aura code R6b left in shared
+  TUs moved to its class, with declarations and bindings: Font of Magic, `metamagicSpCost`,
+  Psionic Sorcery, Bend Luck, Tides of Chaos and the Wild Magic Surge family →
+  `combat_sorcerer.cpp`; `expendArcaneWardSlot` → `combat_wizard.cpp`; `applyBoonOfFate`,
+  `consumeStrengthenBonus` → `combat_feats.cpp` (all from `combat_spells.cpp`); the four
+  Paladin aura forwarders → `combat_paladin.cpp` (from `combat_core.cpp`). 626 non-blank lines
+  moved as a multiset; API dump byte-identical; 0 warnings; 285/0. Still in shared TUs:
+  Shadowy Dodge (`combat_attack.cpp`) and any other class-flavoured stragglers.
 - **Bound methods no suite names** (D6's list; some are reached indirectly):
   `vanish_orphaned_companions`, `apply_precision_attack_effect`, `can_peerless_aim`,
   `apply_sentinel_guard`, `apply_open_hand_rider`, `consume_bonus_attack`,

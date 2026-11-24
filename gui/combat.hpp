@@ -157,90 +157,6 @@ public:
     int damageAgent(BattleMap& bm, int idx, int amount) noexcept;
     static int healAgent  (BattleMap& bm, int idx, int amount) noexcept;
 
-    // ── Sorcerer ──────────────────────────────────────────────────────────
-
-    // Font of Magic (L2): convert a remaining spell slot of slot_level (1-9) into
-    // slot_level Sorcery Points (capped at max). Returns new SP total, or -1 if it
-    // could not be done (not a Sorcerer / no such slot).
-    int convertSlotToSorceryPoints(BattleMap& bm, int idx, int slot_level) noexcept;
-
-    // Font of Magic (L2): spend Sorcery Points to create a temporary spell slot of
-    // slot_level (1-5; cost 2/3/5/6/7). The slot is cleared at the next long rest.
-    // Returns remaining SP, or -1 if it could not be done (not a Sorcerer / not enough SP).
-    int createSpellSlot(BattleMap& bm, int idx, int slot_level) noexcept;
-
-    // Sorcerer Metamagic — Sorcery Point cost per option (2024 PHB).
-    static int metamagicSpCost(MetamagicOption opt) noexcept;
-
-    // Wild Magic — Bend Luck (Sorcerer L6+): spend 1 Sorcery Point to roll 1d4 and apply it
-    // as a bonus (boost=true) or penalty (boost=false) to the next D20 Test, via the additive
-    // pending_roll_bonus_ path. Returns the 1d4 value rolled, or 0 on failure (not a L6+ Wild
-    // Magic Sorcerer, or not enough Sorcery Points).
-    int sorcererBendLuck(BattleMap& bm, int idx, bool boost) noexcept;
-
-    // Boon of Fate (epic boon — Improve Fate): once per short-or-long rest (also refreshed at
-    // initiative), roll 2d4 and apply it as a bonus (boost=true) or penalty (boost=false) to the
-    // next D20 Test (attack roll or saving throw), via the pending_roll_bonus_ path — the same
-    // primitive Bend Luck / Bardic Inspiration / Cutting Words use. Returns the 2d4 value rolled,
-    // or 0 on failure (no Boon of Fate feat, or the use is already spent this rest).
-    int applyBoonOfFate(BattleMap& bm, int idx, bool boost) noexcept;
-
-    // Dhampir Vampiric Bite — Strengthen: return and clear `idx`'s held bonus (0 if none). Called
-    // by each roll it may land on: the next attack roll (rollInFlightAttack) or ability check
-    // (lock picking, door/chest forcing, chest traps, grapple escape).
-    int consumeStrengthenBonus(BattleMap& bm, int idx) noexcept;
-
-    // Wild Magic Surge (Sorcerer L3+, College of Wild Magic): roll d100 on the curated surge
-    // table and return the classified effect band (1-10) + description. The effect itself is
-    // applied by the caller (see known_limitations.md). effect == 0 if the agent is not a
-    // L3+ Wild Magic Sorcerer.
-    WildMagicSurgeResult rollWildMagicSurge(BattleMap& bm, int idx) noexcept;
-
-    // Curated Wild Magic Surge table text for an effect band (1-10); "" if out of range.
-    static std::string wildMagicSurgeDescription(int effect) noexcept;
-
-    // Apply the engine-handled portion of a Wild Magic Surge effect band. Currently only
-    // band 1 (Plant Growth — Quartered difficult terrain in a sphere on the caster) is applied
-    // here; other bands return false (their application is handled by the caller / not yet
-    // wired). Returns true if the engine applied the effect.
-    bool applyWildMagicSurgeEffect(BattleMap& bm, int idx, int effect) noexcept;
-
-    // Tides of Chaos (Wild Magic Sorcerer L3+): spend the use to grant the caster Advantage on
-    // their next D20 Test (via grantPendingAdvantage). One use, regained on a long rest OR when a
-    // Wild Magic Surge fires (see maybeWildMagicSurge). Returns true if the use was spent.
-    bool activateTidesOfChaos(BattleMap& bm, int idx) noexcept;
-    // The same use, spent instead on the caster's coming Initiative roll (2024: Initiative is
-    // a D20 Test). Same eligibility check and resource spend as activateTidesOfChaos, but the
-    // Advantage is held for this agent alone and used by rollInitiative / rollInitiativeFor.
-    // Call before rolling. Returns true if the use was spent.
-    bool armTidesForInitiative(BattleMap& bm, int idx) noexcept;
-
-    // Aberrant Mind L3+ Psionic Sorcery: spend `spell_level` Sorcery Points to cast a psionic-list
-    // spell without consuming a spell slot. Gate: AberrantPath L3+, spell_level >= 1, >= spell_level SP.
-    // Caller must pass free_cast=true on the SpellAction so C++ skips slot consumption. Returns true
-    // if the SP were spent (false on gating or insufficient SP).
-    bool spendSorceryPointsForSpell(BattleMap& bm, int idx, int spell_level) noexcept;
-
-    // Wild Magic Surge trigger (Sorcerer L3+, Wild Magic). Call immediately after the caster
-    // resolves a Sorcerer spell cast with a spell slot (level ≥ 1). Rolls 1d20: on a natural 20
-    // — OR automatically if Tides of Chaos is currently expended — it rolls + applies a surge
-    // (rollWildMagicSurge + applyWildMagicSurgeEffect) and recharges Tides of Chaos. Returns the
-    // applied surge (effect band 1-10), or effect == 0 if no surge occurred / not eligible.
-    WildMagicSurgeResult maybeWildMagicSurge(BattleMap& bm, int idx) noexcept;
-
-    // Wild Magic Surge OFFER phase — same trigger logic as maybeWildMagicSurge (nat-20 or an
-    // expended Tides of Chaos forces a surge) but it only ROLLS, it does not apply. With Controlled
-    // Chaos (L14) it rolls the table twice so the caller can use either result; with Tamed Surge
-    // (L18) it sets can_choose_any so the caller may replace the roll with any band 1-10. Pair with
-    // resolveWildMagicSurge() to apply the chosen band. surged == false means no surge occurred.
-    WildMagicSurgeOffer offerWildMagicSurge(BattleMap& bm, int idx) noexcept;
-
-    // Apply a chosen Wild Magic Surge band (1-10) selected from a WildMagicSurgeOffer:
-    // applyWildMagicSurgeEffect + (if tides_expended) recharge Tides of Chaos. Returns the applied
-    // WildMagicSurgeResult (effect == 0 if the band is out of range).
-    WildMagicSurgeResult resolveWildMagicSurge(BattleMap& bm, int idx, int effect,
-                                               bool tides_expended) noexcept;
-
     // ── Per-agent turn count ──────────────────────────────────────────────
     //
     // The common case is exactly 1 turn per round; only store overrides.
@@ -796,27 +712,10 @@ public:
     // allies from selective AoEs, and restricting heals to allies.
     [[nodiscard]] bool areAllies(const BattleMap& bm, int a_idx, int b_idx) const noexcept;
 
-    // ── Paladin auras (team-scoped emanations) ─────────────────────────────
-    // A Paladin's aura reaches itself and same-team allies within 10 ft (30 ft
-    // at L18). The aura is suppressed while the Paladin is unconscious/incapacitated.
-    // The shared primitive is rules::bestPaladinAura (rules.hpp) — the strongest CHA-mod
-    // (min 1) bonus from any qualifying Paladin of level >= min_level reaching agent_idx, or 0
-    // if none, optionally oath-scoped. It has no engine forwarder: it is unbound to Python and
-    // every caller is inside rules.hpp itself (R3's forwarder cleanup).
-    // Aura of Protection (L6+): the bonus that agent_idx adds to every saving throw.
-    [[nodiscard]] int auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept;
-    // Aura of Courage (L10+): agent_idx can't be Frightened while in an allied Paladin's aura.
-    [[nodiscard]] bool hasAuraOfCourage(const BattleMap& bm, int agent_idx) const noexcept;
     // Stat-block Condition Immunity: true (and logged) if agent_idx is immune to the named
     // condition, in which case the caller must not apply it.
     [[nodiscard]] bool conditionImmune(const BattleMap& bm, int agent_idx,
                                        std::string_view condition_name) const noexcept;
-    // Aura of Warding (Oath of the Ancients L7+): agent_idx has Resistance to Necrotic, Psychic, and
-    // Radiant damage while in an allied Ancients Paladin's Aura of Protection.
-    [[nodiscard]] bool hasAuraOfWarding(const BattleMap& bm, int agent_idx) const noexcept;
-    // Aura of Alacrity (Oath of Glory L7+): agent_idx's Speed increases by 10 ft while in an allied
-    // Glory Paladin's Aura of Protection (the paladin itself always benefits — it is in its own aura).
-    [[nodiscard]] bool hasAuraOfAlacrity(const BattleMap& bm, int agent_idx) const noexcept;
     // Advantage emanation (data-driven, on Spell::grants_advantage_aura): true if agent_idx is
     // inside an active advantage-granting emanation it benefits from — i.e. it is the caster, or
     // a same-faction ally, within the spell's radius of a conscious caster whose persistent
@@ -1049,12 +948,6 @@ public:
                bool sends_home = false, int spell_idx = -1) noexcept;
     // Put a creature whose banishment ended back on the board (its space, else the nearest free one).
     void returnFromBanishment(BattleMap& bm, int idx) noexcept;
-
-    // ── Abjurer Wizard Arcane Ward ────────────────────────────────────────
-    // Expend a spell slot as a bonus action to charge Arcane Ward (L3+).
-    // Adds 2 × slot_level HP to the ward (capped at max = 2 × level + INT mod).
-    // Returns true on success, false if agent is not an Abjurer L3+ or has no ward.
-    [[nodiscard]] bool expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept;
 
     // ── Rest and Recovery ────────────────────────────────────────────────
     // Apply long rest to all agents: restore spell slots, resources, Portent Dice, etc.
@@ -1400,11 +1293,6 @@ public:
 
     // Drop concentration for every concentrating agent (e.g. on End Combat).
     void clearAllConcentration(BattleMap& bm);
-
-    // End every lingering Wild Magic Surge effect on every agent (End Combat): the 1-minute
-    // bands (2 shield — its +2 AC comes off too, 3 regen, 6 bonus-cast, 10 teleport) and the
-    // one-shot flags (7 skip-next-turn, 8 extra action). A minute never outlasts the fight.
-    void clearWildMagicSurgeEffects(BattleMap& bm) noexcept;
 
     // Grave Domain — Sentinel at Death's Door (L6, Reaction, WIS-mod uses per Long Rest): when the
     // cleric, or a Bloodied ally it can see within 60 ft, is hit by a weapon attack, halve the damage
@@ -2228,6 +2116,24 @@ public:
     [[nodiscard]] AttackResult applySoulOfVengeance(BattleMap& bm, int paladin_idx,
                                                     int attacker_idx, int weapon_idx) noexcept;
 
+    // ── Paladin auras (team-scoped emanations) ─────────────────────────────
+    // A Paladin's aura reaches itself and same-team allies within 10 ft (30 ft
+    // at L18). The aura is suppressed while the Paladin is unconscious/incapacitated.
+    // The shared primitive is rules::bestPaladinAura (rules.hpp) — the strongest CHA-mod
+    // (min 1) bonus from any qualifying Paladin of level >= min_level reaching agent_idx, or 0
+    // if none, optionally oath-scoped. It has no engine forwarder: it is unbound to Python and
+    // every caller is inside rules.hpp itself (R3's forwarder cleanup).
+    // Aura of Protection (L6+): the bonus that agent_idx adds to every saving throw.
+    [[nodiscard]] int auraSaveBonus(const BattleMap& bm, int agent_idx) const noexcept;
+    // Aura of Courage (L10+): agent_idx can't be Frightened while in an allied Paladin's aura.
+    [[nodiscard]] bool hasAuraOfCourage(const BattleMap& bm, int agent_idx) const noexcept;
+    // Aura of Warding (Oath of the Ancients L7+): agent_idx has Resistance to Necrotic, Psychic, and
+    // Radiant damage while in an allied Ancients Paladin's Aura of Protection.
+    [[nodiscard]] bool hasAuraOfWarding(const BattleMap& bm, int agent_idx) const noexcept;
+    // Aura of Alacrity (Oath of Glory L7+): agent_idx's Speed increases by 10 ft while in an allied
+    // Glory Paladin's Aura of Protection (the paladin itself always benefits — it is in its own aura).
+    [[nodiscard]] bool hasAuraOfAlacrity(const BattleMap& bm, int agent_idx) const noexcept;
+
     // ══ Ranger (combat_ranger.cpp) ═══════════════════════════════════════════════════════════════
     // Misty Wanderer (Fey Wanderer Ranger L15): a slotless Misty Step (Bonus Action, ≤30 ft to an
     // unoccupied space you can see), spending one "Misty Wanderer" use. ally_idx >= 0 brings one willing
@@ -2439,6 +2345,81 @@ public:
     // number of creatures damaged, or -1 on failure (gating / range / occupied dest / no use & < 5 SP).
     int warpingImplosion(BattleMap& bm, int caster_idx, int dest_col, int dest_row) noexcept;
 
+    // Font of Magic (L2): convert a remaining spell slot of slot_level (1-9) into
+    // slot_level Sorcery Points (capped at max). Returns new SP total, or -1 if it
+    // could not be done (not a Sorcerer / no such slot).
+    int convertSlotToSorceryPoints(BattleMap& bm, int idx, int slot_level) noexcept;
+
+    // Font of Magic (L2): spend Sorcery Points to create a temporary spell slot of
+    // slot_level (1-5; cost 2/3/5/6/7). The slot is cleared at the next long rest.
+    // Returns remaining SP, or -1 if it could not be done (not a Sorcerer / not enough SP).
+    int createSpellSlot(BattleMap& bm, int idx, int slot_level) noexcept;
+
+    // Sorcerer Metamagic — Sorcery Point cost per option (2024 PHB).
+    static int metamagicSpCost(MetamagicOption opt) noexcept;
+
+    // Wild Magic — Bend Luck (Sorcerer L6+): spend 1 Sorcery Point to roll 1d4 and apply it
+    // as a bonus (boost=true) or penalty (boost=false) to the next D20 Test, via the additive
+    // pending_roll_bonus_ path. Returns the 1d4 value rolled, or 0 on failure (not a L6+ Wild
+    // Magic Sorcerer, or not enough Sorcery Points).
+    int sorcererBendLuck(BattleMap& bm, int idx, bool boost) noexcept;
+
+    // Wild Magic Surge (Sorcerer L3+, College of Wild Magic): roll d100 on the curated surge
+    // table and return the classified effect band (1-10) + description. The effect itself is
+    // applied by the caller (see known_limitations.md). effect == 0 if the agent is not a
+    // L3+ Wild Magic Sorcerer.
+    WildMagicSurgeResult rollWildMagicSurge(BattleMap& bm, int idx) noexcept;
+
+    // Curated Wild Magic Surge table text for an effect band (1-10); "" if out of range.
+    static std::string wildMagicSurgeDescription(int effect) noexcept;
+
+    // Apply the engine-handled portion of a Wild Magic Surge effect band. Currently only
+    // band 1 (Plant Growth — Quartered difficult terrain in a sphere on the caster) is applied
+    // here; other bands return false (their application is handled by the caller / not yet
+    // wired). Returns true if the engine applied the effect.
+    bool applyWildMagicSurgeEffect(BattleMap& bm, int idx, int effect) noexcept;
+
+    // Tides of Chaos (Wild Magic Sorcerer L3+): spend the use to grant the caster Advantage on
+    // their next D20 Test (via grantPendingAdvantage). One use, regained on a long rest OR when a
+    // Wild Magic Surge fires (see maybeWildMagicSurge). Returns true if the use was spent.
+    bool activateTidesOfChaos(BattleMap& bm, int idx) noexcept;
+    // The same use, spent instead on the caster's coming Initiative roll (2024: Initiative is
+    // a D20 Test). Same eligibility check and resource spend as activateTidesOfChaos, but the
+    // Advantage is held for this agent alone and used by rollInitiative / rollInitiativeFor.
+    // Call before rolling. Returns true if the use was spent.
+    bool armTidesForInitiative(BattleMap& bm, int idx) noexcept;
+
+    // Aberrant Mind L3+ Psionic Sorcery: spend `spell_level` Sorcery Points to cast a psionic-list
+    // spell without consuming a spell slot. Gate: AberrantPath L3+, spell_level >= 1, >= spell_level SP.
+    // Caller must pass free_cast=true on the SpellAction so C++ skips slot consumption. Returns true
+    // if the SP were spent (false on gating or insufficient SP).
+    bool spendSorceryPointsForSpell(BattleMap& bm, int idx, int spell_level) noexcept;
+
+    // Wild Magic Surge trigger (Sorcerer L3+, Wild Magic). Call immediately after the caster
+    // resolves a Sorcerer spell cast with a spell slot (level ≥ 1). Rolls 1d20: on a natural 20
+    // — OR automatically if Tides of Chaos is currently expended — it rolls + applies a surge
+    // (rollWildMagicSurge + applyWildMagicSurgeEffect) and recharges Tides of Chaos. Returns the
+    // applied surge (effect band 1-10), or effect == 0 if no surge occurred / not eligible.
+    WildMagicSurgeResult maybeWildMagicSurge(BattleMap& bm, int idx) noexcept;
+
+    // Wild Magic Surge OFFER phase — same trigger logic as maybeWildMagicSurge (nat-20 or an
+    // expended Tides of Chaos forces a surge) but it only ROLLS, it does not apply. With Controlled
+    // Chaos (L14) it rolls the table twice so the caller can use either result; with Tamed Surge
+    // (L18) it sets can_choose_any so the caller may replace the roll with any band 1-10. Pair with
+    // resolveWildMagicSurge() to apply the chosen band. surged == false means no surge occurred.
+    WildMagicSurgeOffer offerWildMagicSurge(BattleMap& bm, int idx) noexcept;
+
+    // Apply a chosen Wild Magic Surge band (1-10) selected from a WildMagicSurgeOffer:
+    // applyWildMagicSurgeEffect + (if tides_expended) recharge Tides of Chaos. Returns the applied
+    // WildMagicSurgeResult (effect == 0 if the band is out of range).
+    WildMagicSurgeResult resolveWildMagicSurge(BattleMap& bm, int idx, int effect,
+                                               bool tides_expended) noexcept;
+
+    // End every lingering Wild Magic Surge effect on every agent (End Combat): the 1-minute
+    // bands (2 shield — its +2 AC comes off too, 3 regen, 6 bonus-cast, 10 teleport) and the
+    // one-shot flags (7 skip-next-turn, 8 extra action). A minute never outlasts the fight.
+    void clearWildMagicSurgeEffects(BattleMap& bm) noexcept;
+
     // ══ Warlock (combat_warlock.cpp) ═════════════════════════════════════════════════════════════
     // One with Shadows (Warlock invocation 8): while in an area of Dim Light or Darkness,
     // cast Invisibility on self for free (no slot). Sets the Invisible condition (ends on the
@@ -2514,6 +2495,12 @@ public:
     // Rolls count d20s and populates agent's portent_dice deque.
     void regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept;
 
+    // ── Abjurer Wizard Arcane Ward ────────────────────────────────────────
+    // Expend a spell slot as a bonus action to charge Arcane Ward (L3+).
+    // Adds 2 × slot_level HP to the ward (capped at max = 2 × level + INT mod).
+    // Returns true on success, false if agent is not an Abjurer L3+ or has no ward.
+    [[nodiscard]] bool expendArcaneWardSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept;
+
     // ══ Feats, fighting styles, Epic Boons, Weapon Mastery, species (combat_feats.cpp) ═══════════
     // Lucky (Origin feat) — spend one Luck Point to grant the agent Advantage on its next
     // d20 Test (via grantPendingAdvantage, consumed by the next d20 roll). Returns true if a
@@ -2564,6 +2551,18 @@ public:
     // peerless_aim_available; the GUI prompts and calls this to turn the miss into a hit: sets
     // peerless_aim_used, rolls + applies weapon damage, and updates result (mirrors applyGuidedStrike).
     void applyPeerlessAim(BattleMap& bm, const Attack& action, AttackResult& result) noexcept;
+
+    // Boon of Fate (epic boon — Improve Fate): once per short-or-long rest (also refreshed at
+    // initiative), roll 2d4 and apply it as a bonus (boost=true) or penalty (boost=false) to the
+    // next D20 Test (attack roll or saving throw), via the pending_roll_bonus_ path — the same
+    // primitive Bend Luck / Bardic Inspiration / Cutting Words use. Returns the 2d4 value rolled,
+    // or 0 on failure (no Boon of Fate feat, or the use is already spent this rest).
+    int applyBoonOfFate(BattleMap& bm, int idx, bool boost) noexcept;
+
+    // Dhampir Vampiric Bite — Strengthen: return and clear `idx`'s held bonus (0 if none). Called
+    // by each roll it may land on: the next attack roll (rollInFlightAttack) or ability check
+    // (lock picking, door/chest forcing, chest traps, grapple escape).
+    int consumeStrengthenBonus(BattleMap& bm, int idx) noexcept;
 
 private:
     // Cross-cutting scratch state (RNG, logger, GUI hooks, one-shot pending-roll modifiers,

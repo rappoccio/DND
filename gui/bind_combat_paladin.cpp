@@ -84,5 +84,25 @@ void bindCombatPaladin(py::class_<CombatEngine>& engine) {
              "attacker's conditions.soul_of_vengeance_available), the paladin spends its reaction to make\n"
              "a melee attack at that foe. Returns the counter-attack's AttackResult (invalid if the\n"
              "reaction was already used).")
+        .def("aura_save_bonus",
+             &CombatEngine::auraSaveBonus,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Aura of Protection: the bonus this agent adds to every saving throw from a Paladin\n"
+             "L6+ (itself or a same-team ally within 10 ft, 30 ft at L18). 0 if none in range.")
+        .def("has_aura_of_courage",
+             &CombatEngine::hasAuraOfCourage,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Aura of Courage: True iff this agent is immune to Frightened (a Paladin L10+ aura\n"
+             "reaches it — itself or a same-team ally in range).")
+        .def("has_aura_of_warding",
+             &CombatEngine::hasAuraOfWarding,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Aura of Warding (Oath of the Ancients L7+): True iff this agent has Resistance to\n"
+             "Necrotic/Psychic/Radiant (an allied Ancients Paladin L7+ aura reaches it).")
+        .def("has_aura_of_alacrity",
+             &CombatEngine::hasAuraOfAlacrity,
+             py::arg("battle_map"), py::arg("agent_idx"),
+             "Aura of Alacrity (Oath of Glory L7+): True iff this agent's Speed is +10 ft (an allied\n"
+             "Glory Paladin L7+ aura reaches it — itself or a same-team ally in range).")
         ;
 }
