@@ -825,6 +825,19 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("archer_idx"), py::arg("weapon_idx"), py::arg("target_idx"),
              "Seeking Shot (replaces an attack, ranged weapon): the target makes a DEX save; fail =\n"
              "weapon damage + 2 dice Force, success = half the weapon damage. Returns ArcaneShotSaveResult.")
+        .def("curving_shot_targets", &CombatEngine::curvingShotTargets,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("original_idx"), py::arg("weapon_idx"),
+             "Curving Shot: the creatures a missed ranged shot may be rerolled against (seen by the\n"
+             "archer, in the weapon's range, within 60 ft of the original target).")
+        .def("apply_curving_shot", &CombatEngine::applyCurvingShot,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("original_idx"),
+             py::arg("new_target_idx"), py::arg("weapon_idx"),
+             "Curving Shot (Arcane Archer L7): after a ranged miss (conditions.curving_shot_available),\n"
+             "spend the Bonus Action and reroll the attack against new_target_idx. Returns the\n"
+             "AttackResult (invalid if the offer, target or Bonus Action isn't there).")
+        .def("apply_ever_ready_shot", &CombatEngine::applyEverReadyShot, py::arg("battle_map"),
+             "Ever-Ready Shot (Arcane Archer L10): at combat start, each archer with no Arcane Shot\n"
+             "uses left regains one. RNG-free.")
         .def("held_by_grasping_shot", &CombatEngine::heldByGraspingShot, py::arg("target_idx"),
              "True if the creature is Restrained by a Grasping Shot.")
         .def("apply_sweeping_attack",

@@ -830,6 +830,7 @@ class _Fight:
         self._trace_n = self._nagents
         self.order = list(eng.roll_initiative(bm))
         eng.apply_superior_inspiration(bm)
+        eng.apply_ever_ready_shot(bm)
         bm.clear_terrain_effects()
         for i in range(len(bm.placed_agents)):
             eng.apply_armor_multipliers(bm, i)

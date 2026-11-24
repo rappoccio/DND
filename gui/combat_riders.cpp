@@ -2903,6 +2903,74 @@ ArcaneShotSaveResult CombatEngine::seekingShot(BattleMap& bm, int archer_idx, in
     return finishArcaneSaveShot(bm, archer_idx, w, ArcaneShotSeeking, {target_idx}, res);
 }
 
+// ── Curving Shot (Arcane Archer L7, AA4) ─────────────────────────────────────
+// After a ranged weapon attack misses, a Bonus Action rerolls the attack against a different
+// creature the archer can see, within the weapon's range and within 60 ft of the original target.
+// Ranged weapons only (as AA3): a thrown weapon is already lying at the first target.
+std::vector<int> CombatEngine::curvingShotTargets(const BattleMap& bm, int archer_idx, int original_idx,
+                                                  int weapon_idx) const noexcept
+{
+    std::vector<int> out;
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (archer_idx < 0 || archer_idx >= n || original_idx < 0 || original_idx >= n) return out;
+    const PlacedAgent& apa = agents[static_cast<std::size_t>(archer_idx)];
+    const PlacedAgent& opa = agents[static_cast<std::size_t>(original_idx)];
+    const Weapon* w = arcaneShotWeapon(apa, weapon_idx);
+    if (!w) return out;
+    for (int i = 0; i < n; ++i) {
+        if (i == archer_idx || i == original_idx) continue;
+        const PlacedAgent& tpa = agents[static_cast<std::size_t>(i)];
+        if (tpa.removed_from_play || tpa.origin.z != apa.origin.z) continue;
+        if (bm.getAgentStats(i).hp_cur <= 0) continue;
+        if (sealedApart(bm, archer_idx, i)) continue;
+        if (footprintDistance(opa.origin, opa.agent->getSize(), tpa.origin, tpa.agent->getSize()) * 5 > 60)
+            continue;
+        if (!canAttack(*w, bm, apa.origin, apa.agent->getSize(), tpa.origin, tpa.agent->getSize())) continue;
+        if (!canPerceiveTarget(bm, archer_idx, i)) continue;
+        out.push_back(i);
+    }
+    return out;
+}
+
+AttackResult CombatEngine::applyCurvingShot(BattleMap& bm, int archer_idx, int original_idx,
+                                            int new_target_idx, int weapon_idx) noexcept
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (archer_idx < 0 || archer_idx >= n) return AttackResult{};
+    Agent::Conditions ac = bm.getAgentConditions(archer_idx);
+    if (!ac.curving_shot_available) return AttackResult{};   // only when the miss offered it
+    const std::vector<int> legal = curvingShotTargets(bm, archer_idx, original_idx, weapon_idx);
+    if (std::find(legal.begin(), legal.end(), new_target_idx) == legal.end()) return AttackResult{};
+    if (!spendBonusAction(bm, archer_idx)) return AttackResult{};
+    ac = bm.getAgentConditions(archer_idx);
+    ac.curving_shot_available = false;
+    bm.setAgentConditions(archer_idx, ac);
+    log_("{} curves the missed shot toward {} (Curving Shot, Bonus Action)",
+         agentName(bm, archer_idx), agentName(bm, new_target_idx));
+    // The reroll is a fresh attack roll against the new creature; a hit may then offer Arcane Shot.
+    // The Bonus Action is spent, so a miss here cannot offer Curving Shot again.
+    return executeAction(bm, Attack{archer_idx, new_target_idx, weapon_idx});
+}
+
+// ── Ever-Ready Shot (Arcane Archer L10, AA4) ─────────────────────────────────
+// When initiative is rolled, an Arcane Archer with no Arcane Shot uses left regains one. RNG-free;
+// called once at combat start (auto and real-dice initiative alike; replay/arena mirror it).
+void CombatEngine::applyEverReadyShot(BattleMap& bm) noexcept
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    for (int i = 0; i < n; ++i) {
+        Agent::Stats st = bm.getAgentStats(i);
+        if (st.fighter_subclass != ArcaneArcherPath || st.classLevel(CharacterClass::Fighter) < 10) continue;
+        Resource* au = st.getResource("Arcane Shot");
+        if (!au || au->current > 0 || au->max <= 0) continue;
+        au->gain(1);
+        bm.setAgentStats(i, st);
+        log_("{} regains an Arcane Shot use (Ever-Ready Shot)", agentName(bm, i));
+    }
+}
+
 GraspingEscapeResult CombatEngine::escapeGraspingShot(BattleMap& bm, int actor_idx, int target_idx) noexcept
 {
     GraspingEscapeResult res;

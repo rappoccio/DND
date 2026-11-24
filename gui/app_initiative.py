@@ -107,6 +107,10 @@ def begin_encounter(app):
         f.write("=== ENCOUNTER LOG (tracker mode) ===\n")
     app._mirror_tracker()
     app._combat_log_add(f"Encounter begins with {len(in_play)} in play: enter initiative.")
+    # Ever-Ready Shot (Arcane Archer L10): initiative is being rolled (at the table), so an
+    # archer out of Arcane Shot uses regains one, as in auto mode's begin_combat.
+    app.combat.apply_ever_ready_shot(app.bm)
+    app._flush_combat_log()
 
 
 def tracker_rows(app) -> list:
@@ -444,6 +448,8 @@ def begin_combat(app):
     # RNG-free, so it doesn't perturb the dice stream; applied before recording begins
     # (replay.py mirrors this) so checked replays stay in sync.
     app.combat.apply_superior_inspiration(app.bm)
+    # Ever-Ready Shot (Arcane Archer L10): an archer out of Arcane Shot uses regains one. RNG-free.
+    app.combat.apply_ever_ready_shot(app.bm)
     app.initiative_order    = order
     app.combat_active       = True
     app._open_sim_trace(resumed=False)          # before anything logs (sim_trace.py)

@@ -940,6 +940,65 @@ def offer_reckless_reroll(app, action, atk_idx, target_idx, atk_name, tgt_name, 
     app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Reckless Attack", options)
 
 
+def offer_curving_shot(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+    """Arcane Archer L7 Curving Shot: after a ranged weapon miss, spend the Bonus Action to reroll the
+    attack against a different creature the archer can see, within range and within 60 ft of the
+    original target. One option per legal creature (curving_shot_targets). A rerolled hit may then
+    take an on-hit Arcane Shot. Mirrors offer_reckless_reroll."""
+    from app_attacks import attack_outcome_msg   # local: app_attacks imports this module
+    targets = list(app.combat.curving_shot_targets(app.bm, atk_idx, target_idx, action.weapon_idx))
+
+    def _clear_offer():
+        c = app.combat.get_agent_conditions(app.bm, atk_idx)
+        if c.curving_shot_available:
+            c.curving_shot_available = False
+            app.combat.set_agent_conditions(app.bm, atk_idx, c)
+
+    def _done():
+        app._flush_combat_log()
+        app._sync_spell_effect_cache()
+        app._update_attack_overlay()
+        app._continue_attack_sequence_after_rider(atk_idx)
+
+    def _apply(new_idx):
+        app._combat_log_add(atk_msg)
+        new_name = app.bm.placed_agents[new_idx].name
+        new_result = app.combat.apply_curving_shot(app.bm, atk_idx, target_idx, new_idx, action.weapon_idx)
+        if not new_result.valid:
+            _clear_offer()
+            app._combat_log_add(f"{atk_name}: Curving Shot can't reach {new_name}.")
+            _done()
+            return
+        app._flush_combat_log()
+        new_msg = attack_outcome_msg(app, atk_name, new_name, new_result, "")
+        if new_result.hit:
+            app._spawn_flash(new_idx, f"Crit ({new_result.total_damage})" if new_result.critical
+                             else f"Hit ({new_result.total_damage})",
+                             FLASH_CRIT if new_result.critical else FLASH_GOOD)
+            if new_result.target_down:
+                app._drop_concentration_for_agent(new_idx)
+            if app.combat.get_agent_conditions(app.bm, atk_idx).arcane_shot_available:
+                offer_arcane_shot(app, atk_idx, new_idx, atk_name, new_name, new_result,
+                                  f"Curving Shot → {new_msg}", on_done=_done)
+                return
+        else:
+            app._spawn_flash(new_idx, "Miss", FLASH_BAD)
+        app._combat_log_add(f"Curving Shot → {new_msg}")
+        _done()
+
+    def _skip():
+        _clear_offer()
+        app._combat_log_add(atk_msg)
+        app._flush_combat_log()
+        app._continue_attack_sequence_after_rider(atk_idx)
+
+    options = [(f"Curve to {app.bm.placed_agents[i].name} (Bonus Action)", (lambda i=i: _apply(i)))
+               for i in targets]
+    options.append(("Skip Curving Shot", _skip))
+    app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: missed — Curving Shot?", options,
+                   on_cancel=_skip)
+
+
 def offer_homing_strike(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
     """Soulknife L9 Homing Strikes: after a Psychic-Blade miss, spend a Psionic Energy Die to add
     to the attack roll; the die is spent only if it converts the miss to a hit. Mirrors

@@ -3635,6 +3635,20 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
+    // ── Arcane Archer Curving Shot eligibility (on a ranged weapon miss, L7) ──
+    // A miss with a Ranged weapon (not a thrown one: it already lies at the first target) lets the
+    // archer spend the Bonus Action to reroll against another creature (applyCurvingShot). Per
+    // attack, like Arcane Shot: an attack that doesn't qualify clears a skipped earlier offer.
+    if (atk_stats.fighter_subclass == ArcaneArcherPath) {
+        const bool qualifies = !r.hit && w.type == WeaponType::Ranged && !s.was_thrown &&
+            atk_stats.classLevel(CharacterClass::Fighter) >= 7 && hasBonusAction(bm, action.attacker_idx) &&
+            !curvingShotTargets(bm, action.attacker_idx, action.target_idx, action.weapon_idx).empty();
+        if (qualifies != updated_atk_cond.curving_shot_available) {
+            updated_atk_cond.curving_shot_available = qualifies;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
+    }
+
     // ── Grappler feat — Punch-and-Grab eligibility (on an Unarmed-Strike hit) ─
     // After hitting with an Unarmed Strike as part of the Attack action (not a bonus-action strike), a
     // Grappler may ALSO attempt a Grapple this attack (normally one or the other), once per turn. Flagged

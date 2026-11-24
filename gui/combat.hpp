@@ -1492,6 +1492,17 @@ public:
     ArcaneShotSaveResult finishArcaneSaveShot(BattleMap& bm, int archer_idx, const Weapon& w,
                                               ArcaneShotOption opt, const std::vector<int>& targets,
                                               ArcaneShotSaveResult res) noexcept;
+    // Curving Shot (Arcane Archer L7, AA4): after a ranged weapon miss (conditions.curving_shot_available),
+    // spend the Bonus Action to reroll the attack against a different creature the archer can see,
+    // within the weapon's range and within 60 ft of the original target. curvingShotTargets lists the
+    // legal creatures; applyCurvingShot spends the Bonus Action and resolves the new attack.
+    [[nodiscard]] std::vector<int> curvingShotTargets(const BattleMap& bm, int archer_idx, int original_idx,
+                                                      int weapon_idx) const noexcept;
+    AttackResult applyCurvingShot(BattleMap& bm, int archer_idx, int original_idx, int new_target_idx,
+                                  int weapon_idx) noexcept;
+    // Ever-Ready Shot (Arcane Archer L10, AA4): at combat start, each such archer with no Arcane Shot
+    // uses left regains one. RNG-free; call once after initiative.
+    void applyEverReadyShot(BattleMap& bm) noexcept;
     // Grasping Shot escape: an action by the restrained creature, or a creature within 5 ft of it,
     // makes a STR (Athletics) check against the archer's Arcane Shot DC; success ends Restrained.
     // The action cost is the caller's to charge.

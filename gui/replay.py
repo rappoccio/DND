@@ -84,6 +84,7 @@ class CheckedReplayer:
         self.combat.roll_initiative(self.bm)
         # Mirror _start_combat's RNG-free Bard Superior Inspiration top-up so replay state matches.
         self.combat.apply_superior_inspiration(self.bm)
+        self.combat.apply_ever_ready_shot(self.bm)   # mirrors begin_combat (RNG-free)
         self.log(f"[REPLAY] loaded {len(self.bm.placed_agents)} agents; initiative rolled")
         return True
 
