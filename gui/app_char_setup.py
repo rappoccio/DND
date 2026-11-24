@@ -132,7 +132,7 @@ def set_general_feats(stats, names):
         stats.add_feat(n)
 
 
-def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0, class_levels: dict = None, subclasses: dict = None, species: str = None):
+def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0, class_levels: dict = None, subclasses: dict = None, species: str = None, arcane_shot_options: list = None):
     """Called by StatsDialog when the user clicks OK.
 
     Multiclassing (MULTICLASSING_PLAN.md Phase 5): `class_levels` ({class:level})
@@ -281,6 +281,16 @@ def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_nam
     # elements in place, cf. pybind11_array_copy_gotcha). Cleared for non-Sorcerers.
     stats.metamagic_options = ([rpg.MetamagicOption(int(v)) for v in (metamagic_options or [])]
                                if "Sorcerer" in cl_map else [])
+    # Arcane Archer: known Arcane Shot options (D2). None = a caller that doesn't pass the
+    # list: keep what the agent has. Capped at the Fighter level's known count; cleared
+    # when the agent is no longer an Arcane Archer.
+    if sub_map.get("Fighter") == "ArcaneArcher" and "Fighter" in cl_map:
+        if arcane_shot_options is not None:
+            cap = rpg.Stats.arcane_shot_known_count(cl_map["Fighter"])
+            stats.arcane_shot_options = [rpg.ArcaneShotOption(int(v))
+                                         for v in arcane_shot_options][:cap]
+    else:
+        stats.arcane_shot_options = []
 
     # Initiative: the dialog shows the total modifier. A changed value becomes the flat
     # initiative_bonus on top of what DEX / prof / feats now give; an untouched one keeps

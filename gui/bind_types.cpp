@@ -548,6 +548,19 @@ void bindTypes(py::module_& m) {
              "Battle Master: superiority die size (8 at L3-9, 10 at L10+)")
         .def_readwrite("psionic_die_size", &Agent::Stats::psionic_die_size,
              "Psi Warrior: Psionic Energy die size (d6 L3, d8 L5, d10 L11, d12 L17)")
+        .def_readwrite("arcane_shot_die_size", &Agent::Stats::arcane_shot_die_size,
+             "Arcane Archer: Arcane Shot die size (d6, d8 @ L10, d10 @ L15, d12 @ L18)")
+        .def_readwrite("arcane_shot_options", &Agent::Stats::arcane_shot_options,
+             "Arcane Archer: known Arcane Shot options (2/3/4/5/6 @ Fighter L3/7/10/15/18).\n"
+             "Assign the whole list; elements of a bound vector are copies.")
+        .def_property_readonly("arcane_shot_dc", &Agent::Stats::arcaneShotDC,
+             "Arcane Shot save DC = 8 + INT mod + proficiency bonus")
+        .def_static("arcane_shot_known_count", &Agent::Stats::arcaneShotKnownCount,
+             py::arg("fighter_level"), "Arcane Shot options known at a Fighter level")
+        .def_static("arcane_shot_die_for_level", &Agent::Stats::arcaneShotDieSize,
+             py::arg("fighter_level"), "Arcane Shot die size at a Fighter level")
+        .def("knows_arcane_shot", &Agent::Stats::knowsArcaneShot, py::arg("option"),
+             "True if this Arcane Archer (Fighter L3+) knows the option")
         .def_readwrite("sacred_weapon_bonus", &Agent::Stats::sacred_weapon_bonus,
              "Paladin Oath of Devotion: Sacred Weapon attack-roll bonus (0 = inactive)")
         .def_readwrite("sacred_weapon_turns", &Agent::Stats::sacred_weapon_turns,
@@ -1603,6 +1616,19 @@ void bindTypes(py::module_& m) {
         .value("BattleMaster", BattleMasterPath)
         .value("PsiWarrior", PsiWarriorPath)
         .value("EldritchKnight", EldritchKnightPath)
+        .value("ArcaneArcher", ArcaneArcherPath)
+        .export_values();
+
+    // ── Arcane Archer: Arcane Shot options (ARCANE_ARCHER_PLAN.md) ───────────
+    py::enum_<ArcaneShotOption>(m, "ArcaneShotOption")
+        .value("NONE", ArcaneShotNone)
+        .value("Banishing", ArcaneShotBanishing)
+        .value("Beguiling", ArcaneShotBeguiling)
+        .value("Bursting", ArcaneShotBursting)
+        .value("Grasping", ArcaneShotGrasping)
+        .value("Piercing", ArcaneShotPiercing)
+        .value("Seeking", ArcaneShotSeeking)
+        .value("Shadow", ArcaneShotShadow)
         .export_values();
 
     // ── Druid Circle Enum (2024 D&D) ────────────────────────────────────

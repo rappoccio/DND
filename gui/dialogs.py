@@ -689,6 +689,7 @@ class InvocationDialog:
 #  the dialog below, and `test_sorcerer.py`, are unchanged.
 # ─────────────────────────────────────────────────────────────────────────────
 from actions import METAMAGIC_OPTIONS, metamagic_offered      # noqa: F401  (re-export)
+from actions import ARCANE_SHOT_OPTIONS, arcane_shot_known_count
 
 
 def metamagic_known_count(level: int) -> int:
@@ -711,6 +712,10 @@ class MetamagicDialog:
     Commits the chosen MetamagicOption int values to the callback on dismiss."""
     ITEM_H = 34
     PAD    = 12
+    # Subclasses (ArcaneShotDialog) swap the table, the gate level and the labels.
+    OPTIONS   = METAMAGIC_OPTIONS   # rows: (enum value, name, …, note)
+    MIN_LEVEL = 2
+    TITLE     = "Metamagic"
     HDR_H  = 36
     BTN_H  = 28
 
@@ -743,6 +748,10 @@ class MetamagicDialog:
     def _cap(self):
         return metamagic_known_count(self._eff_level)
 
+    def _tag(self, row) -> str:
+        """Right-side tag for a row (the Sorcery-Point cost)."""
+        return f"{row[2]} SP"
+
     def _commit_and_dismiss(self):
         if self._callback:
             self._callback(sorted(self._selected))
@@ -754,7 +763,7 @@ class MetamagicDialog:
         v = int(value)
         if v in self._selected:
             return True
-        return self._eff_level >= 2 and len(self._selected) < self._cap
+        return self._eff_level >= self.MIN_LEVEL and len(self._selected) < self._cap
 
     def _list_geom(self):
         list_y = self.rect.y + self.HDR_H
@@ -762,7 +771,7 @@ class MetamagicDialog:
         return list_y, list_h
 
     def _max_scroll(self, list_h):
-        return max(0, len(METAMAGIC_OPTIONS) * self.ITEM_H - list_h)
+        return max(0, len(self.OPTIONS) * self.ITEM_H - list_h)
 
     def handle(self, event) -> bool:
         if not self.visible or not self.rect:
@@ -786,7 +795,7 @@ class MetamagicDialog:
         elif event.type == pygame.MOUSEMOTION:
             list_y, list_h = self._list_geom()
             self._hover_idx = -1
-            for i in range(len(METAMAGIC_OPTIONS)):
+            for i in range(len(self.OPTIONS)):
                 iy = list_y + i * self.ITEM_H - self.scroll_y
                 if list_y <= iy < list_y + list_h:
                     r = pygame.Rect(self.rect.x + self.PAD, iy, self.rect.w - self.PAD * 2, self.ITEM_H)
@@ -802,7 +811,8 @@ class MetamagicDialog:
                 self._commit_and_dismiss()   # click outside = accept current
                 return True
             list_y, list_h = self._list_geom()
-            for i, (value, name, sp, note) in enumerate(METAMAGIC_OPTIONS):
+            for i, row_ in enumerate(self.OPTIONS):
+                value = row_[0]
                 iy = list_y + i * self.ITEM_H - self.scroll_y
                 if not (list_y <= iy < list_y + list_h):
                     continue
@@ -831,7 +841,7 @@ class MetamagicDialog:
         pygame.draw.rect(surf, (150, 150, 200), self.rect, 2, border_radius=8)
 
         title = self.font_md.render(
-            f"Metamagic  (Lv {self._eff_level}  —  {len(self._selected)}/{self._cap} known)",
+            f"{self.TITLE}  (Lv {self._eff_level}  —  {len(self._selected)}/{self._cap} known)",
             True, (220, 220, 235))
         surf.blit(title, (self.rect.x + self.PAD, self.rect.y + 9))
 
@@ -841,7 +851,8 @@ class MetamagicDialog:
         surf.set_clip(list_rect)
         cb = 14
         at_cap = len(self._selected) >= self._cap
-        for i, (value, name, sp, note) in enumerate(METAMAGIC_OPTIONS):
+        for i, row_ in enumerate(self.OPTIONS):
+            value, name, note = row_[0], row_[1], row_[-1]
             iy = list_y + i * self.ITEM_H - self.scroll_y
             if iy + self.ITEM_H < list_y or iy > list_y + list_h:
                 continue
@@ -870,8 +881,8 @@ class MetamagicDialog:
             nt = self.font_sm.render(note, True, note_col)
             surf.blit(nt, (cb_r.right + 8, row.y + 17))
 
-            # Right-side SP-cost tag
-            tag = f"{sp} SP"
+            # Right-side tag (SP cost / die size)
+            tag = self._tag(row_)
             tcol = (170, 200, 240) if enabled or selected else (95, 95, 115)
             ts = self.font_sm.render(tag, True, tcol)
             surf.blit(ts, (row.right - ts.get_width() - 6, row.y + (self.ITEM_H - ts.get_height()) // 2))
@@ -882,7 +893,7 @@ class MetamagicDialog:
         if max_scroll > 0:
             track = pygame.Rect(list_rect.right - 6, list_y, 6, list_h)
             pygame.draw.rect(surf, (30, 30, 42), track)
-            frac = list_h / (len(METAMAGIC_OPTIONS) * self.ITEM_H)
+            frac = list_h / (len(self.OPTIONS) * self.ITEM_H)
             th_h = max(20, int(list_h * frac))
             th_y = list_y + int((list_h - th_h) * (self.scroll_y / max_scroll))
             pygame.draw.rect(surf, (110, 110, 150), pygame.Rect(track.x, th_y, track.w, th_h))
@@ -895,6 +906,22 @@ class MetamagicDialog:
         pygame.draw.rect(surf, (90, 90, 120), self._done_rect, 1, border_radius=4)
         dt = self.font_md.render(f"Done ({len(self._selected)})", True, (220, 220, 220))
         surf.blit(dt, dt.get_rect(center=self._done_rect.center))
+
+
+class ArcaneShotDialog(MetamagicDialog):
+    """Multi-select picker for an Arcane Archer's known Arcane Shot options
+    (ARCANE_ARCHER_PLAN.md D2): 2/3/4/5/6 at Fighter L3/7/10/15/18. The level passed
+    to show() is the FIGHTER level. Same cap/greying behaviour as MetamagicDialog."""
+    OPTIONS   = ARCANE_SHOT_OPTIONS
+    MIN_LEVEL = 3
+    TITLE     = "Arcane Shot"
+
+    @property
+    def _cap(self):
+        return arcane_shot_known_count(self._eff_level)
+
+    def _tag(self, row) -> str:
+        return f"d{rpg.Stats.arcane_shot_die_for_level(self._eff_level)}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2175,6 +2202,9 @@ class StatsDialog:
         self._metamagic_options    = []    # Sorcerer Metamagic (list of int MetamagicOption values)
         self._metamagic_dialog     = None  # scrollable picker (Sorcerer L2+)
         self._metamagic_btn_rect   = None  # "Metamagic..." launch button
+        self._arcane_shot_options  = []    # Arcane Archer known options (int ArcaneShotOption values)
+        self._arcane_shot_dialog   = None  # picker (Fighter L3+ Arcane Archer)
+        self._arcane_shot_btn_rect = None  # "Arcane Shot..." launch button
 
     # ── public API ───────────────────────────────────────────────────────────
     def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE", hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE",
@@ -2214,6 +2244,7 @@ class StatsDialog:
         self._armor_list        = armor_list or []
         self._eldritch_invocations = list(stats.eldritch_invocations) if hasattr(stats, 'eldritch_invocations') else []
         self._metamagic_options = [int(m) for m in stats.metamagic_options] if hasattr(stats, 'metamagic_options') else []
+        self._arcane_shot_options = [int(o) for o in getattr(stats, 'arcane_shot_options', [])]
         # Origin feat: show the one currently on the agent (first that's an origin feat), else NONE.
         cur_feats = list(stats.feats) if hasattr(stats, 'feats') else []
         self._origin_feat = next((f for f in cur_feats if f in self.ORIGIN_FEATS), "NONE")
@@ -2229,6 +2260,7 @@ class StatsDialog:
         self._spell_selection_dialog = SpellSelectionDialog(self.spells, self.font_sm, self.font_md) if self.spells else None
         self._invocation_dialog = InvocationDialog(self.font_sm, self.font_md)
         self._metamagic_dialog = MetamagicDialog(self.font_sm, self.font_md)
+        self._arcane_shot_dialog = ArcaneShotDialog(self.font_sm, self.font_md)
         self._build_steppers(self._dlg(screen), stats)
 
     # Per-class subclass stats field + enum type (name matches the class picker).
@@ -2267,7 +2299,7 @@ class StatsDialog:
         """Return list of available subclasses for a given class (using enum names)."""
         subclasses = {
             "Barbarian": ["NONE", "Berserker", "WildHeart", "WorldTree", "Zealot"],
-            "Fighter": ["NONE", "Champion", "BattleMaster", "PsiWarrior", "EldritchKnight"],
+            "Fighter": ["NONE", "Champion", "BattleMaster", "PsiWarrior", "EldritchKnight", "ArcaneArcher"],
             "Druid": ["NONE", "CircleOfMoon", "CircleOfLand", "CircleOfSea", "CircleOfStars"],
             "Monk": ["NONE", "WarriorOfTheOpenHand", "WarriorOfMercy", "WarriorOfShadow", "WarriorOfFourElements"],
             "Paladin": ["NONE", "OathOfDevotion", "OathOfVengeance", "OathOfAncients", "OathOfGlory"],
@@ -2326,6 +2358,7 @@ class StatsDialog:
         """The pickers opened from this dialog. They place themselves on the real
         screen, so they are drawn and fed events outside the dialog's scaling."""
         return [d for d in (self._invocation_dialog, self._metamagic_dialog,
+                            self._arcane_shot_dialog,
                             self._feat_dialog, self._element_dialog,
                             self._spell_selection_dialog if self._is_npc else None) if d]
 
@@ -2469,6 +2502,11 @@ class StatsDialog:
             self._metamagic_dialog.handle(event)
             return True
 
+        # Arcane Shot picker is modal-on-top too.
+        if self._arcane_shot_dialog and self._arcane_shot_dialog.visible:
+            self._arcane_shot_dialog.handle(event)
+            return True
+
         # General Feats picker is modal-on-top too.
         if self._feat_dialog and self._feat_dialog.visible:
             self._feat_dialog.handle(event)
@@ -2515,6 +2553,14 @@ class StatsDialog:
                     eff_level = self._char_level_stepper.value if self._char_level_stepper else self._char_level
                     self._metamagic_dialog.show(self._on_metamagic_chosen,
                                                 self._metamagic_options, eff_level)
+                return True
+
+            # Arcane Shot "Choose..." button → known-option picker (Arcane Archer L3+).
+            if self._arcane_shot_btn_rect and self._arcane_shot_btn_rect.collidepoint(event.pos):
+                if self._arcane_shot_dialog:
+                    eff_level = self._char_level_stepper.value if self._char_level_stepper else self._char_level
+                    self._arcane_shot_dialog.show(self._on_arcane_shots_chosen,
+                                                  self._arcane_shot_options, eff_level)
                 return True
 
             # General Feats "Choose..." button → open the multi-select picker.
@@ -2695,6 +2741,10 @@ class StatsDialog:
         """Callback from MetamagicDialog: store the chosen MetamagicOption int values."""
         self._metamagic_options = list(values)
 
+    def _on_arcane_shots_chosen(self, values):
+        """Callback from ArcaneShotDialog: store the chosen ArcaneShotOption int values."""
+        self._arcane_shot_options = list(values)
+
     def _on_feats_chosen(self, names):
         """Callback from FeatDialog: store the chosen general-feat names.
 
@@ -2772,7 +2822,8 @@ class StatsDialog:
             primary = min(class_levels, key=lambda c: order.index(c) if c in order else 99)
             total_level = sum(class_levels.values())
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
-            self._cb(self._agent_idx, self.steppers, self.prof_flags, primary, total_level, npc_data, self._subclasses.get(primary, "NONE"), self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type, list(self._metamagic_options), self._irresistible_offense_ability, dict(class_levels), dict(self._subclasses), species=self._species)
+            self._cb(self._agent_idx, self.steppers, self.prof_flags, primary, total_level, npc_data, self._subclasses.get(primary, "NONE"), self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type, list(self._metamagic_options), self._irresistible_offense_ability, dict(class_levels), dict(self._subclasses), species=self._species,
+                     arcane_shot_options=list(self._arcane_shot_options))
         self.active = False
 
     # ── drawing ──────────────────────────────────────────────────────────────
@@ -3162,6 +3213,25 @@ class StatsDialog:
                 mm_txt = self.font_sm.render(f"Choose... ({n_mm} selected)", True, (210, 220, 240))
                 screen.blit(mm_txt, mm_txt.get_rect(center=self._metamagic_btn_rect.center))
                 npc_checkbox_y = mm_y + 24
+
+        # ── Arcane Archer: known Arcane Shot options (ARCANE_ARCHER_PLAN.md D2) ──
+        # Shown while Fighter is the focused class, the subclass is Arcane Archer and the
+        # Fighter level is 3+. The level fed to the picker is the Fighter level.
+        self._arcane_shot_btn_rect = None
+        if self._class_name == "Fighter" and self._subclass_name == "ArcaneArcher":
+            eff_lvl = self._char_level_stepper.value if self._char_level_stepper else self._char_level
+            if eff_lvl >= 3:
+                as_y = npc_checkbox_y
+                screen.blit(self.font_sm.render("Arcane Shot:", True, self.C_LABEL), (dlg.x + self.PAD, as_y))
+                n_as = len(self._arcane_shot_options)
+                cap = arcane_shot_known_count(eff_lvl)
+                self._arcane_shot_btn_rect = pygame.Rect(dlg.x + self.PAD + 95, as_y - 2, 150, 18)
+                hov = self._arcane_shot_btn_rect.collidepoint(pygame.mouse.get_pos())
+                pygame.draw.rect(screen, (70, 90, 130) if hov else (55, 60, 95), self._arcane_shot_btn_rect, border_radius=3)
+                pygame.draw.rect(screen, (120, 150, 180), self._arcane_shot_btn_rect, 1, border_radius=3)
+                as_txt = self.font_sm.render(f"Choose... ({n_as}/{cap})", True, (210, 220, 240))
+                screen.blit(as_txt, as_txt.get_rect(center=self._arcane_shot_btn_rect.center))
+                npc_checkbox_y = as_y + 24
 
         # ── Origin Feat (PCs only): one origin feat per character ──────────
         self._origin_feat_rects = {}

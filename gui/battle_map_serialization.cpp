@@ -123,7 +123,7 @@ namespace {
     X(legendary_actions_current) X(has_legendary_actions) X(is_in_lair) \
     X(legendary_action_names) X(legendary_action_costs) X(legendary_action_spells) X(lair_action_names) \
     X(condition_immunities) X(weapon_mastery) X(crit_threshold) \
-    X(superiority_die_size) X(psionic_die_size) X(bardic_inspiration_die) \
+    X(superiority_die_size) X(psionic_die_size) X(arcane_shot_die_size) X(arcane_shot_options) X(bardic_inspiration_die) \
     X(bardic_inspiration_die_size) X(primal_champion_applied) \
     X(monk_body_mind_applied) X(unarmed_damage_override) X(relentless_rage_dc) \
     X(sacred_weapon_bonus) X(sacred_weapon_turns) X(vow_of_enmity_target) \

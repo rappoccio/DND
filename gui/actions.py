@@ -173,6 +173,28 @@ METAMAGIC_VALUE_BY_ID = {i: rpg.MetamagicOption(v)
 _BONUS_ECONOMY.update({i: ECONOMY_FREE for i in METAMAGIC_ID_BY_VALUE.values()})
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Arcane Archer — Arcane Shot options (ARCANE_ARCHER_PLAN.md, AA1)
+#  The known list is a character-setup pick (D2); AA2/AA3 offer the known ones in
+#  combat. Enfeebling Shot is postponed (D4) and is not listed.
+#  Rows: (ArcaneShotOption value, display name, note).
+# ─────────────────────────────────────────────────────────────────────────────
+ARCANE_SHOT_OPTIONS = [
+    (rpg.ArcaneShotOption.Banishing, "Banishing Shot", "Psychic 1 die; CHA save or banished"),
+    (rpg.ArcaneShotOption.Beguiling, "Beguiling Shot", "Psychic 2 dice; WIS save or Charmed"),
+    (rpg.ArcaneShotOption.Bursting,  "Bursting Shot",  "Force 2 dice to target + 10-ft burst"),
+    (rpg.ArcaneShotOption.Grasping,  "Grasping Shot",  "Slashing 1 die; STR save or Restrained"),
+    (rpg.ArcaneShotOption.Piercing,  "Piercing Shot",  "30-ft line, DEX save, +2 dice piercing"),
+    (rpg.ArcaneShotOption.Seeking,   "Seeking Shot",   "No LOS needed, DEX save, +2 dice force"),
+    (rpg.ArcaneShotOption.Shadow,    "Shadow Shot",    "Psychic 1 die; WIS save or Blinded"),
+]
+
+
+def arcane_shot_known_count(fighter_level: int) -> int:
+    """Arcane Shot options an Arcane Archer knows: 2/3/4/5/6 at Fighter L3/7/10/15/18."""
+    return rpg.Stats.arcane_shot_known_count(int(fighter_level))
+
+
 def metamagic_offered(option, learned_values, sp_available: int, sp_cost: int) -> bool:
     """Combat-sidebar gate for a Metamagic arm-toggle: offer it only when the option
     is LEARNED (in the caster's metamagic_options) and the caster can currently AFFORD

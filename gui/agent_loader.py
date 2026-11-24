@@ -116,6 +116,8 @@ def dict_to_stats(stats_dict):
     stats.irresistible_offense_ability = int(stats_dict.get("irresistible_offense_ability", 0))
     # Sorcerer Metamagic: learned options (list of MetamagicOption enum values).
     stats.metamagic_options = [rpg.MetamagicOption(int(v)) for v in stats_dict.get("metamagic_options", [])]
+    # Arcane Archer: known Arcane Shot options (list of ArcaneShotOption enum values).
+    stats.arcane_shot_options = [rpg.ArcaneShotOption(int(v)) for v in stats_dict.get("arcane_shot_options", [])]
     # Sorcerer subclass feature state (round-trip so flags survive save/reload)
     stats.draconic_hp_applied = bool(stats_dict.get("draconic_hp_applied", False))
     stats.draconic_affinity_type = int(stats_dict.get("draconic_affinity_type", -1))

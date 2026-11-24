@@ -417,6 +417,7 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
                 "elemental_adept_types": list(s.elemental_adept_types),
                 "irresistible_offense_ability": s.irresistible_offense_ability,
                 "metamagic_options": [int(m) for m in s.metamagic_options],
+                "arcane_shot_options": [int(o) for o in s.arcane_shot_options],
                 "draconic_hp_applied": s.draconic_hp_applied,
                 "draconic_affinity_type": s.draconic_affinity_type,
                 "draconic_affinity_used_this_turn": s.draconic_affinity_used_this_turn,

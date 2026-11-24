@@ -438,6 +438,18 @@ void Agent::Stats::applyClassResources(CharacterClass cls, int level) {
         resources["Telekinetic Movement"] = tk;
       }
 
+      // Arcane Archer (L3+): Arcane Shot uses = max(1, INT mod), all regained on a Short or
+      // Long Rest; the die scales by Fighter level. The known options (arcane_shot_options)
+      // are a character-setup choice and are not touched here.
+      if (fighter_subclass == ArcaneArcherPath && level >= 3) {
+        const int uses = std::max(1, _mod(intel));
+        Resource arcane("Arcane Shot", uses, 0);
+        arcane.short_rest_regen = uses;
+        arcane.long_rest_regen  = uses;
+        resources["Arcane Shot"] = arcane;
+        arcane_shot_die_size = arcaneShotDieSize(level);
+      }
+
       // Eldritch Knight (L3+): third-caster, INT, Wizard spell list. compute_class_slots(Fighter)
       // returns zeros (it can't see the subclass), so override the slot table here. This runs
       // AFTER set_class_level and AFTER fighter_subclass is set (see main.py apply order), so the

@@ -272,7 +272,18 @@ enum BlessedStrike {
 enum FighterSubclass {
     FighterSubclassNone = 0,
     ChampionPath, BattleMasterPath, PsiWarriorPath, EldritchKnightPath,
+    ArcaneArcherPath,
     NumFighterSubclass
+};
+
+// ── Arcane Archer: Arcane Shot options (ARCANE_ARCHER_PLAN.md) ───────
+// Enfeebling Shot is postponed (D4) and has no value here; append new options at the
+// end so saved option lists keep their meaning.
+enum ArcaneShotOption {
+    ArcaneShotNone = 0,
+    ArcaneShotBanishing, ArcaneShotBeguiling, ArcaneShotBursting, ArcaneShotGrasping,
+    ArcaneShotPiercing, ArcaneShotSeeking, ArcaneShotShadow,
+    NumArcaneShotOption
 };
 
 // ── Druid Circle Enum (2024 D&D) ──────────────────────────────────────

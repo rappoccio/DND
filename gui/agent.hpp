@@ -307,6 +307,24 @@ namespace rpg {
       [[nodiscard]] int spellSaveDcWis()   const noexcept { return _dc(wis,   save_prof_wis);   }
       [[nodiscard]] int spellSaveDcCha()   const noexcept { return _dc(cha,   save_prof_cha);   }
 
+      // ── Arcane Archer (ARCANE_ARCHER_PLAN.md) ────────────────────────
+      // Arcane Shot save DC = 8 + INT mod + proficiency bonus (always proficient).
+      [[nodiscard]] int arcaneShotDC() const noexcept { return 8 + prof_bonus + _mod(intel); }
+      // Options known at a given Fighter level: 2/3/4/5/6 at L3/7/10/15/18 (0 below L3).
+      [[nodiscard]] static int arcaneShotKnownCount(int fighter_level) noexcept {
+        return fighter_level >= 18 ? 6 : fighter_level >= 15 ? 5 : fighter_level >= 10 ? 4
+             : fighter_level >= 7 ? 3 : fighter_level >= 3 ? 2 : 0;
+      }
+      // Arcane Shot die size at a given Fighter level: d6, d8 @ L10, d10 @ L15, d12 @ L18.
+      [[nodiscard]] static int arcaneShotDieSize(int fighter_level) noexcept {
+        return fighter_level >= 18 ? 12 : fighter_level >= 15 ? 10 : fighter_level >= 10 ? 8 : 6;
+      }
+      [[nodiscard]] bool knowsArcaneShot(ArcaneShotOption opt) const noexcept {
+        return fighter_subclass == ArcaneArcherPath && classLevel(CharacterClass::Fighter) >= 3
+            && std::find(arcane_shot_options.begin(), arcane_shot_options.end(), opt)
+               != arcane_shot_options.end();
+      }
+
       // ── Skill bonuses (computed, read-only) ──────────────────────────
       [[nodiscard]] int stealthBonus() const noexcept {
         return _mod(dex) + (stealth_prof ? prof_bonus : 0);
@@ -820,6 +838,8 @@ namespace rpg {
       int  crit_threshold{20};                                   // d20 roll >= this is a critical hit (default 20, Champion lowers it)
       int  superiority_die_size{8};                              // Battle Master: d8 at L3-9, d10 at L10+
       int  psionic_die_size{6};                                  // Psi Warrior: Psionic Energy die size (d6/d8/d10/d12 by level)
+      int  arcane_shot_die_size{6};                              // Arcane Archer: Arcane Shot die (d6, d8 @ L10, d10 @ L15, d12 @ L18)
+      std::vector<ArcaneShotOption> arcane_shot_options;         // Arcane Archer: known options (2/3/4/5/6 @ Fighter L3/7/10/15/18)
       int  bardic_inspiration_die{0};                            // Bard: SIZE of the held Bardic Inspiration die (0 = none; 6/8/10/12). One at a time; persists across turns until used or long rest.
       int  bardic_inspiration_die_size{6};                       // Bard: the die size this bard GRANTS (d6/d8/d10/d12 by level), set in initializeClassResources
       // ── Barbarian L20 Primal Champion ────────────────────────────────────────
