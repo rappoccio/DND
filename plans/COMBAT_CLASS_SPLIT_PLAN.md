@@ -220,8 +220,25 @@ confirm the cluster split. The class files should come out as separate communiti
 
 ## Follow-ups (not this plan)
 
-- **R6b.** Split `bind_combat_resources.cpp` and regroup the `combat.hpp` declarations by class,
-  the same way, if the binding file starts to hurt.
+- **R6b. Done 2026-11-24.** Same rule as the move, applied to bindings and header: a
+  declaration or binding goes with the TU that implements it.
+  - *Bindings:* 168 `.def` chunks whose target is defined in `combat_<class>.cpp` or
+    `combat_feats.cpp` moved, in original order, into 13 new `bind_combat_<class>.cpp` files
+    (`bindCombat<Class>()`, registered in `rpg_bindings.cpp`, declared in
+    `bindings_internal.hpp`). They came from `bind_combat_resources.cpp` (now ~100 lines,
+    shared code only), `bind_combat_turn.cpp` and `bind_combat_attack.cpp` (Ranger riders).
+    The 944 lines removed equal the 944 placed, as a multiset.
+  - *Header:* 182 member-function declarations (181 public, 1 private: `itemLuckSource`),
+    with their contiguous doc comments, moved into `══ <Class> (combat_<class>.cpp)` blocks at
+    the end of the public section (private ones at the end of the class). Data members, types
+    and inline bodies did not move; banners whose sections emptied (Soulknife, Diviner Portent,
+    Gloom Stalker, Fey Wanderer, Druid Wild Shape) were dropped. Class-flavoured declarations
+    implemented in a shared TU (the Sorcerer/Wild Magic block in `combat_spells.cpp`, Paladin
+    auras in `combat_core.cpp`, Shadowy Dodge in `combat_attack.cpp`, …) stay put.
+  - *Proof:* every `rpg_battle_map` class attribute and docstring (3,430) dumped before and
+    after is byte-identical; 0 compiler warnings; `./test.sh` 285/0, no golden changed.
+  - Adding a class feature now touches `combat_<class>.cpp`, that class's block in
+    `combat.hpp`, and `bind_combat_<class>.cpp`.
 - **Bound methods no suite names** (D6's list; some are reached indirectly):
   `vanish_orphaned_companions`, `apply_precision_attack_effect`, `can_peerless_aim`,
   `apply_sentinel_guard`, `apply_open_hand_rider`, `consume_bonus_attack`,

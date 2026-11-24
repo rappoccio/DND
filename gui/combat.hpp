@@ -107,6 +107,11 @@ private:
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CombatEngine
+//
+//  Class and feat features are declared in per-class blocks (`══ <Class> (combat_<class>.cpp)`)
+//  at the end of the public section, and private ones at the end of the class, each block
+//  matching the combat_<class>.cpp that implements it (COMBAT_CLASS_SPLIT_PLAN.md R6b). A
+//  class-flavoured declaration elsewhere is implemented in a shared TU (spells, attack, core, …).
 // ─────────────────────────────────────────────────────────────────────────────
 class CombatEngine {
 public:
@@ -152,81 +157,7 @@ public:
     int damageAgent(BattleMap& bm, int idx, int amount) noexcept;
     static int healAgent  (BattleMap& bm, int idx, int amount) noexcept;
 
-    // Lay on Hands (Paladin): spends from the "Lay on Hands" pool resource to heal a target.
-    // Clamps the spent amount to the min of (pool remaining, target's HP deficit).
-    // Returns actual HP healed (0 if nothing to heal, -1 if no pool remaining).
-    static int layOnHands (BattleMap& bm, int caster_idx, int target_idx, int amount) noexcept;
-
-    // Lucky (Origin feat) — spend one Luck Point to grant the agent Advantage on its next
-    // d20 Test (via grantPendingAdvantage, consumed by the next d20 roll). Returns true if a
-    // point was spent, false if the agent has the Lucky feat exhausted / no points remaining.
-    bool spendLuckForAdvantage(BattleMap& bm, int idx);
-
-    // One with Shadows (Warlock invocation 8): while in an area of Dim Light or Darkness,
-    // cast Invisibility on self for free (no slot). Sets the Invisible condition (ends on the
-    // Warlock's next attack/cast, like Invisibility). Returns true if applied, false if the
-    // agent isn't an invocation-8 Warlock or isn't standing in dim/dark.
-    bool applyOneWithShadows(BattleMap& bm, int idx) noexcept;
-
-    // Merge with Shadows (Boon of the Night Spirit): a Bonus Action grants the Invisible condition
-    // while the boon-holder stands in Dim Light or Darkness (ends when it next acts). Returns true if
-    // applied, false if the agent lacks the boon or isn't standing in dim/dark.
-    bool applyMergeWithShadows(BattleMap& bm, int idx) noexcept;
-
-    // Sacred Weapon (Paladin Oath of Devotion): Bonus Action, spend 1 Channel Oath use to add
-    // +CHA mod (min +1) to weapon attack rolls for 1 minute (10 rounds). Requires Oath of Devotion
-    // and an available Channel Oath use. Returns the attack bonus granted, or -1 if it could not
-    // be activated (wrong oath, no resource, or already active).
-    int activateSacredWeapon(BattleMap& bm, int idx) noexcept;
-
-    // Vow of Enmity (Paladin Oath of Vengeance L3): spend 1 Channel Oath use to swear enmity against
-    // a visible enemy within 30 ft, gaining Advantage on attacks against it for 1 minute (or until
-    // used again). On the target's death the vow auto-transfers to the nearest enemy within 30 ft
-    // (see applyUnconscious). Returns true on success, false if not eligible (wrong oath, no resource,
-    // out of range/LOS). Sets vow_of_enmity_target/turns; ticked down in beginTurn.
-    bool activateVowOfEnmity(BattleMap& bm, int idx, int target_idx) noexcept;
-
-    // Avenging Angel (Paladin Oath of Vengeance L20): Bonus Action, 10 minutes. Grants Fly 60 (+ hover)
-    // and a Frightful Aura in the Aura of Protection (enemy WIS save at turn start or Frightened until
-    // damaged; applied in beginTurn). Costs one "Avenging Angel" use per long rest, or a level-5 spell
-    // slot when exhausted. Returns true on success. Sets avenging_angel_turns; ticked down in beginTurn.
-    bool activateAvengingAngel(BattleMap& bm, int idx) noexcept;
-
-    // Elder Champion (Paladin Oath of the Ancients L20): Bonus Action, 1 minute. Regain 10 HP at each
-    // of your turn starts (beginTurn), and enemies in your Aura of Protection have Disadvantage on saves
-    // vs your spells & Channel Oath options (rollSpellSave). Costs one "Elder Champion" use per long
-    // rest, or a level-5 spell slot when exhausted. Returns true on success. Sets elder_champion_turns.
-    bool activateElderChampion(BattleMap& bm, int idx) noexcept;
-
-    // Inspiring Smite (Paladin Oath of Glory L3): immediately after a Divine Smite this turn, spend one
-    // Channel Oath use to grant a creature within 30 ft (may be self) 2d8 + Paladin level temporary HP.
-    // Once per turn. Returns the temp HP granted, or -1 if not allowed (wrong oath, no smite this turn,
-    // already used, no resource, out of range).
-    int activateInspiringSmite(BattleMap& bm, int idx, int target_idx) noexcept;
-
-    // Living Legend (Paladin Oath of Glory L20): Bonus Action, 10 minutes. While active you gain a
-    // reaction to reroll a failed saving throw (canLivingLegendReroll) and can turn your first weapon
-    // miss each turn into a hit (maybeUnerringStrike). Costs one "Living Legend" use per long rest, or
-    // a level-5 spell slot when exhausted. Returns true on success. Sets living_legend_turns.
-    bool activateLivingLegend(BattleMap& bm, int idx) noexcept;
-
-    // Cleric Light Domain — Corona of Light (L17+): a Magic action that lights a 60-ft radius for 1
-    // minute (10 rounds). While active, enemies within 60 ft have Disadvantage on saves vs the
-    // caster's Fire/Radiant spells (applied in rollSpellSave). Returns true if activated, false if not
-    // eligible (wrong class/domain/level). Sets corona_of_light_turns; ticked down in beginTurn.
-    bool activateCoronaOfLight(BattleMap& bm, int idx) noexcept;
-
     // ── Sorcerer ──────────────────────────────────────────────────────────
-    // Innate Sorcery (L1): Bonus Action, spend 1 use to gain +1 spell save DC and
-    // advantage on spell attack rolls for 1 minute (10 rounds). Returns true if
-    // activated, false otherwise (not a Sorcerer / no uses left).
-    // Sorcery Incarnate (L7): with no uses left, 2 Sorcery Points activate it instead.
-    bool activateInnateSorcery(BattleMap& bm, int idx) noexcept;
-
-    // Sorcery Incarnate (L7): true while a Sorcerer of level 7+ has Innate Sorcery running. While
-    // it is, the caster may put TWO Metamagic options on one spell (SpellAction::metamagic +
-    // metamagic2) — the GUI gates its second arm-slot on this, and executeSpell enforces it.
-    [[nodiscard]] static bool sorceryIncarnateActive(const Agent::Stats& s) noexcept;
 
     // Font of Magic (L2): convert a remaining spell slot of slot_level (1-9) into
     // slot_level Sorcery Points (capped at max). Returns new SP total, or -1 if it
@@ -240,16 +171,6 @@ public:
 
     // Sorcerer Metamagic — Sorcery Point cost per option (2024 PHB).
     static int metamagicSpCost(MetamagicOption opt) noexcept;
-
-    // Draconic L14 — Dragon Wings: grant fly speed = walk speed (persistent, no concentration).
-    // Toggle: activating when already active (dragon_wings_active = true) resets fly speed to 0
-    // and clears the flag. Returns true if the agent is a Draconic Sorcerer L14+.
-    bool activateDragonWings(BattleMap& bm, int idx) noexcept;
-
-    // Draconic L6 Elemental Affinity — resistance half (Bonus Action, 1 SP): spend 1 Sorcery Point
-    // to gain resistance (0.5x) to the chosen draconic damage type for 1 hour (600 rounds in the sim).
-    // Gate: Draconic L6+, draconic_affinity_type >= 0, >= 1 SP, not already active. Returns true if used.
-    bool activateDraconicResistance(BattleMap& bm, int idx) noexcept;
 
     // Wild Magic — Bend Luck (Sorcerer L6+): spend 1 Sorcery Point to roll 1d4 and apply it
     // as a bonus (boost=true) or penalty (boost=false) to the next D20 Test, via the additive
@@ -293,42 +214,6 @@ public:
     // Advantage is held for this agent alone and used by rollInitiative / rollInitiativeFor.
     // Call before rolling. Returns true if the use was spent.
     bool armTidesForInitiative(BattleMap& bm, int idx) noexcept;
-
-    // Clockwork L14 Trance of Order (Bonus Action). For 1 minute (10 rounds): attacks against this
-    // sorcerer can't benefit from Advantage, and they treat their own d20 of 9-or-lower as a 10 on
-    // D20 Tests (applyTranceFloor). Free 1/long rest via the "Trance of Order" Resource, else 5
-    // Sorcery Points. Sets trance_of_order_turns = 10 and spends the bonus action. Returns true if used.
-    bool activateTranceOfOrder(BattleMap& bm, int idx) noexcept;
-
-    // Clockwork L6 Bastion of Law (Magic Action). Spend 1-5 Sorcery Points to ward `target_idx`
-    // (self or a creature within 30 ft) with a pre-rolled (sp)d8 absorption pool stored in
-    // Stats::bastion_ward. Overwrites any existing ward on the target. Returns the ward total
-    // rolled, or -1 on failure (gating / range / not enough Sorcery Points).
-    int activateBastionOfLaw(BattleMap& bm, int caster_idx, int target_idx, int sp) noexcept;
-
-    // Bastion of Law absorption: reduce `dmg` by the remaining bastion_ward on `s`, decrementing
-    // the ward (caller persists `s`). Returns the post-ward damage. Logs when the ward soaks. Called
-    // at each damage-absorption site BEFORE temp HP. No-op when ward == 0 or dmg <= 0.
-    int applyBastionWard(BattleMap& bm, int idx, Agent::Stats& s, int dmg) noexcept;
-
-    // Clockwork L18 Clockwork Cavalcade (Magic Action). Each ally within 30 ft of the caster (and the
-    // caster) regains 100 HP and has its active spell-applied conditions ended. Free 1/long rest via
-    // the "Clockwork Cavalcade" Resource, else 7 Sorcery Points. Returns the number of creatures
-    // affected, or -1 on failure (gating / no use & < 7 Sorcery Points).
-    int clockworkCavalcade(BattleMap& bm, int caster_idx) noexcept;
-
-    // Aberrant L14 Revelation in Flesh (Bonus Action). Spend 1 Sorcery Point to transform for 10
-    // minutes (100 rounds): gain a fly speed (= walk) with hover, a swim speed (= walk), and
-    // truesight 60 ft (see Invisible creatures). Snapshots the prior speeds/truesight and reverts them
-    // on expiry (beginTurn) / long rest. Gate Sorcerer/AberrantPath/L14+. Returns true if activated.
-    bool activateRevelationInFlesh(BattleMap& bm, int idx) noexcept;
-
-    // Aberrant L18 Warping Implosion. Teleport the caster to (dest_col,dest_row) — an unoccupied cell
-    // within 120 ft it can see — then every OTHER creature within 30 ft of the space it LEFT makes a
-    // Dexterity save vs the sorcerer's spell DC, taking 3d10 Force (half on a success). Free 1/long
-    // rest via the "Warping Implosion" Resource, else 5 Sorcery Points. Gate Aberrant L18+. Returns the
-    // number of creatures damaged, or -1 on failure (gating / range / occupied dest / no use & < 5 SP).
-    int warpingImplosion(BattleMap& bm, int caster_idx, int dest_col, int dest_row) noexcept;
 
     // Aberrant Mind L3+ Psionic Sorcery: spend `spell_level` Sorcery Points to cast a psionic-list
     // spell without consuming a spell slot. Gate: AberrantPath L3+, spell_level >= 1, >= spell_level SP.
@@ -694,22 +579,6 @@ public:
     [[nodiscard]] bool recordMoves() const noexcept { return ctx_.record_moves_; }
     void setRecordMoves(bool on) noexcept { ctx_.record_moves_ = on; }
 
-    // OnTurnStartNearby eligibility + apply (declared public for tests / GUI gating).
-    // Mirrors canRiposte's 5 ft reach test plus reaction-free/alive/!incapacitated. (Sentinel is NOT a
-    // turn-start reaction — it provokes an OA on Disengage; see detectProvokes / Agent::Stats::has_sentinel.)
-    [[nodiscard]] bool canBranchesOfTree(const BattleMap& bm, int reactor, int source) const; // has_branches_of_the_tree
-    // Branches: spend the reaction; the source makes a STR save vs the reactor's spell save DC; on a
-    // failure it is Grappled (escape DC = the same). Rolls directly → no nested window opens.
-    bool         applyBranchesOfTree(BattleMap& bm, int reactor, int source);
-
-    // World Tree "Vitality of the Tree" (Barbarian L3+, OnTurnStartNearby self-option): while raging,
-    // at the start of its own turn the Barbarian may grant one creature within 10 ft Xd6 temp HP
-    // (X = Rage Damage bonus, min 1). Free (not the reaction) but once per turn. canVitalityOfTheTree
-    // gates class/subclass/level/raging/once-per-turn + a valid target in range; applyVitalityOfTheTree
-    // rolls and grants to target_idx (tagging rage provenance so endRage clears it).
-    [[nodiscard]] bool canVitalityOfTheTree(const BattleMap& bm, int source) const;
-    bool               applyVitalityOfTheTree(BattleMap& bm, int source, int target);
-
     // Called when agent's turn ends: apply persistent spell effects marked
     // for end-of-turn (effects_on_end_turn == true).
     void endTurn(BattleMap& bm, int agent_idx) noexcept;
@@ -759,12 +628,6 @@ public:
     // not truly dead. Call after any healing so a healed creature isn't skipped in initiative.
     // Static (touches only bm) so the static heal utilities (healAgent/layOnHands) can call it.
     static void reviveOnHeal(BattleMap& bm, int idx) noexcept;
-    // Rogue Cunning Strike rider application (save + condition): Poison/Trip/Withdraw/KnockOut/Obscure.
-    // Internal helper called by applyCunningStrikeEffect after the Sneak Attack dice are spent. result
-    // is forwarded so the Assassin's Envenom Weapons (L13+) bonus 2d6 Poison (on a failed Poison save,
-    // ignoring Poison Resistance) folds into the same AttackResult/target HP.
-    void applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int target_idx,
-                                  const std::vector<int>& effects, AttackResult& result) noexcept;
     void applyPoisoned(BattleMap& bm, int idx) noexcept;  // disadvantage on attacks and ability checks
     void applyDeafened(BattleMap& bm, int idx) noexcept;  // cannot hear; auto-fail ability checks requiring hearing
     void applyPetrified(BattleMap& bm, int idx) noexcept;  // incapacitated, speed 0, resistance to all damage, immune to poisoned
@@ -826,12 +689,6 @@ public:
     // Powers Quivering Palm and any future stored-effect ability (Delayed Blast Fireball, etc.).
     // Returns the damage dealt, or -1 if the id is not a valid delayed-trigger condition.
     int triggerDelayedEffect(BattleMap& bm, int condition_id) noexcept;
-
-    // Monk Way of the Open Hand L17 — plant Quivering Palm vibrations on target_idx after an Unarmed
-    // Strike hit, spending Focus Points. Builds a delayed-trigger condition (10d12 Force, CON save for
-    // half) that the monk later detonates via triggerDelayedEffect. Only one creature may be affected
-    // at a time, so any prior vibrations this monk planted are ended first. Returns true on success.
-    bool plantQuiveringPalm(BattleMap& bm, int monk_idx, int target_idx) noexcept;
 
     [[nodiscard]] std::vector<Weapon> getAgentWeapons(const BattleMap& bm, int idx) const noexcept;
     void setAgentWeapons(BattleMap& bm, int idx, std::vector<Weapon> weapons) noexcept;
@@ -1135,437 +992,15 @@ public:
     // per enemy reduced to 0 HP, from any knockdown site (weapon, spell, etc.).
     void grantDarkOnesBlessing(BattleMap& bm, int victim_idx, int killer_idx) noexcept;
 
-    // Barbarian Rage lifecycle methods
-    // Activate Rage: set raging=true, apply BPS resistance (0.5x multiplier)
-    void activateRage(BattleMap& bm, int idx);
-
-    // Extend Rage: reset duration_remaining on Rage resource
-    void extendRage(BattleMap& bm, int idx);
-
-    // End Rage: set raging=false, clear BPS resistance (restore 1.0x multiplier)
-    void endRage(BattleMap& bm, int idx);
-
-    // Barbarian Path of the Berserker L10 — Intimidating Presence (Bonus Action):
-    // Each creature of the Barbarian's choice within a 30-ft emanation makes a WIS save
-    // (DC 8 + STR mod + PB) or is Frightened until the end of the Barbarian's next turn.
-    // Usable PB times per long rest, or expend one Rage use. Spends a bonus action.
-    bool useIntimidatingPresence(BattleMap& bm, int idx) noexcept;
-
-    // Barbarian Path of the Zealot L10 — Zealous Presence (Bonus Action):
-    // Up to 10 creatures of the Barbarian's choice (allies) within 60 ft gain Advantage on attack
-    // rolls and saving throws until the start of the Barbarian's next turn.
-    // Usable 1 time per long rest, or expend one Rage use. Spends a bonus action.
-    bool useZealousPresence(BattleMap& bm, int idx) noexcept;
-
-    // Celestial Warlock L14 — Searing Vengeance: when a Celestial warlock would make a death save at
-    // the start of its turn, it may instead spring back to its feet — regaining half its HP maximum,
-    // standing up, and searing every enemy within 30 ft for 2d8 + CHA radiant + Blinded (until the end
-    // of the warlock's next turn). Once per long rest ("Searing Vengeance" resource). Auto-fires from
-    // the start-of-turn death-save site. Returns true if it triggered (skip the normal death save).
-    bool triggerSearingVengeance(BattleMap& bm, int idx) noexcept;
-
-    // Great Old One Warlock L6 — Clairvoyant Combatant: as a Bonus Action, a GOO warlock makes telepathic
-    // contact with one creature it can see within 60 ft, forcing a WIS save (vs the warlock's CHA spell
-    // save DC). On a failure the warlock has Advantage on attack rolls against that creature, and the
-    // creature has Disadvantage on attack rolls against the warlock, until the start of the warlock's next
-    // turn (a directed "ClairvoyantCombatant" ActiveAgentCondition, caster=warlock, agent=target). Once per
-    // short/long rest ("Clairvoyant Combatant" resource); when exhausted, a Pact Magic slot may be spent
-    // instead. Returns true if it activated (use surfaced via a GUI bonus-action button).
-    bool activateClairvoyantCombatant(BattleMap& bm, int warlock_idx, int target_idx) noexcept;
-
-    // Barbarian Path of the Zealot L14 — Rage of the Gods: while raging, assume a divine-warrior
-    // form (once per long rest) — Fly Speed = Speed (can hover), Resistance to Necrotic/Psychic/
-    // Radiant. The form ends when Rage ends or the Barbarian drops to 0 HP. While the form is active,
-    // the Barbarian may use the Revivification reaction (handled at the drop-to-0 site in applyDamage).
-    bool activateRageOfTheGods(BattleMap& bm, int idx) noexcept;
-
-    // Barbarian Path of the World Tree L14 — Travel along the Tree: while raging, teleport up to
-    // 60 ft (or up to 150 ft once per Rage when long_range=true) to a visible unoccupied space.
-    // Spends a bonus action. (Bringing willing allies on the 150-ft hop is deferred — see notes.)
-    bool travelAlongTree(BattleMap& bm, int idx, int target_col, int target_row,
-                         bool long_range) noexcept;
-
-    // Barbarian Path of the Berserker L10 — Retaliation: when a creature within 5 ft damages this
-    // Barbarian, they may spend their reaction to make one melee weapon attack back. The eligible
-    // attacker is recorded in retaliation_target_idx (set in applyAttackResult). Returns the attack.
-    AttackResult applyRetaliation(BattleMap& bm, int defender_idx) noexcept;
-
-    // Apply Brutal Strike effects: damage + chosen effects (Forceful/Hamstring/Staggering/Sundering)
-    // effects: vector of effect indices (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering)
-    void applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
-                                const std::vector<int>& effects, AttackResult& result) noexcept;
-
-    // Apply Rogue Sneak Attack + optional Cunning Strike riders out of band, after a qualifying hit
-    // (cunning_strike_available). Rolls (sneak_dice − rider cost)d6, adds it to result/damage and the
-    // target's HP, marks Sneak Attack used, then applies any rider conditions. effects: rider codes
-    // (0=Poison 1=Trip 2=Withdraw 4=KnockOut 5=Obscure); empty = full Sneak Attack with no rider.
-    // Invalid/over-budget rider sets are ignored (full Sneak Attack still applies, no rider).
-    //
-    // round_num (default -1 = caller doesn't track rounds): the current combat round (0 = first
-    // round). Drives the Assassin subclass round-1 features folded into this Sneak Attack:
-    //   · Assassinate (L3+): +Rogue-level flat damage on a first-round Sneak hit.
-    //   · Envenom Weapons (L13+): the Poison rider costs 0 Sneak dice and adds 2d6 Poison ignoring
-    //     Resistance (applied in applyCunningStrikeRiders on a failed save).
-    //   · Death Strike (L17+): a first-round Sneak hit forces a CON save (DC 8 + DEX + PB); on a
-    //     failure the whole attack's damage is doubled.
-    void applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
-                                  const std::vector<int>& effects, AttackResult& result,
-                                  int round_num = -1) noexcept;
-
-    // ── Soulknife Rogue (subclass) ──────────────────────────────────────────
-    // Soul Blades — Homing Strikes (L9): after a MISS with a Psychic Blade, spend 1 Psionic Energy
-    // Die, roll it and add the result to the attack roll; if that converts the miss to a hit, roll
-    // damage and apply it (the die is expended only when it causes a hit). Returns true iff it
-    // converted to a hit. v1: a Homing-converted hit does NOT open the Sneak Attack window.
-    bool applyHomingStrike(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx,
-                           AttackResult& result) noexcept;
-
-    // Soul Blades — Psychic Teleportation (L9): a Bonus Action; spend 1 Psionic Energy Die, roll it,
-    // and teleport up to (10 × roll) feet to the target cell. Returns true on success (in range +
-    // unoccupied). Spends the die only on a successful teleport.
-    bool psychicTeleportation(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
-
-    // Psychic Veil (L13): a Magic action → gain the Invisible condition. Once per Long Rest, or by
-    // expending 1 Psionic Energy Die. Returns true if activated.
-    bool activatePsychicVeil(BattleMap& bm, int idx) noexcept;
-
-    // Shadow Step (L6+): a Bonus Action teleport for Warrior of Shadow Monks. L6 requires dim/dark,
-    // L11+ works from any light level. Sets shadow_step_advantage flag for next attack. Returns true
-    // iff teleport succeeds. The GUI handles target-cell selection (like Psychic Teleportation).
-    bool shadowStepTeleport(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
-
-    // Steps of the Fey (Archfey Warlock L3): a Bonus-Action Misty Step (30 ft) cast with no slot,
-    // spending one "Steps of the Fey" use. effect selects the rider: 0 None, 1 Refreshing (self 1d10
-    // temp HP), 2 Taunting (WIS save near departure → FeyTaunt Disadvantage), 3 Disappearing (L6+,
-    // self Invisible), 4 Dreadful (L6+, 2d10 Psychic near departure on a failed WIS save). The GUI
-    // handles effect selection + target-cell selection. Returns true iff the teleport happens.
-    // Misty Escape (L6): pass as_reaction=true to cast this Misty Step as a Reaction (spending the
-    // reaction instead of a Bonus Action) in response to taking damage.
-    bool stepsOfTheFey(BattleMap& bm, int idx, int target_col, int target_row, int effect,
-                       bool as_reaction = false) noexcept;
-
-    // Shared additional-effect rider for a Steps of the Fey / Misty Escape / Bewitching Magic Misty
-    // Step. `from` is the square the warlock departed (Taunting/Dreadful key off it). effect: 1
-    // Refreshing (self 1d10 temp HP), 2 Taunting (FeyTaunt on a failed WIS save), 3 Disappearing (self
-    // Invisible), 4 Dreadful (2d10 Psychic on a failed WIS save), 0 = none. Caller has already gated.
-    void applyStepsOfFeyRider(BattleMap& bm, int idx, const Cell& from, int effect) noexcept;
-
-    // Bewitching Magic (Archfey Warlock L14): a free (no slot, no use, no action) Misty Step cast
-    // immediately after an Enchantment/Illusion action-cast. Gates patron/L14 + 30-ft range, teleports,
-    // and applies the chosen rider. The GUI enforces the "just cast Enchantment/Illusion" timing.
-    bool bewitchingMistyStep(BattleMap& bm, int idx, int target_col, int target_row, int effect) noexcept;
-
-    // Misty Wanderer (Fey Wanderer Ranger L15): a slotless Misty Step (Bonus Action, ≤30 ft to an
-    // unoccupied space you can see), spending one "Misty Wanderer" use. ally_idx >= 0 brings one willing
-    // creature from within 5 ft (mistyWandererAllies) to (ally_col, ally_row), a free space within 5 ft of
-    // the destination; a negative ally cell picks the first free one (mistyWandererAllyCell). Every check
-    // runs before anything moves. autoMistyWanderer is the NpcDriver's use: a ranged Ranger an enemy has
-    // in reach teleports to the nearest cell out of every enemy's reach or sight (shadowyDodgeDestination),
-    // bringing an adjacent ally who is in melee too, if there is room.
-    [[nodiscard]] std::vector<int> mistyWandererAllies(const BattleMap& bm, int idx) const;
-    [[nodiscard]] bool isMistyWandererAllyCell(const BattleMap& bm, int ally_idx, Cell dest,
-                                               int ranger_idx, Cell ranger_dest) const;
-    [[nodiscard]] Cell mistyWandererAllyCell(const BattleMap& bm, int ally_idx, int ranger_idx,
-                                             Cell ranger_dest) const;
-    bool mistyWanderer(BattleMap& bm, int idx, int target_col, int target_row,
-                       int ally_idx = -1, int ally_col = -1, int ally_row = -1) noexcept;
-    bool autoMistyWanderer(BattleMap& bm, int idx) noexcept;
-
-    // Cloak of Shadows (L17): a Bonus Action for Warrior of Shadow Monks. Gain Invisible condition
-    // in dim/dark light. Invisibility persists through attacks (doesn't end on action). Returns true
-    // iff activated. Expires on turn start if agent moves to bright light.
-    bool cloakOfShadows(BattleMap& bm, int idx) noexcept;
-
-    // Trickery Domain Cleric — Invoke Duplicity duplicate movement (Bonus Action, later turns): move
-    // the cleric's illusory duplicate (summon_spell == "Invoke Duplicity") up to 30 ft. Returns true
-    // iff moved. Creation lives in the GUI (shares the summon-spawn path).
-    bool moveDuplicate(BattleMap& bm, int cleric_idx, int dup_idx,
-                       int target_col, int target_row) noexcept;
-
-    // Trickster's Transposition (L6+): swap the cleric's position with their duplicate. No resource or
-    // action cost (it rides on creating/moving the duplicate). Returns true iff swapped.
-    bool swapWithDuplicate(BattleMap& bm, int cleric_idx, int dup_idx) noexcept;
-
-    // Shadow Arts: Darkness (L3): a Warrior of Shadow Monk spends 1 Focus Point to fill a 15-ft-radius
-    // Sphere (centered on the chosen point) with magical Darkness for 1 minute. The casting Monk can
-    // see through their own Darkness (the light effect is tagged see-through for this Monk), so they
-    // are not Blinded by it; other creatures inside without Devil's Sight gain the Blinded condition.
-    // Returns the new light-effect id (>= 0) on success, or -1 on failure (wrong class/level/no focus).
-    int shadowArtsDarkness(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
-
     // ── Warrior of the Elements (Phase 3) ───────────────────────────────────────────────────────
-    // Elemental Attunement (L3): Magic action + 1 Focus Point → for the rest of the encounter (the sim
-    // doesn't track the 10-min duration; reset on a short/long rest) the Monk's unarmed strikes reach
-    // +10 ft, deal the chosen element (Acid/Cold/Fire/Lightning/Thunder), and can push/pull the target
-    // 10 ft. `element` is a MagicDamage_t value. Returns true on success, false on wrong class/level/no
-    // focus / invalid element.
-    bool activateElementalAttunement(BattleMap& bm, int idx, int element) noexcept;
 
-    // Elemental Attunement push/pull rider: while attunement is active, an unarmed hit can push the
-    // target 10 ft away (pull=false) or pull it 10 ft toward the Monk (pull=true). No save. Returns the
-    // feet actually moved (0 if blocked/invalid).
-    int elementalAttunementMove(BattleMap& bm, int attacker_idx, int target_idx, bool pull) noexcept;
-
-    // Elemental Burst (L6): Magic action + 2 Focus Points → a 20-ft-radius sphere centered on the chosen
-    // point. Each creature there (faction-aware: allies of the caster are spared) makes a DEX save vs the
-    // Monk's Ki DC (8 + PB + WIS); on a failure it takes (Martial Arts die count) × d8 of the chosen
-    // element, half on a success. `element` is a MagicDamage_t value. Returns true on success.
-    bool elementalBurst(BattleMap& bm, int idx, int target_col, int target_row, int element) noexcept;
-
-    // Rend Mind (L17): after a Psychic-Blade Sneak Attack, force a WIS save (DC 8 + DEX + PB) or be
-    // Stunned for 1 minute (repeat the save at end of each of its turns). Once per Long Rest, or by
-    // expending 3 Psionic Energy Dice. canRendMind gates availability; applyRendMind resolves it and
-    // returns true iff the target is Stunned.
-    [[nodiscard]] bool canRendMind(const BattleMap& bm, int attacker_idx) const noexcept;
-    bool applyRendMind(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
-
-    // Cleric Blessed Strikes — Divine Strike: out-of-band rider after a qualifying weapon hit
-    // (divine_strike_available). Rolls 1d8 (2d8 at L14) Radiant or Necrotic (radiant flag), adds it
-    // to result/damage and the target's HP, marks Divine Strike used for the turn. Mirrors
-    // applyBrutalStrikeEffect / applyCunningStrikeEffect.
-    void applyDivineStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
-                                 bool radiant, AttackResult& result) noexcept;
-
-    // Paladin Divine Smite (on a melee/unarmed hit): spend a level-slot_level spell slot as a
-    // Bonus Action to add (1 + min(slot_level,5))d8 Radiant, +1d8 vs Undead/Fiend. Requires
-    // divine_smite_available, a free bonus action, the chosen slot, and no leveled spell cast
-    // this turn; spends the slot + bonus action, sets leveled_spell_cast_this_turn and
-    // divine_smite_used. Returns the Radiant damage dealt, or -1 if not allowed.
-    int applyDivineSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
-                               int slot_level, AttackResult& result) noexcept;
-
-    // Warlock Eldritch Smite (invocation 15, L5+, Pact of the Blade): on a pact-weapon hit, expend a
-    // Pact Magic spell slot as a Bonus Action to add (slot_level + 1)d8 Force damage, and knock a
-    // Huge-or-smaller target Prone. slot_level is the Warlock's pact slot level (pact_slot_level()).
-    // Requires eldritch_smite_available, a free bonus action, a pact slot, and no leveled spell cast
-    // this turn; spends the pact slot + bonus action, sets leveled_spell_cast_this_turn and
-    // eldritch_smite_used. Returns the Force damage dealt, or -1 if not allowed.
-    int applyEldritchSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
-                                 int slot_level, AttackResult& result) noexcept;
-
-    // Eldritch Knight War Magic (L7+): during the Attack action, one weapon attack may be replaced
-    // by casting a spell. canUseWarMagic owns the class/subclass/level + once-per-Attack-action gate
-    // (the "mid Attack action with attacks left" part is GUI turn-economy state); the spell itself is
-    // cast through the normal executeSpell path. markWarMagicUsed sets the once-per gate; the GUI
-    // clears war_magic_used when a fresh action-attack sequence seeds (Action Surge → another use).
-    [[nodiscard]] bool canUseWarMagic(BattleMap& bm, int idx) const noexcept;
-    void markWarMagicUsed(BattleMap& bm, int idx) noexcept;
-
-    // Spell indices an EK may cast via War Magic: action-casting-time cantrips (L7+), plus level
-    // 1-5 action spells at L18+ (Improved War Magic). Reuses availableCastableSpells, so the
-    // slot / one-leveled-spell-per-turn rules already apply to the leveled case.
-    [[nodiscard]] std::vector<int> availableWarMagicSpells(const BattleMap& bm, int idx) const;
-
-    // Divine Intervention (Cleric L10+): once per Long Rest, free-cast a chosen Cleric spell of
-    // level ≤ 5. canUse owns the class/level + resource-availability + Greater-DI-lock gate; the
-    // GUI orchestrates the picker (like Wish). useDivineIntervention spends the one use and, if
-    // chose_wish (Greater DI, L20), sets the 2d4-Long-Rest recharge lock; returns false with no
-    // state change when unavailable. The caller free-casts the chosen spell.
-    [[nodiscard]] bool canUseDivineIntervention(const BattleMap& bm, int agent_idx) const noexcept;
-    bool useDivineIntervention(BattleMap& bm, int agent_idx, bool chose_wish) noexcept;
-
-    // Eldritch Knight Arcane Charge (L15): teleport up to 30 ft (the optional rider on Action
-    // Surge). Validates EK L15+, the 30-ft range, and a clear destination, then teleports.
-    // Returns feet moved (>=0) on success, or a negative code: -1 not eligible / invalid,
-    // -2 out of range, -3 destination blocked.
-    int applyArcaneCharge(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
     // Boon of Dimensional Travel — Blink Steps has no dedicated engine entry: it reuses the existing
     // teleport primitives (teleportAgent / isValidTeleportDestination / hasLineOfSight) from the GUI,
     // gated on the blink_steps_available Conditions flag (armed after the Attack/Magic action).
 
-    // Psi Warrior Psionic Strike (on-hit): spend one Psionic Energy die to add Force damage
-    // (die roll + INT mod) to a hit, once per turn. Mirrors applyDivineStrikeEffect. Requires
-    // psionic_strike_available; clears it and sets psionic_strike_used.
-    void applyPsionicStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx, AttackResult& result) noexcept;
-
-    // Grappler feat — Punch-and-Grab (on-hit): after an Unarmed-Strike hit as part of the Attack action,
-    // the attacker may ALSO attempt a Grapple this attack (normally you pick damage OR grapple), once per
-    // turn. Routes the grapple through the shared resolveGrapple core (contested check, computed escape
-    // DC) — never a parallel path. Requires grappler_punch_grab_available; clears it and sets
-    // grappler_punch_grab_used. Returns the GrappleResult (invalid if the flag wasn't set).
-    [[nodiscard]] GrappleResult applyPunchAndGrab(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
-
-    // Psi Warrior Protective Field (reaction): spend one Psionic Energy die + the defender's reaction
-    // to reduce incoming damage by (die roll + INT mod), capped at damage_taken. Modeled as a post-hit
-    // heal-back of the prevented amount. Returns the damage prevented, or -1 if it could not be used.
-    int applyProtectiveField(BattleMap& bm, int defender_idx, int damage_taken) noexcept;
-
-    // Psi Warrior Telekinetic Movement: spend the once-per-rest "Telekinetic Movement" use to push a
-    // creature up to 30 ft straight away from the Psi Warrior. Returns feet moved, or -1 if unavailable.
-    int applyTelekineticMovement(BattleMap& bm, int idx, int target_idx) noexcept;
-
-    // War Domain — Guided Strike: a War Cleric L3+ (the attacker, or an ally within 30 ft who also
-    // spends a Reaction) expends Channel Divinity to add +10 to a missed attack roll (result), turning
-    // it into a hit when it now meets AC — in which case weapon damage is rolled and applied here.
-    void applyGuidedStrike(BattleMap& bm, const Attack& action, int cleric_idx, AttackResult& result) noexcept;
-
-    // Reckless Attack (Barbarian) — post-hoc entry point. After a miss the engine flags
-    // reckless_reroll_available; the GUI prompts and calls this to commit Reckless (sets
-    // reckless_attack → enemies gain advantage vs you until your next turn) and re-resolve the
-    // same attack with advantage. Returns the fresh AttackResult. No-op (invalid result) if the
-    // flag isn't set.
-    [[nodiscard]] AttackResult applyRecklessReroll(BattleMap& bm, int attacker_idx,
-                                                   int target_idx, int weapon_idx) noexcept;
-
-    // Battle Master Riposte (on-miss DEFENDER reaction) — post-hoc entry. After a missing melee
-    // attack the engine flags the target's riposte_available; the GUI prompts (or the auto/RL path
-    // calls maybeRiposteInline) and invokes this to commit the riposte: spend the reaction + 1
-    // Superiority Die, make a melee attack defender→attacker, and on a hit add the Superiority Die to
-    // the damage. Returns the riposte AttackResult (invalid if the flag wasn't set / no die / no weapon).
-    [[nodiscard]] AttackResult applyRiposte(BattleMap& bm, int defender_idx,
-                                            int attacker_idx, int weapon_idx) noexcept;
-
     // Weapon Mastery — Push: a qualifying hit (push_available) shoves the target 10 ft straight
     // away from the attacker (Large or smaller). Clears the flag. Returns feet actually moved.
     int applyPush(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
-
-    // Weapon Mastery — Topple: a qualifying hit (topple_available) forces the target to make a
-    // CON save (DC 8 + attacker's attack ability mod + prof bonus) or be knocked Prone. Clears
-    // the flag. weapon_idx identifies the striking weapon (for the save DC's ability).
-    ToppleResult applyTopple(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx) noexcept;
-
-    // Monk Stunning Strike: a qualifying unarmed hit (stunning_strike_available) forces the target to
-    // make a CON save (DC 8 + attacker's DEX mod + prof bonus) or be Stunned for 1 turn. Spends
-    // 1 Focus Point. Clears the flag and sets stunning_strike_used.
-    StunningStrikeResult applyStunningStrike(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
-
-    // Monk Warrior of the Open Hand: a qualifying Flurry hit (open_hand_rider_available) applies one of
-    // three riders: Knockdown (STR save or Prone), Push (forceMoveAgent), or Deny Reaction (set reaction_used).
-    // Spends 1 Focus Point. Clears the flag and sets open_hand_rider_used.
-    OpenHandRiderResult applyOpenHandRider(BattleMap& bm, int attacker_idx, int target_idx, int option) noexcept;
-
-    // Monk Warrior of Mercy — Hand of Healing (L3+): a Bonus Action that spends 1 Focus Point to heal a
-    // creature within reach for (Martial Arts die + WIS mod). At L6 (Physician's Touch) it also ends one
-    // of Blinded/Deafened/Paralyzed/Poisoned/Stunned on the target. Pass free=true (only honored at L11,
-    // Flurry of Healing and Harm) to fold the heal into a Flurry strike: no Focus Point and no Bonus Action.
-    HandOfHealingResult handOfHealing(BattleMap& bm, int monk_idx, int target_idx, bool free = false) noexcept;
-
-    // Monk Warrior of the Open Hand — Wholeness of Body (L6+): a Bonus Action that spends one use of the
-    // "Wholeness of Body" resource (PB per long rest) to heal yourself (Martial Arts die + WIS mod, min 1).
-    // Returns the HP actually restored, or 0 if unavailable (wrong subclass/level, no uses, no Bonus Action).
-    int wholenessOfBody(BattleMap& bm, int monk_idx) noexcept;
-
-    // Monk Warrior of Mercy — Hand of Harm (L3+): once per turn, after a qualifying unarmed hit
-    // (hand_of_harm_available), spend 1 Focus Point to add (Martial Arts die + WIS mod) Necrotic damage to
-    // the AttackResult and the target's HP. At L6 (Physician's Touch) the target also becomes Poisoned. At
-    // L11 (Flurry of Healing and Harm) it costs no Focus Point and may be used any number of times per turn,
-    // but only once per target. Mirrors applyPsionicStrikeEffect (deferred on-hit rider).
-    void applyHandOfHarmEffect(BattleMap& bm, int attacker_idx, int target_idx, AttackResult& result) noexcept;
-
-    // Battle Master Maneuver (on-hit): spend 1 Superiority Die and apply one of three riders:
-    // 0=Trip (STR save or Prone), 1=Menacing (WIS save or Frightened), 2=Pushing (15 ft).
-    // Clears maneuver_available. Returns a ManeuverResult with save details / push distance.
-    ManeuverResult applyManeuverEffect(BattleMap& bm, int attacker_idx, int target_idx, int maneuver_type) noexcept;
-
-    // Arcane Archer Arcane Shot (ARCANE_ARCHER_PLAN.md AA2), on-hit options. After a ranged weapon
-    // hit (conditions.arcane_shot_available), spend one "Arcane Shot" use (once per turn) and apply a
-    // KNOWN option: Banishing (psychic 1 die, CHA save → banished until the end of its next turn),
-    // Beguiling (psychic 2 dice, WIS save → Charmed by the archer until the start of the archer's
-    // next turn; ends early if the archer attacks/damages it or forces it to save), Bursting (force
-    // 2 dice to the target and each creature in a 10-ft emanation from it), Grasping (slashing 1
-    // die, STR save → Restrained for 1 minute; escapeGraspingShot), Shadow (psychic 1 die, WIS save
-    // → Blinded until the end of its next turn). The target's damage is folded into `result`.
-    ArcaneShotResult applyArcaneShot(BattleMap& bm, int archer_idx, int target_idx, int option,
-                                     AttackResult& result) noexcept;
-    // Arcane Archer Arcane Shot (AA3), the no-attack-roll options. Each replaces one attack of the
-    // Attack action (the attack budget is the caller's) and spends one use, once per turn, with a
-    // RANGED weapon (weapon_idx). Neither rolls to hit, so neither is affected by cover.
-    // canUseArcaneShot: the shared gate (Fighter L3+ Arcane Archer, knows `option`, a use left,
-    // none used this turn).
-    [[nodiscard]] bool canUseArcaneShot(const BattleMap& bm, int archer_idx, int option) const noexcept;
-    // The cells of a Piercing Shot's 30-ft line from the archer toward (aim_col, aim_row). It passes
-    // through objects (walls don't stop it).
-    [[nodiscard]] std::vector<Cell> piercingShotCells(const BattleMap& bm, int archer_idx,
-                                                      int aim_col, int aim_row) const;
-    // Piercing Shot: each creature in the line makes a DEX save. Fail: weapon damage + 2 dice
-    // Piercing; success: half of that.
-    ArcaneShotSaveResult piercingShot(BattleMap& bm, int archer_idx, int weapon_idx,
-                                      int aim_col, int aim_row) noexcept;
-    // Seeking Shot target legality: a creature within the weapon's long range (no line of sight
-    // needed; "seen in the past minute" isn't tracked, so any creature on the archer's level).
-    [[nodiscard]] bool seekingShotTargetValid(const BattleMap& bm, int archer_idx, int weapon_idx,
-                                              int target_idx) const noexcept;
-    // Seeking Shot: the target makes a DEX save. Fail: weapon damage + 2 dice Force; success: half
-    // the weapon damage.
-    ArcaneShotSaveResult seekingShot(BattleMap& bm, int archer_idx, int weapon_idx, int target_idx) noexcept;
-    // Shared by the two above once their gates pass: spends the use and resolves each DEX save.
-    ArcaneShotSaveResult finishArcaneSaveShot(BattleMap& bm, int archer_idx, const Weapon& w,
-                                              ArcaneShotOption opt, const std::vector<int>& targets,
-                                              ArcaneShotSaveResult res) noexcept;
-    // Curving Shot (Arcane Archer L7, AA4): after a ranged weapon miss (conditions.curving_shot_available),
-    // spend the Bonus Action to reroll the attack against a different creature the archer can see,
-    // within the weapon's range and within 60 ft of the original target. curvingShotTargets lists the
-    // legal creatures; applyCurvingShot spends the Bonus Action and resolves the new attack.
-    [[nodiscard]] std::vector<int> curvingShotTargets(const BattleMap& bm, int archer_idx, int original_idx,
-                                                      int weapon_idx) const noexcept;
-    AttackResult applyCurvingShot(BattleMap& bm, int archer_idx, int original_idx, int new_target_idx,
-                                  int weapon_idx) noexcept;
-    // Ever-Ready Shot (Arcane Archer L10, AA4): at combat start, each such archer with no Arcane Shot
-    // uses left regains one. RNG-free; call once after initiative.
-    void applyEverReadyShot(BattleMap& bm) noexcept;
-    // Indomitable Teleport (Arcane Archer L15, AA5): after an Indomitable reroll SUCCEEDS on a spell
-    // save, the archer may teleport up to 60 ft to an unoccupied space it can see. The cast flow opens
-    // an AfterSave window for it (applySaveFailReaction flags it on the in-flight cast).
-    [[nodiscard]] bool canIndomitableTeleport(const BattleMap& bm, int idx) const noexcept;
-    [[nodiscard]] bool isIndomitableTeleportDestination(const BattleMap& bm, int idx, Cell dest) const;
-    bool applyIndomitableTeleport(BattleMap& bm, int idx, int col, int row);
-    [[nodiscard]] std::vector<ReactionOption> indomitableTeleportOptions() const;
-    // Masterful Shots (Arcane Archer L18, AA5): a Reaction when a creature the archer can see misses
-    // it with an attack roll. The archer moves up to half its Speed away from the attacker without
-    // provoking Opportunity Attacks, then makes one ranged weapon attack against it if it is in range.
-    // Offered through the AfterAttack window (GUI) or the decider (auto).
-    [[nodiscard]] bool canMasterfulShots(const BattleMap& bm, int archer_idx, int attacker_idx) const;
-    // A Ranged weapon slot that can attack attacker_idx from `from` (one without the long-range
-    // Disadvantage first), or -1.
-    [[nodiscard]] int  masterfulShotsWeapon(const BattleMap& bm, int archer_idx, int attacker_idx,
-                                            Cell from) const;
-    // The archer's own cell (no move), or a cell reachable on foot within half its Speed, unoccupied,
-    // and farther from the attacker than where it stands.
-    [[nodiscard]] bool isMasterfulShotsDestination(const BattleMap& bm, int archer_idx, int attacker_idx,
-                                                   Cell dest) const;
-    // The engine's pick: a legal cell from which a weapon reaches the attacker (without long-range
-    // Disadvantage if possible), as far from it as possible, then the shortest move.
-    [[nodiscard]] Cell masterfulShotsDestination(const BattleMap& bm, int archer_idx, int attacker_idx) const;
-    // Spend the Reaction, move to (col,row) (-1,-1 = masterfulShotsDestination), then attack. Returns
-    // the attack (invalid when ineligible, the cell is illegal, or the attacker is out of range).
-    AttackResult applyMasterfulShots(BattleMap& bm, int archer_idx, int attacker_idx, int col, int row);
-    [[nodiscard]] std::vector<ReactionOption> masterfulShotsOptions() const;
-    // Grasping Shot escape: an action by the restrained creature, or a creature within 5 ft of it,
-    // makes a STR (Athletics) check against the archer's Arcane Shot DC; success ends Restrained.
-    // The action cost is the caller's to charge.
-    GraspingEscapeResult escapeGraspingShot(BattleMap& bm, int actor_idx, int target_idx) noexcept;
-    // True if target_idx is Restrained by a Grasping Shot.
-    [[nodiscard]] bool heldByGraspingShot(int target_idx) const noexcept;
-    // Beguiling Shot break rule: end any Charmed condition source_idx's Beguiling Shot put on target_idx.
-    void endBeguilingCharm(BattleMap& bm, int source_idx, int target_idx) noexcept;
-
-    // Battle Master Sweeping Attack (on-hit): spend 1 Superiority Die to splash the same attack onto a
-    // 2nd creature within 5 ft of the original target. If the original attack roll (result.total_roll)
-    // would hit the 2nd creature's AC, it takes superiority-die damage of the attack's damage type.
-    // Clears maneuver_available. action/result are the original (primary) attack.
-    ManeuverResult applySweepingAttack(BattleMap& bm, const Attack& action, const AttackResult& result,
-                                       int secondary_idx) noexcept;
-
-    // Battle Master bonus-action maneuvers. Each spends 1 Superiority Die (returns false / 0 if none).
-    //  · Rally: grant a creature within 30 ft Temporary HP = superiority die + your CHA modifier.
-    //    Returns the temp HP granted (0 = could not — no die or bad index).
-    int  applyRally(BattleMap& bm, int fighter_idx, int target_idx) noexcept;
-    //  · Feinting Attack: feint a creature within 5 ft → Advantage on your next attack vs it this turn
-    //    and that hit adds the die to damage (feint_target_idx; consumed in applyAttackResult).
-    bool applyFeintingAttack(BattleMap& bm, int fighter_idx, int target_idx) noexcept;
-    //  · Quick Toss: arm a superiority-die damage bonus on your next thrown-weapon attack this turn
-    //    (quick_toss_die_pending). The GUI then makes the actual thrown attack.
-    bool prepareQuickToss(BattleMap& bm, int fighter_idx) noexcept;
-
-    // Battle Master Precision Attack (on-miss): spend 1 Superiority Die, add 1d8/d10 to the
-    // attack roll, and recompute the hit (may convert a miss to a hit with full damage).
-    // Clears maneuver_precision_available. Mutates result in place (mirrors applyGuidedStrike).
-    void applyPrecisionAttackEffect(BattleMap& bm, const Attack& action, AttackResult& result) noexcept;
-
-    // Monk Flurry of Blows: executes two bonus-action unarmed strikes against the same target,
-    // optionally applying an Open Hand rider on each hit (option: 0=Knockdown, 1=Push, 2=DenyReaction, -1=None).
-    // Spends 1 Focus Point. Returns both attack results and rider results.
-    FlurryResult executeFlurryOfBlows(BattleMap& bm, int attacker_idx, int target_idx, int rider_option) noexcept;
 
     // Bonus-action attack sequence management: decrements bonus_attacks_remaining for an agent.
     // Returns true if more attacks are queued, false if sequence is exhausted.
@@ -1582,38 +1017,7 @@ public:
     // Refill bonus_actions_remaining = bonus_actions_max for the agent (start of turn).
     void resetBonusActions(BattleMap& bm, int agent_idx) noexcept;
 
-    // Barbarian Primal Knowledge: check if agent can use STR for Acrobatics/Stealth while Raging
-    // Returns true if: Barbarian L3+, Raging, and skill is "Acrobatics" or "Stealth"
-    bool canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept;
-
-    // ── Diviner Wizard Portent Dice ──────────────────────────────────────
-    // Use a portent die on the next roll: validates agent is Diviner, has dice, and
-    // hasn't used portent this round. Sets pending_portent_die which CombatEngine::roll()
-    // will return instead of rolling. Decrements the Portent Dice resource.
-    // die_index: index into agent's portent_dice deque (0-based)
-    // current_round: current round number for per-round limit enforcement
-    // Returns true on success, false if agent/die is invalid or already used this round.
-    [[nodiscard]] bool usePortentDie(BattleMap& bm, int agent_idx, int die_index, int current_round) noexcept;
-
-    // Regenerate portent dice pool for a Diviner after long rest.
-    // Rolls count d20s and populates agent's portent_dice deque.
-    void regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept;
-
     // ── Bardic Inspiration ────────────────────────────────────────────────
-    // Grant a Bardic Inspiration die of size d (6/8/10/12) to a creature. Overwrites
-    // any die it already holds (RAW: one Bardic Inspiration die at a time). The bard's
-    // "Bardic Inspiration" resource is spent separately by the bonus-action caller.
-    bool grantBardicDie(BattleMap& bm, int agent_idx, int d = 8) noexcept;
-
-    // Spend the held Bardic Inspiration die: roll it, stash the result in
-    // pending_roll_bonus_ so the NEXT d20 Test for that agent adds it, then clear the
-    // held die. Returns the rolled value (0 if the agent holds no die).
-    int useBardicDie(BattleMap& bm, int agent_idx) noexcept;
-
-    // Combat Inspiration damage mode (Valor Bard L3+, any held die): roll the held Bardic
-    // Inspiration die and fold it into pending_damage_bonus_ so the NEXT weapon damage roll
-    // adds it, then clear the held die. Returns the rolled value (0 if no die held).
-    int useBardicDieForDamage(BattleMap& bm, int agent_idx) noexcept;
 
     // Combat Inspiration AC mode (Valor Bard L3+, any held die): check if rolling the held
     // die + adding it to the target's AC would flip a hit to a miss. Actor must hold a die,
@@ -1624,76 +1028,6 @@ public:
     // the rolled value on success, or -1 on failure (no die, reaction already spent). The caller
     // compares the rolled value to the attack roll to determine if the hit is negated.
     int applyCombatInspirationAC(BattleMap& bm, int reactor_idx) noexcept;
-
-    // Font of Inspiration (Bard L5+): expend a spell slot of slot_level (no action) to
-    // regain one expended use of Bardic Inspiration. Returns the new Bardic Inspiration
-    // count, or -1 on failure (not a L5+ Bard, no such slot, or already at max).
-    int bardRegainInspirationFromSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept;
-
-    // Superior Inspiration (Bard L18+): at combat start, every qualifying Bard regains
-    // Bardic Inspiration up to 2 if it has fewer. RNG-free; call once after rolling
-    // initiative (mirrored in replay.py so checked replays stay in sync).
-    void applySuperiorInspiration(BattleMap& bm) noexcept;
-
-    // College of Lore — Cutting Words (Bard L3+): reaction that expends one use of Bardic
-    // Inspiration to SUBTRACT the die from a creature's next D20 Test (the negative sibling
-    // of useBardicDie — it primes pending_roll_bonus_ with -value). Returns the rolled
-    // amount subtracted, or 0 on failure (not a L3+ Lore Bard, or no use left).
-    int bardCuttingWords(BattleMap& bm, int bard_idx) noexcept;
-
-    // College of Glamour — Mantle of Inspiration (Bard L3+): Bonus Action that expends one
-    // use of Bardic Inspiration and rolls the Bardic Inspiration die ONCE; each chosen creature
-    // gains Temporary HP equal to twice the number rolled (max() semantics, non-rage source).
-    // The caller (GUI) supplies the chosen targets and validates the 60 ft range per click; this
-    // caps the list to the bard's Charisma modifier (min 1) and skips the bard itself (2024 RAW:
-    // "other creatures"). Returns the Temporary HP granted to each recipient, or 0 on failure
-    // (not a L3+ College of Glamour Bard, or no Bardic Inspiration use left). The 2024 rider that
-    // lets each recipient Reaction-move up to its Speed without provoking OAs is not modeled.
-    int bardMantleOfInspiration(BattleMap& bm, int bard_idx,
-                                const std::vector<int>& targets) noexcept;
-
-    // College of Glamour — Beguiling Magic (Bard L3+): the once/long-rest benefit fired immediately
-    // after the bard casts an Enchantment or Illusion spell with a slot (the GUI gates the school/slot
-    // condition). Spends the "Beguiling Magic" resource, then forces a WIS save (vs the bard's spell
-    // save DC) on the chosen target within 60 ft; on a failure the target gains the Charmed (use_frightened
-    // == false) or Frightened (true) condition for 1 minute (10 rounds), repeating the WIS save at the
-    // start of each of its turns. Returns true if the benefit was used (resource spent + save attempted),
-    // false if it could not be used (not a L3+ Glamour Bard, no use left, bad/own/out-of-range target).
-    bool bardBeguilingMagic(BattleMap& bm, int bard_idx, int target_idx, bool use_frightened) noexcept;
-
-    // Restore the expended "Beguiling Magic" use by spending one Bardic Inspiration use (no action).
-    // Returns the resource's new current count, or -1 on failure (not a Glamour Bard L3+, no Bardic
-    // Inspiration use, or already full).
-    int bardRestoreBeguilingMagic(BattleMap& bm, int bard_idx) noexcept;
-
-    // College of Glamour — Mantle of Majesty (Bard L6+): Bonus Action that spends the once/long-rest
-    // "Mantle of Majesty" resource, opens a 1-minute (10-round) "unearthly appearance" window
-    // (mantle_majesty_turns = 10) and starts Concentration on the literal name "Mantle of Majesty"
-    // (replacing any prior concentration). While the window is active the bard may re-cast Command as
-    // a Bonus Action with no slot, and a creature Charmed by this bard auto-fails its save vs that
-    // Command. The free Command cast itself is driven separately by the caller (SpellAction.free_cast).
-    // Returns true on success, false if the agent is not a College of Glamour Bard L6+ or has no use.
-    [[nodiscard]] bool activateMantleOfMajesty(BattleMap& bm, int bard_idx) noexcept;
-
-    // Restore the expended "Mantle of Majesty" use by spending an unused level 3+ spell slot (no
-    // action). Mirrors bardRegainInspirationFromSlot. Returns the resource's new current count, or
-    // -1 on failure (not a Glamour Bard L6+, slot_level < 3, no such slot, or already full).
-    int bardRestoreMantleOfMajestyFromSlot(BattleMap& bm, int bard_idx, int slot_level) noexcept;
-
-    // College of Glamour — Unbreakable Majesty (Bard L14): Bonus Action that spends the once/long-rest
-    // "Unbreakable Majesty" resource, opens a 1-minute (10-round) "majestic presence" window
-    // (majestic_presence_turns = 10) and starts Concentration on the literal name "Unbreakable Majesty"
-    // (replacing any prior concentration). While the window is active any creature that hits the bard
-    // with a melee attack takes Psychic damage equal to the bard's CHA modifier (min 1) automatically,
-    // and must succeed at a CHA save vs the bard's spell save DC or gain Disadvantage on the next save
-    // throw vs the bard's spells (TODO: full rider impl). Returns true on success, false if the agent
-    // is not a College of Glamour Bard L14+ or has no use.
-    [[nodiscard]] bool activateUnbreakableMajesty(BattleMap& bm, int bard_idx) noexcept;
-
-    // Restore the expended "Unbreakable Majesty" use by spending an unused level 3+ spell slot (no
-    // action). Mirrors bardRestoreMantleOfMajestyFromSlot. Returns the resource's new current count, or
-    // -1 on failure (not a Glamour Bard L14+, slot_level < 3, no such slot, or already full).
-    int bardRestoreUnbreakableMajestyFromSlot(BattleMap& bm, int bard_idx, int slot_level) noexcept;
 
     // Apply the chosen Command word to a target that failed its save vs the Command spell.
     // word: 0=Drop, 1=Flee, 2=Grovel, 3=Halt, 4=Approach (anything else defaults to Halt). Reuses
@@ -1792,70 +1126,7 @@ public:
     // this turn, and within reach + line of sight of the armed weapon. Empty when not armed.
     [[nodiscard]] std::vector<int> hordeBreakerTargets(const BattleMap& bm, int attacker_idx) const;
 
-    // ── Gloom Stalker (Ranger subclass) ─────────────────────────────────────
-    // Dreadful Strike (L3): a weapon hit by a Gloom Stalker with Dread Ambusher uses left, once per
-    // turn, flags dreadful_strike_available. Applying it spends a use and deals 2d6 Psychic (2d8 at L11)
-    // to dreadful_strike_target, added to `result`; at L11 it leaves stalkers_flurry_pending for the
-    // Stalker's Flurry choice. Returns true iff the damage was dealt.
-    bool applyDreadfulStrikeEffect(BattleMap& bm, int attacker_idx, AttackResult& result);
-    // Stalker's Flurry (L11), right after Dreadful Strike: 0 = neither, 1 = Sudden Strike (arms
-    // sudden_strike_available — one free attack with the same weapon), 2 = Mass Fear. Returns true iff
-    // a pending choice was resolved.
-    bool chooseStalkersFlurry(BattleMap& bm, int attacker_idx, int option);
-    // Mass Fear: the target and every other creature within 10 ft of it (allies too; never the Ranger)
-    // makes a WIS save vs the Ranger's spell save DC or is Frightened of it until the start of the
-    // Ranger's next turn. Returns how many became Frightened.
-    int applyMassFear(BattleMap& bm, int ranger_idx, int target_idx);
-    // ── Fey Wanderer L7 Beguiling Twist ──────────────────────────────────────────────────────
-    // Advantage half: true when `saver` (a Fey Wanderer Ranger L7+) has Advantage
-    // on a save against `condition_name` ("Charmed" / "Frightened"). Every Charm/Fear save site asks.
-    [[nodiscard]] bool beguilingTwistAdvantage(const BattleMap& bm, int saver,
-                                               std::string_view condition_name) const;
-    // Reaction half. Every site where a save to AVOID or END Charmed/Frightened succeeds calls
-    // charmFearSaveSucceeded(saver). Each Fey Wanderer L7+ with its Reaction — the saver itself, or
-    // one that can see the saver within 120 ft — that has a target may react: an automated one
-    // (is_npc_automated) resolves at once (Frightened, on the enemy npcSelectTarget ranks first, else
-    // the nearest), a human one is queued for the GUI (takeBeguilingTwistOffers → (reactor, saver)).
-    void charmFearSaveSucceeded(BattleMap& bm, int saver);
-    [[nodiscard]] bool canBeguilingTwist(const BattleMap& bm, int reactor, int saver) const;
-    // A different creature (not the saver, not the reactor) the reactor can see within 120 ft.
-    [[nodiscard]] std::vector<int> beguilingTwistTargets(const BattleMap& bm, int reactor, int saver) const;
-    // Spend the Reaction; the target makes a WIS save vs the Ranger's spell DC or is Charmed
-    // (frightened = false) / Frightened of the Ranger for 1 minute, repeating the save at the end of
-    // each of its turns. Returns true iff the reaction was spent.
-    bool applyBeguilingTwist(BattleMap& bm, int reactor, int saver, int target, bool frightened);
-    [[nodiscard]] std::vector<std::pair<int,int>> takeBeguilingTwistOffers();
-    // Sudden Strike: the creatures the armed free attack may strike — a different creature within 5 ft
-    // of the Dreadful Strike target, not an ally, alive and in play, in reach/range + LoS of the same
-    // weapon. Empty unless sudden_strike_available.
-    [[nodiscard]] std::vector<int> suddenStrikeTargets(const BattleMap& bm, int attacker_idx) const;
-    // The automated Ranger's half (D3/D4): spend a pending Dreadful Strike on a target still standing,
-    // then pick Sudden Strike when it has a target, else Mass Fear. A no-op when nothing is pending.
-    void autoDreadfulStrike(BattleMap& bm, int attacker_idx);
-
     // ── Beast Master (Ranger subclass) — Primal Companion action economy (D9) ───────────────
-    // primalCompanionOf: the Ranger's live (in play, not dead) Primal Companion, or -1.
-    // companionRanger: the Beast Master Ranger L3+ that owns companion `comp_idx`, or -1.
-    [[nodiscard]] int primalCompanionOf(const BattleMap& bm, int ranger_idx) const;
-    [[nodiscard]] int companionRanger(const BattleMap& bm, int comp_idx) const;
-    // True when `comp_idx` is a Primal Companion whose action this turn is limited to Dodge: its
-    // Ranger is alive, not Incapacitated, and did not command it (companion_commanded) on its turn.
-    [[nodiscard]] bool companionRestricted(const BattleMap& bm, int comp_idx) const;
-    // Command (Bonus Action): the companion may take any action on its next turn (and, from L7,
-    // Dash/Disengage/Hide with its Bonus Action; from L11, Beast's Strike twice). Spends the
-    // Ranger's Bonus Action. Returns true iff it was spent.
-    [[nodiscard]] bool canCommandCompanion(const BattleMap& bm, int ranger_idx) const;
-    bool commandCompanion(BattleMap& bm, int ranger_idx);
-    // Beast's Strike in place of one of the Ranger's attacks. The CALLER pays the attack (the GUI's
-    // attacks_remaining, the NpcDriver's st.attacks_remaining); armBeastsStrike then sets
-    // beast_strikes_left (2 with Bestial Fury at L11, else 1). beastsStrikeTargets lists the enemies
-    // the companion can strike where it stands. beastsStrike spends one strike (before the roll, so a
-    // parked attack never repeats it) and launches the companion's attack. Completed when refused.
-    bool armBeastsStrike(BattleMap& bm, int ranger_idx);
-    [[nodiscard]] std::vector<int> beastsStrikeTargets(const BattleMap& bm, int ranger_idx) const;
-    FlowStatus beastsStrike(BattleMap& bm, int ranger_idx, int target_idx);
-    // Tombstone every Primal Companion whose Ranger has died (death, not 0 HP) or left play.
-    void vanishOrphanedCompanions(BattleMap& bm);
     // Umbral Sight (L3): `viewer` sees the Gloom Stalker `ranger_idx` only by Darkvision — every cell of
     // the Ranger in (non-magical) Darkness, the viewer an enemy with Darkvision reaching it and no
     // Truesight / Blindsight / Devil's Sight that would — so the Ranger is Invisible to it.
@@ -1948,11 +1219,6 @@ public:
     // would otherwise re-open this window). Returns true iff a guard was made.
     bool maybeSentinelGuardInline(BattleMap& bm, const Attack& action, AttackResult& r);
 
-    // Apply Sentinel Guardian: the Sentinel makes a melee attack against the attacking creature and
-    // spends its reaction. Re-validates the reaction is free. Returns the counter-attack's result.
-    [[nodiscard]] AttackResult applySentinelGuard(BattleMap& bm, int sentinel_idx,
-                                                  int attacker_idx, int weapon_idx) noexcept;
-
     // Paladin Oath of Vengeance — Soul of Vengeance (L15). Eligibility: pal_idx is an L15+ Vengeance
     // paladin with an active Vow of Enmity on action.attacker_idx, a free reaction, and a melee weapon,
     // with the sworn foe within 5 ft. Fires on the sworn foe's hit OR miss (keys on the attack, not its
@@ -1961,10 +1227,6 @@ public:
     // Auto/RL sibling of maybeSentinelGuardInline for Soul of Vengeance; shares resolving_sentinel_guard_
     // as the reaction-nesting guard. Called from executeAction after the attack fully resolves.
     bool maybeSoulOfVengeanceInline(BattleMap& bm, const Attack& action, AttackResult& r);
-    // Apply Soul of Vengeance: the paladin makes a melee attack against its sworn foe and spends its
-    // reaction. Re-validates the reaction is free. Returns the counter-attack's result.
-    [[nodiscard]] AttackResult applySoulOfVengeance(BattleMap& bm, int paladin_idx,
-                                                    int attacker_idx, int weapon_idx) noexcept;
 
     // Glorious Defense (Paladin Oath of Glory L15) — OnHit reaction. pal_idx (the reacting paladin,
     // possibly the hit creature itself or a bystander within 10 ft) adds +CHA (min 1) to the hit
@@ -1986,10 +1248,6 @@ public:
     // applyProtectiveField), so v1 cannot save a target dropped to 0 by the hit (see known_limitations).
     [[nodiscard]] bool canIntercept(const BattleMap& bm, const Attack& action,
                                     int interceptor_idx, int damage_taken) const;
-
-    // Apply Interception: roll 1d10 + PB, heal the target back by min(reduction, damage_taken), spend the
-    // interceptor's reaction. Re-validates the reaction is free + feat. Returns the damage prevented (or -1).
-    int applyInterception(BattleMap& bm, int interceptor_idx, int target_idx, int damage_taken) noexcept;
 
     // Interception (OnAllyAttacked) — the damage-reduction sibling of maybeSentinelGuardInline (auto/RL
     // only; the GUI scans via can_intercept + _offer_interception). After a hit resolves, enumerates
@@ -2039,8 +1297,6 @@ public:
     std::vector<InitiativeEntry> rollInitiative(const BattleMap& bm);
 
     // ── Ravenloft items (RAVENLOFT_ITEMS_PLAN.md M6 / M10) ─────────────────
-    // Luck Points the agent can spend right now: the Lucky feat's plus its items' (the Luck Blade).
-    [[nodiscard]] int luckAvailable(const BattleMap& bm, int idx) const noexcept;
     // An item regains one expended spell slot (the Rod of the Pact Keeper), once per long rest.
     // Returns the slot level regained, 0 if nothing could be.
     int regainSlotFromItem(BattleMap& bm, int idx) noexcept;
@@ -2150,65 +1406,6 @@ public:
     // one-shot flags (7 skip-next-turn, 8 extra action). A minute never outlasts the fight.
     void clearWildMagicSurgeEffects(BattleMap& bm) noexcept;
 
-    // Warlock Magical Cunning (L2+): recover expended Pact Magic slots up to ceil(max/2)
-    // — or all of them at L20 (Eldritch Master) — once per long rest. Returns true if used.
-    bool useMagicalCunning(BattleMap& bm, int agent_idx);
-
-    // Celestial Warlock Healing Light (L3+): spend d6 healing dice from the pool.
-    // Validates healer is Celestial L3+, clamps num_dice, spends from resource, rolls and heals target.
-    // Returns HP healed (0 if invalid).
-    int useHealingLight(BattleMap& bm, int healer_idx, int target_idx, int num_dice);
-
-    // Cleric Turn Undead (Channel Divinity, L2+): each Undead within 30 ft makes a WIS save;
-    // on a failure it is Frightened + Incapacitated for 1 minute (ends if it takes damage).
-    // Sear Undead (L5+) also deals WIS-mod d8 Radiant (rolled once) to each undead that fails.
-    // Spends one Channel Divinity use.
-    TurnUndeadResult useTurnUndead(BattleMap& bm, int caster_idx);
-
-    // Life Domain Preserve Life (Channel Divinity, L3+): distribute a pool of 5 × cleric level HP
-    // among the chosen creatures within 30 ft (order = distribution priority), each restored to no
-    // more than half its HP maximum. Undead cannot be healed. Spends one Channel Divinity use.
-    PreserveLifeResult usePreserveLife(BattleMap& bm, int caster_idx, const std::vector<int>& targets);
-
-    // Life Domain — Supreme Healing (L17): the cleric maximizes every healing die it rolls.
-    [[nodiscard]] bool lifeSupremeHealing(const Agent::Stats& s) const noexcept;
-
-    // Life Domain — Disciple of Life (L3): a slot-level-1+ heal restores an extra 2 + slot level HP
-    // to each creature healed. Returns 0 when it does not apply.
-    [[nodiscard]] int discipleOfLifeBonus(const Agent::Stats& s, int slot_level) const noexcept;
-
-    // Grave Domain — Circle of Mortality (L3): healing dice from a spell or Channel Divinity aimed at
-    // a creature at 0 HP use their maximum instead of being rolled.
-    [[nodiscard]] bool graveCircleOfMortality(const Agent::Stats& caster,
-                                              const Agent::Stats& target) const noexcept;
-
-    // Grave Domain — Pull of Death (L3): once per turn (any turn), when the cleric deals damage to a
-    // creature that was missing any HP before that damage, by a spell or an attack-roll hit, the
-    // creature takes an extra 1d4 Necrotic (1d6 at Cleric L11). Rolls the die, applies the target's
-    // Necrotic multiplier, marks the once-per-turn use on the cleric and returns the extra damage —
-    // or 0 when it doesn't apply. The caller adds it to the target's HP loss.
-    int pullOfDeathDamage(BattleMap& bm, int cleric_idx, const Agent::Stats& target,
-                          int target_hp_before) noexcept;
-
-    // Grave Domain — Path to the Grave (L3, Channel Divinity, Bonus Action): curse one creature the
-    // cleric can see within 30 ft until the start of the cleric's next turn (Disadvantage on attack
-    // rolls and saving throws). can* is the pure gate; use* spends the Channel Divinity use and the
-    // Bonus Action and lays the curse (replacing any curse that cleric had on another creature).
-    [[nodiscard]] bool canPathToTheGrave(const BattleMap& bm, int cleric_idx, int target_idx) const;
-    bool usePathToTheGrave(BattleMap& bm, int cleric_idx, int target_idx);
-    // The cursing cleric who may end the curse on target_idx to boost a hit by attacker_idx (the
-    // cleric itself, or an ally the cleric can see), or -1 when no detonation is available.
-    [[nodiscard]] int pathToTheGraveCleric(const BattleMap& bm, int attacker_idx, int target_idx) const;
-    // End the curse early: the hit deals extra Radiant (radiant=true) or Necrotic damage equal to the
-    // cleric's level. Applies the damage to the target (and to `r` when given), including a 0-HP
-    // drop. Returns the damage dealt, or -1 when not eligible.
-    // standalone=false (inside executeSpell) only lowers HP: the caller folds the damage into its own
-    // total and runs concentration, on-damage effects and the 0-HP transition itself.
-    int detonatePathToTheGrave(BattleMap& bm, int cleric_idx, int attacker_idx, int target_idx,
-                               bool radiant, AttackResult* r = nullptr, bool standalone = true);
-    // Auto choice of damage type: Radiant unless the target takes more from Necrotic.
-    [[nodiscard]] bool pathToTheGraveAutoRadiant(const Agent::Stats& target) const noexcept;
-
     // Grave Domain — Sentinel at Death's Door (L6, Reaction, WIS-mod uses per Long Rest): when the
     // cleric, or a Bloodied ally it can see within 60 ft, is hit by a weapon attack, halve the damage
     // (round down); a Critical Hit's crit effects are canceled first (the base damage is re-rolled as
@@ -2220,27 +1417,6 @@ public:
     bool maybeSentinelAtDeathsDoorInline(BattleMap& bm, const Attack& action, const Weapon& w, AttackResult& r);
     [[nodiscard]] std::vector<int> sentinelAtDeathsDoorReactors(const BattleMap& bm, const Attack& action,
                                                                 const AttackResult& r) const;
-
-    // Grave Domain — Divine Reaper: Keeper of Souls (L17). When an enemy dies within 60 ft of the
-    // cleric (not Incapacitated), the cleric or one creature it can see within 60 ft regains 2 x cleric
-    // level HP. Once per Short/Long Rest; a level 6+ slot can restore the use (no action).
-    // onCreatureDied is the hook (applyUnconscious's NPC-death branch): auto/RL (decider present)
-    // heals the most-hurt ally at once and never spends a slot; the GUI gets keeper_of_souls_pending.
-    void onCreatureDied(BattleMap& bm, int dead_idx);
-    [[nodiscard]] bool canKeeperOfSouls(const BattleMap& bm, int cleric_idx) const;
-    // Living allies (and the cleric) the cleric can see within 60 ft — the heal's legal recipients.
-    [[nodiscard]] std::vector<int> keeperOfSoulsTargets(const BattleMap& bm, int cleric_idx) const;
-    // Lowest available spell slot of level 6+ (0 = none) — what restoring the use would cost.
-    [[nodiscard]] int keeperOfSoulsSlot(const Agent::Stats& s) const noexcept;
-    // Heal target_idx. slot_level 0 spends the Keeper of Souls use; 6-9 spends that slot instead.
-    // Clears keeper_of_souls_pending. Returns the HP restored, or -1 when not allowed.
-    int useKeeperOfSouls(BattleMap& bm, int cleric_idx, int target_idx, int slot_level = 0);
-
-    // Grave Domain — Divine Reaper: Enhanced Necromancy (L17). True iff this caster may spend a
-    // Channel Divinity use to give `sp` (cast at slot_level; 0 = base) a second target: a
-    // single-target Necromancy spell of level <= 5, or any single-target Grave Domain spell.
-    [[nodiscard]] bool canEnhancedNecromancy(const Agent::Stats& caster, const Spell& sp,
-                                             int slot_level) const noexcept;
 
     // Spend a named class resource (e.g. "War Priest", "Superiority Dice"). Returns true if the
     // agent had >= amount and it was spent. Generic so any feature (War Priest bonus attack, Battle
@@ -2261,7 +1437,7 @@ public:
     // combat_riders.cpp per COMBAT_REFACTOR_PLAN.md R4 — they are neither on-hit riders
     // nor reactions. Stateless, hence a TU and not a sub-engine class; see that file's
     // header. applyTelekineticShove below is deliberately NOT one of these (save, not
-    // contested check) and stays in combat_riders.cpp.
+    // contested check) and lives in combat_feats.cpp.
 
     // Execute a shove attempt (bonus action, contested Athletics check).
     // Attacker vs target Athletics/Acrobatics (target chooses higher).
@@ -2305,13 +1481,6 @@ public:
     // fired); otherwise does nothing (fired == false). Called by the GUI when a creature
     // opens the chest, and by the attempts above.
     ChestTrapResult triggerChestTrap(BattleMap& bm, int agent_idx, int chest_id);
-
-    // Telekinetic (general feat) — Telekinetic Shove: a Bonus Action that shoves one creature within
-    // 30 ft. The target makes a STR save (DC = 8 + caster PB + best of INT/WIS/CHA mod); on a failure
-    // it is pushed 5 ft away from the caster (reuses forceMoveAgent, the Thunderwave knockback path).
-    // Returns a ShoveResult: attacker_roll = save DC, defender_roll = target's save total,
-    // success = the shove landed (save failed and the target moved).
-    [[nodiscard]] ShoveResult applyTelekineticShove(BattleMap& bm, int caster_idx, int target_idx) noexcept;
 
     // Shared grapple core — used by the standalone Grapple Weapon Action
     // (executeGrapple), on-hit weapon grapple riders (combat_attack), and the
@@ -2461,14 +1630,940 @@ public:
     [[nodiscard]] std::string snapshotJson() const;
     bool restoreJson(const std::string& text);
 
-    // ── Druid Wild Shape & Starry Form ────────────────────────────────────────
+    // ══ Barbarian (combat_barbarian.cpp) ═════════════════════════════════════════════════════════
+    // OnTurnStartNearby eligibility + apply (declared public for tests / GUI gating).
+    // Mirrors canRiposte's 5 ft reach test plus reaction-free/alive/!incapacitated. (Sentinel is NOT a
+    // turn-start reaction — it provokes an OA on Disengage; see detectProvokes / Agent::Stats::has_sentinel.)
+    [[nodiscard]] bool canBranchesOfTree(const BattleMap& bm, int reactor, int source) const; // has_branches_of_the_tree
+
+    // Branches: spend the reaction; the source makes a STR save vs the reactor's spell save DC; on a
+    // failure it is Grappled (escape DC = the same). Rolls directly → no nested window opens.
+    bool         applyBranchesOfTree(BattleMap& bm, int reactor, int source);
+
+    // World Tree "Vitality of the Tree" (Barbarian L3+, OnTurnStartNearby self-option): while raging,
+    // at the start of its own turn the Barbarian may grant one creature within 10 ft Xd6 temp HP
+    // (X = Rage Damage bonus, min 1). Free (not the reaction) but once per turn. canVitalityOfTheTree
+    // gates class/subclass/level/raging/once-per-turn + a valid target in range; applyVitalityOfTheTree
+    // rolls and grants to target_idx (tagging rage provenance so endRage clears it).
+    [[nodiscard]] bool canVitalityOfTheTree(const BattleMap& bm, int source) const;
+
+    bool               applyVitalityOfTheTree(BattleMap& bm, int source, int target);
+
+    // Barbarian Rage lifecycle methods
+    // Activate Rage: set raging=true, apply BPS resistance (0.5x multiplier)
+    void activateRage(BattleMap& bm, int idx);
+
+    // Extend Rage: reset duration_remaining on Rage resource
+    void extendRage(BattleMap& bm, int idx);
+
+    // End Rage: set raging=false, clear BPS resistance (restore 1.0x multiplier)
+    void endRage(BattleMap& bm, int idx);
+
+    // Barbarian Path of the Berserker L10 — Intimidating Presence (Bonus Action):
+    // Each creature of the Barbarian's choice within a 30-ft emanation makes a WIS save
+    // (DC 8 + STR mod + PB) or is Frightened until the end of the Barbarian's next turn.
+    // Usable PB times per long rest, or expend one Rage use. Spends a bonus action.
+    bool useIntimidatingPresence(BattleMap& bm, int idx) noexcept;
+
+    // Barbarian Path of the Zealot L10 — Zealous Presence (Bonus Action):
+    // Up to 10 creatures of the Barbarian's choice (allies) within 60 ft gain Advantage on attack
+    // rolls and saving throws until the start of the Barbarian's next turn.
+    // Usable 1 time per long rest, or expend one Rage use. Spends a bonus action.
+    bool useZealousPresence(BattleMap& bm, int idx) noexcept;
+
+    // Barbarian Path of the Zealot L14 — Rage of the Gods: while raging, assume a divine-warrior
+    // form (once per long rest) — Fly Speed = Speed (can hover), Resistance to Necrotic/Psychic/
+    // Radiant. The form ends when Rage ends or the Barbarian drops to 0 HP. While the form is active,
+    // the Barbarian may use the Revivification reaction (handled at the drop-to-0 site in applyDamage).
+    bool activateRageOfTheGods(BattleMap& bm, int idx) noexcept;
+
+    // Barbarian Path of the World Tree L14 — Travel along the Tree: while raging, teleport up to
+    // 60 ft (or up to 150 ft once per Rage when long_range=true) to a visible unoccupied space.
+    // Spends a bonus action. (Bringing willing allies on the 150-ft hop is deferred — see notes.)
+    bool travelAlongTree(BattleMap& bm, int idx, int target_col, int target_row,
+                         bool long_range) noexcept;
+
+    // Barbarian Path of the Berserker L10 — Retaliation: when a creature within 5 ft damages this
+    // Barbarian, they may spend their reaction to make one melee weapon attack back. The eligible
+    // attacker is recorded in retaliation_target_idx (set in applyAttackResult). Returns the attack.
+    AttackResult applyRetaliation(BattleMap& bm, int defender_idx) noexcept;
+
+    // Apply Brutal Strike effects: damage + chosen effects (Forceful/Hamstring/Staggering/Sundering)
+    // effects: vector of effect indices (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering)
+    void applyBrutalStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                const std::vector<int>& effects, AttackResult& result) noexcept;
+
+    // Reckless Attack (Barbarian) — post-hoc entry point. After a miss the engine flags
+    // reckless_reroll_available; the GUI prompts and calls this to commit Reckless (sets
+    // reckless_attack → enemies gain advantage vs you until your next turn) and re-resolve the
+    // same attack with advantage. Returns the fresh AttackResult. No-op (invalid result) if the
+    // flag isn't set.
+    [[nodiscard]] AttackResult applyRecklessReroll(BattleMap& bm, int attacker_idx,
+                                                   int target_idx, int weapon_idx) noexcept;
+
+    // Barbarian Primal Knowledge: check if agent can use STR for Acrobatics/Stealth while Raging
+    // Returns true if: Barbarian L3+, Raging, and skill is "Acrobatics" or "Stealth"
+    bool canUsePrimalKnowledge(const BattleMap& bm, int idx, const std::string& skill_name) const noexcept;
+
+    // ══ Bard (combat_bard.cpp) ═══════════════════════════════════════════════════════════════════
+    // Grant a Bardic Inspiration die of size d (6/8/10/12) to a creature. Overwrites
+    // any die it already holds (RAW: one Bardic Inspiration die at a time). The bard's
+    // "Bardic Inspiration" resource is spent separately by the bonus-action caller.
+    bool grantBardicDie(BattleMap& bm, int agent_idx, int d = 8) noexcept;
+
+    // Spend the held Bardic Inspiration die: roll it, stash the result in
+    // pending_roll_bonus_ so the NEXT d20 Test for that agent adds it, then clear the
+    // held die. Returns the rolled value (0 if the agent holds no die).
+    int useBardicDie(BattleMap& bm, int agent_idx) noexcept;
+
+    // Combat Inspiration damage mode (Valor Bard L3+, any held die): roll the held Bardic
+    // Inspiration die and fold it into pending_damage_bonus_ so the NEXT weapon damage roll
+    // adds it, then clear the held die. Returns the rolled value (0 if no die held).
+    int useBardicDieForDamage(BattleMap& bm, int agent_idx) noexcept;
+
+    // Font of Inspiration (Bard L5+): expend a spell slot of slot_level (no action) to
+    // regain one expended use of Bardic Inspiration. Returns the new Bardic Inspiration
+    // count, or -1 on failure (not a L5+ Bard, no such slot, or already at max).
+    int bardRegainInspirationFromSlot(BattleMap& bm, int agent_idx, int slot_level) noexcept;
+
+    // Superior Inspiration (Bard L18+): at combat start, every qualifying Bard regains
+    // Bardic Inspiration up to 2 if it has fewer. RNG-free; call once after rolling
+    // initiative (mirrored in replay.py so checked replays stay in sync).
+    void applySuperiorInspiration(BattleMap& bm) noexcept;
+
+    // College of Lore — Cutting Words (Bard L3+): reaction that expends one use of Bardic
+    // Inspiration to SUBTRACT the die from a creature's next D20 Test (the negative sibling
+    // of useBardicDie — it primes pending_roll_bonus_ with -value). Returns the rolled
+    // amount subtracted, or 0 on failure (not a L3+ Lore Bard, or no use left).
+    int bardCuttingWords(BattleMap& bm, int bard_idx) noexcept;
+
+    // College of Glamour — Mantle of Inspiration (Bard L3+): Bonus Action that expends one
+    // use of Bardic Inspiration and rolls the Bardic Inspiration die ONCE; each chosen creature
+    // gains Temporary HP equal to twice the number rolled (max() semantics, non-rage source).
+    // The caller (GUI) supplies the chosen targets and validates the 60 ft range per click; this
+    // caps the list to the bard's Charisma modifier (min 1) and skips the bard itself (2024 RAW:
+    // "other creatures"). Returns the Temporary HP granted to each recipient, or 0 on failure
+    // (not a L3+ College of Glamour Bard, or no Bardic Inspiration use left). The 2024 rider that
+    // lets each recipient Reaction-move up to its Speed without provoking OAs is not modeled.
+    int bardMantleOfInspiration(BattleMap& bm, int bard_idx,
+                                const std::vector<int>& targets) noexcept;
+
+    // College of Glamour — Beguiling Magic (Bard L3+): the once/long-rest benefit fired immediately
+    // after the bard casts an Enchantment or Illusion spell with a slot (the GUI gates the school/slot
+    // condition). Spends the "Beguiling Magic" resource, then forces a WIS save (vs the bard's spell
+    // save DC) on the chosen target within 60 ft; on a failure the target gains the Charmed (use_frightened
+    // == false) or Frightened (true) condition for 1 minute (10 rounds), repeating the WIS save at the
+    // start of each of its turns. Returns true if the benefit was used (resource spent + save attempted),
+    // false if it could not be used (not a L3+ Glamour Bard, no use left, bad/own/out-of-range target).
+    bool bardBeguilingMagic(BattleMap& bm, int bard_idx, int target_idx, bool use_frightened) noexcept;
+
+    // Restore the expended "Beguiling Magic" use by spending one Bardic Inspiration use (no action).
+    // Returns the resource's new current count, or -1 on failure (not a Glamour Bard L3+, no Bardic
+    // Inspiration use, or already full).
+    int bardRestoreBeguilingMagic(BattleMap& bm, int bard_idx) noexcept;
+
+    // College of Glamour — Mantle of Majesty (Bard L6+): Bonus Action that spends the once/long-rest
+    // "Mantle of Majesty" resource, opens a 1-minute (10-round) "unearthly appearance" window
+    // (mantle_majesty_turns = 10) and starts Concentration on the literal name "Mantle of Majesty"
+    // (replacing any prior concentration). While the window is active the bard may re-cast Command as
+    // a Bonus Action with no slot, and a creature Charmed by this bard auto-fails its save vs that
+    // Command. The free Command cast itself is driven separately by the caller (SpellAction.free_cast).
+    // Returns true on success, false if the agent is not a College of Glamour Bard L6+ or has no use.
+    [[nodiscard]] bool activateMantleOfMajesty(BattleMap& bm, int bard_idx) noexcept;
+
+    // Restore the expended "Mantle of Majesty" use by spending an unused level 3+ spell slot (no
+    // action). Mirrors bardRegainInspirationFromSlot. Returns the resource's new current count, or
+    // -1 on failure (not a Glamour Bard L6+, slot_level < 3, no such slot, or already full).
+    int bardRestoreMantleOfMajestyFromSlot(BattleMap& bm, int bard_idx, int slot_level) noexcept;
+
+    // College of Glamour — Unbreakable Majesty (Bard L14): Bonus Action that spends the once/long-rest
+    // "Unbreakable Majesty" resource, opens a 1-minute (10-round) "majestic presence" window
+    // (majestic_presence_turns = 10) and starts Concentration on the literal name "Unbreakable Majesty"
+    // (replacing any prior concentration). While the window is active any creature that hits the bard
+    // with a melee attack takes Psychic damage equal to the bard's CHA modifier (min 1) automatically,
+    // and must succeed at a CHA save vs the bard's spell save DC or gain Disadvantage on the next save
+    // throw vs the bard's spells (TODO: full rider impl). Returns true on success, false if the agent
+    // is not a College of Glamour Bard L14+ or has no use.
+    [[nodiscard]] bool activateUnbreakableMajesty(BattleMap& bm, int bard_idx) noexcept;
+
+    // Restore the expended "Unbreakable Majesty" use by spending an unused level 3+ spell slot (no
+    // action). Mirrors bardRestoreMantleOfMajestyFromSlot. Returns the resource's new current count, or
+    // -1 on failure (not a Glamour Bard L14+, slot_level < 3, no such slot, or already full).
+    int bardRestoreUnbreakableMajestyFromSlot(BattleMap& bm, int bard_idx, int slot_level) noexcept;
+
+    // ══ Cleric (combat_cleric.cpp) ═══════════════════════════════════════════════════════════════
+    // Cleric Light Domain — Corona of Light (L17+): a Magic action that lights a 60-ft radius for 1
+    // minute (10 rounds). While active, enemies within 60 ft have Disadvantage on saves vs the
+    // caster's Fire/Radiant spells (applied in rollSpellSave). Returns true if activated, false if not
+    // eligible (wrong class/domain/level). Sets corona_of_light_turns; ticked down in beginTurn.
+    bool activateCoronaOfLight(BattleMap& bm, int idx) noexcept;
+
+    // Trickery Domain Cleric — Invoke Duplicity duplicate movement (Bonus Action, later turns): move
+    // the cleric's illusory duplicate (summon_spell == "Invoke Duplicity") up to 30 ft. Returns true
+    // iff moved. Creation lives in the GUI (shares the summon-spawn path).
+    bool moveDuplicate(BattleMap& bm, int cleric_idx, int dup_idx,
+                       int target_col, int target_row) noexcept;
+
+    // Trickster's Transposition (L6+): swap the cleric's position with their duplicate. No resource or
+    // action cost (it rides on creating/moving the duplicate). Returns true iff swapped.
+    bool swapWithDuplicate(BattleMap& bm, int cleric_idx, int dup_idx) noexcept;
+
+    // Cleric Blessed Strikes — Divine Strike: out-of-band rider after a qualifying weapon hit
+    // (divine_strike_available). Rolls 1d8 (2d8 at L14) Radiant or Necrotic (radiant flag), adds it
+    // to result/damage and the target's HP, marks Divine Strike used for the turn. Mirrors
+    // applyBrutalStrikeEffect / applyCunningStrikeEffect.
+    void applyDivineStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                 bool radiant, AttackResult& result) noexcept;
+
+    // Divine Intervention (Cleric L10+): once per Long Rest, free-cast a chosen Cleric spell of
+    // level ≤ 5. canUse owns the class/level + resource-availability + Greater-DI-lock gate; the
+    // GUI orchestrates the picker (like Wish). useDivineIntervention spends the one use and, if
+    // chose_wish (Greater DI, L20), sets the 2d4-Long-Rest recharge lock; returns false with no
+    // state change when unavailable. The caller free-casts the chosen spell.
+    [[nodiscard]] bool canUseDivineIntervention(const BattleMap& bm, int agent_idx) const noexcept;
+
+    bool useDivineIntervention(BattleMap& bm, int agent_idx, bool chose_wish) noexcept;
+
+    // War Domain — Guided Strike: a War Cleric L3+ (the attacker, or an ally within 30 ft who also
+    // spends a Reaction) expends Channel Divinity to add +10 to a missed attack roll (result), turning
+    // it into a hit when it now meets AC — in which case weapon damage is rolled and applied here.
+    void applyGuidedStrike(BattleMap& bm, const Attack& action, int cleric_idx, AttackResult& result) noexcept;
+
+    // Cleric Turn Undead (Channel Divinity, L2+): each Undead within 30 ft makes a WIS save;
+    // on a failure it is Frightened + Incapacitated for 1 minute (ends if it takes damage).
+    // Sear Undead (L5+) also deals WIS-mod d8 Radiant (rolled once) to each undead that fails.
+    // Spends one Channel Divinity use.
+    TurnUndeadResult useTurnUndead(BattleMap& bm, int caster_idx);
+
+    // Life Domain Preserve Life (Channel Divinity, L3+): distribute a pool of 5 × cleric level HP
+    // among the chosen creatures within 30 ft (order = distribution priority), each restored to no
+    // more than half its HP maximum. Undead cannot be healed. Spends one Channel Divinity use.
+    PreserveLifeResult usePreserveLife(BattleMap& bm, int caster_idx, const std::vector<int>& targets);
+
+    // Life Domain — Supreme Healing (L17): the cleric maximizes every healing die it rolls.
+    [[nodiscard]] bool lifeSupremeHealing(const Agent::Stats& s) const noexcept;
+
+    // Life Domain — Disciple of Life (L3): a slot-level-1+ heal restores an extra 2 + slot level HP
+    // to each creature healed. Returns 0 when it does not apply.
+    [[nodiscard]] int discipleOfLifeBonus(const Agent::Stats& s, int slot_level) const noexcept;
+
+    // Grave Domain — Circle of Mortality (L3): healing dice from a spell or Channel Divinity aimed at
+    // a creature at 0 HP use their maximum instead of being rolled.
+    [[nodiscard]] bool graveCircleOfMortality(const Agent::Stats& caster,
+                                              const Agent::Stats& target) const noexcept;
+
+    // Grave Domain — Pull of Death (L3): once per turn (any turn), when the cleric deals damage to a
+    // creature that was missing any HP before that damage, by a spell or an attack-roll hit, the
+    // creature takes an extra 1d4 Necrotic (1d6 at Cleric L11). Rolls the die, applies the target's
+    // Necrotic multiplier, marks the once-per-turn use on the cleric and returns the extra damage —
+    // or 0 when it doesn't apply. The caller adds it to the target's HP loss.
+    int pullOfDeathDamage(BattleMap& bm, int cleric_idx, const Agent::Stats& target,
+                          int target_hp_before) noexcept;
+
+    // Grave Domain — Path to the Grave (L3, Channel Divinity, Bonus Action): curse one creature the
+    // cleric can see within 30 ft until the start of the cleric's next turn (Disadvantage on attack
+    // rolls and saving throws). can* is the pure gate; use* spends the Channel Divinity use and the
+    // Bonus Action and lays the curse (replacing any curse that cleric had on another creature).
+    [[nodiscard]] bool canPathToTheGrave(const BattleMap& bm, int cleric_idx, int target_idx) const;
+
+    bool usePathToTheGrave(BattleMap& bm, int cleric_idx, int target_idx);
+
+    // The cursing cleric who may end the curse on target_idx to boost a hit by attacker_idx (the
+    // cleric itself, or an ally the cleric can see), or -1 when no detonation is available.
+    [[nodiscard]] int pathToTheGraveCleric(const BattleMap& bm, int attacker_idx, int target_idx) const;
+
+    // End the curse early: the hit deals extra Radiant (radiant=true) or Necrotic damage equal to the
+    // cleric's level. Applies the damage to the target (and to `r` when given), including a 0-HP
+    // drop. Returns the damage dealt, or -1 when not eligible.
+    // standalone=false (inside executeSpell) only lowers HP: the caller folds the damage into its own
+    // total and runs concentration, on-damage effects and the 0-HP transition itself.
+    int detonatePathToTheGrave(BattleMap& bm, int cleric_idx, int attacker_idx, int target_idx,
+                               bool radiant, AttackResult* r = nullptr, bool standalone = true);
+
+    // Auto choice of damage type: Radiant unless the target takes more from Necrotic.
+    [[nodiscard]] bool pathToTheGraveAutoRadiant(const Agent::Stats& target) const noexcept;
+
+    // Grave Domain — Divine Reaper: Keeper of Souls (L17). When an enemy dies within 60 ft of the
+    // cleric (not Incapacitated), the cleric or one creature it can see within 60 ft regains 2 x cleric
+    // level HP. Once per Short/Long Rest; a level 6+ slot can restore the use (no action).
+    // onCreatureDied is the hook (applyUnconscious's NPC-death branch): auto/RL (decider present)
+    // heals the most-hurt ally at once and never spends a slot; the GUI gets keeper_of_souls_pending.
+    void onCreatureDied(BattleMap& bm, int dead_idx);
+
+    [[nodiscard]] bool canKeeperOfSouls(const BattleMap& bm, int cleric_idx) const;
+
+    // Living allies (and the cleric) the cleric can see within 60 ft — the heal's legal recipients.
+    [[nodiscard]] std::vector<int> keeperOfSoulsTargets(const BattleMap& bm, int cleric_idx) const;
+
+    // Lowest available spell slot of level 6+ (0 = none) — what restoring the use would cost.
+    [[nodiscard]] int keeperOfSoulsSlot(const Agent::Stats& s) const noexcept;
+
+    // Heal target_idx. slot_level 0 spends the Keeper of Souls use; 6-9 spends that slot instead.
+    // Clears keeper_of_souls_pending. Returns the HP restored, or -1 when not allowed.
+    int useKeeperOfSouls(BattleMap& bm, int cleric_idx, int target_idx, int slot_level = 0);
+
+    // Grave Domain — Divine Reaper: Enhanced Necromancy (L17). True iff this caster may spend a
+    // Channel Divinity use to give `sp` (cast at slot_level; 0 = base) a second target: a
+    // single-target Necromancy spell of level <= 5, or any single-target Grave Domain spell.
+    [[nodiscard]] bool canEnhancedNecromancy(const Agent::Stats& caster, const Spell& sp,
+                                             int slot_level) const noexcept;
+
+    // ══ Druid (combat_druid.cpp) ═════════════════════════════════════════════════════════════════
     bool activateWildShape(BattleMap& bm, int idx, const std::string& beast_name, std::vector<Weapon> weapons, const std::string& beast_forms_path = "") noexcept;
+
     bool deactivateWildShape(BattleMap& bm, int idx) noexcept;
+
     bool activateStarryForm(BattleMap& bm, int idx, int constellation) noexcept;
+
     bool deactivateStarryForm(BattleMap& bm, int idx) noexcept;
+
     bool activateWrathOfSea(BattleMap& bm, int idx) noexcept;
+
     bool deactivateWrathOfSea(BattleMap& bm, int idx) noexcept;
+
     int  applyDragonMinRoll(BattleMap& bm, int idx, int d20_roll) noexcept;
+
+    // ══ Fighter (combat_fighter.cpp) ═════════════════════════════════════════════════════════════
+    // Eldritch Knight War Magic (L7+): during the Attack action, one weapon attack may be replaced
+    // by casting a spell. canUseWarMagic owns the class/subclass/level + once-per-Attack-action gate
+    // (the "mid Attack action with attacks left" part is GUI turn-economy state); the spell itself is
+    // cast through the normal executeSpell path. markWarMagicUsed sets the once-per gate; the GUI
+    // clears war_magic_used when a fresh action-attack sequence seeds (Action Surge → another use).
+    [[nodiscard]] bool canUseWarMagic(BattleMap& bm, int idx) const noexcept;
+
+    void markWarMagicUsed(BattleMap& bm, int idx) noexcept;
+
+    // Spell indices an EK may cast via War Magic: action-casting-time cantrips (L7+), plus level
+    // 1-5 action spells at L18+ (Improved War Magic). Reuses availableCastableSpells, so the
+    // slot / one-leveled-spell-per-turn rules already apply to the leveled case.
+    [[nodiscard]] std::vector<int> availableWarMagicSpells(const BattleMap& bm, int idx) const;
+
+    // Eldritch Knight Arcane Charge (L15): teleport up to 30 ft (the optional rider on Action
+    // Surge). Validates EK L15+, the 30-ft range, and a clear destination, then teleports.
+    // Returns feet moved (>=0) on success, or a negative code: -1 not eligible / invalid,
+    // -2 out of range, -3 destination blocked.
+    int applyArcaneCharge(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
+
+    // Psi Warrior Psionic Strike (on-hit): spend one Psionic Energy die to add Force damage
+    // (die roll + INT mod) to a hit, once per turn. Mirrors applyDivineStrikeEffect. Requires
+    // psionic_strike_available; clears it and sets psionic_strike_used.
+    void applyPsionicStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx, AttackResult& result) noexcept;
+
+    // Psi Warrior Protective Field (reaction): spend one Psionic Energy die + the defender's reaction
+    // to reduce incoming damage by (die roll + INT mod), capped at damage_taken. Modeled as a post-hit
+    // heal-back of the prevented amount. Returns the damage prevented, or -1 if it could not be used.
+    int applyProtectiveField(BattleMap& bm, int defender_idx, int damage_taken) noexcept;
+
+    // Psi Warrior Telekinetic Movement: spend the once-per-rest "Telekinetic Movement" use to push a
+    // creature up to 30 ft straight away from the Psi Warrior. Returns feet moved, or -1 if unavailable.
+    int applyTelekineticMovement(BattleMap& bm, int idx, int target_idx) noexcept;
+
+    // Battle Master Riposte (on-miss DEFENDER reaction) — post-hoc entry. After a missing melee
+    // attack the engine flags the target's riposte_available; the GUI prompts (or the auto/RL path
+    // calls maybeRiposteInline) and invokes this to commit the riposte: spend the reaction + 1
+    // Superiority Die, make a melee attack defender→attacker, and on a hit add the Superiority Die to
+    // the damage. Returns the riposte AttackResult (invalid if the flag wasn't set / no die / no weapon).
+    [[nodiscard]] AttackResult applyRiposte(BattleMap& bm, int defender_idx,
+                                            int attacker_idx, int weapon_idx) noexcept;
+
+    // Battle Master Maneuver (on-hit): spend 1 Superiority Die and apply one of three riders:
+    // 0=Trip (STR save or Prone), 1=Menacing (WIS save or Frightened), 2=Pushing (15 ft).
+    // Clears maneuver_available. Returns a ManeuverResult with save details / push distance.
+    ManeuverResult applyManeuverEffect(BattleMap& bm, int attacker_idx, int target_idx, int maneuver_type) noexcept;
+
+    // Arcane Archer Arcane Shot (ARCANE_ARCHER_PLAN.md AA2), on-hit options. After a ranged weapon
+    // hit (conditions.arcane_shot_available), spend one "Arcane Shot" use (once per turn) and apply a
+    // KNOWN option: Banishing (psychic 1 die, CHA save → banished until the end of its next turn),
+    // Beguiling (psychic 2 dice, WIS save → Charmed by the archer until the start of the archer's
+    // next turn; ends early if the archer attacks/damages it or forces it to save), Bursting (force
+    // 2 dice to the target and each creature in a 10-ft emanation from it), Grasping (slashing 1
+    // die, STR save → Restrained for 1 minute; escapeGraspingShot), Shadow (psychic 1 die, WIS save
+    // → Blinded until the end of its next turn). The target's damage is folded into `result`.
+    ArcaneShotResult applyArcaneShot(BattleMap& bm, int archer_idx, int target_idx, int option,
+                                     AttackResult& result) noexcept;
+
+    // Arcane Archer Arcane Shot (AA3), the no-attack-roll options. Each replaces one attack of the
+    // Attack action (the attack budget is the caller's) and spends one use, once per turn, with a
+    // RANGED weapon (weapon_idx). Neither rolls to hit, so neither is affected by cover.
+    // canUseArcaneShot: the shared gate (Fighter L3+ Arcane Archer, knows `option`, a use left,
+    // none used this turn).
+    [[nodiscard]] bool canUseArcaneShot(const BattleMap& bm, int archer_idx, int option) const noexcept;
+
+    // The cells of a Piercing Shot's 30-ft line from the archer toward (aim_col, aim_row). It passes
+    // through objects (walls don't stop it).
+    [[nodiscard]] std::vector<Cell> piercingShotCells(const BattleMap& bm, int archer_idx,
+                                                      int aim_col, int aim_row) const;
+
+    // Piercing Shot: each creature in the line makes a DEX save. Fail: weapon damage + 2 dice
+    // Piercing; success: half of that.
+    ArcaneShotSaveResult piercingShot(BattleMap& bm, int archer_idx, int weapon_idx,
+                                      int aim_col, int aim_row) noexcept;
+
+    // Seeking Shot target legality: a creature within the weapon's long range (no line of sight
+    // needed; "seen in the past minute" isn't tracked, so any creature on the archer's level).
+    [[nodiscard]] bool seekingShotTargetValid(const BattleMap& bm, int archer_idx, int weapon_idx,
+                                              int target_idx) const noexcept;
+
+    // Seeking Shot: the target makes a DEX save. Fail: weapon damage + 2 dice Force; success: half
+    // the weapon damage.
+    ArcaneShotSaveResult seekingShot(BattleMap& bm, int archer_idx, int weapon_idx, int target_idx) noexcept;
+
+    // Shared by the two above once their gates pass: spends the use and resolves each DEX save.
+    ArcaneShotSaveResult finishArcaneSaveShot(BattleMap& bm, int archer_idx, const Weapon& w,
+                                              ArcaneShotOption opt, const std::vector<int>& targets,
+                                              ArcaneShotSaveResult res) noexcept;
+
+    // Curving Shot (Arcane Archer L7, AA4): after a ranged weapon miss (conditions.curving_shot_available),
+    // spend the Bonus Action to reroll the attack against a different creature the archer can see,
+    // within the weapon's range and within 60 ft of the original target. curvingShotTargets lists the
+    // legal creatures; applyCurvingShot spends the Bonus Action and resolves the new attack.
+    [[nodiscard]] std::vector<int> curvingShotTargets(const BattleMap& bm, int archer_idx, int original_idx,
+                                                      int weapon_idx) const noexcept;
+
+    AttackResult applyCurvingShot(BattleMap& bm, int archer_idx, int original_idx, int new_target_idx,
+                                  int weapon_idx) noexcept;
+
+    // Ever-Ready Shot (Arcane Archer L10, AA4): at combat start, each such archer with no Arcane Shot
+    // uses left regains one. RNG-free; call once after initiative.
+    void applyEverReadyShot(BattleMap& bm) noexcept;
+
+    // Indomitable Teleport (Arcane Archer L15, AA5): after an Indomitable reroll SUCCEEDS on a spell
+    // save, the archer may teleport up to 60 ft to an unoccupied space it can see. The cast flow opens
+    // an AfterSave window for it (applySaveFailReaction flags it on the in-flight cast).
+    [[nodiscard]] bool canIndomitableTeleport(const BattleMap& bm, int idx) const noexcept;
+
+    [[nodiscard]] bool isIndomitableTeleportDestination(const BattleMap& bm, int idx, Cell dest) const;
+
+    bool applyIndomitableTeleport(BattleMap& bm, int idx, int col, int row);
+
+    [[nodiscard]] std::vector<ReactionOption> indomitableTeleportOptions() const;
+
+    // Masterful Shots (Arcane Archer L18, AA5): a Reaction when a creature the archer can see misses
+    // it with an attack roll. The archer moves up to half its Speed away from the attacker without
+    // provoking Opportunity Attacks, then makes one ranged weapon attack against it if it is in range.
+    // Offered through the AfterAttack window (GUI) or the decider (auto).
+    [[nodiscard]] bool canMasterfulShots(const BattleMap& bm, int archer_idx, int attacker_idx) const;
+
+    // A Ranged weapon slot that can attack attacker_idx from `from` (one without the long-range
+    // Disadvantage first), or -1.
+    [[nodiscard]] int  masterfulShotsWeapon(const BattleMap& bm, int archer_idx, int attacker_idx,
+                                            Cell from) const;
+
+    // The archer's own cell (no move), or a cell reachable on foot within half its Speed, unoccupied,
+    // and farther from the attacker than where it stands.
+    [[nodiscard]] bool isMasterfulShotsDestination(const BattleMap& bm, int archer_idx, int attacker_idx,
+                                                   Cell dest) const;
+
+    // The engine's pick: a legal cell from which a weapon reaches the attacker (without long-range
+    // Disadvantage if possible), as far from it as possible, then the shortest move.
+    [[nodiscard]] Cell masterfulShotsDestination(const BattleMap& bm, int archer_idx, int attacker_idx) const;
+
+    // Spend the Reaction, move to (col,row) (-1,-1 = masterfulShotsDestination), then attack. Returns
+    // the attack (invalid when ineligible, the cell is illegal, or the attacker is out of range).
+    AttackResult applyMasterfulShots(BattleMap& bm, int archer_idx, int attacker_idx, int col, int row);
+
+    [[nodiscard]] std::vector<ReactionOption> masterfulShotsOptions() const;
+
+    // Grasping Shot escape: an action by the restrained creature, or a creature within 5 ft of it,
+    // makes a STR (Athletics) check against the archer's Arcane Shot DC; success ends Restrained.
+    // The action cost is the caller's to charge.
+    GraspingEscapeResult escapeGraspingShot(BattleMap& bm, int actor_idx, int target_idx) noexcept;
+
+    // True if target_idx is Restrained by a Grasping Shot.
+    [[nodiscard]] bool heldByGraspingShot(int target_idx) const noexcept;
+
+    // Battle Master Sweeping Attack (on-hit): spend 1 Superiority Die to splash the same attack onto a
+    // 2nd creature within 5 ft of the original target. If the original attack roll (result.total_roll)
+    // would hit the 2nd creature's AC, it takes superiority-die damage of the attack's damage type.
+    // Clears maneuver_available. action/result are the original (primary) attack.
+    ManeuverResult applySweepingAttack(BattleMap& bm, const Attack& action, const AttackResult& result,
+                                       int secondary_idx) noexcept;
+
+    // Battle Master bonus-action maneuvers. Each spends 1 Superiority Die (returns false / 0 if none).
+    //  · Rally: grant a creature within 30 ft Temporary HP = superiority die + your CHA modifier.
+    //    Returns the temp HP granted (0 = could not — no die or bad index).
+    int  applyRally(BattleMap& bm, int fighter_idx, int target_idx) noexcept;
+
+    //  · Feinting Attack: feint a creature within 5 ft → Advantage on your next attack vs it this turn
+    //    and that hit adds the die to damage (feint_target_idx; consumed in applyAttackResult).
+    bool applyFeintingAttack(BattleMap& bm, int fighter_idx, int target_idx) noexcept;
+
+    //  · Quick Toss: arm a superiority-die damage bonus on your next thrown-weapon attack this turn
+    //    (quick_toss_die_pending). The GUI then makes the actual thrown attack.
+    bool prepareQuickToss(BattleMap& bm, int fighter_idx) noexcept;
+
+    // Battle Master Precision Attack (on-miss): spend 1 Superiority Die, add 1d8/d10 to the
+    // attack roll, and recompute the hit (may convert a miss to a hit with full damage).
+    // Clears maneuver_precision_available. Mutates result in place (mirrors applyGuidedStrike).
+    void applyPrecisionAttackEffect(BattleMap& bm, const Attack& action, AttackResult& result) noexcept;
+
+    // ══ Monk (combat_monk.cpp) ═══════════════════════════════════════════════════════════════════
+    // Monk Way of the Open Hand L17 — plant Quivering Palm vibrations on target_idx after an Unarmed
+    // Strike hit, spending Focus Points. Builds a delayed-trigger condition (10d12 Force, CON save for
+    // half) that the monk later detonates via triggerDelayedEffect. Only one creature may be affected
+    // at a time, so any prior vibrations this monk planted are ended first. Returns true on success.
+    bool plantQuiveringPalm(BattleMap& bm, int monk_idx, int target_idx) noexcept;
+
+    // Shadow Step (L6+): a Bonus Action teleport for Warrior of Shadow Monks. L6 requires dim/dark,
+    // L11+ works from any light level. Sets shadow_step_advantage flag for next attack. Returns true
+    // iff teleport succeeds. The GUI handles target-cell selection (like Psychic Teleportation).
+    bool shadowStepTeleport(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
+
+    // Cloak of Shadows (L17): a Bonus Action for Warrior of Shadow Monks. Gain Invisible condition
+    // in dim/dark light. Invisibility persists through attacks (doesn't end on action). Returns true
+    // iff activated. Expires on turn start if agent moves to bright light.
+    bool cloakOfShadows(BattleMap& bm, int idx) noexcept;
+
+    // Shadow Arts: Darkness (L3): a Warrior of Shadow Monk spends 1 Focus Point to fill a 15-ft-radius
+    // Sphere (centered on the chosen point) with magical Darkness for 1 minute. The casting Monk can
+    // see through their own Darkness (the light effect is tagged see-through for this Monk), so they
+    // are not Blinded by it; other creatures inside without Devil's Sight gain the Blinded condition.
+    // Returns the new light-effect id (>= 0) on success, or -1 on failure (wrong class/level/no focus).
+    int shadowArtsDarkness(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
+
+    // Elemental Attunement (L3): Magic action + 1 Focus Point → for the rest of the encounter (the sim
+    // doesn't track the 10-min duration; reset on a short/long rest) the Monk's unarmed strikes reach
+    // +10 ft, deal the chosen element (Acid/Cold/Fire/Lightning/Thunder), and can push/pull the target
+    // 10 ft. `element` is a MagicDamage_t value. Returns true on success, false on wrong class/level/no
+    // focus / invalid element.
+    bool activateElementalAttunement(BattleMap& bm, int idx, int element) noexcept;
+
+    // Elemental Attunement push/pull rider: while attunement is active, an unarmed hit can push the
+    // target 10 ft away (pull=false) or pull it 10 ft toward the Monk (pull=true). No save. Returns the
+    // feet actually moved (0 if blocked/invalid).
+    int elementalAttunementMove(BattleMap& bm, int attacker_idx, int target_idx, bool pull) noexcept;
+
+    // Elemental Burst (L6): Magic action + 2 Focus Points → a 20-ft-radius sphere centered on the chosen
+    // point. Each creature there (faction-aware: allies of the caster are spared) makes a DEX save vs the
+    // Monk's Ki DC (8 + PB + WIS); on a failure it takes (Martial Arts die count) × d8 of the chosen
+    // element, half on a success. `element` is a MagicDamage_t value. Returns true on success.
+    bool elementalBurst(BattleMap& bm, int idx, int target_col, int target_row, int element) noexcept;
+
+    // Monk Stunning Strike: a qualifying unarmed hit (stunning_strike_available) forces the target to
+    // make a CON save (DC 8 + attacker's DEX mod + prof bonus) or be Stunned for 1 turn. Spends
+    // 1 Focus Point. Clears the flag and sets stunning_strike_used.
+    StunningStrikeResult applyStunningStrike(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
+
+    // Monk Warrior of the Open Hand: a qualifying Flurry hit (open_hand_rider_available) applies one of
+    // three riders: Knockdown (STR save or Prone), Push (forceMoveAgent), or Deny Reaction (set reaction_used).
+    // Spends 1 Focus Point. Clears the flag and sets open_hand_rider_used.
+    OpenHandRiderResult applyOpenHandRider(BattleMap& bm, int attacker_idx, int target_idx, int option) noexcept;
+
+    // Monk Warrior of Mercy — Hand of Healing (L3+): a Bonus Action that spends 1 Focus Point to heal a
+    // creature within reach for (Martial Arts die + WIS mod). At L6 (Physician's Touch) it also ends one
+    // of Blinded/Deafened/Paralyzed/Poisoned/Stunned on the target. Pass free=true (only honored at L11,
+    // Flurry of Healing and Harm) to fold the heal into a Flurry strike: no Focus Point and no Bonus Action.
+    HandOfHealingResult handOfHealing(BattleMap& bm, int monk_idx, int target_idx, bool free = false) noexcept;
+
+    // Monk Warrior of the Open Hand — Wholeness of Body (L6+): a Bonus Action that spends one use of the
+    // "Wholeness of Body" resource (PB per long rest) to heal yourself (Martial Arts die + WIS mod, min 1).
+    // Returns the HP actually restored, or 0 if unavailable (wrong subclass/level, no uses, no Bonus Action).
+    int wholenessOfBody(BattleMap& bm, int monk_idx) noexcept;
+
+    // Monk Warrior of Mercy — Hand of Harm (L3+): once per turn, after a qualifying unarmed hit
+    // (hand_of_harm_available), spend 1 Focus Point to add (Martial Arts die + WIS mod) Necrotic damage to
+    // the AttackResult and the target's HP. At L6 (Physician's Touch) the target also becomes Poisoned. At
+    // L11 (Flurry of Healing and Harm) it costs no Focus Point and may be used any number of times per turn,
+    // but only once per target. Mirrors applyPsionicStrikeEffect (deferred on-hit rider).
+    void applyHandOfHarmEffect(BattleMap& bm, int attacker_idx, int target_idx, AttackResult& result) noexcept;
+
+    // Monk Flurry of Blows: executes two bonus-action unarmed strikes against the same target,
+    // optionally applying an Open Hand rider on each hit (option: 0=Knockdown, 1=Push, 2=DenyReaction, -1=None).
+    // Spends 1 Focus Point. Returns both attack results and rider results.
+    FlurryResult executeFlurryOfBlows(BattleMap& bm, int attacker_idx, int target_idx, int rider_option) noexcept;
+
+    // ══ Paladin (combat_paladin.cpp) ═════════════════════════════════════════════════════════════
+    // Lay on Hands (Paladin): spends from the "Lay on Hands" pool resource to heal a target.
+    // Clamps the spent amount to the min of (pool remaining, target's HP deficit).
+    // Returns actual HP healed (0 if nothing to heal, -1 if no pool remaining).
+    static int layOnHands (BattleMap& bm, int caster_idx, int target_idx, int amount) noexcept;
+
+    // Sacred Weapon (Paladin Oath of Devotion): Bonus Action, spend 1 Channel Oath use to add
+    // +CHA mod (min +1) to weapon attack rolls for 1 minute (10 rounds). Requires Oath of Devotion
+    // and an available Channel Oath use. Returns the attack bonus granted, or -1 if it could not
+    // be activated (wrong oath, no resource, or already active).
+    int activateSacredWeapon(BattleMap& bm, int idx) noexcept;
+
+    // Vow of Enmity (Paladin Oath of Vengeance L3): spend 1 Channel Oath use to swear enmity against
+    // a visible enemy within 30 ft, gaining Advantage on attacks against it for 1 minute (or until
+    // used again). On the target's death the vow auto-transfers to the nearest enemy within 30 ft
+    // (see applyUnconscious). Returns true on success, false if not eligible (wrong oath, no resource,
+    // out of range/LOS). Sets vow_of_enmity_target/turns; ticked down in beginTurn.
+    bool activateVowOfEnmity(BattleMap& bm, int idx, int target_idx) noexcept;
+
+    // Avenging Angel (Paladin Oath of Vengeance L20): Bonus Action, 10 minutes. Grants Fly 60 (+ hover)
+    // and a Frightful Aura in the Aura of Protection (enemy WIS save at turn start or Frightened until
+    // damaged; applied in beginTurn). Costs one "Avenging Angel" use per long rest, or a level-5 spell
+    // slot when exhausted. Returns true on success. Sets avenging_angel_turns; ticked down in beginTurn.
+    bool activateAvengingAngel(BattleMap& bm, int idx) noexcept;
+
+    // Elder Champion (Paladin Oath of the Ancients L20): Bonus Action, 1 minute. Regain 10 HP at each
+    // of your turn starts (beginTurn), and enemies in your Aura of Protection have Disadvantage on saves
+    // vs your spells & Channel Oath options (rollSpellSave). Costs one "Elder Champion" use per long
+    // rest, or a level-5 spell slot when exhausted. Returns true on success. Sets elder_champion_turns.
+    bool activateElderChampion(BattleMap& bm, int idx) noexcept;
+
+    // Inspiring Smite (Paladin Oath of Glory L3): immediately after a Divine Smite this turn, spend one
+    // Channel Oath use to grant a creature within 30 ft (may be self) 2d8 + Paladin level temporary HP.
+    // Once per turn. Returns the temp HP granted, or -1 if not allowed (wrong oath, no smite this turn,
+    // already used, no resource, out of range).
+    int activateInspiringSmite(BattleMap& bm, int idx, int target_idx) noexcept;
+
+    // Living Legend (Paladin Oath of Glory L20): Bonus Action, 10 minutes. While active you gain a
+    // reaction to reroll a failed saving throw (canLivingLegendReroll) and can turn your first weapon
+    // miss each turn into a hit (maybeUnerringStrike). Costs one "Living Legend" use per long rest, or
+    // a level-5 spell slot when exhausted. Returns true on success. Sets living_legend_turns.
+    bool activateLivingLegend(BattleMap& bm, int idx) noexcept;
+
+    // Paladin Divine Smite (on a melee/unarmed hit): spend a level-slot_level spell slot as a
+    // Bonus Action to add (1 + min(slot_level,5))d8 Radiant, +1d8 vs Undead/Fiend. Requires
+    // divine_smite_available, a free bonus action, the chosen slot, and no leveled spell cast
+    // this turn; spends the slot + bonus action, sets leveled_spell_cast_this_turn and
+    // divine_smite_used. Returns the Radiant damage dealt, or -1 if not allowed.
+    int applyDivineSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                               int slot_level, AttackResult& result) noexcept;
+
+    // Apply Soul of Vengeance: the paladin makes a melee attack against its sworn foe and spends its
+    // reaction. Re-validates the reaction is free. Returns the counter-attack's result.
+    [[nodiscard]] AttackResult applySoulOfVengeance(BattleMap& bm, int paladin_idx,
+                                                    int attacker_idx, int weapon_idx) noexcept;
+
+    // ══ Ranger (combat_ranger.cpp) ═══════════════════════════════════════════════════════════════
+    // Misty Wanderer (Fey Wanderer Ranger L15): a slotless Misty Step (Bonus Action, ≤30 ft to an
+    // unoccupied space you can see), spending one "Misty Wanderer" use. ally_idx >= 0 brings one willing
+    // creature from within 5 ft (mistyWandererAllies) to (ally_col, ally_row), a free space within 5 ft of
+    // the destination; a negative ally cell picks the first free one (mistyWandererAllyCell). Every check
+    // runs before anything moves. autoMistyWanderer is the NpcDriver's use: a ranged Ranger an enemy has
+    // in reach teleports to the nearest cell out of every enemy's reach or sight (shadowyDodgeDestination),
+    // bringing an adjacent ally who is in melee too, if there is room.
+    [[nodiscard]] std::vector<int> mistyWandererAllies(const BattleMap& bm, int idx) const;
+
+    [[nodiscard]] bool isMistyWandererAllyCell(const BattleMap& bm, int ally_idx, Cell dest,
+                                               int ranger_idx, Cell ranger_dest) const;
+
+    [[nodiscard]] Cell mistyWandererAllyCell(const BattleMap& bm, int ally_idx, int ranger_idx,
+                                             Cell ranger_dest) const;
+
+    bool mistyWanderer(BattleMap& bm, int idx, int target_col, int target_row,
+                       int ally_idx = -1, int ally_col = -1, int ally_row = -1) noexcept;
+
+    bool autoMistyWanderer(BattleMap& bm, int idx) noexcept;
+
+    // Beguiling Shot break rule: end any Charmed condition source_idx's Beguiling Shot put on target_idx.
+    void endBeguilingCharm(BattleMap& bm, int source_idx, int target_idx) noexcept;
+
+    // Dreadful Strike (L3): a weapon hit by a Gloom Stalker with Dread Ambusher uses left, once per
+    // turn, flags dreadful_strike_available. Applying it spends a use and deals 2d6 Psychic (2d8 at L11)
+    // to dreadful_strike_target, added to `result`; at L11 it leaves stalkers_flurry_pending for the
+    // Stalker's Flurry choice. Returns true iff the damage was dealt.
+    bool applyDreadfulStrikeEffect(BattleMap& bm, int attacker_idx, AttackResult& result);
+
+    // Stalker's Flurry (L11), right after Dreadful Strike: 0 = neither, 1 = Sudden Strike (arms
+    // sudden_strike_available — one free attack with the same weapon), 2 = Mass Fear. Returns true iff
+    // a pending choice was resolved.
+    bool chooseStalkersFlurry(BattleMap& bm, int attacker_idx, int option);
+
+    // Mass Fear: the target and every other creature within 10 ft of it (allies too; never the Ranger)
+    // makes a WIS save vs the Ranger's spell save DC or is Frightened of it until the start of the
+    // Ranger's next turn. Returns how many became Frightened.
+    int applyMassFear(BattleMap& bm, int ranger_idx, int target_idx);
+
+    // Advantage half: true when `saver` (a Fey Wanderer Ranger L7+) has Advantage
+    // on a save against `condition_name` ("Charmed" / "Frightened"). Every Charm/Fear save site asks.
+    [[nodiscard]] bool beguilingTwistAdvantage(const BattleMap& bm, int saver,
+                                               std::string_view condition_name) const;
+
+    // Reaction half. Every site where a save to AVOID or END Charmed/Frightened succeeds calls
+    // charmFearSaveSucceeded(saver). Each Fey Wanderer L7+ with its Reaction — the saver itself, or
+    // one that can see the saver within 120 ft — that has a target may react: an automated one
+    // (is_npc_automated) resolves at once (Frightened, on the enemy npcSelectTarget ranks first, else
+    // the nearest), a human one is queued for the GUI (takeBeguilingTwistOffers → (reactor, saver)).
+    void charmFearSaveSucceeded(BattleMap& bm, int saver);
+
+    [[nodiscard]] bool canBeguilingTwist(const BattleMap& bm, int reactor, int saver) const;
+
+    // A different creature (not the saver, not the reactor) the reactor can see within 120 ft.
+    [[nodiscard]] std::vector<int> beguilingTwistTargets(const BattleMap& bm, int reactor, int saver) const;
+
+    // Spend the Reaction; the target makes a WIS save vs the Ranger's spell DC or is Charmed
+    // (frightened = false) / Frightened of the Ranger for 1 minute, repeating the save at the end of
+    // each of its turns. Returns true iff the reaction was spent.
+    bool applyBeguilingTwist(BattleMap& bm, int reactor, int saver, int target, bool frightened);
+
+    [[nodiscard]] std::vector<std::pair<int,int>> takeBeguilingTwistOffers();
+
+    // Sudden Strike: the creatures the armed free attack may strike — a different creature within 5 ft
+    // of the Dreadful Strike target, not an ally, alive and in play, in reach/range + LoS of the same
+    // weapon. Empty unless sudden_strike_available.
+    [[nodiscard]] std::vector<int> suddenStrikeTargets(const BattleMap& bm, int attacker_idx) const;
+
+    // The automated Ranger's half (D3/D4): spend a pending Dreadful Strike on a target still standing,
+    // then pick Sudden Strike when it has a target, else Mass Fear. A no-op when nothing is pending.
+    void autoDreadfulStrike(BattleMap& bm, int attacker_idx);
+
+    // primalCompanionOf: the Ranger's live (in play, not dead) Primal Companion, or -1.
+    // companionRanger: the Beast Master Ranger L3+ that owns companion `comp_idx`, or -1.
+    [[nodiscard]] int primalCompanionOf(const BattleMap& bm, int ranger_idx) const;
+
+    [[nodiscard]] int companionRanger(const BattleMap& bm, int comp_idx) const;
+
+    // True when `comp_idx` is a Primal Companion whose action this turn is limited to Dodge: its
+    // Ranger is alive, not Incapacitated, and did not command it (companion_commanded) on its turn.
+    [[nodiscard]] bool companionRestricted(const BattleMap& bm, int comp_idx) const;
+
+    // Command (Bonus Action): the companion may take any action on its next turn (and, from L7,
+    // Dash/Disengage/Hide with its Bonus Action; from L11, Beast's Strike twice). Spends the
+    // Ranger's Bonus Action. Returns true iff it was spent.
+    [[nodiscard]] bool canCommandCompanion(const BattleMap& bm, int ranger_idx) const;
+
+    bool commandCompanion(BattleMap& bm, int ranger_idx);
+
+    // Beast's Strike in place of one of the Ranger's attacks. The CALLER pays the attack (the GUI's
+    // attacks_remaining, the NpcDriver's st.attacks_remaining); armBeastsStrike then sets
+    // beast_strikes_left (2 with Bestial Fury at L11, else 1). beastsStrikeTargets lists the enemies
+    // the companion can strike where it stands. beastsStrike spends one strike (before the roll, so a
+    // parked attack never repeats it) and launches the companion's attack. Completed when refused.
+    bool armBeastsStrike(BattleMap& bm, int ranger_idx);
+
+    [[nodiscard]] std::vector<int> beastsStrikeTargets(const BattleMap& bm, int ranger_idx) const;
+
+    FlowStatus beastsStrike(BattleMap& bm, int ranger_idx, int target_idx);
+
+    // Tombstone every Primal Companion whose Ranger has died (death, not 0 HP) or left play.
+    void vanishOrphanedCompanions(BattleMap& bm);
+
+    // ══ Rogue (combat_rogue.cpp) ═════════════════════════════════════════════════════════════════
+    // Rogue Cunning Strike rider application (save + condition): Poison/Trip/Withdraw/KnockOut/Obscure.
+    // Internal helper called by applyCunningStrikeEffect after the Sneak Attack dice are spent. result
+    // is forwarded so the Assassin's Envenom Weapons (L13+) bonus 2d6 Poison (on a failed Poison save,
+    // ignoring Poison Resistance) folds into the same AttackResult/target HP.
+    void applyCunningStrikeRiders(BattleMap& bm, int attacker_idx, int target_idx,
+                                  const std::vector<int>& effects, AttackResult& result) noexcept;
+
+    // Apply Rogue Sneak Attack + optional Cunning Strike riders out of band, after a qualifying hit
+    // (cunning_strike_available). Rolls (sneak_dice − rider cost)d6, adds it to result/damage and the
+    // target's HP, marks Sneak Attack used, then applies any rider conditions. effects: rider codes
+    // (0=Poison 1=Trip 2=Withdraw 4=KnockOut 5=Obscure); empty = full Sneak Attack with no rider.
+    // Invalid/over-budget rider sets are ignored (full Sneak Attack still applies, no rider).
+    //
+    // round_num (default -1 = caller doesn't track rounds): the current combat round (0 = first
+    // round). Drives the Assassin subclass round-1 features folded into this Sneak Attack:
+    //   · Assassinate (L3+): +Rogue-level flat damage on a first-round Sneak hit.
+    //   · Envenom Weapons (L13+): the Poison rider costs 0 Sneak dice and adds 2d6 Poison ignoring
+    //     Resistance (applied in applyCunningStrikeRiders on a failed save).
+    //   · Death Strike (L17+): a first-round Sneak hit forces a CON save (DC 8 + DEX + PB); on a
+    //     failure the whole attack's damage is doubled.
+    void applyCunningStrikeEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                  const std::vector<int>& effects, AttackResult& result,
+                                  int round_num = -1) noexcept;
+
+    // Soul Blades — Homing Strikes (L9): after a MISS with a Psychic Blade, spend 1 Psionic Energy
+    // Die, roll it and add the result to the attack roll; if that converts the miss to a hit, roll
+    // damage and apply it (the die is expended only when it causes a hit). Returns true iff it
+    // converted to a hit. v1: a Homing-converted hit does NOT open the Sneak Attack window.
+    bool applyHomingStrike(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx,
+                           AttackResult& result) noexcept;
+
+    // Soul Blades — Psychic Teleportation (L9): a Bonus Action; spend 1 Psionic Energy Die, roll it,
+    // and teleport up to (10 × roll) feet to the target cell. Returns true on success (in range +
+    // unoccupied). Spends the die only on a successful teleport.
+    bool psychicTeleportation(BattleMap& bm, int idx, int target_col, int target_row) noexcept;
+
+    // Psychic Veil (L13): a Magic action → gain the Invisible condition. Once per Long Rest, or by
+    // expending 1 Psionic Energy Die. Returns true if activated.
+    bool activatePsychicVeil(BattleMap& bm, int idx) noexcept;
+
+    // Rend Mind (L17): after a Psychic-Blade Sneak Attack, force a WIS save (DC 8 + DEX + PB) or be
+    // Stunned for 1 minute (repeat the save at end of each of its turns). Once per Long Rest, or by
+    // expending 3 Psionic Energy Dice. canRendMind gates availability; applyRendMind resolves it and
+    // returns true iff the target is Stunned.
+    [[nodiscard]] bool canRendMind(const BattleMap& bm, int attacker_idx) const noexcept;
+
+    bool applyRendMind(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
+
+    // ══ Sorcerer (combat_sorcerer.cpp) ═══════════════════════════════════════════════════════════
+    // Innate Sorcery (L1): Bonus Action, spend 1 use to gain +1 spell save DC and
+    // advantage on spell attack rolls for 1 minute (10 rounds). Returns true if
+    // activated, false otherwise (not a Sorcerer / no uses left).
+    // Sorcery Incarnate (L7): with no uses left, 2 Sorcery Points activate it instead.
+    bool activateInnateSorcery(BattleMap& bm, int idx) noexcept;
+
+    // Sorcery Incarnate (L7): true while a Sorcerer of level 7+ has Innate Sorcery running. While
+    // it is, the caster may put TWO Metamagic options on one spell (SpellAction::metamagic +
+    // metamagic2) — the GUI gates its second arm-slot on this, and executeSpell enforces it.
+    [[nodiscard]] static bool sorceryIncarnateActive(const Agent::Stats& s) noexcept;
+
+    // Draconic L14 — Dragon Wings: grant fly speed = walk speed (persistent, no concentration).
+    // Toggle: activating when already active (dragon_wings_active = true) resets fly speed to 0
+    // and clears the flag. Returns true if the agent is a Draconic Sorcerer L14+.
+    bool activateDragonWings(BattleMap& bm, int idx) noexcept;
+
+    // Draconic L6 Elemental Affinity — resistance half (Bonus Action, 1 SP): spend 1 Sorcery Point
+    // to gain resistance (0.5x) to the chosen draconic damage type for 1 hour (600 rounds in the sim).
+    // Gate: Draconic L6+, draconic_affinity_type >= 0, >= 1 SP, not already active. Returns true if used.
+    bool activateDraconicResistance(BattleMap& bm, int idx) noexcept;
+
+    // Clockwork L14 Trance of Order (Bonus Action). For 1 minute (10 rounds): attacks against this
+    // sorcerer can't benefit from Advantage, and they treat their own d20 of 9-or-lower as a 10 on
+    // D20 Tests (applyTranceFloor). Free 1/long rest via the "Trance of Order" Resource, else 5
+    // Sorcery Points. Sets trance_of_order_turns = 10 and spends the bonus action. Returns true if used.
+    bool activateTranceOfOrder(BattleMap& bm, int idx) noexcept;
+
+    // Clockwork L6 Bastion of Law (Magic Action). Spend 1-5 Sorcery Points to ward `target_idx`
+    // (self or a creature within 30 ft) with a pre-rolled (sp)d8 absorption pool stored in
+    // Stats::bastion_ward. Overwrites any existing ward on the target. Returns the ward total
+    // rolled, or -1 on failure (gating / range / not enough Sorcery Points).
+    int activateBastionOfLaw(BattleMap& bm, int caster_idx, int target_idx, int sp) noexcept;
+
+    // Bastion of Law absorption: reduce `dmg` by the remaining bastion_ward on `s`, decrementing
+    // the ward (caller persists `s`). Returns the post-ward damage. Logs when the ward soaks. Called
+    // at each damage-absorption site BEFORE temp HP. No-op when ward == 0 or dmg <= 0.
+    int applyBastionWard(BattleMap& bm, int idx, Agent::Stats& s, int dmg) noexcept;
+
+    // Clockwork L18 Clockwork Cavalcade (Magic Action). Each ally within 30 ft of the caster (and the
+    // caster) regains 100 HP and has its active spell-applied conditions ended. Free 1/long rest via
+    // the "Clockwork Cavalcade" Resource, else 7 Sorcery Points. Returns the number of creatures
+    // affected, or -1 on failure (gating / no use & < 7 Sorcery Points).
+    int clockworkCavalcade(BattleMap& bm, int caster_idx) noexcept;
+
+    // Aberrant L14 Revelation in Flesh (Bonus Action). Spend 1 Sorcery Point to transform for 10
+    // minutes (100 rounds): gain a fly speed (= walk) with hover, a swim speed (= walk), and
+    // truesight 60 ft (see Invisible creatures). Snapshots the prior speeds/truesight and reverts them
+    // on expiry (beginTurn) / long rest. Gate Sorcerer/AberrantPath/L14+. Returns true if activated.
+    bool activateRevelationInFlesh(BattleMap& bm, int idx) noexcept;
+
+    // Aberrant L18 Warping Implosion. Teleport the caster to (dest_col,dest_row) — an unoccupied cell
+    // within 120 ft it can see — then every OTHER creature within 30 ft of the space it LEFT makes a
+    // Dexterity save vs the sorcerer's spell DC, taking 3d10 Force (half on a success). Free 1/long
+    // rest via the "Warping Implosion" Resource, else 5 Sorcery Points. Gate Aberrant L18+. Returns the
+    // number of creatures damaged, or -1 on failure (gating / range / occupied dest / no use & < 5 SP).
+    int warpingImplosion(BattleMap& bm, int caster_idx, int dest_col, int dest_row) noexcept;
+
+    // ══ Warlock (combat_warlock.cpp) ═════════════════════════════════════════════════════════════
+    // One with Shadows (Warlock invocation 8): while in an area of Dim Light or Darkness,
+    // cast Invisibility on self for free (no slot). Sets the Invisible condition (ends on the
+    // Warlock's next attack/cast, like Invisibility). Returns true if applied, false if the
+    // agent isn't an invocation-8 Warlock or isn't standing in dim/dark.
+    bool applyOneWithShadows(BattleMap& bm, int idx) noexcept;
+
+    // Celestial Warlock L14 — Searing Vengeance: when a Celestial warlock would make a death save at
+    // the start of its turn, it may instead spring back to its feet — regaining half its HP maximum,
+    // standing up, and searing every enemy within 30 ft for 2d8 + CHA radiant + Blinded (until the end
+    // of the warlock's next turn). Once per long rest ("Searing Vengeance" resource). Auto-fires from
+    // the start-of-turn death-save site. Returns true if it triggered (skip the normal death save).
+    bool triggerSearingVengeance(BattleMap& bm, int idx) noexcept;
+
+    // Great Old One Warlock L6 — Clairvoyant Combatant: as a Bonus Action, a GOO warlock makes telepathic
+    // contact with one creature it can see within 60 ft, forcing a WIS save (vs the warlock's CHA spell
+    // save DC). On a failure the warlock has Advantage on attack rolls against that creature, and the
+    // creature has Disadvantage on attack rolls against the warlock, until the start of the warlock's next
+    // turn (a directed "ClairvoyantCombatant" ActiveAgentCondition, caster=warlock, agent=target). Once per
+    // short/long rest ("Clairvoyant Combatant" resource); when exhausted, a Pact Magic slot may be spent
+    // instead. Returns true if it activated (use surfaced via a GUI bonus-action button).
+    bool activateClairvoyantCombatant(BattleMap& bm, int warlock_idx, int target_idx) noexcept;
+
+    // Steps of the Fey (Archfey Warlock L3): a Bonus-Action Misty Step (30 ft) cast with no slot,
+    // spending one "Steps of the Fey" use. effect selects the rider: 0 None, 1 Refreshing (self 1d10
+    // temp HP), 2 Taunting (WIS save near departure → FeyTaunt Disadvantage), 3 Disappearing (L6+,
+    // self Invisible), 4 Dreadful (L6+, 2d10 Psychic near departure on a failed WIS save). The GUI
+    // handles effect selection + target-cell selection. Returns true iff the teleport happens.
+    // Misty Escape (L6): pass as_reaction=true to cast this Misty Step as a Reaction (spending the
+    // reaction instead of a Bonus Action) in response to taking damage.
+    bool stepsOfTheFey(BattleMap& bm, int idx, int target_col, int target_row, int effect,
+                       bool as_reaction = false) noexcept;
+
+    // Shared additional-effect rider for a Steps of the Fey / Misty Escape / Bewitching Magic Misty
+    // Step. `from` is the square the warlock departed (Taunting/Dreadful key off it). effect: 1
+    // Refreshing (self 1d10 temp HP), 2 Taunting (FeyTaunt on a failed WIS save), 3 Disappearing (self
+    // Invisible), 4 Dreadful (2d10 Psychic on a failed WIS save), 0 = none. Caller has already gated.
+    void applyStepsOfFeyRider(BattleMap& bm, int idx, const Cell& from, int effect) noexcept;
+
+    // Bewitching Magic (Archfey Warlock L14): a free (no slot, no use, no action) Misty Step cast
+    // immediately after an Enchantment/Illusion action-cast. Gates patron/L14 + 30-ft range, teleports,
+    // and applies the chosen rider. The GUI enforces the "just cast Enchantment/Illusion" timing.
+    bool bewitchingMistyStep(BattleMap& bm, int idx, int target_col, int target_row, int effect) noexcept;
+
+    // Warlock Eldritch Smite (invocation 15, L5+, Pact of the Blade): on a pact-weapon hit, expend a
+    // Pact Magic spell slot as a Bonus Action to add (slot_level + 1)d8 Force damage, and knock a
+    // Huge-or-smaller target Prone. slot_level is the Warlock's pact slot level (pact_slot_level()).
+    // Requires eldritch_smite_available, a free bonus action, a pact slot, and no leveled spell cast
+    // this turn; spends the pact slot + bonus action, sets leveled_spell_cast_this_turn and
+    // eldritch_smite_used. Returns the Force damage dealt, or -1 if not allowed.
+    int applyEldritchSmiteEffect(BattleMap& bm, int attacker_idx, int target_idx,
+                                 int slot_level, AttackResult& result) noexcept;
+
+    // Warlock Magical Cunning (L2+): recover expended Pact Magic slots up to ceil(max/2)
+    // — or all of them at L20 (Eldritch Master) — once per long rest. Returns true if used.
+    bool useMagicalCunning(BattleMap& bm, int agent_idx);
+
+    // Celestial Warlock Healing Light (L3+): spend d6 healing dice from the pool.
+    // Validates healer is Celestial L3+, clamps num_dice, spends from resource, rolls and heals target.
+    // Returns HP healed (0 if invalid).
+    int useHealingLight(BattleMap& bm, int healer_idx, int target_idx, int num_dice);
+
+    // ══ Wizard (combat_wizard.cpp) ═══════════════════════════════════════════════════════════════
+    // Use a portent die on the next roll: validates agent is Diviner, has dice, and
+    // hasn't used portent this round. Sets pending_portent_die which CombatEngine::roll()
+    // will return instead of rolling. Decrements the Portent Dice resource.
+    // die_index: index into agent's portent_dice deque (0-based)
+    // current_round: current round number for per-round limit enforcement
+    // Returns true on success, false if agent/die is invalid or already used this round.
+    [[nodiscard]] bool usePortentDie(BattleMap& bm, int agent_idx, int die_index, int current_round) noexcept;
+
+    // Regenerate portent dice pool for a Diviner after long rest.
+    // Rolls count d20s and populates agent's portent_dice deque.
+    void regeneratePortentDice(BattleMap& bm, int agent_idx) noexcept;
+
+    // ══ Feats, fighting styles, Epic Boons, Weapon Mastery, species (combat_feats.cpp) ═══════════
+    // Lucky (Origin feat) — spend one Luck Point to grant the agent Advantage on its next
+    // d20 Test (via grantPendingAdvantage, consumed by the next d20 roll). Returns true if a
+    // point was spent, false if the agent has the Lucky feat exhausted / no points remaining.
+    bool spendLuckForAdvantage(BattleMap& bm, int idx);
+
+    // Merge with Shadows (Boon of the Night Spirit): a Bonus Action grants the Invisible condition
+    // while the boon-holder stands in Dim Light or Darkness (ends when it next acts). Returns true if
+    // applied, false if the agent lacks the boon or isn't standing in dim/dark.
+    bool applyMergeWithShadows(BattleMap& bm, int idx) noexcept;
+
+    // Grappler feat — Punch-and-Grab (on-hit): after an Unarmed-Strike hit as part of the Attack action,
+    // the attacker may ALSO attempt a Grapple this attack (normally you pick damage OR grapple), once per
+    // turn. Routes the grapple through the shared resolveGrapple core (contested check, computed escape
+    // DC) — never a parallel path. Requires grappler_punch_grab_available; clears it and sets
+    // grappler_punch_grab_used. Returns the GrappleResult (invalid if the flag wasn't set).
+    [[nodiscard]] GrappleResult applyPunchAndGrab(BattleMap& bm, int attacker_idx, int target_idx) noexcept;
+
+    // Weapon Mastery — Topple: a qualifying hit (topple_available) forces the target to make a
+    // CON save (DC 8 + attacker's attack ability mod + prof bonus) or be knocked Prone. Clears
+    // the flag. weapon_idx identifies the striking weapon (for the save DC's ability).
+    ToppleResult applyTopple(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx) noexcept;
+
+    // Apply Sentinel Guardian: the Sentinel makes a melee attack against the attacking creature and
+    // spends its reaction. Re-validates the reaction is free. Returns the counter-attack's result.
+    [[nodiscard]] AttackResult applySentinelGuard(BattleMap& bm, int sentinel_idx,
+                                                  int attacker_idx, int weapon_idx) noexcept;
+
+    // Apply Interception: roll 1d10 + PB, heal the target back by min(reduction, damage_taken), spend the
+    // interceptor's reaction. Re-validates the reaction is free + feat. Returns the damage prevented (or -1).
+    int applyInterception(BattleMap& bm, int interceptor_idx, int target_idx, int damage_taken) noexcept;
+
+    // Luck Points the agent can spend right now: the Lucky feat's plus its items' (the Luck Blade).
+    [[nodiscard]] int luckAvailable(const BattleMap& bm, int idx) const noexcept;
+
+    // Telekinetic (general feat) — Telekinetic Shove: a Bonus Action that shoves one creature within
+    // 30 ft. The target makes a STR save (DC = 8 + caster PB + best of INT/WIS/CHA mod); on a failure
+    // it is pushed 5 ft away from the caster (reuses forceMoveAgent, the Thunderwave knockback path).
+    // Returns a ShoveResult: attacker_roll = save DC, defender_roll = target's save total,
+    // success = the shove landed (save failed and the target moved).
+    [[nodiscard]] ShoveResult applyTelekineticShove(BattleMap& bm, int caster_idx, int target_idx) noexcept;
+
+    // Peerless Aim eligibility (path-agnostic): the attacker holds Boon of Combat Prowess, is alive, and
+    // has not yet used the once-per-turn miss→hit this turn. Caller confirms the attack actually missed.
+    [[nodiscard]] bool canPeerlessAim(const BattleMap& bm, int attacker_idx) const;
+
+    // Boon of Combat Prowess (Peerless Aim) — post-hoc GUI entry point. After a miss the engine flags
+    // peerless_aim_available; the GUI prompts and calls this to turn the miss into a hit: sets
+    // peerless_aim_used, rolls + applies weapon damage, and updates result (mirrors applyGuidedStrike).
+    void applyPeerlessAim(BattleMap& bm, const Attack& action, AttackResult& result) noexcept;
 
 private:
     // Cross-cutting scratch state (RNG, logger, GUI hooks, one-shot pending-roll modifiers,
@@ -2478,7 +2573,6 @@ private:
     // One agent's Initiative d20: at Advantage for Feral Instinct (Barbarian L7+), Assassinate
     // (Assassin L3+) or an armed Tides of Chaos, which this consumes.
     int rollInitiativeD20(const BattleMap& bm, int agent_idx, const Agent::Stats& s);
-    ItemSpells* itemLuckSource(BattleMap& bm, int idx) noexcept;   // M6
 
     // Per-agent turn overrides.  Empty = everyone gets exactly 1 turn/round.
     // Only agents with turns != 1 are stored here (optimises the common case).
@@ -2813,13 +2907,6 @@ public:
     // attack of the turn into a hit (once/turn). Called right after maybeUnerringStrike in both attack
     // paths; no-ops for PCs (they get the deferred peerless_aim_available prompt via applyPeerlessAim).
     void maybePeerlessAim(BattleMap& bm, InFlightAttack& s);
-    // Peerless Aim eligibility (path-agnostic): the attacker holds Boon of Combat Prowess, is alive, and
-    // has not yet used the once-per-turn miss→hit this turn. Caller confirms the attack actually missed.
-    [[nodiscard]] bool canPeerlessAim(const BattleMap& bm, int attacker_idx) const;
-    // Boon of Combat Prowess (Peerless Aim) — post-hoc GUI entry point. After a miss the engine flags
-    // peerless_aim_available; the GUI prompts and calls this to turn the miss into a hit: sets
-    // peerless_aim_used, rolls + applies weapon damage, and updates result (mirrors applyGuidedStrike).
-    void applyPeerlessAim(BattleMap& bm, const Attack& action, AttackResult& result) noexcept;
     // "Auto-use-when-grappling" intent (Vampire Bite auto-offer/auto-attempt). For attacker `atk`,
     // scan its weapons for one flagged auto_use_when_grappling and find a legal victim it is currently
     // Grappling (alive, not tombstoned, in reach of that weapon). Returns {weapon_slot, victim_idx},
@@ -2918,7 +3005,7 @@ private:
     // topCast().save_prerolls (found by ctx.source_idx == the failed creature).
     void applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp);
 
-    // ── OnTurnStartNearby internals (combat_riders.cpp) ──────────────────
+    // ── OnTurnStartNearby internals (combat_reactions.cpp) ───────────────
     // (in_flight_turn_ moved to rx_ — ReactionArbiter::turn(), R4g)
     // The creatures (≠ source) eligible for ANY turn-start reaction vs `source`, in order.
     [[nodiscard]] std::vector<int> turnStartReactors(const BattleMap& bm, int source) const;
@@ -3015,6 +3102,9 @@ private:
     // / Dispel / death cleanup / detonate) and from both tick loops on natural duration expiry
     // (deferred, to keep the container stable — the teardown may add a condition or cascade).
     void onConditionEnded(BattleMap& bm, const ActiveAgentCondition& cond) noexcept;
+
+    // ══ Feats, fighting styles, Epic Boons, Weapon Mastery, species (combat_feats.cpp) ═══════════
+    ItemSpells* itemLuckSource(BattleMap& bm, int idx) noexcept;   // M6
 };
 
 } // namespace rpg

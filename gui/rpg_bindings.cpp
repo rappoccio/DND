@@ -19,7 +19,8 @@
 //
 //  The actual class/enum bindings are split by domain across bind_types.cpp,
 //  bind_combat_attack.cpp, bind_combat_spells.cpp, bind_combat_resources.cpp,
-//  bind_combat_turn.cpp, and bind_battle_map.cpp (COMBAT_REFACTOR_PLAN.md R1) —
+//  bind_combat_turn.cpp, one bind_combat_<class>.cpp per class (R6b), and
+//  bind_battle_map.cpp (COMBAT_REFACTOR_PLAN.md R1) —
 //  see bindings_internal.hpp for their shared declarations. This file just wires
 //  them together in the right order (types first, since CombatEngine/BattleMap
 //  bindings reference them).
@@ -43,7 +44,8 @@ PYBIND11_MODULE(rpg_battle_map, m)
 
     // ── CombatEngine ──────────────────────────────────────────────────────────
     // Split by domain across bind_combat_attack.cpp / bind_combat_spells.cpp /
-    // bind_combat_resources.cpp / bind_combat_turn.cpp — see bindings_internal.hpp.
+    // bind_combat_resources.cpp / bind_combat_turn.cpp / bind_combat_<class>.cpp —
+    // see bindings_internal.hpp.
     // Each adds .def()s to this same handle.
     py::class_<CombatEngine> combat_engine_cls(m, "CombatEngine");
     combat_engine_cls
@@ -53,6 +55,19 @@ PYBIND11_MODULE(rpg_battle_map, m)
     bindCombatSpells(combat_engine_cls);
     bindCombatResources(combat_engine_cls);
     bindCombatTurn(combat_engine_cls);
+    bindCombatBarbarian(combat_engine_cls);
+    bindCombatBard(combat_engine_cls);
+    bindCombatCleric(combat_engine_cls);
+    bindCombatDruid(combat_engine_cls);
+    bindCombatFighter(combat_engine_cls);
+    bindCombatMonk(combat_engine_cls);
+    bindCombatPaladin(combat_engine_cls);
+    bindCombatRanger(combat_engine_cls);
+    bindCombatRogue(combat_engine_cls);
+    bindCombatSorcerer(combat_engine_cls);
+    bindCombatWarlock(combat_engine_cls);
+    bindCombatWizard(combat_engine_cls);
+    bindCombatFeats(combat_engine_cls);
 
     bindBattleMap(m);
 }

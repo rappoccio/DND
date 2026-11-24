@@ -1,11 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  bind_combat_turn.cpp  –  pybind11 bindings for CombatEngine
-//  (combat_turn.cpp + combat_movement.cpp + combat_conditions.cpp + combat_riders.cpp +
+//  (combat_turn.cpp + combat_movement.cpp + combat_conditions.cpp + combat_contested.cpp +
 //   combat_core.cpp + combat_state.cpp + combat_visibility.cpp)
 // ─────────────────────────────────────────────────────────────────────────────
 //
 //  Everything else CombatEngine-related: turn lifecycle, movement, conditions, reactions,
 //  NPC automation, agent stat/equipment accessors, rules primitives, visibility.
+//  Class features live in bind_combat_<class>.cpp (COMBAT_CLASS_SPLIT_PLAN.md R6b).
 //
 //  Split out of rpg_bindings.cpp (COMBAT_REFACTOR_PLAN.md R1) — mechanical move only,
 //  no binding behavior changed. See bindings_internal.hpp for the shared
@@ -292,25 +293,6 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "committed move, after any Opportunity Attack resolves), drained by\n"
              "take_npc_visual_events. Off by\n"
              "default; headless/RL callers leave it off. Only moves — attacks still record nothing.")
-        .def("can_branches_of_tree",
-             &CombatEngine::canBranchesOfTree,
-             py::arg("battle_map"), py::arg("reactor"), py::arg("source"),
-             "True if reactor may use Branches of the Tree (STR-save-or-Grappled) vs source starting its turn in reach.")
-        .def("apply_branches_of_tree",
-             &CombatEngine::applyBranchesOfTree,
-             py::arg("battle_map"), py::arg("reactor"), py::arg("source"),
-             "Spend reactor's reaction; source makes a STR save vs the reactor's spell save DC or is Grappled.\n"
-             "Returns True iff it grappled the source.")
-        .def("can_vitality_of_tree",
-             &CombatEngine::canVitalityOfTheTree,
-             py::arg("battle_map"), py::arg("source"),
-             "True if source (raging World Tree Barbarian L3+) may use Vitality of the Tree at its own turn\n"
-             "start: free, once per turn, needs a creature within 10 ft.")
-        .def("apply_vitality_of_tree",
-             &CombatEngine::applyVitalityOfTheTree,
-             py::arg("battle_map"), py::arg("source"), py::arg("target"),
-             "Grant target Xd6 temp HP (X = Rage Damage bonus, min 1) with max() semantics, tagged so it\n"
-             "vanishes when the source's Rage ends. Sets vitality_used_this_turn. Returns True iff granted.")
         .def("end_turn",
              &CombatEngine::endTurn,
              py::arg("battle_map"), py::arg("agent_idx"),
@@ -494,13 +476,6 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "Execute a shove attempt (bonus action, contested Athletics check).\n"
              "On success: either push 5ft or knock prone based on action.knock_prone.\n"
              "Returns ShoveResult with rolls, success status, and log message.")
-        .def("apply_telekinetic_shove",
-             &CombatEngine::applyTelekineticShove,
-             py::arg("battle_map"), py::arg("caster_idx"), py::arg("target_idx"),
-             "Telekinetic feat — Telekinetic Shove (Bonus Action): shove a creature within 30 ft.\n"
-             "Target makes a STR save (DC = 8 + caster PB + best of INT/WIS/CHA mod); on a failure it\n"
-             "is pushed 5 ft away (reuses the Thunderwave knockback). Returns ShoveResult:\n"
-             "attacker_roll=DC, defender_roll=save total, success=shove landed.")
         .def("attempt_pick_lock",
              &CombatEngine::attemptPickLock,
              py::arg("battle_map"), py::arg("agent_idx"), py::arg("door_id"),
@@ -559,27 +534,6 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "(Spell::grants_advantage_aura): it is the caster, or a same-faction ally, within\n"
              "the spell's radius of a conscious caster. Such a creature has Advantage on attack\n"
              "rolls and saving throws. Continuous — follows the caster, ends with the effect.")
-        .def("apply_brutal_strike_effect",
-             &CombatEngine::applyBrutalStrikeEffect,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"), py::arg("result"),
-             "Apply Brutal Strike effects: damage + chosen effects (0=Forceful, 1=Hamstring, 2=Staggering, 3=Sundering).\n"
-             "Modifies the AttackResult to include brutal strike damage in damage_breakdown and updates total_damage.")
-        .def("apply_cunning_strike_effect",
-             &CombatEngine::applyCunningStrikeEffect,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("effects"),
-             py::arg("result"), py::arg("round_num") = -1,
-             "Apply Rogue Sneak Attack + optional Cunning Strike riders after a qualifying hit\n"
-             "(conditions.cunning_strike_available). effects: rider codes (0=Poison, 1=Trip, 2=Withdraw,\n"
-             "4=KnockOut, 5=Obscure, 6=Stealth Attack [Thief]); empty = full Sneak Attack with no rider.\n"
-             "Rolls (sneak dice − cost)d6, folds it into the AttackResult and target HP, then applies riders.\n"
-             "round_num (0 = first round) drives the Assassin subclass round-1 features: Assassinate\n"
-             "(+level damage), Envenom Weapons (free Poison rider + 2d6), Death Strike (CON save → double).")
-        .def("apply_homing_strike",
-             &CombatEngine::applyHomingStrike,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
-             py::arg("weapon_idx"), py::arg("result"),
-             "Soulknife Soul Blades — Homing Strikes (L9): convert a missed Psychic-Blade attack to a hit\n"
-             "by adding a Psionic Energy Die to the roll (die spent only if it converts). Returns True iff hit.")
         .def("trigger_delayed_effect",
              &CombatEngine::triggerDelayedEffect,
              py::arg("battle_map"), py::arg("condition_id"),
@@ -587,336 +541,16 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "its condition_id: rolls the stored damage, applies the optional save, deals it to the\n"
              "affected agent, and removes the condition. Returns the damage dealt, or -1 if the id is not\n"
              "a valid delayed-trigger condition.")
-        .def("can_rend_mind",
-             &CombatEngine::canRendMind,
-             py::arg("battle_map"), py::arg("attacker_idx"),
-             "Soulknife Rend Mind (L17) availability: L17+ Soulknife with a Rend Mind use or ≥3 Psionic Energy Dice.")
-        .def("apply_rend_mind",
-             &CombatEngine::applyRendMind,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
-             "Soulknife Rend Mind (L17): after a Psychic-Blade Sneak Attack, WIS save (DC 8+DEX+PB) or Stunned\n"
-             "1 minute. Costs a Rend Mind use or 3 Psionic Energy Dice. Returns True iff the target is Stunned.")
-        .def("apply_divine_strike_effect",
-             &CombatEngine::applyDivineStrikeEffect,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("radiant"), py::arg("result"),
-             "Cleric Blessed Strikes — Divine Strike: after a qualifying weapon hit\n"
-             "(conditions.divine_strike_available), add 1d8 (2d8 at L14) Radiant (radiant=True) or\n"
-             "Necrotic (False) to the AttackResult and target HP; once per turn.")
-        .def("apply_divine_smite_effect",
-             &CombatEngine::applyDivineSmiteEffect,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
-             py::arg("slot_level"), py::arg("result"),
-             "Paladin Divine Smite: after a melee/unarmed hit (conditions.divine_smite_available),\n"
-             "spend a level-slot_level spell slot as a Bonus Action to add (1+min(slot_level,5))d8\n"
-             "Radiant, +1d8 vs Undead/Fiend, to the AttackResult and target HP. Spends the slot +\n"
-             "bonus action, sets the leveled-spell + once-per-turn interlocks. Returns Radiant dealt,\n"
-             "or -1 if not allowed (no slot/bonus action, already smited, leveled spell already cast).")
-        .def("apply_eldritch_smite_effect",
-             &CombatEngine::applyEldritchSmiteEffect,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
-             py::arg("slot_level"), py::arg("result"),
-             "Warlock Eldritch Smite (inv 15, L5+, Pact of the Blade): after a pact-weapon hit\n"
-             "(conditions.eldritch_smite_available), spend a Pact Magic slot (slot_level =\n"
-             "pact_slot_level()) as a Bonus Action to add (slot_level+1)d8 Force to the AttackResult\n"
-             "and target HP, and knock a Huge-or-smaller target Prone. Spends the slot + bonus action,\n"
-             "sets the leveled-spell + once-per-turn interlocks. Returns Force dealt, or -1 if not\n"
-             "allowed (no pact slot/bonus action, already smited, leveled spell already cast).")
-        .def("can_use_war_magic",
-             &CombatEngine::canUseWarMagic,
-             py::arg("battle_map"), py::arg("idx"),
-             "Eldritch Knight War Magic (L7+): true if idx is an EK Fighter L7+ who has not yet used\n"
-             "War Magic this Attack action (conditions.war_magic_used). The GUI also requires the EK to\n"
-             "be mid Attack action with attacks left; the cast itself goes through execute_spell, then\n"
-             "decrements one attack instead of the whole action.")
-        .def("mark_war_magic_used",
-             &CombatEngine::markWarMagicUsed,
-             py::arg("battle_map"), py::arg("idx"),
-             "Set the War Magic once-per-Attack-action gate (conditions.war_magic_used). The GUI clears\n"
-             "it when a fresh action-attack sequence seeds, so Action Surge's second Attack action allows\n"
-             "another substitution.")
-        .def("available_war_magic_spells",
-             &CombatEngine::availableWarMagicSpells,
-             py::arg("battle_map"), py::arg("idx"),
-             "Spell indices an Eldritch Knight may cast via War Magic: action-casting-time cantrips\n"
-             "(L7+), plus level 1-5 action spells at L18+ (Improved War Magic). Empty for non-EK / <L7.")
-        .def("can_use_divine_intervention",
-             &CombatEngine::canUseDivineIntervention,
-             py::arg("battle_map"), py::arg("agent_idx"),
-             "Divine Intervention (Cleric L10+): true if agent_idx is a Cleric L10+ with a DI use\n"
-             "available (the 'Divine Intervention' resource current > 0) and not under the Greater-DI\n"
-             "recharge lock. The GUI gates the DI button on this, not on action_used.")
-        .def("use_divine_intervention",
-             &CombatEngine::useDivineIntervention,
-             py::arg("battle_map"), py::arg("agent_idx"), py::arg("chose_wish"),
-             "Spend one Divine Intervention use. chose_wish=True (Greater DI, L20) applies the\n"
-             "2d4-Long-Rest recharge lock. Returns False (no state change) if unavailable. The caller\n"
-             "then free-casts the chosen Cleric spell (mirrors the Wish free-cast flow).")
-        .def("apply_arcane_charge",
-             &CombatEngine::applyArcaneCharge,
-             py::arg("battle_map"), py::arg("idx"), py::arg("target_col"), py::arg("target_row"),
-             "Eldritch Knight Arcane Charge (L15): teleport up to 30 ft (the optional rider on Action\n"
-             "Surge). Validates EK L15+, the 30-ft range, and a clear destination, then teleports.\n"
-             "Returns feet moved (>=0) on success, or negative: -1 not eligible, -2 out of range,\n"
-             "-3 destination blocked.")
-        .def("apply_guided_strike_effect",
-             &CombatEngine::applyGuidedStrike,
-             py::arg("battle_map"), py::arg("action"), py::arg("cleric_idx"), py::arg("result"),
-             "War Domain — Guided Strike: a War Cleric L3+ (the attacker, or an ally within 30 ft who\n"
-             "also spends a Reaction) expends Channel Divinity to add +10 to a missed attack roll\n"
-             "(conditions.guided_strike_available). If it now meets AC, the miss becomes a hit and\n"
-             "weapon damage is rolled and applied. Pass the Attack that missed and its AttackResult.")
-        .def("apply_peerless_aim_effect",
-             &CombatEngine::applyPeerlessAim,
-             py::arg("battle_map"), py::arg("action"), py::arg("result"),
-             "Boon of Combat Prowess — Peerless Aim: turn a missed attack (conditions.peerless_aim_available)\n"
-             "into a hit, once per turn. Rolls and applies weapon damage and consumes the once-per-turn use.\n"
-             "Pass the Attack that missed and its AttackResult (mirrors apply_guided_strike_effect).")
-        .def("can_peerless_aim", &CombatEngine::canPeerlessAim,
-             py::arg("battle_map"), py::arg("attacker_idx"),
-             "True iff attacker_idx holds Boon of Combat Prowess, is alive, and has not yet used the\n"
-             "once-per-turn Peerless Aim miss→hit this turn. Caller confirms the attack missed.")
-        .def("apply_reckless_reroll",
-             &CombatEngine::applyRecklessReroll,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx"),
-             "Reckless Attack (Barbarian), post-hoc entry: after a miss flags\n"
-             "conditions.reckless_reroll_available, commit Reckless (enemies gain advantage vs you\n"
-             "until your next turn) and re-resolve the SAME attack with advantage. Returns the fresh\n"
-             "AttackResult (invalid if the flag wasn't set).")
-        .def("apply_riposte",
-             &CombatEngine::applyRiposte,
-             py::arg("battle_map"), py::arg("defender_idx"), py::arg("attacker_idx"), py::arg("weapon_idx"),
-             "Battle Master Riposte (on-miss DEFENDER reaction): after a melee attack misses the\n"
-             "defender, flagged via conditions.riposte_available, spend the reaction + 1 Superiority\n"
-             "Die to make a melee attack defender→attacker; on a hit, add the Superiority Die to the\n"
-             "damage. Returns the riposte AttackResult (invalid if the flag wasn't set / no die / no weapon).")
-        .def("apply_sentinel_guard",
-             &CombatEngine::applySentinelGuard,
-             py::arg("battle_map"), py::arg("sentinel_idx"), py::arg("attacker_idx"), py::arg("weapon_idx"),
-             "Sentinel Guardian (OnAllyAttacked bystander reaction): after an adjacent enemy attacks an\n"
-             "ally (flagged via the attacker's conditions.sentinel_guard_available), the Sentinel spends\n"
-             "its reaction to make a melee attack at the attacker. Returns the counter-attack's\n"
-             "AttackResult (invalid if the reaction was already used).")
-        .def("apply_soul_of_vengeance",
-             &CombatEngine::applySoulOfVengeance,
-             py::arg("battle_map"), py::arg("paladin_idx"), py::arg("attacker_idx"), py::arg("weapon_idx"),
-             "Soul of Vengeance (Oath of Vengeance L15): after the sworn foe attacks (flagged via the\n"
-             "attacker's conditions.soul_of_vengeance_available), the paladin spends its reaction to make\n"
-             "a melee attack at that foe. Returns the counter-attack's AttackResult (invalid if the\n"
-             "reaction was already used).")
         .def("apply_push",
              &CombatEngine::applyPush,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
              "Weapon Mastery — Push: after a qualifying hit (conditions.push_available), shove the\n"
              "target 10 ft straight away from the attacker. Clears the flag; returns feet moved.")
-        .def("apply_topple",
-             &CombatEngine::applyTopple,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx") = 0,
-             "Weapon Mastery — Topple: after a qualifying hit (conditions.topple_available), the target\n"
-             "makes a CON save (DC 8 + attack ability mod + prof) or is knocked Prone. Returns a ToppleResult.")
-        .def("apply_stunning_strike",
-             &CombatEngine::applyStunningStrike,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
-             "Monk Stunning Strike: after a qualifying unarmed hit (conditions.stunning_strike_available),\n"
-             "spend 1 Focus Point and force a CON save (DC 8 + DEX mod + prof) or the target is Stunned.\n"
-             "Returns a StunningStrikeResult.")
-        .def("apply_psionic_strike_effect",
-             &CombatEngine::applyPsionicStrikeEffect,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("result"),
-             "Psi Warrior Psionic Strike: after a qualifying hit (conditions.psionic_strike_available),\n"
-             "spend one Psionic Energy die and add Force damage (die roll + INT mod) to the AttackResult\n"
-             "and the target's HP. Once per turn.")
-        .def("apply_punch_and_grab",
-             &CombatEngine::applyPunchAndGrab,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"),
-             "Grappler feat — Punch-and-Grab: after an Unarmed-Strike hit in the Attack action\n"
-             "(conditions.grappler_punch_grab_available), ALSO attempt a Grapple this attack (normally one\n"
-             "or the other), once per turn. Runs through the shared resolveGrapple core (contested check,\n"
-             "computed escape DC). Returns the GrappleResult (invalid if the flag wasn't set).")
-        .def("apply_protective_field",
-             &CombatEngine::applyProtectiveField,
-             py::arg("battle_map"), py::arg("defender_idx"), py::arg("damage_taken"),
-             "Psi Warrior Protective Field (reaction): spend one Psionic Energy die + the defender's\n"
-             "reaction to prevent (die roll + INT mod) damage, capped at damage_taken (modeled as a\n"
-             "heal-back). Returns the damage prevented, or -1 if it could not be used.")
-        .def("apply_interception",
-             &CombatEngine::applyInterception,
-             py::arg("battle_map"), py::arg("interceptor_idx"), py::arg("target_idx"), py::arg("damage_taken"),
-             "Interception fighting style (reaction): spend the interceptor's reaction to prevent\n"
-             "(1d10 + Proficiency Bonus) damage to the target, capped at damage_taken (modeled as a\n"
-             "heal-back, like Protective Field). Returns the damage prevented, or -1 if it could not be used.")
-        .def("apply_telekinetic_movement",
-             &CombatEngine::applyTelekineticMovement,
-             py::arg("battle_map"), py::arg("idx"), py::arg("target_idx"),
-             "Psi Warrior Telekinetic Movement: spend the once-per-rest use to push a creature up to\n"
-             "30 ft straight away from the Psi Warrior. Returns feet moved, or -1 if unavailable.")
-        .def("apply_open_hand_rider",
-             &CombatEngine::applyOpenHandRider,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("option"),
-             "Monk Warrior of the Open Hand: after a qualifying Flurry hit (conditions.open_hand_rider_available),\n"
-             "spend 1 Focus Point and apply one of three riders: 0=Knockdown (STR save or Prone),\n"
-             "1=Push (5 feet), 2=Deny Reaction. Returns an OpenHandRiderResult.")
-        .def("hand_of_healing",
-             &CombatEngine::handOfHealing,
-             py::arg("battle_map"), py::arg("monk_idx"), py::arg("target_idx"), py::arg("free") = false,
-             "Monk Warrior of Mercy — Hand of Healing (L3+): a Bonus Action spending 1 Focus Point to heal a\n"
-             "creature within reach for (Martial Arts die + WIS mod). At L6 (Physician's Touch) it also ends\n"
-             "one of Blinded/Deafened/Paralyzed/Poisoned/Stunned. free=true (only at L11, Flurry of Healing\n"
-             "and Harm) folds the heal into a Flurry strike: no Focus Point, no Bonus Action. Returns a\n"
-             "HandOfHealingResult.")
-        .def("wholeness_of_body",
-             &CombatEngine::wholenessOfBody,
-             py::arg("battle_map"), py::arg("monk_idx"),
-             "Monk Warrior of the Open Hand — Wholeness of Body (L6+): a Bonus Action spending one use of the\n"
-             "\"Wholeness of Body\" resource (PB per long rest) to heal yourself (Martial Arts die + WIS mod).\n"
-             "Returns the HP restored, or 0 if unavailable.")
-        .def("apply_hand_of_harm_effect",
-             &CombatEngine::applyHandOfHarmEffect,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("result"),
-             "Monk Warrior of Mercy — Hand of Harm (L3+): after a qualifying unarmed hit\n"
-             "(conditions.hand_of_harm_available), spend 1 Focus Point and add (Martial Arts die + WIS mod)\n"
-             "Necrotic damage to the AttackResult and the target's HP. At L6 (Physician's Touch) the target is\n"
-             "also Poisoned. At L11 it is free and may be used once per target. Once per turn below L11.")
         .def("apply_frightened",
              &CombatEngine::applyFrightened,
              py::arg("battle_map"), py::arg("agent_idx"),
              "Apply the Frightened condition to an agent (drops weapons, sets the flag). No-op if the\n"
              "agent is protected by an allied Paladin's Aura of Courage (L10+ in range).")
-        .def("apply_maneuver_effect",
-             &CombatEngine::applyManeuverEffect,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("maneuver_type"),
-             "Battle Master Maneuver: after a qualifying hit (conditions.maneuver_available),\n"
-             "spend 1 Superiority Die and apply one rider (DC = 8 + PB + max(STR,DEX) mod):\n"
-             "0=Trip (STR save or Prone), 1=Menacing (WIS save or Frightened), 2=Pushing (15 ft),\n"
-             "3=Goading (WIS save or Disadvantage attacking anyone but you), 4=Distracting (next\n"
-             "attack vs target by another creature has Advantage), 5=Disarming (STR save or fights\n"
-             "with improvised Unarmed Strikes until your next turn).\n"
-             "Returns a ManeuverResult with save details / push distance.")
-        .def("apply_arcane_shot",
-             &CombatEngine::applyArcaneShot,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("target_idx"), py::arg("option"),
-             py::arg("result"),
-             "Arcane Archer: after a ranged weapon hit (conditions.arcane_shot_available), spend one\n"
-             "Arcane Shot use (once per turn) on a known on-hit option (ArcaneShotOption: Banishing,\n"
-             "Beguiling, Bursting, Grasping, Shadow). Folds the target's damage into `result`.\n"
-             "Returns an ArcaneShotResult.")
-        .def("escape_grasping_shot",
-             &CombatEngine::escapeGraspingShot,
-             py::arg("battle_map"), py::arg("actor_idx"), py::arg("target_idx"),
-             "Grasping Shot: STR (Athletics) check vs the Arcane Shot DC by the restrained creature or\n"
-             "one within 5 ft; success ends Restrained. The action cost is the caller's.")
-        .def("can_use_arcane_shot", &CombatEngine::canUseArcaneShot,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("option"),
-             "Arcane Archer: True if the archer knows `option` (ArcaneShotOption), has an Arcane Shot\n"
-             "use left and has not used one this turn.")
-        .def("piercing_shot_cells", &CombatEngine::piercingShotCells,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("aim_col"), py::arg("aim_row"),
-             "Piercing Shot: the cells of the 30-ft line from the archer toward the aim cell\n"
-             "(walls don't stop it).")
-        .def("piercing_shot", &CombatEngine::piercingShot,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("weapon_idx"),
-             py::arg("aim_col"), py::arg("aim_row"),
-             "Piercing Shot (replaces an attack, ranged weapon): each creature in the 30-ft line makes a\n"
-             "DEX save; fail = weapon damage + 2 dice Piercing, success = half. Returns ArcaneShotSaveResult.")
-        .def("seeking_shot_target_valid", &CombatEngine::seekingShotTargetValid,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("weapon_idx"), py::arg("target_idx"),
-             "Seeking Shot: True if the creature is within the ranged weapon's long range (no line of\n"
-             "sight needed).")
-        .def("seeking_shot", &CombatEngine::seekingShot,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("weapon_idx"), py::arg("target_idx"),
-             "Seeking Shot (replaces an attack, ranged weapon): the target makes a DEX save; fail =\n"
-             "weapon damage + 2 dice Force, success = half the weapon damage. Returns ArcaneShotSaveResult.")
-        .def("curving_shot_targets", &CombatEngine::curvingShotTargets,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("original_idx"), py::arg("weapon_idx"),
-             "Curving Shot: the creatures a missed ranged shot may be rerolled against (seen by the\n"
-             "archer, in the weapon's range, within 60 ft of the original target).")
-        .def("apply_curving_shot", &CombatEngine::applyCurvingShot,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("original_idx"),
-             py::arg("new_target_idx"), py::arg("weapon_idx"),
-             "Curving Shot (Arcane Archer L7): after a ranged miss (conditions.curving_shot_available),\n"
-             "spend the Bonus Action and reroll the attack against new_target_idx. Returns the\n"
-             "AttackResult (invalid if the offer, target or Bonus Action isn't there).")
-        .def("apply_ever_ready_shot", &CombatEngine::applyEverReadyShot, py::arg("battle_map"),
-             "Ever-Ready Shot (Arcane Archer L10): at combat start, each archer with no Arcane Shot\n"
-             "uses left regains one. RNG-free.")
-        .def("can_indomitable_teleport", &CombatEngine::canIndomitableTeleport,
-             py::arg("battle_map"), py::arg("idx"),
-             "Indomitable Teleport (Arcane Archer L15): the archer is an L15+ Arcane Archer, alive and\n"
-             "not Incapacitated. The cast flow opens an AfterSave window after a successful Indomitable.")
-        .def("is_indomitable_teleport_destination", &CombatEngine::isIndomitableTeleportDestination,
-             py::arg("battle_map"), py::arg("idx"), py::arg("dest"),
-             "Indomitable Teleport: an unoccupied cell within 60 ft the archer can see (not its own).")
-        .def("apply_indomitable_teleport", &CombatEngine::applyIndomitableTeleport,
-             py::arg("battle_map"), py::arg("idx"), py::arg("col"), py::arg("row"),
-             "Indomitable Teleport: teleport the archer to (col,row). False if ineligible or illegal.")
-        .def("can_masterful_shots", &CombatEngine::canMasterfulShots,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("attacker_idx"),
-             "Masterful Shots (Arcane Archer L18): the archer has its Reaction, sees the attacker and\n"
-             "carries a Ranged weapon. Offered when the attacker's attack roll misses it.")
-        .def("masterful_shots_weapon", &CombatEngine::masterfulShotsWeapon,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("attacker_idx"), py::arg("from_cell"),
-             "The Ranged weapon slot that reaches the attacker from from_cell (normal range first), or -1.")
-        .def("is_masterful_shots_destination", &CombatEngine::isMasterfulShotsDestination,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("attacker_idx"), py::arg("dest"),
-             "Masterful Shots: the archer's own cell, or one reachable on foot within half its Speed,\n"
-             "unoccupied and farther from the attacker.")
-        .def("masterful_shots_destination", &CombatEngine::masterfulShotsDestination,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("attacker_idx"),
-             "Masterful Shots: the engine's cell (in range, farthest from the attacker, shortest move).")
-        .def("apply_masterful_shots", &CombatEngine::applyMasterfulShots,
-             py::arg("battle_map"), py::arg("archer_idx"), py::arg("attacker_idx"),
-             py::arg("col") = -1, py::arg("row") = -1,
-             "Masterful Shots: spend the Reaction, move to (col,row) (-1 = the engine's cell) without\n"
-             "provoking, then make a ranged attack at the attacker. Returns the AttackResult.")
-        .def("held_by_grasping_shot", &CombatEngine::heldByGraspingShot, py::arg("target_idx"),
-             "True if the creature is Restrained by a Grasping Shot.")
-        .def("apply_sweeping_attack",
-             &CombatEngine::applySweepingAttack,
-             py::arg("battle_map"), py::arg("action"), py::arg("result"), py::arg("secondary_idx"),
-             "Battle Master Sweeping Attack: after a qualifying hit (conditions.maneuver_available),\n"
-             "spend 1 Superiority Die to splash the same attack onto a 2nd creature within 5 ft of the\n"
-             "original target. If the original attack roll (result.total_roll) would hit the 2nd\n"
-             "creature's AC, it takes superiority-die damage of the attack's type. Returns a\n"
-             "ManeuverResult (extra_damage / extra_target_down; save_dc=2nd AC, save_roll=orig roll).")
-        .def("apply_rally",
-             &CombatEngine::applyRally,
-             py::arg("battle_map"), py::arg("fighter_idx"), py::arg("target_idx"),
-             "Battle Master Rally (Bonus Action): spend 1 Superiority Die to grant a creature within\n"
-             "30 ft Temporary HP = superiority die + your CHA modifier (min 1). Returns temp HP granted\n"
-             "(0 = no die / bad index).")
-        .def("apply_mantle_of_inspiration",
-             &CombatEngine::bardMantleOfInspiration,
-             py::arg("battle_map"), py::arg("bard_idx"), py::arg("targets"),
-             "College of Glamour Mantle of Inspiration (Bonus Action): expend 1 Bardic Inspiration\n"
-             "use and roll the Bardic Inspiration die ONCE; each chosen creature gains Temporary HP =\n"
-             "twice the roll. 'targets' is a list of agent indices (the GUI validates the 60 ft range\n"
-             "per click); the engine caps it to the bard's CHA modifier (min 1) and skips the bard\n"
-             "itself. Returns the temp HP granted to each recipient (0 = not a L3+ Glamour Bard / no\n"
-             "Bardic Inspiration use).")
-        .def("apply_feinting_attack",
-             &CombatEngine::applyFeintingAttack,
-             py::arg("battle_map"), py::arg("fighter_idx"), py::arg("target_idx"),
-             "Battle Master Feinting Attack (Bonus Action): spend 1 Superiority Die to feint a creature\n"
-             "within 5 ft — Advantage on your next attack vs it this turn, and that hit adds the die to\n"
-             "damage (conditions.feint_target_idx). Returns False if no die.")
-        .def("prepare_quick_toss",
-             &CombatEngine::prepareQuickToss,
-             py::arg("battle_map"), py::arg("fighter_idx"),
-             "Battle Master Quick Toss (Bonus Action): spend 1 Superiority Die to arm a superiority-die\n"
-             "damage bonus on your next thrown-weapon attack this turn (conditions.quick_toss_die_pending).\n"
-             "The GUI then makes the actual thrown attack. Returns False if no die.")
-        .def("apply_precision_attack_effect",
-             &CombatEngine::applyPrecisionAttackEffect,
-             py::arg("battle_map"), py::arg("action"), py::arg("result"),
-             "Battle Master Precision Attack: after a non-fumble miss (conditions.maneuver_precision_available),\n"
-             "spend 1 Superiority Die, add 1d8/d10 to the roll, and recompute the hit.\n"
-             "May convert a miss to a hit with full weapon damage. Mutates result in place.")
-        .def("execute_flurry_of_blows",
-             &CombatEngine::executeFlurryOfBlows,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("rider_option"),
-             "Monk Flurry of Blows: spend 1 Focus Point to make two bonus-action unarmed strikes\n"
-             "against the same target, optionally applying an Open Hand rider on each hit.\n"
-             "rider_option: -1=None, 0=Knockdown, 1=Push, 2=DenyReaction.\n"
-             "Returns a FlurryResult containing both attack results and rider results.")
         .def("consume_bonus_attack",
              &CombatEngine::consumeBonusAttack,
              py::arg("battle_map"), py::arg("agent_idx"),

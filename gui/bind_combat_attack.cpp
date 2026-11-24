@@ -2,8 +2,8 @@
 //  bind_combat_attack.cpp  –  pybind11 bindings for CombatEngine (combat_attack.cpp)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-//  Attack resolution: to-hit/damage rolls, execute_action/begin_attack/resolve_attack,
-//  class-feature attack riders (Sneak Attack, Divine Smite, martial maneuvers, …).
+//  Attack resolution: to-hit/damage rolls, execute_action/begin_attack/resolve_attack.
+//  Class-feature riders are bound in bind_combat_<class>.cpp (COMBAT_CLASS_SPLIT_PLAN.md R6b).
 //
 //  Split out of rpg_bindings.cpp (COMBAT_REFACTOR_PLAN.md R1) — mechanical move only,
 //  no binding behavior changed. See bindings_internal.hpp for the shared
@@ -123,77 +123,6 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              "Horde Breaker (Hunter L3): indices the armed extra attack may strike — within 5 ft of the\n"
              "original target, not attacked this turn, not an ally, in reach + LoS of the armed weapon.\n"
              "Empty unless horde_breaker_available and not horde_breaker_used.")
-        .def("apply_dreadful_strike_effect", &CombatEngine::applyDreadfulStrikeEffect,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("result"),
-             "Gloom Stalker Dreadful Strike: spend a Dread Ambusher use and add 2d6 Psychic (2d8 at L11)\n"
-             "to the offered hit (dreadful_strike_available / dreadful_strike_target), into result. At L11\n"
-             "leaves stalkers_flurry_pending. Returns True iff the damage was dealt.")
-        .def("choose_stalkers_flurry", &CombatEngine::chooseStalkersFlurry,
-             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("option"),
-             "Stalker's Flurry (Gloom Stalker L11), after Dreadful Strike: 0 = neither, 1 = Sudden Strike\n"
-             "(arms sudden_strike_available), 2 = Mass Fear. Returns True iff a pending choice resolved.")
-        .def("apply_mass_fear", &CombatEngine::applyMassFear,
-             py::arg("battle_map"), py::arg("ranger_idx"), py::arg("target_idx"),
-             "Mass Fear: the target and each other creature within 10 ft of it save (WIS vs the Ranger's\n"
-             "spell DC) or are Frightened until the start of the Ranger's next turn. Returns the count.")
-        .def("sudden_strike_targets", &CombatEngine::suddenStrikeTargets,
-             py::arg("battle_map"), py::arg("attacker_idx"),
-             "Sudden Strike: indices the armed free attack may strike — a different creature within 5 ft\n"
-             "of the Dreadful Strike target, not an ally, in reach/range + LoS of the same weapon.")
-        .def("primal_companion_of", &CombatEngine::primalCompanionOf,
-             py::arg("battle_map"), py::arg("ranger_idx"),
-             "Beast Master: the Ranger's live Primal Companion index, or -1.")
-        .def("companion_ranger", &CombatEngine::companionRanger,
-             py::arg("battle_map"), py::arg("comp_idx"),
-             "Beast Master: the Ranger that owns this Primal Companion, or -1 if it is not one.")
-        .def("companion_restricted", &CombatEngine::companionRestricted,
-             py::arg("battle_map"), py::arg("comp_idx"),
-             "True when this Primal Companion's only action this turn is Dodge (its Ranger is able\n"
-             "and did not command it).")
-        .def("can_command_companion", &CombatEngine::canCommandCompanion,
-             py::arg("battle_map"), py::arg("ranger_idx"),
-             "May the Beast Master spend its Bonus Action commanding its companion right now?")
-        .def("command_companion", &CombatEngine::commandCompanion,
-             py::arg("battle_map"), py::arg("ranger_idx"),
-             "Command the Primal Companion (spends the Bonus Action). Returns True iff it was spent.")
-        .def("arm_beasts_strike", &CombatEngine::armBeastsStrike,
-             py::arg("battle_map"), py::arg("ranger_idx"),
-             "Beast's Strike in place of one attack (the caller pays the attack): sets\n"
-             "beast_strikes_left (2 with Bestial Fury). Returns True iff armed.")
-        .def("beasts_strike_targets", &CombatEngine::beastsStrikeTargets,
-             py::arg("battle_map"), py::arg("ranger_idx"),
-             "Enemies the Ranger's companion can strike where it stands (reach + LoS).")
-        .def("beasts_strike", &CombatEngine::beastsStrike,
-             py::arg("battle_map"), py::arg("ranger_idx"), py::arg("target_idx"),
-             "One Beast's Strike by the companion against target_idx (spends one of beast_strikes_left).\n"
-             "Returns the attack's FlowStatus; Completed (nothing happens) when refused.")
-        .def("vanish_orphaned_companions", &CombatEngine::vanishOrphanedCompanions,
-             py::arg("battle_map"),
-             "Tombstone every Primal Companion whose Ranger has died or left play.")
-        .def("beguiling_twist_advantage",
-             [](const CombatEngine& e, const BattleMap& bm, int saver, const std::string& cond) {
-                 return e.beguilingTwistAdvantage(bm, saver, cond);
-             },
-             py::arg("battle_map"), py::arg("saver"), py::arg("condition_name"),
-             "Beguiling Twist (Fey Wanderer L7): True iff saver has Advantage on a save vs this condition\n"
-             "('Charmed' / 'Frightened').")
-        .def("charm_fear_save_succeeded", &CombatEngine::charmFearSaveSucceeded,
-             py::arg("battle_map"), py::arg("saver"),
-             "Beguiling Twist's trigger: saver just succeeded a save to avoid or end Charmed/Frightened.\n"
-             "Automated Fey Wanderers react at once; human ones are queued (take_beguiling_twist_offers).")
-        .def("can_beguiling_twist", &CombatEngine::canBeguilingTwist,
-             py::arg("battle_map"), py::arg("reactor"), py::arg("saver"),
-             "May the Fey Wanderer reactor use Beguiling Twist on saver's success right now?")
-        .def("beguiling_twist_targets", &CombatEngine::beguilingTwistTargets,
-             py::arg("battle_map"), py::arg("reactor"), py::arg("saver"),
-             "Beguiling Twist: the creatures (not the saver) the reactor can see within 120 ft.")
-        .def("apply_beguiling_twist", &CombatEngine::applyBeguilingTwist,
-             py::arg("battle_map"), py::arg("reactor"), py::arg("saver"), py::arg("target"),
-             py::arg("frightened"),
-             "Beguiling Twist: spend the Reaction; target saves (WIS vs spell DC) or is Charmed /\n"
-             "Frightened for 1 minute, repeating the save at the end of each of its turns.")
-        .def("take_beguiling_twist_offers", &CombatEngine::takeBeguilingTwistOffers,
-             "Drain the queued (reactor, saver) Beguiling Twist offers for human-controlled Rangers.")
         .def("umbral_sight_hides", &CombatEngine::umbralSightHides,
              py::arg("battle_map"), py::arg("viewer_idx"), py::arg("ranger_idx"),
              "Umbral Sight: True iff the Gloom Stalker is entirely in Darkness and viewer sees there only\n"

@@ -10,11 +10,13 @@
 //    - bind_combat_attack.cpp    CombatEngine methods implemented in combat_attack.cpp
 //    - bind_combat_spells.cpp    CombatEngine methods implemented in combat_spells.cpp
 //    - bind_combat_resources.cpp CombatEngine methods implemented in combat_resources.cpp
+//    - bind_combat_<class>.cpp   CombatEngine methods implemented in combat_<class>.cpp, one
+//                                per class plus bind_combat_feats.cpp (COMBAT_CLASS_SPLIT_PLAN.md R6b)
 //    - bind_combat_turn.cpp      everything else CombatEngine-related (turn, movement,
 //                                conditions, reactions, NPC automation, state accessors,
 //                                rules primitives, visibility)
 //    - bind_battle_map.cpp       BattleMap
-//  The four bind_combat_*.cpp files all add .def()s to the SAME
+//  The bind_combat_*.cpp files all add .def()s to the SAME
 //  py::class_<CombatEngine> handle, which rpg_bindings.cpp constructs once and
 //  passes to each in turn; bind_types.cpp and bind_battle_map.cpp each take the
 //  py::module_ directly since they own their own py::class_/py::enum_ instances.
@@ -34,3 +36,18 @@ void bindCombatAttack(pybind11::class_<rpg::CombatEngine>& engine);
 void bindCombatSpells(pybind11::class_<rpg::CombatEngine>& engine);
 void bindCombatResources(pybind11::class_<rpg::CombatEngine>& engine);
 void bindCombatTurn(pybind11::class_<rpg::CombatEngine>& engine);
+
+// One per class file (COMBAT_CLASS_SPLIT_PLAN.md R6b).
+void bindCombatBarbarian(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatBard(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatCleric(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatDruid(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatFighter(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatMonk(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatPaladin(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatRanger(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatRogue(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatSorcerer(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatWarlock(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatWizard(pybind11::class_<rpg::CombatEngine>& engine);
+void bindCombatFeats(pybind11::class_<rpg::CombatEngine>& engine);

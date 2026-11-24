@@ -46,6 +46,19 @@ pybind11_add_module(rpg_battle_map
     bind_combat_spells.cpp
     bind_combat_resources.cpp
     bind_combat_turn.cpp
+    bind_combat_barbarian.cpp
+    bind_combat_bard.cpp
+    bind_combat_cleric.cpp
+    bind_combat_druid.cpp
+    bind_combat_fighter.cpp
+    bind_combat_monk.cpp
+    bind_combat_paladin.cpp
+    bind_combat_ranger.cpp
+    bind_combat_rogue.cpp
+    bind_combat_sorcerer.cpp
+    bind_combat_warlock.cpp
+    bind_combat_wizard.cpp
+    bind_combat_feats.cpp
     bind_battle_map.cpp
     battle_map.cpp
     class_resources.cpp
