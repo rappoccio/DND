@@ -554,16 +554,33 @@ def award_encounter_xp(app):
     if not newly_crs:
         return
     old_total = party_xp_total(app)
-    result = compute_encounter_xp(newly_crs)
-    app.party_xp_earned += result["total_xp"]
+    # The encounter's XP is split equally among the party (SRD); the tracker
+    # holds each member's share, which is what the level thresholds measure.
+    size = len(party_member_indices(app))
+    result = compute_encounter_xp(newly_crs, party_size=size)
+    app.party_xp_earned += result["per_member_xp"]
     new_total = party_xp_total(app)
     mult = result["multiplier"]
     mult_str = "" if abs(mult - 1.0) < 1e-6 else f" ×{mult:g}"
     app._combat_log_add(
         f"⚔ XP earned: {result['total_xp']} "
         f"({result['count']} defeated, {result['base_xp']} base{mult_str}) "
-        f"— party total {new_total}")
+        f"÷ {result['party_size']} PCs = {result['per_member_xp']} each "
+        f"— XP per PC {new_total}")
     announce_level_ups(app, old_total, new_total)
+
+
+def party_member_indices(app) -> list:
+    """Placed-agent indices of the party's characters: PC faction, not a
+    PC-faction summon or pet (is_npc). Dead PCs still count as members."""
+    out = []
+    for i, pt in enumerate(app.bm.placed_agents):
+        if pt.faction != PC_FACTION:
+            continue
+        if getattr(app.combat.get_agent_stats(app.bm, i), "is_npc", False):
+            continue
+        out.append(i)
+    return out
 
 
 def ensure_xp_baseline(app) -> int:
@@ -574,14 +591,8 @@ def ensure_xp_baseline(app) -> int:
     level so no member is overstated and no spurious level-up is announced for
     a higher-level member."""
     if app.party_xp_baseline is None:
-        levels = []
-        for i, pt in enumerate(app.bm.placed_agents):
-            if pt.faction != PC_FACTION:
-                continue
-            stats = app.combat.get_agent_stats(app.bm, i)
-            if getattr(stats, "is_npc", False):
-                continue        # PC-faction summons/pets are not characters
-            levels.append(stats.char_level)
+        levels = [app.combat.get_agent_stats(app.bm, i).char_level
+                  for i in party_member_indices(app)]
         if levels:
             app.party_xp_baseline = xp_for_level(min(levels))
     return app.party_xp_baseline or 0

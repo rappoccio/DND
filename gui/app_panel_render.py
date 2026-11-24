@@ -1096,7 +1096,7 @@ def draw_xp_total(app):
     px = app._panel_x()
     sh = app.screen.get_height()
     total = app_initiative.party_xp_total(app)
-    label = f"★ XP  {total:,}  (Lv {level_for_xp(total)})"
+    label = f"★ XP  {total:,} per PC  (Lv {level_for_xp(total)})"
     surf  = app.font_md.render(label, True, (245, 215, 90))   # gold
     pad   = 6
     w     = surf.get_width() + pad * 2

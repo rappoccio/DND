@@ -179,19 +179,25 @@ def _MULTIPLIER_2014(num_agents: int) -> float:
     return 4.0
 
 
-def compute_encounter_xp(crs) -> dict:
-    """Total XP a party earns for defeating creatures with the given CRs.
+def compute_encounter_xp(crs, party_size: int = 1) -> dict:
+    """XP a party earns for defeating creatures with the given CRs.
 
-    `crs` is an iterable of Challenge Ratings (strings and/or numbers). Returns a
-    dict with the raw summed XP, the applied difficulty multiplier, and the final
-    (rounded) XP total.
+    `crs` is an iterable of Challenge Ratings (strings and/or numbers). The
+    encounter's XP is divided equally among the `party_size` party members, and
+    each member gets that share (rounded down; there is no fractional XP).
+    Returns a dict with the raw summed XP, the applied difficulty multiplier, the
+    encounter total, the party size used and the per-member share.
     """
     crs = list(crs)
     base_xp = sum(cr_to_xp(cr) for cr in crs)
     mult = encounter_multiplier(len(crs))
+    total = int(round(base_xp * mult))
+    size = max(1, int(party_size))
     return {
-        "count":      len(crs),
-        "base_xp":    base_xp,
-        "multiplier": mult,
-        "total_xp":   int(round(base_xp * mult)),
+        "count":          len(crs),
+        "base_xp":        base_xp,
+        "multiplier":     mult,
+        "total_xp":       total,
+        "party_size":     size,
+        "per_member_xp":  total // size,
     }
