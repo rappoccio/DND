@@ -82,6 +82,14 @@ def import_ddb_character(app):
     except Exception:                            # noqa: BLE001 — sidecar is best-effort
         pass
 
+    # In a generated dungeon the PC arrives in the room left empty for the party, as
+    # Load PCs does; elsewhere (or when that room is full) it floats for a click.
+    room = None if app.combat_active else app._staging_room()
+    placed = False
+    if room:
+        added, _, skipped = app._merge_pcs_here([agent], room)
+        placed = "here" if skipped else bool(added)
+
     sub = ""
     for k, v in agent.items():
         if k.startswith("agent_") and k.endswith(("subclass", "circle", "oath")) and v != "NONE":
@@ -90,13 +98,17 @@ def import_ddb_character(app):
     lines = [f"Imported {agent['name']}",
              f"{agent['agent_class']} {agent['agent_char_level']}{sub}   "
              f"HP {agent['stats']['hp_max']}   spells {len(agent['spell_indices'])}",
-             "Click on the map to place it (Esc cancels); set its team via right-click."]
+             (f"{agent['name']} is already on this map." if placed == "here" else
+              "Placed in the staging room." if placed else
+              "Click on the map to place it (Esc cancels); set its team via right-click.")]
     if warnings:
         lines.append(f"{len(warnings)} note(s) (best-effort import):")
         lines.extend("• " + w[:70] for w in warnings[:8])
         if len(warnings) > 8:
             lines.append(f"  …and {len(warnings) - 8} more (see console).")
     app._modal_message(lines)
+    if placed:
+        return
 
     # Float it at the cursor through the ordinary placement mode; the click lands in
     # place_imported_agent, which writes the full record.

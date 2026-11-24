@@ -1400,6 +1400,85 @@ class App:
         self.placement_cell = None
         self.placement_valid = False
 
+    def _commit_placement(self):
+        """Drop the floating agent (an imported record, a new PC or a mob) on
+        ``placement_cell`` when it is valid, and leave placement mode."""
+        if self.placement_cell and self.placement_valid and self._pending_import_agent:
+            app_dungeon_gen.place_imported_agent(self, self._pending_import_agent, self.placement_cell)
+            self._pending_import_agent = None
+            self.placement_mode_active = False
+            self.placement_config = None
+            self.placement_cell = None
+        elif self.placement_cell and self.placement_valid:
+            cfg = self.placement_config
+            cfg.start_col = self.placement_cell.col
+            cfg.start_row = self.placement_cell.row
+            # Append non-destructively, the same primitive paste/summon
+            # use. Using spawn_agent instead of add_agent_config +
+            # apply_agent_configs avoids rebuilding the whole roster from
+            # the config list. That rebuild (applyAgentConfigs clears
+            # placedAgents_) silently dropped every agent created via
+            # spawn_agent — pasted clones and summons never enter the
+            # config list — so placing one new mob wiped them, and the
+            # next save then persisted only the rebuilt roster.
+            idx = self.bm.spawn_agent(cfg)
+            if idx < 0:
+                self._flash_status("Could not place agent here")
+                return
+            # Apply mob stats and auto-weapons to the newly placed agent
+            if self.selected_mob_stats:
+                d_d_stats = self._mob_stats_to_d_d_stats(self.selected_mob_stats)
+                self.combat.set_agent_stats(self.bm, idx, d_d_stats)
+                # For auto-weapons, we need to update the weapons array
+                current_weapons = list(self.combat.get_agent_weapons(self.bm, idx))
+                # Default slots are "Unarmed" (the empty sentinel), so
+                # check for a *real* weapon before auto-filling.
+                has_weapons = self._has_real_weapons(current_weapons)
+                if not has_weapons:
+                    # Fill empty weapon slots with auto-weapons
+                    auto_weapons = self._auto_weapons_from_mob_stats(self.selected_mob_stats)
+                    for i, auto_w in enumerate(auto_weapons):
+                        if i < 3:
+                            current_weapons[i] = auto_w
+                    self.combat.set_agent_weapons(self.bm, idx, current_weapons)
+                # Auto-load innate spells (no-op for non-casters).
+                self._load_npc_spells_from_record(idx, self.selected_mob_stats)
+            elif self._pending_pc_class:
+                # Apply PC stats (class/level and spell slots already set)
+                self.combat.set_agent_stats(self.bm, idx, self._pending_pc_stats)
+                self._pending_pc_class = None
+                self._pending_pc_stats = None
+            self.sprites.clear()
+            self.placement_mode_active = False
+            self.placement_config = None
+            self.placement_cell = None
+            self._pc_name_input = None
+
+    def _place_in_staging(self) -> bool:
+        """Drop the floating new PC straight into the staging room (see
+        ``_staging_room``) instead of waiting for a click. False, leaving placement
+        mode as it is, when there is no room, no free footprint, or combat is on."""
+        if self.combat_active or self.placement_config is None:
+            return False
+        cfg = self.placement_config
+        state = (self.selected_mob_stats, self._pending_pc_class,
+                 getattr(self, "_pending_pc_stats", None))
+        room = self._staging_room()          # may switch to the entry page
+        # A page switch reloads the scene; put the floating PC back as it was.
+        self.placement_config = cfg
+        self.placement_mode_active = True
+        self.selected_mob_stats, self._pending_pc_class, self._pending_pc_stats = state
+        if not room:
+            return False
+        cell = self._place_in_room(int(cfg.size or 1), room, set())
+        if cell is None:
+            self._flash_status("Staging room is full: click to place.")
+            return False
+        self.placement_cell, self.placement_valid = cell, True
+        self._commit_placement()
+        self._flash_status(f"{cfg.name} placed in the staging room")
+        return True
+
     def _on_pc_class_selected(self, class_name: str):
         """Callback when a PC class is selected."""
         self.selected_mob_stats = None  # No mob stats for PCs
@@ -2440,6 +2519,40 @@ class App:
         self._load_agents()
         return added, dropped, skipped
 
+    def _staging_room(self):
+        """The cells of the room a generated dungeon leaves empty for the party, or None
+        when this dungeon/map has none; False when switching to it failed. Load PCs,
+        D&D Beyond import and New PC all arrive there.
+
+        The showing page's staging room wins. Else, in a dungeon, the entry (floor 0)
+        page is switched to first so the party always starts there. Else the
+        loaded map's own: ``_staging_cells`` — the exact (post-filter) cells of
+        results[0] recorded by Generate Dungeon, from the terrain sidecar.
+
+        We must NOT re-derive "room 0" as min(path_index): build_dungeon filters rooms
+        with too few placeable cells before choosing results[0], so raw path_index 0 can
+        be a DIFFERENT (e.g. top-left) room than the one actually left empty.
+        `_staging_cells` sidesteps that. The path_index heuristic is only a fallback for
+        older saves."""
+        page = self.dungeon_page if self.dungeon is not None else None
+        if page is not None and page.staging_cells:
+            return page.staging_cells
+        if page is not None:
+            entry = self.dungeon.entry_page()
+            if entry is not None and entry.id != page.id:
+                if not app_dungeon_pages.switch_to_page(self, entry):
+                    return False
+                if entry.staging_cells:
+                    return entry.staging_cells
+        cells = getattr(self, "_staging_cells", None)
+        if cells:
+            return cells
+        dict_rooms = [m for m in (getattr(self, "_terrain_rooms", None) or [])
+                      if isinstance(m, dict)]
+        if dict_rooms:
+            return min(dict_rooms, key=lambda m: m.get("path_index", 0)).get("cells")
+        return None
+
     def _on_load_pcs_chosen(self, paths):
         """Load PCs from one or more files ADDITIVELY onto the current scene, so the
         PCs drop onto an already-loaded dungeon without the destructive full-scene
@@ -2475,32 +2588,10 @@ class App:
             self._flash_status("Finish combat before loading PCs")
             return
 
-        # In a generated dungeon the party enters on floor 0, whose room 0 the generator
-        # leaves empty as a staging room. If another floor is showing, drop back to the
-        # entry (floor 0) page first so the PCs always start there.
-        if self.dungeon is not None and self.dungeon_page is not None:
-            entry = self.dungeon.entry_page()
-            if entry is not None and self.dungeon_page.id != entry.id:
-                if not app_dungeon_pages.switch_to_page(self, entry):
-                    self._flash_status("Could not switch to floor 0 to place PCs.")
-                    return
-
-        # Drop the PCs into the room the generator left empty. The authoritative source is
-        # `_staging_cells` — the exact (post-filter) cells of results[0] recorded by Generate
-        # Dungeon. It comes from the terrain sidecar; the current page's terrain (incl. floor
-        # 0 after the switch above) is already loaded, so this is the staging room for here.
-        #
-        # We must NOT re-derive "room 0" as min(path_index): build_dungeon filters rooms with
-        # too few placeable cells before choosing results[0], so raw path_index 0 can be a
-        # DIFFERENT (e.g. top-left) room than the one actually left empty. `_staging_cells`
-        # sidesteps that. Fall back to the path_index heuristic only for older saves.
-        room0_cells = getattr(self, "_staging_cells", None)
-        if not room0_cells:
-            terrain_rooms = getattr(self, "_terrain_rooms", None) or []
-            dict_rooms = [m for m in terrain_rooms if isinstance(m, dict)]
-            if dict_rooms:
-                entrance = min(dict_rooms, key=lambda m: m.get("path_index", 0))
-                room0_cells = entrance.get("cells")
+        room0_cells = self._staging_room()
+        if room0_cells is False:
+            self._flash_status("Could not switch to floor 0 to place PCs.")
+            return
 
         added, dropped, skipped = self._merge_pcs_here(pcs, room0_cells)
 
@@ -9108,6 +9199,7 @@ class App:
                         self.placement_config.name = self._pc_name_input.text.strip() or self.placement_config.name
                     self._pc_name_input = None
                     self.placement_mode_active = True
+                    self._place_in_staging()    # a generated dungeon's empty room, if any
                     continue
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     # Cancel PC placement
@@ -9133,56 +9225,7 @@ class App:
                     continue
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     # Place the agent immediately on the map
-                    if self.placement_cell and self.placement_valid and self._pending_import_agent:
-                        app_dungeon_gen.place_imported_agent(self, self._pending_import_agent, self.placement_cell)
-                        self._pending_import_agent = None
-                        self.placement_mode_active = False
-                        self.placement_config = None
-                        self.placement_cell = None
-                    elif self.placement_cell and self.placement_valid:
-                        cfg = self.placement_config
-                        cfg.start_col = self.placement_cell.col
-                        cfg.start_row = self.placement_cell.row
-                        # Append non-destructively, the same primitive paste/summon
-                        # use. Using spawn_agent instead of add_agent_config +
-                        # apply_agent_configs avoids rebuilding the whole roster from
-                        # the config list. That rebuild (applyAgentConfigs clears
-                        # placedAgents_) silently dropped every agent created via
-                        # spawn_agent — pasted clones and summons never enter the
-                        # config list — so placing one new mob wiped them, and the
-                        # next save then persisted only the rebuilt roster.
-                        idx = self.bm.spawn_agent(cfg)
-                        if idx < 0:
-                            self._flash_status("Could not place agent here")
-                            continue
-                        # Apply mob stats and auto-weapons to the newly placed agent
-                        if self.selected_mob_stats:
-                            d_d_stats = self._mob_stats_to_d_d_stats(self.selected_mob_stats)
-                            self.combat.set_agent_stats(self.bm, idx, d_d_stats)
-                            # For auto-weapons, we need to update the weapons array
-                            current_weapons = list(self.combat.get_agent_weapons(self.bm, idx))
-                            # Default slots are "Unarmed" (the empty sentinel), so
-                            # check for a *real* weapon before auto-filling.
-                            has_weapons = self._has_real_weapons(current_weapons)
-                            if not has_weapons:
-                                # Fill empty weapon slots with auto-weapons
-                                auto_weapons = self._auto_weapons_from_mob_stats(self.selected_mob_stats)
-                                for i, auto_w in enumerate(auto_weapons):
-                                    if i < 3:
-                                        current_weapons[i] = auto_w
-                                self.combat.set_agent_weapons(self.bm, idx, current_weapons)
-                            # Auto-load innate spells (no-op for non-casters).
-                            self._load_npc_spells_from_record(idx, self.selected_mob_stats)
-                        elif self._pending_pc_class:
-                            # Apply PC stats (class/level and spell slots already set)
-                            self.combat.set_agent_stats(self.bm, idx, self._pending_pc_stats)
-                            self._pending_pc_class = None
-                            self._pending_pc_stats = None
-                        self.sprites.clear()
-                        self.placement_mode_active = False
-                        self.placement_config = None
-                        self.placement_cell = None
-                        self._pc_name_input = None
+                    self._commit_placement()
                     continue
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     # Cancel placement
