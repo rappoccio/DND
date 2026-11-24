@@ -389,6 +389,61 @@ def test_divine_word_no_effect_above_50():
     print("✅ test_divine_word_no_effect_above_50 passed")
 
 
+def test_divine_word_hits_several_creatures():
+    """Each creature of the caster's choice in range: one cast, three foes, each by its own tier."""
+    bm, engine = setup_battle_map(), setup_combat_engine()
+    caster = _place(engine, bm, "Cleric", 5, 5)
+    _strong_caster(engine, bm, caster)
+    foes = [_place(engine, bm, f"Foe{i}", 6 + i, 5, faction=2) for i in range(3)]
+    for f, hp in zip(foes, (15, 35, 45)):
+        _set_ability(engine, bm, f, cha=1, hp_max=60, hp_cur=hp)
+    _cast(engine, bm, caster, _load_spell("Divine Word"), foes)
+    c0, c1, c2 = (engine.get_agent_conditions(bm, f) for f in foes)
+    assert c0.dead, "15 HP → dies"
+    assert c1.blinded and c1.deafened and not c1.stunned, "35 HP → blind+deaf"
+    assert c2.deafened and not c2.blinded, "45 HP → deafened"
+    print("✅ test_divine_word_hits_several_creatures passed")
+
+
+def test_divine_word_banishes_fiend_regardless_of_hp():
+    """A Fiend that fails is sent home even above 50 HP: removed from play, not killed."""
+    bm, engine = setup_battle_map(), setup_combat_engine()
+    caster = _place(engine, bm, "Cleric", 5, 5)
+    fiend = _place(engine, bm, "Fiend", 6, 5, faction=2)
+    _strong_caster(engine, bm, caster)
+    _set_ability(engine, bm, fiend, cha=1, hp_max=200, hp_cur=200, is_fiend=True)
+    _cast(engine, bm, caster, _load_spell("Divine Word"), [fiend])
+    assert bm.placed_agents[fiend].removed_from_play, "failed Fiend → banished"
+    assert not engine.get_agent_conditions(bm, fiend).dead
+    print("✅ test_divine_word_banishes_fiend_regardless_of_hp passed")
+
+
+def test_divine_word_low_hp_fiend_dies():
+    """A 0–20 HP Fiend dies rather than being banished."""
+    bm, engine = setup_battle_map(), setup_combat_engine()
+    caster = _place(engine, bm, "Cleric", 5, 5)
+    fiend = _place(engine, bm, "Fiend", 6, 5, faction=2)
+    _strong_caster(engine, bm, caster)
+    _set_ability(engine, bm, fiend, cha=1, hp_max=60, hp_cur=10, is_fiend=True)
+    _cast(engine, bm, caster, _load_spell("Divine Word"), [fiend])
+    assert engine.get_agent_conditions(bm, fiend).dead
+    assert not bm.placed_agents[fiend].removed_from_play
+    print("✅ test_divine_word_low_hp_fiend_dies passed")
+
+
+def test_divine_word_respects_condition_immunity():
+    """A Blinded-immune target at 35 HP is only Deafened."""
+    bm, engine = setup_battle_map(), setup_combat_engine()
+    caster = _place(engine, bm, "Cleric", 5, 5)
+    foe = _place(engine, bm, "Foe", 6, 5, faction=2)
+    _strong_caster(engine, bm, caster)
+    _set_ability(engine, bm, foe, cha=1, hp_max=60, hp_cur=35, condition_immunities=["Blinded"])
+    _cast(engine, bm, caster, _load_spell("Divine Word"), [foe])
+    c = engine.get_agent_conditions(bm, foe)
+    assert c.deafened and not c.blinded
+    print("✅ test_divine_word_respects_condition_immunity passed")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Dominate Monster
 # ─────────────────────────────────────────────────────────────────────────────
@@ -492,6 +547,10 @@ def run_all():
     test_divine_word_stuns_mid_low_hp()
     test_divine_word_deafens_high_hp()
     test_divine_word_no_effect_above_50()
+    test_divine_word_hits_several_creatures()
+    test_divine_word_banishes_fiend_regardless_of_hp()
+    test_divine_word_low_hp_fiend_dies()
+    test_divine_word_respects_condition_immunity()
     test_dominate_monster_charms_on_failed_save()
     test_dominate_monster_saved()
     test_mind_blank_grants_immunities()

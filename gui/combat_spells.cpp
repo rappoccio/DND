@@ -2541,11 +2541,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         // Divine Word: on a failed CHA save, a target's fate depends on its current HP (the
         // Power-Word HP-threshold model, but tiered). The four-tier table can't be expressed with
         // the single condition_hp_threshold field, so it is resolved here (keyed by name, like
-        // Command). The banish/return-to-plane clause is out of scope (no planar travel).
+        // Command). A Celestial, Elemental, Fey, or Fiend that fails is also forced back to its
+        // home plane regardless of HP: it leaves the fight (tombstoned off-map like a dismissed
+        // summon, its concentration dropped). A 0-20 HP one simply dies instead.
         if (sp.name == "Divine Word" && !tr.saved && tgt_idx >= 0 &&
             tgt_idx < static_cast<int>(agents.size())) {
             const int hp = tgt_stats.hp_cur;
+            constexpr uint32_t kExtraplanar = CT_Celestial | CT_Elemental |
+                                              CT_Fey | CT_Fiend;
+            const bool extraplanar = (tgt_stats.creatureTypeMask() & kExtraplanar) != 0;
             auto add_cond = [&](const std::string& name, int turns) {
+                if (conditionImmune(bm, tgt_idx, name)) return;   // logs the immunity
                 ActiveAgentCondition c;
                 c.agent_idx        = tgt_idx;
                 c.caster_idx       = action.caster_idx;
@@ -2569,6 +2575,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
                     bm.setAgentConditions(tgt_idx, dc2);
                     log_("Divine Word: {} has {} HP (<= 20) — dies", agentName(bm, tgt_idx), hp);
                 }
+            } else if (extraplanar) {
+                (void)dropConcentration(bm, tgt_idx);
+                bm.setAgentRemovedFromPlay(tgt_idx, true);
+                log_("Divine Word: {} is forced back to its plane of origin and can't return "
+                     "for 24 hours", agentName(bm, tgt_idx));
             } else if (hp <= 30) {
                 add_cond("Blinded", 600); add_cond("Deafened", 600); add_cond("Stunned", 600);  // 1 hour
                 log_("Divine Word: {} ({} HP) is Blinded, Deafened, and Stunned", agentName(bm, tgt_idx), hp);
