@@ -234,6 +234,27 @@ def test_cleave_respects_once_per_turn():
 #  Gating — no mastery without the feature or weapon proficiency
 # ─────────────────────────────────────────────────────────────────────────────
 
+def test_martial_classes_get_weapon_mastery():
+    """Live play 2026-11-24: a Barbarian's Cleave greataxe never offered Cleave, because only
+    Fighter/Druid init set weapon_mastery. Every martial class (2024) has the feature."""
+    for cls in (rpg.CharacterClass.Barbarian, rpg.CharacterClass.Paladin,
+                rpg.CharacterClass.Ranger, rpg.CharacterClass.Rogue, rpg.CharacterClass.Fighter):
+        bm = setup_battle_map(); engine = setup_combat_engine()
+        a = _place(engine, bm, "Atk", 5, 5)
+        t = _place(engine, bm, "Tgt", 6, 5)
+        _arm_attacker(engine, bm, a, [_mk_weapon("Cleaver", rpg.WeaponMastery.Cleave)],
+                      weapon_mastery=0)
+        s = engine.get_agent_stats(bm, a)
+        s.set_class_level(cls, 9)
+        s.initialize_class_resources(cls, 9)
+        engine.set_agent_stats(bm, a, s)
+        assert engine.get_agent_stats(bm, a).weapon_mastery > 0, cls
+        _set_target(engine, bm, t)
+        _land_hit(engine, bm, a, t)
+        assert _cond(engine, bm, a).cleave_available, f"{cls}: Cleave should be offered"
+    print("✅ test_martial_classes_get_weapon_mastery passed")
+
+
 def test_no_feature_no_mastery():
     bm = setup_battle_map(); engine = setup_combat_engine()
     a = _place(engine, bm, "Atk", 5, 5)
@@ -372,6 +393,7 @@ if __name__ == "__main__":
     test_push_flags_only_large_or_smaller()
     test_topple_and_cleave_flag_for_prompt()
     test_cleave_respects_once_per_turn()
+    test_martial_classes_get_weapon_mastery()
     test_no_feature_no_mastery()
     test_not_proficient_no_mastery()
     test_apply_push_moves_target()

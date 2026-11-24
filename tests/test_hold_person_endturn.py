@@ -117,12 +117,34 @@ def test_default_condition_saves_at_start():
     print("✅ test_default_condition_saves_at_start passed")
 
 
+def test_paralyzed_large_target_auto_crit_from_any_side():
+    """Live play 2026-11-24: a melee hit on a Paralyzed Large creature is a Critical Hit from
+    every adjacent side, not only its top/left edge (footprint-to-footprint distance)."""
+    from test_weapon_mastery import _mk_weapon, _three, _NO_MASTERY
+    for col, row in [(7, 5), (5, 7), (4, 4), (7, 7)]:   # right, below, top-left, bottom-right
+        bm = setup_battle_map()
+        engine = setup_combat_engine()
+        cfg = create_test_agent("Hezrou", 5, 5); cfg.size = 2
+        target = add_agent_to_battle(engine, bm, cfg)
+        atk = add_agent_to_battle(engine, bm, create_test_agent("Fighter", col, row))
+        s = engine.get_agent_stats(bm, atk); s.str = 30; s.prof_bonus = 6
+        engine.set_agent_stats(bm, atk, s)
+        engine.set_agent_weapons(bm, atk, _three([_mk_weapon("Axe", _NO_MASTERY)]))
+        t = engine.get_agent_stats(bm, target); t.base_ac = 1; t.hp_max = t.hp_cur = 500
+        engine.set_agent_stats(bm, target, t)
+        _paralyze(engine, bm, atk, target, 30, at_end_of_turn=True)
+        r = engine.execute_action(bm, rpg.Attack(atk, target, 0))
+        assert r.hit and r.critical, f"attacker at {(col, row)}: hit={r.hit} crit={r.critical}"
+    print("✅ test_paralyzed_large_target_auto_crit_from_any_side passed")
+
+
 def _run_all():
     tests = [
         test_end_of_turn_flag_defers_save_past_begin_turn,
         test_end_of_turn_success_frees_creature,
         test_end_of_turn_failure_stays_paralyzed,
         test_default_condition_saves_at_start,
+        test_paralyzed_large_target_auto_crit_from_any_side,
     ]
     for t in tests:
         t()

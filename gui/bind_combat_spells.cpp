@@ -269,6 +269,9 @@ void bindCombatSpells(py::class_<CombatEngine>& engine) {
              "For Single geometry: returns 1 (2 if twinned). For AoE: returns 0.\n"
              "caster_level: character level for special cases like Eldritch Blast (default -1 uses slot level formula)\n"
              "twinned: Twinned Spell (Sorcerer Metamagic) grants one additional target this cast")
+        .def_static("twinnable_spell", &CombatEngine::twinnableSpell, py::arg("spell"),
+             "True when Twinned Spell can apply: a single-target spell, or one that targets an\n"
+             "additional creature per upcast level (not Magic Missile / Scorching Ray / Eldritch Blast).")
         .def("effective_spell_range",
              &CombatEngine::effectiveSpellRange,
              py::arg("battle_map"), py::arg("caster_idx"), py::arg("spell"),

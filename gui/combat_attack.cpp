@@ -194,13 +194,9 @@ std::vector<int> CombatEngine::threateningAgents(const BattleMap& bm, int target
         if (other.agent->getStats().hp_cur <= 0) continue;
 
         // Chebyshev distance from target's footprint to other's origin
-        int dc = std::max({tgt.origin.col - other.origin.col,
-                           other.origin.col - (tgt.origin.col + tgt.agent->getSize() - 1),
-                           0});
-        int dr = std::max({tgt.origin.row - other.origin.row,
-                           other.origin.row - (tgt.origin.row + tgt.agent->getSize() - 1),
-                           0});
-        int dist = std::max(dc, dr);
+        // Footprint to footprint: a Large/Huge creature is adjacent from every side.
+        int dist = footprintDistance(tgt.origin, tgt.agent->getSize(),
+                                     other.origin, other.agent->getSize());
 
         if (dist <= reach_cells)
             result.push_back(i);
@@ -2954,13 +2950,9 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
             ally_stats.wild_heart_rage_choice == WolfForm &&
             ally_cond.raging) {
             // Check distance: within 5ft (1 cell on 5ft/cell grid = Chebyshev distance <= 1)
-            int dc = std::max({atk_pt.origin.col - ally_pa.origin.col,
-                               ally_pa.origin.col - (atk_pt.origin.col + atk_sz - 1),
-                               0});
-            int dr = std::max({atk_pt.origin.row - ally_pa.origin.row,
-                               ally_pa.origin.row - (atk_pt.origin.row + atk_sz - 1),
-                               0});
-            int dist = std::max(dc, dr);
+            // Footprint to footprint: a Large/Huge creature is adjacent from every side.
+            int dist = footprintDistance(atk_pt.origin, atk_pt.agent->getSize(),
+                                         ally_pa.origin, ally_pa.agent->getSize());
 
             if (dist <= 1) {
                 adv = true;
@@ -3044,13 +3036,9 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
 
     // Target is prone: advantage for melee attacks within 5 feet, disadvantage for ranged
     if (tgt_cond.prone) {
-        int dc = std::max({atk_pt.origin.col - tgt_pt.origin.col,
-                           tgt_pt.origin.col - (atk_pt.origin.col + atk_sz - 1),
-                           0});
-        int dr = std::max({atk_pt.origin.row - tgt_pt.origin.row,
-                           tgt_pt.origin.row - (atk_pt.origin.row + atk_sz - 1),
-                           0});
-        int dist = std::max(dc, dr);
+        // Footprint to footprint: a Large/Huge creature is adjacent from every side.
+        int dist = footprintDistance(atk_pt.origin, atk_pt.agent->getSize(),
+                                     tgt_pt.origin, tgt_pt.agent->getSize());
 
         // Within 5 feet (1 cell on 5ft/cell grid): attacker gets advantage (melee)
         if (dist <= 1) {
@@ -4369,13 +4357,9 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     // retroactively crit the triggering hit.
     // A crit canceled by Sentinel at Death's Door can't be re-promoted here (its crit effects are void).
     if (tgt_incapacitated_at_attack && r.hit && !r.crit_canceled) {
-        int dc = std::max({atk_pt.origin.col - tgt_pt.origin.col,
-                           tgt_pt.origin.col - (atk_pt.origin.col + atk_sz - 1),
-                           0});
-        int dr = std::max({atk_pt.origin.row - tgt_pt.origin.row,
-                           tgt_pt.origin.row - (atk_pt.origin.row + atk_sz - 1),
-                           0});
-        int dist = std::max(dc, dr);
+        // Footprint to footprint: a Large/Huge creature is adjacent from every side.
+        int dist = footprintDistance(atk_pt.origin, atk_pt.agent->getSize(),
+                                     tgt_pt.origin, tgt_pt.agent->getSize());
 
         // Within 5 feet (1 cell on 5ft/cell grid)
         if (dist <= 1) {

@@ -469,6 +469,46 @@ def test_metamagic_twinned_spends_sp():
     print("✅ test_metamagic_twinned_spends_sp passed")
 
 
+def _hold_monster():
+    import json
+    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "gui", "spells.json")) as f:
+        entry = next(e for e in json.load(f) if e["name"] == "Hold Monster")
+    import helpers
+    return helpers._dict_to_spell(entry)
+
+
+def test_twinned_hold_monster_upcast_targets():
+    """Live play 2026-11-24: Hold Monster at 6th with Twinned is 3 creatures (1 + 1 upcast + 1
+    Twinned); a repeated target is affected once, not twice."""
+    bm, engine, sorc, tgt = _setup(11)
+    t2 = add_agent_to_battle(engine, bm, create_test_agent("T2", 7, 5))
+    t3 = add_agent_to_battle(engine, bm, create_test_agent("T3", 5, 6))
+    t4 = add_agent_to_battle(engine, bm, create_test_agent("T4", 6, 6))
+    sp = _hold_monster()
+    assert rpg.CombatEngine.twinnable_spell(sp)
+    assert engine.get_num_targets_for_spell(sp, 6, 11) == 2
+    assert engine.get_num_targets_for_spell(sp, 6, 11, True) == 3
+    engine.set_agent_spells(bm, sorc, [sp])
+    a = rpg.SpellAction(); a.caster_idx = sorc; a.spell_idx = 0; a.slot_level = 6
+    a.target_indices = [tgt, t2, t3, t4]
+    a.metamagic = rpg.MetamagicOption.Twinned
+    r = engine.execute_spell(bm, a)
+    assert [x.target_idx for x in r.target_results] == [tgt, t2, t3], r.target_results
+    assert engine.get_agent_stats(bm, sorc).get_resource("Sorcery Points").current == 10
+
+    bm, engine, sorc, tgt = _setup(11)
+    engine.set_agent_spells(bm, sorc, [sp])
+    a = rpg.SpellAction(); a.caster_idx = sorc; a.spell_idx = 0; a.slot_level = 6
+    a.target_indices = [tgt, tgt]
+    r = engine.execute_spell(bm, a)
+    assert len(r.target_results) == 1, "a repeated target must be affected once"
+    mm = [rpg.Spell()]; mm[0].name = "Magic Missile"; mm[0].geometry = rpg.SpellGeometry.Multiple
+    mm[0].targets_per_upcast_level = 1
+    assert not rpg.CombatEngine.twinnable_spell(mm[0])
+    print("✅ test_twinned_hold_monster_upcast_targets passed")
+
+
 def test_metamagic_extended_spends_sp():
     """Extended spends 1 SP on a lasting spell (it doubles the duration)."""
     bm, engine, sorc, tgt = _setup(5)
@@ -2645,6 +2685,7 @@ if __name__ == "__main__":
     test_metamagic_subtle_no_spend()
     test_metamagic_distant_spends_sp()
     test_metamagic_twinned_spends_sp()
+    test_twinned_hold_monster_upcast_targets()
     test_metamagic_extended_spends_sp()
     test_metamagic_extended_instantaneous_no_spend()
     test_metamagic_quickened_casts_as_bonus_action()

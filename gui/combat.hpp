@@ -2297,6 +2297,12 @@ public:
     // twinned: Twinned Spell (Sorcerer Metamagic) grants one extra target (Single → 2, Multiple → +1).
     [[nodiscard]] int getNumTargetsForSpell(const Spell& sp, int slot_level,
                                             int caster_level = -1, bool twinned = false) const noexcept;
+    // Darts/rays/beams (Magic Missile, Scorching Ray, Eldritch Blast): the only spells whose
+    // targets may repeat one creature.
+    [[nodiscard]] static bool repeatTargetSpell(const Spell& sp) noexcept;
+    // Twinned Spell can apply: a single-target spell, or one that targets an additional
+    // creature per upcast level (not darts/rays/beams).
+    [[nodiscard]] static bool twinnableSpell(const Spell& sp) noexcept;
 
     // Effective casting range (ft) for a spell as cast by a specific agent, after
     // range-extending invocations. Eldritch Spear (code 2): the chosen damage cantrip's

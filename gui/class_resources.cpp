@@ -903,6 +903,9 @@ void Agent::Stats::applyClassResources(CharacterClass cls, int level) {
     case Ranger:
     case Rogue:
       if (!hasFeat("Weapon Mastery")) addFeat("Weapon Mastery");
+      // The mastery properties (Cleave, Topple, Push, …) gate on weapon_mastery > 0, not the
+      // feat; without this a Barbarian/Paladin/Ranger/Rogue never got Cleave or Topple.
+      weapon_mastery = std::max(weapon_mastery, 1);
       break;
     default:
       break;

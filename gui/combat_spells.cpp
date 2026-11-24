@@ -839,11 +839,14 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
                 if (sp.casting_time != Spell::Action) { applicable = false; why = "Quickened needs an Action-cast spell"; }
                 break;
             case MetamagicTwinned:
-                // Twinned only augments a spell that targets exactly one creature (Single geometry).
-                // Area spells and spells that already hit several creatures (Multiple geometry, e.g.
-                // Magic Missile / Scorching Ray) can't be twinned — reject before spending any SP.
-                if (sp.geometry != Spell::Single) {
-                    applicable = false; why = "Twinned only affects a spell that targets a single creature";
+                // Twinned (SRD 5.2) raises the effective level by 1 for a spell that targets an
+                // additional creature per upcast level (Charm Person, Hold Person, Hold Monster),
+                // and also augments a plain single-target spell (Single geometry). Area spells, and
+                // darts/rays/beams that add projectiles rather than creatures, can't be twinned —
+                // reject before spending any SP.
+                if (!twinnableSpell(sp)) {
+                    applicable = false;
+                    why = "Twinned only affects a spell that can target an additional creature";
                 }
                 break;
             default: break;  // Distant / Heightened / Seeking always apply
@@ -1028,6 +1031,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         int allowed = getNumTargetsForSpell(sp, action.slot_level, caster_stats.char_level, twinned);
         if (allowed >= 0 && static_cast<int>(targets.size()) > allowed)
             targets.resize(static_cast<std::size_t>(allowed));
+        // Each creature is affected once. Only darts, rays and beams may land on one creature
+        // more than once; any other repeated target (a doubled click, a stale pick) is dropped
+        // so it can't roll the save and apply the condition twice.
+        if (!repeatTargetSpell(sp)) {
+            std::vector<int> unique;
+            for (int t : targets)
+                if (std::find(unique.begin(), unique.end(), t) == unique.end()) unique.push_back(t);
+            targets.swap(unique);
+        }
     }
 
     // Beast Master L15 Share Spells: "When you cast a spell targeting yourself, you can also affect your
@@ -3238,6 +3250,18 @@ std::vector<int> CombatEngine::availableCastableSpells(
     }
 
     return result;
+}
+
+bool CombatEngine::repeatTargetSpell(const Spell& sp) noexcept
+{
+    // Darts, rays and beams: each one is aimed separately and may hit the same creature.
+    return sp.name == "Magic Missile" || sp.name == "Scorching Ray" || sp.name == "Eldritch Blast";
+}
+
+bool CombatEngine::twinnableSpell(const Spell& sp) noexcept
+{
+    if (sp.geometry == Spell::Single) return true;
+    return sp.geometry == Spell::Multiple && sp.targets_per_upcast_level > 0 && !repeatTargetSpell(sp);
 }
 
 int CombatEngine::getNumTargetsForSpell(const Spell& sp, int slot_level,

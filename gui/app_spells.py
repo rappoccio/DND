@@ -516,9 +516,16 @@ def dispatch_spell_geometry(app, s, si_, sp_, slot_level_, idx):
     elif sp_.geometry == rpg.SpellGeometry.Multiple:
         # Multiple geometry: collect N independent targets
         caster_level_ = app.combat.get_agent_stats(app.bm, idx).char_level
-        num_targets = app.combat.get_num_targets_for_spell(sp_, slot_level_, caster_level_)
+        # Twinned Spell raises the effective level by 1: one more creature for a spell that
+        # targets an additional creature per upcast level (Hold Person, Hold Monster, …).
+        twin_ = (rpg.MetamagicOption.Twinned in armed_metamagic_options(app, idx)
+                 and rpg.CombatEngine.twinnable_spell(sp_))
+        num_targets = app.combat.get_num_targets_for_spell(sp_, slot_level_, caster_level_,
+                                                           twin_)
         is_aoe = False   # the targets are collected one click at a time
         hint = f"click {num_targets} target{'s' if num_targets != 1 else ''} ({0}/{num_targets})"
+        if twin_:
+            hint += " — Twinned"
         if num_targets > 1:
             hint += ", or Enter to cast on fewer"
     else:
