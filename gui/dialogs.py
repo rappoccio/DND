@@ -2177,8 +2177,15 @@ class StatsDialog:
         self._metamagic_btn_rect   = None  # "Metamagic..." launch button
 
     # ── public API ───────────────────────────────────────────────────────────
-    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE", hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE"):
+    def open(self, screen, agent_idx: int, agent_name: str, stats, class_name: str, char_level: int, callback, is_npc=False, npc_spell_groups=None, armor_list=None, subclass_name: str = "NONE", blessed_strike_name: str = "NONE", hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE",
+             weapon=None, item_bonuses=None):
         self.active             = True
+        # Live totals in the +Hit / +Spell labels (like Armor Class): the stats object is
+        # this dialog's own copy (on OK the app re-reads the engine's), so _bonus_totals
+        # may write the stepper values onto it to ask the engine for the to-hit.
+        self._preview_stats     = stats
+        self._preview_weapon    = weapon if (weapon is not None and weapon.name) else None
+        self._item_bonuses      = item_bonuses
         self._agent_idx         = agent_idx
         self._agent_name        = agent_name
         self._class_name        = class_name
@@ -2408,6 +2415,37 @@ class StatsDialog:
         char_level_rect = pygame.Rect(dlg.x + PAD, char_level_y, half, step_h)
         # lo=0 so a focused class can be dropped from the multiclass build (0 levels).
         self._char_level_stepper = IntStepper(char_level_rect, self._char_level, 0, 20, self.font_md)
+
+    _CAST_KEYS = ("str", "dex", "con", "intel", "wis", "cha")
+    _CAST_NAMES = ("STR", "DEX", "CON", "INT", "WIS", "CHA")
+
+    def _bonus_totals(self) -> dict:
+        """Label suffixes for the bonus steppers, from the live stepper values:
+        +Hit → the first weapon's to-hit; +Spell Attack / DC → the spell totals, with the
+        carried items' spell bonuses. {} before open."""
+        s, sv = getattr(self, "_preview_stats", None), self.steppers
+        if s is None or "attack_bonus" not in sv:
+            return {}
+        out = {}
+        prof = sv["prof_bonus"].value
+        ib = getattr(self, "_item_bonuses", None)
+        w = getattr(self, "_preview_weapon", None)
+        if w is not None:
+            for k in self._CAST_KEYS:
+                setattr(s, k, sv[k].value)
+            s.prof_bonus = prof
+            s.attack_bonus = sv["attack_bonus"].value
+            hit = rpg.CombatEngine.attack_modifier(w, s) + w.bonus_hit
+            out["attack_bonus"] = f"{w.name} {hit:+d}"
+        ab = int(getattr(s, "spellcasting_ability", 5))
+        ab = ab if 0 <= ab < 6 else 5
+        mod = _dnd_mod(sv[self._CAST_KEYS[ab]].value)
+        atk = (prof + mod + sv["attack_bonus"].value + sv["spell_attack_bonus"].value
+               + (ib.spell_attack if ib is not None else 0))
+        dc = 8 + prof + mod + sv["spell_dc_bonus"].value + (ib.spell_dc if ib is not None else 0)
+        out["spell_attack_bonus"] = f"{self._CAST_NAMES[ab]} {atk:+d}"
+        out["spell_dc_bonus"] = f"DC {dc}"
+        return out
 
     # ── events ───────────────────────────────────────────────────────────────
     def handle(self, event, screen) -> bool:
@@ -2874,6 +2912,7 @@ class StatsDialog:
             t = self.font_sm.render("COMBAT STATS", True, self.C_SECT)
             screen.blit(t, (dlg.x + PAD, cs_y))
 
+        totals = self._bonus_totals()
         for lbl, key, _, _ in self.COMBAT:
             st = self.steppers.get(key)
             if st:
@@ -2883,6 +2922,9 @@ class StatsDialog:
                     dex_val = dex.value if dex else 10
                     total_ac = _calculate_total_ac(st.value, dex_val, self._armor_list)
                     display_lbl = f"{lbl} ({total_ac})"  # Show total AC in label
+                    lt = self.font_sm.render(display_lbl, True, (100, 200, 100))
+                elif key in totals:
+                    display_lbl = _fit_text(self.font_sm, f"{lbl} ({totals[key]})", st.rect.w)
                     lt = self.font_sm.render(display_lbl, True, (100, 200, 100))
                 else:
                     lt = self.font_sm.render(lbl, True, self.C_LABEL)

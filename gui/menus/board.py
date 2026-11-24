@@ -87,7 +87,9 @@ def show_agent_menu(app, hit, pos):
             subclass_name=subclass_name,
             blessed_strike_name=blessed_strike_name,
             hunter_prey_name=hunter_prey_name,
-            defensive_tactics_name=defensive_tactics_name)
+            defensive_tactics_name=defensive_tactics_name,
+            weapon=next((w for w in app.combat.get_agent_weapons(app.bm, h) if w.name), None),
+            item_bonuses=app.combat.carried_item_bonuses(app.bm, h))
     def _open_weapons(h=hit):
         pt2 = app.bm.placed_agents[h]
         weapon_array = app.combat.get_agent_weapons(app.bm, h)

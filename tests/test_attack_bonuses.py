@@ -106,6 +106,38 @@ def test_stats_dialog_and_save_load():
     print("✅ test_stats_dialog_and_save_load passed")
 
 
+def test_stats_dialog_totals():
+    app, aria = _app()
+    dlg = app.stats_dialog
+    st = app.combat.get_agent_stats(app.bm, aria)
+    st.attack_bonus = st.spell_attack_bonus = st.spell_dc_bonus = 0
+    st.str, st.prof_bonus, st.spellcasting_ability = 16, 3, 5   # STR +3, PB 3, CHA caster
+    st.cha = 14                                                  # CHA +2
+    app.combat.set_agent_stats(app.bm, aria, st)
+    w = rpg.Weapon()
+    w.name, w.type, w.proficient, w.bonus_hit = "Longsword", rpg.WeaponType.Melee, True, 1
+    ib = rpg.ItemBonuses()
+    ib.spell_dc = 1
+    dlg.open(app.screen, aria, "Aria", app.combat.get_agent_stats(app.bm, aria), "Fighter", 5,
+             app._on_stats_ok, weapon=w, item_bonuses=ib)
+    tot = dlg._bonus_totals()
+    assert tot == {"attack_bonus": "Longsword +7", "spell_attack_bonus": "CHA +5",
+                   "spell_dc_bonus": "DC 14"}, tot
+    dlg.steppers["attack_bonus"].value = 2
+    dlg.steppers["spell_dc_bonus"].value = 1
+    tot = dlg._bonus_totals()
+    assert tot["attack_bonus"] == "Longsword +9" and tot["spell_attack_bonus"] == "CHA +7"
+    assert tot["spell_dc_bonus"] == "DC 15", tot
+    dlg._draw_body(pygame.Surface((dlg.DLG_W, dlg.DLG_H)))
+    # The preview writes onto the dialog's copy only; the engine is untouched until OK.
+    assert app.combat.get_agent_stats(app.bm, aria).attack_bonus == 0
+    # No weapon: no +Hit total, the spell totals still show.
+    dlg.open(app.screen, aria, "Aria", app.combat.get_agent_stats(app.bm, aria), "Fighter", 5,
+             app._on_stats_ok)
+    assert "attack_bonus" not in dlg._bonus_totals()
+    print("✅ test_stats_dialog_totals passed")
+
+
 def test_weapon_dialog_bonus_fields():
     app, aria = _app()
     wd = app.weapon_dialog
@@ -173,6 +205,7 @@ def main():
     test_weapon_to_hit()
     test_spell_hit_chance_rises()
     test_stats_dialog_and_save_load()
+    test_stats_dialog_totals()
     test_weapon_dialog_bonus_fields()
     test_items_dialog_bonus_editor()
     print("\nAll attack / spell bonus tests passed.")
