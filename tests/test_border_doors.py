@@ -157,9 +157,33 @@ def test_a_border_door_with_no_page_beyond_goes_nowhere():
     print("✅ test_a_border_door_with_no_page_beyond_goes_nowhere passed")
 
 
+def test_the_whole_party_goes_through_a_border_door():
+    """Out of combat the door offers a "Party:" row (as ladders do). It carries every
+    party token, with no one selected, and lands them by the matching door."""
+    with tempfile.TemporaryDirectory() as tmp:
+        app = _dungeon(tmp)
+        for i in range(len(app.bm.placed_agents)):   # bare records load neutral
+            app.bm.set_agent_faction(i, 2)
+        door = app.bm.doors[0]
+        labels = [label for label, _fn in _menu(app, 0)]
+        assert not any(l.startswith("Party:") for l in labels), "none in combat"
+        app.combat_active = False
+        from menus import dm
+        labels = [label for label, _fn in dm.door_options(app, -1, door)]
+        assert "Party: Go through door (to floor 0)" in labels, labels
+        assert app._use_door_link(door.id, -1, party=True)
+        assert app.dungeon_page.id == "e"
+        assert sorted(_names(app)) == ["Aria", "Bram"]
+        for pt in app.bm.placed_agents:
+            assert pt.origin.col <= 2, ("lands by the door", pt.name, pt.origin.col)
+        assert _read(tmp, "w_agents.json")["agents"] == []
+    print("✅ test_the_whole_party_goes_through_a_border_door passed")
+
+
 if __name__ == "__main__":
     test_border_side_and_target()
     test_go_through_a_border_door_and_back()
     test_a_shut_border_door_offers_no_passage()
     test_a_border_door_with_no_page_beyond_goes_nowhere()
+    test_the_whole_party_goes_through_a_border_door()
     print("\nAll border-door tests passed.")

@@ -830,13 +830,17 @@ def load_agents(app, path: str | None = None):
     def _on_grid(t):
         sz = int(t["size"])
         return 0 <= int(t["col"]) <= cols - sz and 0 <= int(t["row"]) <= rows - sz
+    def _blocked(t):
+        return app.bm.is_blocked(rpg.Cell(int(t["col"]), int(t["row"])), int(t["size"]))
+
     taken: set[tuple[int, int]] = set()
     for t in agent_data:
-        if _on_grid(t) and not t.get("land_near"):
+        if _on_grid(t) and not t.get("land_near") and not _blocked(t):
             for dc in range(int(t["size"])):
                 for dr in range(int(t["size"])):
                     taken.add((int(t["col"]) + dc, int(t["row"]) + dr))
     moved = []
+    kept = []      # the records the engine will place, in its order (stats follow this)
     for t in agent_data:
         cfg = rpg.AgentConfig()
         cfg.name        = t["name"]
@@ -848,19 +852,29 @@ def load_agents(app, path: str | None = None):
         cfg.start_row   = t["row"]
         # Sent here by the DM's "Send to floor…" (_send_to_page), which can't see this
         # page's walls: land on the nearest open cell rather than be skipped as blocked.
-        if t.get("land_near") or not _on_grid(t):
-            if not _on_grid(t):
+        # A cell that is blocked now (a door closed on it, a wall drawn there since) is
+        # moved the same way: the engine would skip it, and every later record's stats
+        # would land on the creature before it.
+        if t.get("land_near") or not _on_grid(t) or _blocked(t):
+            if not _on_grid(t) or (_blocked(t) and not t.get("land_near")):
                 moved.append(cfg.name)
             cfg.start_col, cfg.start_row = app._open_cell_near(
                 int(t["col"]), int(t["row"]), int(t["size"]), taken)
             for dc in range(cfg.size):
                 for dr in range(cfg.size):
                     taken.add((cfg.start_col + dc, cfg.start_row + dr))
+        if app.bm.is_blocked(rpg.Cell(cfg.start_col, cfg.start_row), cfg.size):
+            # Nowhere open on the whole map: leave it out here, and out of the stats
+            # pass below, rather than shift everyone after it.
+            print(f"Warning: no open cell for '{cfg.name}'; not placed.")
+            continue
         app.combat.add_agent_config(app.bm, cfg)
         app.pending_configs.append(cfg)
+        kept.append(t)
     app.combat.apply_agent_configs(app.bm)
+    agent_data = kept
     if moved:
-        app._combat_log_add(f"Off the {cols}×{rows} grid, moved onto it: "
+        app._combat_log_add(f"Off the {cols}×{rows} grid or blocked, moved onto it: "
                              f"{', '.join(moved)}.")
     app._mark_fog_dirty()   # roster (re)built — party placed, so re-run reveal
     app.sprites.clear()

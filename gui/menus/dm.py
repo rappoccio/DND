@@ -578,6 +578,9 @@ def door_options(app, actor, door) -> list:
     if link is not None and door.open:
         options.append((f"Go through door (to floor {link[2]})",
                         lambda a=actor, d=door_id: app._use_door_link(d, a)))
+        if not app.combat_active:                  # a page change is refused in combat anyway
+            options.append((f"Party: Go through door (to floor {link[2]})",
+                            lambda a=actor, d=door_id: app._use_door_link(d, a, party=True)))
     return options
 
 

@@ -3915,11 +3915,13 @@ class App:
             return -1
         return self._edge_door_at_pos(pos)
 
-    def _use_door_link(self, door_id: int, actor_idx: int):
+    def _use_door_link(self, door_id: int, actor_idx: int, party: bool = False):
         """Step through a linked door to the abutting page, carrying the acting (or
-        selected) creature. Mirrors _use_ladder: resolve the global target to a page +
-        local cell via the dungeon manifest and switch. No-ops with a flash if the
-        dungeon isn't loaded or the target lands on no page."""
+        selected) creature (``party``: the whole party, as a ladder's "Party:" row
+        does), landing just inside the matching door there. Mirrors _use_ladder:
+        resolve the global target to a page + local cell via the dungeon manifest and
+        switch. No-ops with a flash if the dungeon isn't loaded or the target lands on no
+        page. Returns True when the crossing happened."""
         if self.dungeon is None:
             self._flash_status("Door links need a dungeon manifest (open a .dungeon.json).")
             return
@@ -3938,9 +3940,15 @@ class App:
         if local is None:
             self._flash_status("The door's exit is off the target map.")
             return
-        carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
+        if party:
+            carry = app_dungeon_pages.party_carry(self, actor_idx) or None
+        else:
+            carry = [actor_idx] if actor_idx is not None and actor_idx >= 0 else None
         if app_dungeon_pages.switch_to_page(self, page, drop_cell=local, carry=carry):
-            self._flash_status(f"Stepped through to {page.id} (floor {Z}).")
+            who = "The party stepped" if party else "Stepped"
+            self._flash_status(f"{who} through to {page.id} (floor {Z}).")
+            return True
+        return False
 
     def _send_pages(self) -> list:
         return app_dungeon_pages.send_pages(self)

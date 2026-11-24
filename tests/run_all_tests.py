@@ -476,6 +476,7 @@ test_scripts = [
     "test_send_to_floor.py",
     "test_border_doors.py",
     "test_death_burst.py",
+    "test_load_blocked_alignment.py",
     "test_deny_reactions.py",
     "test_doors.py",
     "test_chests.py",

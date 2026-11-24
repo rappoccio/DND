@@ -354,9 +354,13 @@ def test_blocked_creature_is_named():
         with open(released, "w") as f:
             json.dump(doc, f)
         assert run_control.reset_to(app, r), app._status_msg
-        assert _names(app) == []
-        assert "Aria" in app._status_msg and "Blocked" in app._status_msg, app._status_msg
-    print("  ✅ a reverted edit no longer blocks; a creature on a blocked cell is named")
+        # She is not lost: she lands on the nearest open cell (a skipped record would
+        # shift every later creature's stats onto the one before it), and is named.
+        assert _names(app) == ["Aria"], _names(app)
+        o = app.bm.placed_agents[0].origin
+        assert (o.col, o.row) != (1, 1)
+        assert any("moved onto it: Aria" in m for m in app.combat_log), app.combat_log[-3:]
+    print("  ✅ a reverted edit no longer blocks; a creature on a blocked cell is moved, named")
 
 
 def test_seats_stay_and_players_resync():
