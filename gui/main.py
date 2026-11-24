@@ -5384,10 +5384,12 @@ class App:
         self._update_attack_overlay()
 
     def _netted_within_reach(self, actor_idx: int) -> list:
-        """Netted creatures this actor could cut loose: itself, plus anything within 5 ft."""
+        """Netted (or Grasping-Shot) creatures this actor could free: itself, plus anything within 5 ft."""
         out = []
         for i in range(len(self.bm.placed_agents)):
-            if not self.combat.get_agent_conditions(self.bm, i).netted:
+            # A Grasping Shot (Arcane Archer) frees the same way, against the archer's DC.
+            if not (self.combat.get_agent_conditions(self.bm, i).netted
+                    or self.combat.held_by_grasping_shot(i)):
                 continue
             if i == actor_idx or (0 <= self._footprint_dist_ft(actor_idx, i) <= 5
                                   and self._can_reach_through(actor_idx, i)):
@@ -5411,7 +5413,8 @@ class App:
             self.hint = "Click the netted creature to free (within 5 ft)"
 
     def _resolve_escape_net(self, target_idx: int):
-        """Free a netted creature (self, or one within 5 ft) with a DC 10 STR check — an action."""
+        """Free a netted creature (self, or one within 5 ft) with a DC 10 STR check — an action.
+        A creature held by a Grasping Shot frees the same way, against the archer's DC."""
         self._drop_pick("escape_net")
         actor_idx = self._current_agent_idx()
         if not (0 <= actor_idx < len(self.bm.placed_agents)):
@@ -5419,7 +5422,10 @@ class App:
         if not (0 <= target_idx < len(self.bm.placed_agents)):
             return
 
-        res = self.combat.escape_net(self.bm, actor_idx, target_idx)
+        netted = self.combat.get_agent_conditions(self.bm, target_idx).netted
+        what = "the Net" if netted else "the Grasping Shot"
+        res = (self.combat.escape_net(self.bm, actor_idx, target_idx) if netted
+               else self.combat.escape_grasping_shot(self.bm, actor_idx, target_idx))
         if not res.valid:
             self._combat_log_add(
                 f"{self.bm.placed_agents[actor_idx].name}: can't free that creature "
@@ -5430,7 +5436,7 @@ class App:
         who = "itself" if target_idx == actor_idx else self.bm.placed_agents[target_idx].name
         self._combat_log_add(
             f"{self.bm.placed_agents[actor_idx].name}: STR check {res.total} vs DC {res.dc} to free "
-            f"{who} from the Net — {'FREED' if res.freed else 'still tangled'}.")
+            f"{who} from {what} — {'FREED' if res.freed else 'still tangled'}.")
         self._flush_combat_log()
         self.action_used = True
         self._update_attack_overlay()

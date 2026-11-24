@@ -375,6 +375,29 @@ struct ManeuverResult {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  Result of an Arcane Archer on-hit Arcane Shot (ARCANE_ARCHER_PLAN.md AA2)
+// ─────────────────────────────────────────────────────────────────────────────
+struct ArcaneShotResult {
+    bool valid = false;               // gate passed: a use was spent and the option resolved
+    int  option = 0;                  // ArcaneShotOption
+    int  die_total = 0;               // raw Arcane Shot dice rolled (before multipliers)
+    int  damage = 0;                  // damage dealt to the hit target (after multipliers)
+    int  save_dc = 0;                 // Arcane Shot DC (0 = no save: Bursting)
+    int  save_roll = 0;               // the target's save total
+    bool condition_applied = false;   // the save failed and the condition landed
+    std::vector<int> splash_targets;  // Bursting: other creatures in the 10-ft emanation
+    std::vector<int> splash_damage;   // Bursting: damage each of them took (parallel)
+};
+
+struct GraspingEscapeResult {
+    bool valid = false;   // the target is held by a Grasping Shot and the actor can reach it
+    int  dc    = 0;       // the archer's Arcane Shot DC
+    int  d20   = 0;
+    int  total = 0;       // d20 + STR modifier
+    bool freed = false;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  Flurry of Blows result (Monk: two bonus attacks with optional Open Hand rider)
 // ─────────────────────────────────────────────────────────────────────────────
 struct FlurryResult {

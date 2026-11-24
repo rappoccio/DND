@@ -176,7 +176,7 @@ namespace {
     X(stunning_strike_available) X(stunning_strike_used) X(open_hand_rider_available) \
     X(open_hand_rider_used) X(quivering_palm_available) X(fleet_step_used) \
     X(divine_strike_available) X(divine_strike_used) X(psionic_strike_available) \
-    X(psionic_strike_used) X(hand_of_harm_available) \
+    X(psionic_strike_used) X(arcane_shot_available) X(arcane_shot_used) X(hand_of_harm_available) \
     X(elemental_attunement_move_available) X(hand_of_harm_used) \
     X(hand_of_harm_last_target) X(grappler_punch_grab_available) \
     X(grappler_punch_grab_used) X(divine_smite_available) X(divine_smite_used) \

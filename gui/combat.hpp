@@ -1457,6 +1457,25 @@ public:
     // Clears maneuver_available. Returns a ManeuverResult with save details / push distance.
     ManeuverResult applyManeuverEffect(BattleMap& bm, int attacker_idx, int target_idx, int maneuver_type) noexcept;
 
+    // Arcane Archer Arcane Shot (ARCANE_ARCHER_PLAN.md AA2), on-hit options. After a ranged weapon
+    // hit (conditions.arcane_shot_available), spend one "Arcane Shot" use (once per turn) and apply a
+    // KNOWN option: Banishing (psychic 1 die, CHA save → banished until the end of its next turn),
+    // Beguiling (psychic 2 dice, WIS save → Charmed by the archer until the start of the archer's
+    // next turn; ends early if the archer attacks/damages it or forces it to save), Bursting (force
+    // 2 dice to the target and each creature in a 10-ft emanation from it), Grasping (slashing 1
+    // die, STR save → Restrained for 1 minute; escapeGraspingShot), Shadow (psychic 1 die, WIS save
+    // → Blinded until the end of its next turn). The target's damage is folded into `result`.
+    ArcaneShotResult applyArcaneShot(BattleMap& bm, int archer_idx, int target_idx, int option,
+                                     AttackResult& result) noexcept;
+    // Grasping Shot escape: an action by the restrained creature, or a creature within 5 ft of it,
+    // makes a STR (Athletics) check against the archer's Arcane Shot DC; success ends Restrained.
+    // The action cost is the caller's to charge.
+    GraspingEscapeResult escapeGraspingShot(BattleMap& bm, int actor_idx, int target_idx) noexcept;
+    // True if target_idx is Restrained by a Grasping Shot.
+    [[nodiscard]] bool heldByGraspingShot(int target_idx) const noexcept;
+    // Beguiling Shot break rule: end any Charmed condition source_idx's Beguiling Shot put on target_idx.
+    void endBeguilingCharm(BattleMap& bm, int source_idx, int target_idx) noexcept;
+
     // Battle Master Sweeping Attack (on-hit): spend 1 Superiority Die to splash the same attack onto a
     // 2nd creature within 5 ft of the original target. If the original attack roll (result.total_roll)
     // would hit the 2nd creature's AC, it takes superiority-die damage of the attack's damage type.

@@ -477,6 +477,7 @@ test_scripts = [
     "test_untouchable.py",
     "test_banishment.py",
     "test_arcane_archer.py",
+    "test_arcane_shot.py",
     "test_send_to_floor.py",
     "test_border_doors.py",
     "test_load_blocked_alignment.py",

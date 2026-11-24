@@ -1216,6 +1216,8 @@ namespace rpg {
       bool divine_strike_used{false};       // Cleric L7: Divine Strike already applied this turn (once per turn)
       bool psionic_strike_available{false}; // Psi Warrior L3: a hit can apply Psionic Strike this attack
       bool psionic_strike_used{false};      // Psi Warrior L3: Psionic Strike already applied this turn (once per turn)
+      bool arcane_shot_available{false};    // Arcane Archer L3: a ranged weapon hit can apply an on-hit Arcane Shot option this attack
+      bool arcane_shot_used{false};         // Arcane Archer L3: an Arcane Shot was already used this turn (once per turn)
       bool hand_of_harm_available{false};   // Warrior of Mercy L3: a qualifying unarmed hit can apply Hand of Harm this attack
       bool elemental_attunement_move_available{false}; // Warrior of the Elements L3: an unarmed hit while Elemental Attunement is active can push/pull the target 10 ft (per-turn eligibility; the push/pull direction is a player choice)
       bool hand_of_harm_used{false};        // Warrior of Mercy L3: Hand of Harm already used this turn (once; L11 lifts the limit to once per target)
@@ -1382,6 +1384,8 @@ namespace rpg {
       conditions_.divine_strike_used           = false;
       conditions_.psionic_strike_available     = false;
       conditions_.psionic_strike_used          = false;
+      conditions_.arcane_shot_available        = false;
+      conditions_.arcane_shot_used             = false;
       conditions_.hand_of_harm_available       = false;
       conditions_.hand_of_harm_used            = false;
       conditions_.hand_of_harm_last_target     = -1;

@@ -2560,4 +2560,221 @@ bool CombatEngine::applyVitalityOfTheTree(BattleMap& bm, int source, int target)
     return true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Arcane Archer — on-hit Arcane Shot options (ARCANE_ARCHER_PLAN.md AA2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void CombatEngine::endBeguilingCharm(BattleMap& bm, int source_idx, int target_idx) noexcept
+{
+    std::vector<int> ids;
+    for (const auto& c : conditions_.all())
+        if (c.arcane_shot == ArcaneShotBeguiling && c.caster_idx == source_idx &&
+            c.agent_idx == target_idx && c.condition_name == "Charmed")
+            ids.push_back(c.condition_id);
+    for (int id : ids) {
+        removeAgentCondition(bm, id);
+        log_("Beguiling Shot: {}'s charm on {} breaks", agentName(bm, source_idx), agentName(bm, target_idx));
+    }
+}
+
+bool CombatEngine::heldByGraspingShot(int target_idx) const noexcept
+{
+    for (const auto& c : conditions_.all())
+        if (c.arcane_shot == ArcaneShotGrasping && c.agent_idx == target_idx &&
+            c.condition_name == "Restrained")
+            return true;
+    return false;
+}
+
+ArcaneShotResult CombatEngine::applyArcaneShot(BattleMap& bm, int archer_idx, int target_idx, int option,
+                                               AttackResult& result) noexcept
+{
+    ArcaneShotResult res;
+    res.option = option;
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (archer_idx < 0 || archer_idx >= n || target_idx < 0 || target_idx >= n) return res;
+
+    const auto opt = static_cast<ArcaneShotOption>(option);
+    if (opt != ArcaneShotBanishing && opt != ArcaneShotBeguiling && opt != ArcaneShotBursting &&
+        opt != ArcaneShotGrasping && opt != ArcaneShotShadow) return res;   // not an on-hit option
+
+    Agent::Conditions ac = bm.getAgentConditions(archer_idx);
+    if (!ac.arcane_shot_available || ac.arcane_shot_used) return res;
+    const Agent::Stats as = bm.getAgentStats(archer_idx);
+    if (!as.knowsArcaneShot(opt)) return res;
+    const Resource* uses = as.getResource("Arcane Shot");
+    if (!uses || uses->current <= 0) return res;
+
+    // Commit: one use, once per turn.
+    spendResource(bm, archer_idx, "Arcane Shot", 1);
+    ac.arcane_shot_available = false;
+    ac.arcane_shot_used      = true;
+    bm.setAgentConditions(archer_idx, ac);
+    res.valid   = true;
+
+    const int die  = as.arcane_shot_die_size;
+    const int dice = (opt == ArcaneShotBeguiling || opt == ArcaneShotBursting) ? 2 : 1;
+    for (int i = 0; i < dice; ++i) res.die_total += roll(die);
+
+    const bool magic = (opt != ArcaneShotGrasping);
+    const int  mtype = (opt == ArcaneShotBursting) ? static_cast<int>(MagicDamage_t::Force)
+                                                    : static_cast<int>(MagicDamage_t::Psychic);
+    auto mult_for = [&](int idx) -> float {
+        const Agent::Stats ts = bm.getAgentStats(idx);
+        return magic ? effectiveMagicDamageMult(as, ts, static_cast<MagicDamage_t>(mtype), false, &bm, idx)
+                     : effectivePhysicalDamageMult(as, ts, Slashing, &bm, idx);
+    };
+    auto hurt = [&](int idx, int dmg) {
+        if (dmg <= 0) return;
+        (void)damageAgent(bm, idx, dmg);
+        checkConcentrationOnDamage(bm, idx, dmg, archer_idx);
+        processDamageTaken(bm, idx, dmg, magic ? magicTypeBit(mtype) : 0u);
+    };
+
+    // The hit target: fold the dice into the attack's result.
+    static constexpr const char* kName[] = {"", "Banishing Shot", "Beguiling Shot", "Bursting Shot",
+                                            "Grasping Shot", "Piercing Shot", "Seeking Shot", "Shadow Shot"};
+    const char* label = kName[static_cast<int>(opt)];
+    res.damage = std::max(0, static_cast<int>(static_cast<float>(res.die_total) * mult_for(target_idx)));
+    result.damage_breakdown.push_back({label, res.damage});
+    result.total_damage += res.damage;
+    if (magic) result.magic_damage_types.push_back(static_cast<MagicDamage_t>(mtype));
+    else       result.physical_damage_types.push_back(Slashing);
+    hurt(target_idx, res.damage);
+    result.target_down = bm.getAgentStats(target_idx).hp_cur <= 0;
+    log_("{}: {} takes {} {} damage", label, agentName(bm, target_idx), res.damage,
+         opt == ArcaneShotBursting ? "Force" : opt == ArcaneShotGrasping ? "Slashing" : "Psychic");
+
+    if (opt == ArcaneShotBursting) {
+        // Each other creature in a 10-ft emanation from the target takes the same 2 dice of Force.
+        const PlacedAgent& tpa = agents[static_cast<std::size_t>(target_idx)];
+        for (int i = 0; i < n; ++i) {
+            if (i == target_idx) continue;
+            const PlacedAgent& pa = agents[static_cast<std::size_t>(i)];
+            if (pa.removed_from_play || pa.origin.z != tpa.origin.z) continue;
+            const Agent::Stats st = bm.getAgentStats(i);
+            if (st.hp_cur <= 0 || (st.hp_max == 0 && st.hp_cur == 0)) continue;
+            if (sealedApart(bm, target_idx, i)) continue;
+            if (footprintDistance(tpa.origin, tpa.agent->getSize(), pa.origin, pa.agent->getSize()) * 5 > 10)
+                continue;
+            if (!bm.hasLineOfSight(tpa.origin, tpa.agent->getSize(), pa.origin, pa.agent->getSize())) continue;
+            const int dmg = std::max(0, static_cast<int>(static_cast<float>(res.die_total) * mult_for(i)));
+            hurt(i, dmg);
+            if (i != archer_idx) endBeguilingCharm(bm, archer_idx, i);
+            res.splash_targets.push_back(i);
+            res.splash_damage.push_back(dmg);
+            log_("Bursting Shot: {} takes {} Force damage", agentName(bm, i), dmg);
+        }
+        return res;
+    }
+
+    if (result.target_down) return res;   // nothing left to save
+
+    // Save-rider options.
+    res.save_dc = as.arcaneShotDC();
+    const int dc = res.save_dc;
+    std::string cond_name;
+    SaveAbility_t ab = SaveWis;
+    switch (opt) {
+        case ArcaneShotBanishing: cond_name = "Banished";   ab = SaveCha; break;
+        case ArcaneShotBeguiling: cond_name = "Charmed";    ab = SaveWis; break;
+        case ArcaneShotGrasping:  cond_name = "Restrained"; ab = SaveStr; break;
+        case ArcaneShotShadow:    cond_name = "Blinded";    ab = SaveWis; break;
+        default: return res;
+    }
+    // The Beguiling save is itself a forced save from the archer, which would break a standing charm.
+    endBeguilingCharm(bm, archer_idx, target_idx);
+
+    if (opt == ArcaneShotBeguiling && beguilingTwistAdvantage(bm, target_idx, "Charmed"))
+        res.save_roll = rollAdvantage(20, saveModFor(bm, target_idx, ab));
+    else
+        res.save_roll = roll(20, saveModFor(bm, target_idx, ab));
+    if (ab == SaveStr) res.save_roll = applyIndomitableMight(bm, target_idx, ab, res.save_roll);
+
+    if (res.save_roll >= dc) {
+        log_("{} resists {} ({} save {} vs DC {})", agentName(bm, target_idx), label,
+             ab == SaveCha ? "CHA" : ab == SaveStr ? "STR" : "WIS", res.save_roll, dc);
+        if (opt == ArcaneShotBeguiling) charmFearSaveSucceeded(bm, target_idx);
+        return res;
+    }
+    if (conditionImmune(bm, target_idx, cond_name)) {
+        log_("{} is immune to {} — {} lands no condition", agentName(bm, target_idx), cond_name, label);
+        return res;
+    }
+
+    if (opt == ArcaneShotBanishing) {
+        // Until the end of its next turn: ticks at the TARGET's turn starts (AA0 helper).
+        res.condition_applied = banish(bm, target_idx, target_idx, 2) >= 0;
+    } else {
+        if (opt == ArcaneShotGrasping) {
+            // A new Grasping Shot ends this archer's previous one.
+            std::vector<int> ids;
+            for (const auto& c : conditions_.all())
+                if (c.arcane_shot == ArcaneShotGrasping && c.caster_idx == archer_idx)
+                    ids.push_back(c.condition_id);
+            for (int id : ids) removeAgentCondition(bm, id);
+        }
+        ActiveAgentCondition c;
+        c.agent_idx         = target_idx;
+        c.save_ability      = ab;
+        c.save_dc           = dc;
+        c.save_repeat_turns = -1;            // no repeat save (Grasping escapes by a check instead)
+        c.next_save_turn    = -1;
+        c.condition_name    = cond_name;
+        c.arcane_shot       = static_cast<int>(opt);
+        if (opt == ArcaneShotBeguiling) {
+            c.caster_idx = archer_idx; c.turns_remaining = 1;    // until the start of the archer's next turn
+        } else if (opt == ArcaneShotGrasping) {
+            c.caster_idx = archer_idx; c.turns_remaining = 10;   // 1 minute
+        } else {                                                 // Shadow: until the end of its next turn
+            c.caster_idx = target_idx; c.turns_remaining = 2;
+        }
+        res.condition_applied = addAgentCondition(bm, c) >= 0;
+    }
+    if (res.condition_applied)
+        log_("{} fails its save ({} vs DC {}) — {} ({})", agentName(bm, target_idx), res.save_roll, dc,
+             cond_name, label);
+    return res;
+}
+
+GraspingEscapeResult CombatEngine::escapeGraspingShot(BattleMap& bm, int actor_idx, int target_idx) noexcept
+{
+    GraspingEscapeResult res;
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (actor_idx < 0 || actor_idx >= n || target_idx < 0 || target_idx >= n) return res;
+
+    int cond_id = -1;
+    for (const auto& c : conditions_.all())
+        if (c.arcane_shot == ArcaneShotGrasping && c.agent_idx == target_idx &&
+            c.condition_name == "Restrained") { cond_id = c.condition_id; res.dc = c.save_dc; break; }
+    if (cond_id < 0) return res;
+
+    // Same reach rule as the Net: the restrained creature itself, or a creature within 5 ft of it.
+    const Agent::Conditions acd = bm.getAgentConditions(actor_idx);
+    if (acd.dead || acd.unconscious || acd.incapacitated) return res;
+    if (actor_idx != target_idx) {
+        const PlacedAgent& apa = agents[static_cast<std::size_t>(actor_idx)];
+        const PlacedAgent& tpa = agents[static_cast<std::size_t>(target_idx)];
+        if (footprintDistance(apa.origin, apa.agent->getSize(),
+                              tpa.origin, tpa.agent->getSize()) * 5 > 5) return res;
+        if (!bm.hasLineOfSight(apa.origin, apa.agent->getSize(),
+                               tpa.origin, tpa.agent->getSize())) return res;
+    }
+
+    const Agent::Stats st = bm.getAgentStats(actor_idx);
+    const int str_mod = dndMod(st.str);
+    res.valid = true;
+    res.d20   = roll(20);
+    res.total = res.d20 + str_mod;
+    res.freed = res.total >= res.dc;
+    if (res.freed) removeAgentCondition(bm, cond_id);
+    log_("{} makes a DC {} STR check to free {} from the Grasping Shot: {} + {} = {} ({})",
+         agentName(bm, actor_idx), res.dc,
+         actor_idx == target_idx ? "itself" : agentName(bm, target_idx),
+         res.d20, str_mod, res.total, res.freed ? "FREED" : "FAILED");
+    return res;
+}
+
 } // namespace rpg

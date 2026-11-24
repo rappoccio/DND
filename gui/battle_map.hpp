@@ -355,6 +355,13 @@ struct ActiveAgentCondition {
     //   banish_prev_untouchable: the DM-set Untouchable flag before banishment, restored on end.
     bool  banish_sends_home       = false;
     bool  banish_prev_untouchable = false;
+
+    // ── Arcane Archer Arcane Shot tag (ARCANE_ARCHER_PLAN.md AA2) ──────────────
+    // The ArcaneShotOption that created this condition (0 = not an Arcane Shot). Beguiling Shot's
+    // Charmed ends early when the archer (caster_idx) attacks/damages the target or forces a save;
+    // Grasping Shot's Restrained ends on a STR (Athletics) check vs save_dc (escapeGraspingShot)
+    // or when the same archer uses Grasping Shot again.
+    int   arcane_shot = 0;
 };
 
 // ── A placed agent on the map ──────────────────────────────────────────────

@@ -791,6 +791,21 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "attack vs target by another creature has Advantage), 5=Disarming (STR save or fights\n"
              "with improvised Unarmed Strikes until your next turn).\n"
              "Returns a ManeuverResult with save details / push distance.")
+        .def("apply_arcane_shot",
+             &CombatEngine::applyArcaneShot,
+             py::arg("battle_map"), py::arg("archer_idx"), py::arg("target_idx"), py::arg("option"),
+             py::arg("result"),
+             "Arcane Archer: after a ranged weapon hit (conditions.arcane_shot_available), spend one\n"
+             "Arcane Shot use (once per turn) on a known on-hit option (ArcaneShotOption: Banishing,\n"
+             "Beguiling, Bursting, Grasping, Shadow). Folds the target's damage into `result`.\n"
+             "Returns an ArcaneShotResult.")
+        .def("escape_grasping_shot",
+             &CombatEngine::escapeGraspingShot,
+             py::arg("battle_map"), py::arg("actor_idx"), py::arg("target_idx"),
+             "Grasping Shot: STR (Athletics) check vs the Arcane Shot DC by the restrained creature or\n"
+             "one within 5 ft; success ends Restrained. The action cost is the caller's.")
+        .def("held_by_grasping_shot", &CombatEngine::heldByGraspingShot, py::arg("target_idx"),
+             "True if the creature is Restrained by a Grasping Shot.")
         .def("apply_sweeping_attack",
              &CombatEngine::applySweepingAttack,
              py::arg("battle_map"), py::arg("action"), py::arg("result"), py::arg("secondary_idx"),

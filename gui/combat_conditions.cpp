@@ -102,6 +102,7 @@ nlohmann::json conditionToJson(const ActiveAgentCondition& c)
         {"curse_vuln_prev_mult", c.curse_vuln_prev_mult},
         {"banish_sends_home", c.banish_sends_home},
         {"banish_prev_untouchable", c.banish_prev_untouchable},
+        {"arcane_shot", c.arcane_shot},
     };
 }
 
@@ -144,6 +145,7 @@ ActiveAgentCondition conditionFromJson(const nlohmann::json& j)
     c.curse_vuln_prev_mult = j.value("curse_vuln_prev_mult", c.curse_vuln_prev_mult);
     c.banish_sends_home       = j.value("banish_sends_home", c.banish_sends_home);
     c.banish_prev_untouchable = j.value("banish_prev_untouchable", c.banish_prev_untouchable);
+    c.arcane_shot             = j.value("arcane_shot", c.arcane_shot);
     return c;
 }
 

@@ -576,6 +576,7 @@ def finish_attack(app):
     has_maneuver = False
     has_precision = False
     has_psionic_strike = False
+    has_arcane_shot = False
     has_punch_and_grab = False
     has_divine_smite = False
     has_eldritch_smite = False
@@ -616,6 +617,8 @@ def finish_attack(app):
             has_dreadful_strike = True
         elif result.hit and atk_cond and atk_cond.psionic_strike_available:
             has_psionic_strike = True
+        elif result.hit and atk_cond and atk_cond.arcane_shot_available:
+            has_arcane_shot = True
         elif result.hit and atk_cond and atk_cond.grappler_punch_grab_available:
             has_punch_and_grab = True
         elif result.hit and atk_cond and atk_cond.divine_smite_available:
@@ -762,6 +765,8 @@ def finish_attack(app):
             riders.offer_dreadful_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_psionic_strike:
             riders.offer_psionic_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
+        elif has_arcane_shot:
+            riders.offer_arcane_shot(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_punch_and_grab:
             riders.offer_punch_and_grab(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_divine_smite:

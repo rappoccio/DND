@@ -976,6 +976,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("divine_strike_used", &Agent::Conditions::divine_strike_used)
         .def_readwrite("psionic_strike_available", &Agent::Conditions::psionic_strike_available)
         .def_readwrite("psionic_strike_used", &Agent::Conditions::psionic_strike_used)
+        .def_readwrite("arcane_shot_available", &Agent::Conditions::arcane_shot_available)
+        .def_readwrite("arcane_shot_used", &Agent::Conditions::arcane_shot_used)
         .def_readwrite("hand_of_harm_available", &Agent::Conditions::hand_of_harm_available)
         .def_readwrite("hand_of_harm_used", &Agent::Conditions::hand_of_harm_used)
         .def_readwrite("hand_of_harm_last_target", &Agent::Conditions::hand_of_harm_last_target)
@@ -2243,6 +2245,24 @@ void bindTypes(py::module_& m) {
         .def_readonly("extra_damage",       &ManeuverResult::extra_damage)
         .def_readonly("extra_target_down",  &ManeuverResult::extra_target_down);
 
+    // ── ArcaneShotResult / GraspingEscapeResult (Arcane Archer AA2) ──────────
+    py::class_<ArcaneShotResult>(m, "ArcaneShotResult")
+        .def_readonly("valid",             &ArcaneShotResult::valid)
+        .def_readonly("option",            &ArcaneShotResult::option)
+        .def_readonly("die_total",         &ArcaneShotResult::die_total)
+        .def_readonly("damage",            &ArcaneShotResult::damage)
+        .def_readonly("save_dc",           &ArcaneShotResult::save_dc)
+        .def_readonly("save_roll",         &ArcaneShotResult::save_roll)
+        .def_readonly("condition_applied", &ArcaneShotResult::condition_applied)
+        .def_readonly("splash_targets",    &ArcaneShotResult::splash_targets)
+        .def_readonly("splash_damage",     &ArcaneShotResult::splash_damage);
+    py::class_<GraspingEscapeResult>(m, "GraspingEscapeResult")
+        .def_readonly("valid", &GraspingEscapeResult::valid)
+        .def_readonly("dc",    &GraspingEscapeResult::dc)
+        .def_readonly("d20",   &GraspingEscapeResult::d20)
+        .def_readonly("total", &GraspingEscapeResult::total)
+        .def_readonly("freed", &GraspingEscapeResult::freed);
+
     // ── OpenHandRiderResult ───────────────────────────────────────────────────
     py::class_<OpenHandRiderResult>(m, "OpenHandRiderResult")
         .def_readonly("valid",                   &OpenHandRiderResult::valid)
@@ -2584,6 +2604,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("banish_sends_home", &ActiveAgentCondition::banish_sends_home,
              "Banishment spell: an extraplanar target banished for the full duration doesn't return.")
         .def_readwrite("banish_prev_untouchable", &ActiveAgentCondition::banish_prev_untouchable)
+        .def_readwrite("arcane_shot", &ActiveAgentCondition::arcane_shot,
+             "Arcane Archer: the ArcaneShotOption (int) that created this condition (0 = none).")
         .def("__repr__", [](const ActiveAgentCondition& c){
             return "<ActiveAgentCondition '" + c.condition_name
                  + "' on agent[" + std::to_string(c.agent_idx)

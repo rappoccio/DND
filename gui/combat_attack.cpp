@@ -3273,6 +3273,9 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
     const Agent::Conditions& atk_cond = atk_pt.agent->getConditions();
     const Agent::Conditions& tgt_cond = tgt_pt.agent->getConditions();
 
+    // Beguiling Shot (D6): the archer attacking the creature it charmed ends the charm.
+    endBeguilingCharm(bm, action.attacker_idx, action.target_idx);
+
     // ── Spend a limited-use / Recharge weapon ────────────────────────────
     // The attack has committed by the time we reach applyAttackResult (determineAdvantage already
     // gated availability), so the use is consumed whether it hits or misses — a breath weapon is
@@ -3606,6 +3609,28 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         const Resource* ped = atk_stats.getResource("Psionic Energy");
         if (ped && ped->current > 0) {
             updated_atk_cond.psionic_strike_available = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
+    }
+
+    // ── Arcane Archer Arcane Shot eligibility (on a ranged weapon hit) ────
+    // D1: any ranged weapon attack qualifies (a thrown weapon included; no Ammunition model). Once
+    // per turn, with a use left and at least one on-hit option known. Applied out of band via
+    // applyArcaneShot after the GUI asks which option.
+    // The flag is per attack: an attack that doesn't qualify clears a skipped earlier offer.
+    if (atk_stats.fighter_subclass == ArcaneArcherPath) {
+        bool qualifies = false;
+        if (r.hit && ((w.type == WeaponType::Ranged) || s.was_thrown) &&
+            atk_stats.classLevel(CharacterClass::Fighter) >= 3 && !atk_cond.arcane_shot_used) {
+            const Resource* au = atk_stats.getResource("Arcane Shot");
+            const bool knows_on_hit =
+                atk_stats.knowsArcaneShot(ArcaneShotBanishing) || atk_stats.knowsArcaneShot(ArcaneShotBeguiling) ||
+                atk_stats.knowsArcaneShot(ArcaneShotBursting)  || atk_stats.knowsArcaneShot(ArcaneShotGrasping) ||
+                atk_stats.knowsArcaneShot(ArcaneShotShadow);
+            qualifies = au && au->current > 0 && knows_on_hit;
+        }
+        if (qualifies != updated_atk_cond.arcane_shot_available) {
+            updated_atk_cond.arcane_shot_available = qualifies;
             bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
         }
     }

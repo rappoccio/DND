@@ -1128,6 +1128,11 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         }
     }
 
+    // Beguiling Shot (D6): a Harm spell from the archer — damage or a forced save — ends the charm
+    // its Beguiling Shot put on any creature it targets.
+    if (sp.type == Spell::Harm)
+        for (int tgt_idx : targets) endBeguilingCharm(bm, action.caster_idx, tgt_idx);
+
     bool any_conditions_applied = false;
 
     // Power Word Fortify / Mass Heal HP pool. `pool_remaining` is drawn down as each

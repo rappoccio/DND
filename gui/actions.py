@@ -639,8 +639,11 @@ class ActionMenu:
 
         # Free from Net costs an Action, and is offered to a netted creature or to one
         # standing within 5 ft of a netted neighbour (the target is then a click).
-        if not app.action_used and app._netted_within_reach(agent_idx):
-            out.append(Action("escape_net", "🕸 Free from Net", GROUP_BONUS))
+        freeable = [] if app.action_used else app._netted_within_reach(agent_idx)
+        if freeable:
+            any_net = any(app.combat.get_agent_conditions(app.bm, i).netted for i in freeable)
+            out.append(Action("escape_net", "🕸 Free from Net" if any_net else "🕸 Free from Grasping Shot",
+                              GROUP_BONUS))
 
         # Haste's extra limited action, refilled at the top of each of the hasted
         # creature's turns. Outside the band because it IS an Action: spending the Bonus

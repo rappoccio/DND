@@ -315,6 +315,65 @@ def offer_psionic_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, a
     app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Psionic Strike", options)
 
 
+def offer_arcane_shot(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
+    """After a ranged weapon hit, offer the Arcane Archer's KNOWN on-hit Arcane Shot options
+    (Banishing / Beguiling / Bursting / Grasping / Shadow), once per turn for one use. The engine
+    rolls the dice, folds the target's damage into `result` and resolves the save
+    (apply_arcane_shot). Mirrors offer_psionic_strike, including the Mastery chain via on_done."""
+    from actions import ARCANE_SHOT_OPTIONS
+    stats = app.combat.get_agent_stats(app.bm, atk_idx)
+    on_hit = (rpg.ArcaneShotOption.Banishing, rpg.ArcaneShotOption.Beguiling,
+              rpg.ArcaneShotOption.Bursting, rpg.ArcaneShotOption.Grasping,
+              rpg.ArcaneShotOption.Shadow)
+    known = [(opt, name, note) for (opt, name, note) in ARCANE_SHOT_OPTIONS
+             if opt in on_hit and stats.knows_arcane_shot(opt)]
+
+    def _finish():
+        app._flush_combat_log()
+        if result.target_down:
+            app._drop_concentration_for_agent(target_idx)
+        app._sync_spell_effect_cache()
+        if on_done:
+            on_done()
+        else:
+            app._update_attack_overlay()
+
+    def _apply(opt, name):
+        res = app.combat.apply_arcane_shot(app.bm, atk_idx, target_idx, opt, result)
+        if not res.valid:
+            app._combat_log_add(atk_msg)
+            _finish()
+            return
+        dmg_parts = app._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+        dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+        app._combat_log_add(
+            f"{atk_name}→{tgt_name}: HIT {result.total_damage}{app._damage_breakdown_str(result)} "
+            f"{dmg_type_str}{' CRIT!' if result.critical else ''}{' — DOWN' if result.target_down else ''}")
+        if res.save_dc > 0 and not result.target_down:
+            outcome = "fails" if res.condition_applied else "resists"
+            app._combat_log_add(
+                f"  → {name}: save {res.save_roll} vs DC {res.save_dc} — {tgt_name} {outcome}")
+            app._spawn_flash(target_idx, "Failed" if res.condition_applied else "Saved",
+                             FLASH_BAD if res.condition_applied else FLASH_GOOD)
+        for i, dmg in zip(res.splash_targets, res.splash_damage):
+            app._combat_log_add(f"  → {name}: {app.bm.placed_agents[i].name} takes {dmg} Force")
+            if app.combat.get_agent_stats(app.bm, i).hp_cur <= 0:
+                app._drop_concentration_for_agent(i)
+        _finish()
+
+    def _skip():
+        app._combat_log_add(atk_msg)
+        _finish()
+
+    uses = stats.get_resource("Arcane Shot")
+    left = uses.current if uses else 0
+    dice = stats.arcane_shot_die_size
+    options = [(f"{name} — {note} (d{dice})", (lambda o=opt, nm=name: _apply(o, nm)))
+               for (opt, name, note) in known]
+    options.append(("Skip Arcane Shot", _skip))
+    app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Arcane Shot ({left} left)", options)
+
+
 def offer_hand_of_harm(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
     """After a qualifying unarmed hit, offer Monk Warrior of Mercy Hand of Harm (extra Necrotic,
     MA die + WIS). At L6 (Physician's Touch) the target is also Poisoned; at L11 it's free. The extra
