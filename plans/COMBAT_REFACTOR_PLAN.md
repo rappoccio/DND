@@ -5,8 +5,8 @@ forwarder deletion that closes it), **R4** (all six sub-engine cuts — `Visibil
 `MovementController`, `ConditionTracker`, `SpellEffectStore`, `NpcState`, `ReactionArbiter` — and
 both mis-grouping fixes, `combat_contested.cpp` and `combat_reactions.cpp`), and **R5**
 (`snapshot()`/`restore()`) are done and verified. **R4h closed R4** with a pure TU move of the
-park/resume flow into `combat_reactions.cpp`. The only open item is the floating follow-on (the
-riders+resources class-family split; see R4). See **Handoff (2026-11-18, R4h)** and **R4h** for the
+park/resume flow into `combat_reactions.cpp`. The floating follow-on (the
+riders+resources class-family split) is now **R6, Step 0 frozen 2026-11-24**; the move is next. See **Handoff (2026-11-18, R4h)** and **R4h** for the
 last step.
 
 **Staleness review (2026-11-18)**: no refactor work since 2026-09-25, but the repo moved on
@@ -446,6 +446,7 @@ therefore buys essentially nothing — the churn is method *additions* in the pu
 | **R3** | Extract `CombatContext` + `rules.hpp` | medium | 1–2 weeks | dissolves the 950-call edge; testable rules — **DONE** *(the residual call-site migration falls out of R4)* |
 | **R4** | Decompose into sub-engines behind a facade | high | multi-week | true modularity — *5 of 6 sub-engines cut (`NpcState` 2026-11-18) + `ContestedActions`; `ReactionArbiter` next* |
 | **R5** | State serialization → snapshot/restore | medium | 1–2 weeks | `MULTIPLAYER_PLAN.md`, mid-combat save — **DONE** |
+| **R6** | Split riders + resources by class (R4 follow-on) | low | ~1 day | a class's features in one TU — *Step 0 frozen 2026-11-24* |
 
 R0–R2 are mechanical and near-risk-free — do them regardless of whether R4 ever happens.
 R3 is the highest-leverage single step. **R4 should not start until R3 has settled.**
@@ -1426,6 +1427,84 @@ restored engine is indistinguishable from the one the snapshot came from":
   "change nothing".
 
 ---
+
+### R6 — Riders + resources class-family split — **Step 0 frozen 2026-11-24**
+
+The R4 follow-on (amended 2026-11-18), taken as its own phase. `combat_riders.cpp` (3,211 lines,
+90 `CombatEngine::` defs) and `combat_resources.cpp` (3,996 lines, 105 defs) cluster as one in the
+graph and grow with every class feature (Arcane Archer AA1–AA5 just landed in riders). Cut both
+by class, so a class's activations and its riders sit in one TU.
+
+**Decisions (frozen with the user, 2026-11-24):**
+
+- **D1. One file per class.** 12 class files + feats + shared, not 4 family files (a "martial"
+  file would be ~3.5k lines on day one). A subclass goes in its parent class's file.
+- **D2. Pure move.** No renames, signature changes, merges of near-duplicates
+  (`martialArtsDieSize` / `martialArtsDieCount` stay two functions), `combat.hpp` edits,
+  declaration reordering or body tidying. Only file placement, `#include`s and `CMakeLists.txt`.
+- **D3. Shared code stays in `combat_resources.cpp`** (bonus-action budget, `consumeBonusAttack`,
+  `spendResource`, `healAgent`, items / thrown items, slot-from-item, terrain and light ticks,
+  rests). Non-class grants go to a new `combat_feats.cpp`. `combat_riders.cpp` is deleted.
+- **D4. The grantor owns a feature.** The class whose rules text grants it (Divine Strike → Cleric,
+  Divine Smite → Paladin, Eldritch Smite → Warlock, War Magic / Arcane Charge → Fighter). Species
+  and feat features never go to a class file. Anything unplaceable goes to the user.
+- **D5. Oracle.** A throwaway script (scratchpad, not a suite) proves every non-banner line of the
+  two old files lands in exactly one new file, unedited, and nothing is added outside the new file
+  headers; then `./test.sh` at the baseline count (**285/0**, taken 2026-11-24 with D6's suite)
+  with goldens byte-identical.
+- **D6. One smoke test first.** `tests/test_arcane_archer_direct.py` pins `piercing_shot_cells`
+  and a direct `apply_masterful_shots` (the newest bodies, previously reached only indirectly),
+  added before the move. The other 15 bound-but-unnamed methods are logged below, not tested here.
+- **D7. Names `combat_<class>.cpp`.** Not `class_<x>.cpp`, which would sit next to the unrelated
+  `class_resources.cpp`.
+- **D8. `combat_feats.cpp` scope:** feats (Telekinetic, Sentinel, Grappler, Lucky), fighting styles
+  (Interception), Epic Boons (Peerless Aim, Merge with Shadows), Weapon Mastery (Topple), species.
+  Its header states that scope.
+- **D9. Generic hooks with single-class bodies go to the class.** `onCreatureDied` (Keeper of
+  Souls) → Cleric, `charmFearSaveSucceeded` (Fey Wanderer) → Ranger. If a second class hooks in,
+  the dispatcher moves to shared then.
+- **D10. Source order kept.** Each new file holds its riders block first, in the old order, then its
+  resources block, in the old order.
+- **D11. Bindings and header untouched.** Splitting `bind_combat_resources.cpp` or regrouping
+  `combat.hpp` declarations the same way is a possible R6b, not this step.
+- **D12. Commits.** Step 0 (this section + D6's suite) is one commit; the move is a second, with
+  the D5 proof and the suite count recorded here.
+- **D13. Banners and old file headers are dropped.** Doc comments directly above a function travel
+  with it. Section banners (the `──` blocks) are positional, and some are already misplaced (the
+  "Arcane Archer — on-hit Arcane Shot options" banner sits above Ranger's `endBeguilingCharm`), so
+  they don't move. Each new file gets a fresh header (class, subclasses, contents); the shared
+  file's header is rewritten for its remaining role.
+
+**File-local helpers** each have callers in one destination only (checked): `martialArtsDieSize`
+(riders), `martialArtsDieCount`, `elementName` (resources, anonymous namespace) → Monk;
+`arcaneShotWeapon`, `masterfulHalfSpeed` (riders, anonymous namespaces) → Fighter. Nothing needs
+to move to `combat_internal.hpp`.
+
+**Method → file** (helpers in parentheses; ~lines include leading doc comments and banners):
+
+| File | ~Lines | From `combat_riders.cpp` | From `combat_resources.cpp` |
+| ---- | -----: | ------------------------ | --------------------------- |
+| `combat_barbarian.cpp` | 790 | `applyBrutalStrikeEffect`, `applyRecklessReroll`, `canBranchesOfTree`, `applyBranchesOfTree`, `canVitalityOfTheTree`, `applyVitalityOfTheTree` | `activateRage`, `extendRage`, `endRage`, `useIntimidatingPresence`, `useZealousPresence`, `activateRageOfTheGods`, `travelAlongTree`, `applyRetaliation`, `canUsePrimalKnowledge` |
+| `combat_bard.cpp` | 379 | `bardMantleOfInspiration` | `grantBardicDie`, `useBardicDie`, `useBardicDieForDamage`, `bardRegainInspirationFromSlot`, `activateMantleOfMajesty`, `bardRestoreMantleOfMajestyFromSlot`, `activateUnbreakableMajesty`, `bardRestoreUnbreakableMajestyFromSlot`, `bardBeguilingMagic`, `bardRestoreBeguilingMagic`, `applySuperiorInspiration`, `bardCuttingWords` |
+| `combat_cleric.cpp` | 634 | `applyDivineStrikeEffect`, `canUseDivineIntervention`, `useDivineIntervention`, `applyGuidedStrike` | `moveDuplicate`, `swapWithDuplicate`, `activateCoronaOfLight`, `useTurnUndead`, `lifeSupremeHealing`, `discipleOfLifeBonus`, `graveCircleOfMortality`, `pullOfDeathDamage`, `canPathToTheGrave`, `usePathToTheGrave`, `pathToTheGraveCleric`, `pathToTheGraveAutoRadiant`, `detonatePathToTheGrave`, `canKeeperOfSouls`, `keeperOfSoulsTargets`, `keeperOfSoulsSlot`, `useKeeperOfSouls`, `onCreatureDied`, `canEnhancedNecromancy`, `usePreserveLife` |
+| `combat_druid.cpp` | 264 | — | `activateWildShape`, `deactivateWildShape`, `activateStarryForm`, `deactivateStarryForm`, `activateWrathOfSea`, `deactivateWrathOfSea`, `applyDragonMinRoll` |
+| `combat_fighter.cpp` | 1167 | `canUseWarMagic`, `markWarMagicUsed`, `availableWarMagicSpells`, `applyArcaneCharge`, `applyPsionicStrikeEffect`, `applyManeuverEffect`, `applySweepingAttack`, `applyRally`, `applyFeintingAttack`, `prepareQuickToss`, `applyPrecisionAttackEffect`, `applyRiposte`, `applyProtectiveField`, `applyTelekineticMovement`, `heldByGraspingShot`, `applyArcaneShot`, `canUseArcaneShot`, `piercingShotCells`, `(arcaneShotWeapon)`, `seekingShotTargetValid`, `finishArcaneSaveShot`, `piercingShot`, `seekingShot`, `curvingShotTargets`, `applyCurvingShot`, `applyEverReadyShot`, `canIndomitableTeleport`, `isIndomitableTeleportDestination`, `applyIndomitableTeleport`, `indomitableTeleportOptions`, `canMasterfulShots`, `masterfulShotsWeapon`, `(masterfulHalfSpeed)`, `isMasterfulShotsDestination`, `masterfulShotsDestination`, `applyMasterfulShots`, `masterfulShotsOptions`, `escapeGraspingShot` | — |
+| `combat_monk.cpp` | 701 | `(martialArtsDieSize)`, `applyHandOfHarmEffect`, `handOfHealing`, `wholenessOfBody`, `applyStunningStrike`, `applyOpenHandRider`, `executeFlurryOfBlows` | `(elementName)`, `shadowStepTeleport`, `cloakOfShadows`, `shadowArtsDarkness`, `(martialArtsDieCount)`, `activateElementalAttunement`, `elementalAttunementMove`, `elementalBurst`, `plantQuiveringPalm` |
+| `combat_paladin.cpp` | 379 | `applyDivineSmiteEffect`, `applySoulOfVengeance` | `layOnHands`, `activateSacredWeapon`, `activateVowOfEnmity`, `activateAvengingAngel`, `activateElderChampion`, `activateInspiringSmite`, `activateLivingLegend` |
+| `combat_ranger.cpp` | 586 | `applyDreadfulStrikeEffect`, `chooseStalkersFlurry`, `applyMassFear`, `beguilingTwistAdvantage`, `beguilingTwistTargets`, `canBeguilingTwist`, `applyBeguilingTwist`, `charmFearSaveSucceeded`, `takeBeguilingTwistOffers`, `suddenStrikeTargets`, `autoDreadfulStrike`, `companionRanger`, `primalCompanionOf`, `companionRestricted`, `canCommandCompanion`, `commandCompanion`, `armBeastsStrike`, `beastsStrikeTargets`, `beastsStrike`, `vanishOrphanedCompanions`, `endBeguilingCharm` | `mistyWandererAllies`, `isMistyWandererAllyCell`, `mistyWandererAllyCell`, `mistyWanderer`, `autoMistyWanderer` |
+| `combat_rogue.cpp` | 405 | `applyCunningStrikeEffect`, `applyCunningStrikeRiders`, `applyHomingStrike`, `canRendMind`, `applyRendMind` | `activatePsychicVeil`, `psychicTeleportation` |
+| `combat_sorcerer.cpp` | 372 | — | `activateInnateSorcery`, `sorceryIncarnateActive`, `activateDragonWings`, `activateDraconicResistance`, `activateTranceOfOrder`, `activateBastionOfLaw`, `applyBastionWard`, `clockworkCavalcade`, `activateRevelationInFlesh`, `warpingImplosion` |
+| `combat_warlock.cpp` | 499 | `applyEldritchSmiteEffect` | `applyOneWithShadows`, `stepsOfTheFey`, `applyStepsOfFeyRider`, `bewitchingMistyStep`, `activateClairvoyantCombatant`, `triggerSearingVengeance`, `useMagicalCunning`, `useHealingLight` |
+| `combat_wizard.cpp` | 97 | — | `usePortentDie`, `regeneratePortentDice` |
+| `combat_feats.cpp` | 319 | `applyPunchAndGrab`, `canPeerlessAim`, `applyPeerlessAim`, `applySentinelGuard`, `applyTopple`, `applyInterception`, `applyTelekineticShove` | `applyMergeWithShadows`, `spendLuckForAdvantage`, `itemLuckSource`, `luckAvailable` |
+| `combat_resources.cpp` | 541 | `consumeBonusAttack` | `hasBonusAction`, `spendBonusAction`, `resetBonusActions`, `spendResource`, `healAgent`, `useItem`, `resolveThrownItem`, `regainSlotFromItem`, `tickTerrainForTurn`, `tickLightEffectsForTurn`, `applyLongRest`, `applyShortRest` |
+
+**Bound methods no suite names** (D6's follow-up list; some are reached indirectly):
+`vanish_orphaned_companions`, `apply_precision_attack_effect`, `can_peerless_aim`,
+`apply_sentinel_guard`, `apply_open_hand_rider`, `consume_bonus_attack`,
+`is_misty_wanderer_ally_cell`, `misty_wanderer_ally_cell`, `tick_light_effects_for_turn`,
+`regenerate_portent_dice`, `activate_starry_form`, `deactivate_starry_form`,
+`activate_wrath_of_sea`, `deactivate_wrath_of_sea`, `apply_dragon_min_roll`.
 
 ## Rejected options
 
