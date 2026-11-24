@@ -1106,37 +1106,6 @@ std::vector<int> CombatEngine::hordeBreakerTargets(const BattleMap& bm, int atta
     return out;
 }
 
-// ── Shadowy Dodge (Gloom Stalker L15) ─────────────────────────────────────────────────────────
-bool CombatEngine::canShadowyDodge(const BattleMap& bm, int defender_idx, int attacker_idx) const
-{
-    const auto& agents = bm.placedAgents();
-    const int n = static_cast<int>(agents.size());
-    if (defender_idx < 0 || defender_idx >= n || attacker_idx < 0 || attacker_idx >= n) return false;
-    if (defender_idx == attacker_idx || bm.isAgentOnDeck(defender_idx)) return false;
-    const Agent::Conditions cond = bm.getAgentConditions(defender_idx);
-    if (!canTakeReaction(cond) || cond.dead) return false;
-    const Agent::Stats s = bm.getAgentStats(defender_idx);
-    if (s.hp_cur <= 0) return false;
-    return s.hasClass(CharacterClass::Ranger) && s.ranger_subclass == GloomStalkerPath &&
-           s.classLevel(CharacterClass::Ranger) >= 15;
-}
-
-bool CombatEngine::applyShadowyDodge(BattleMap& bm, int defender_idx)
-{
-    if (defender_idx < 0 || defender_idx >= static_cast<int>(bm.placedAgents().size())) return false;
-    Agent::Conditions c = bm.getAgentConditions(defender_idx);
-    if (!canTakeReaction(c)) return false;
-    c.reaction_used = true;
-    bm.setAgentConditions(defender_idx, c);
-    log_("{} uses Shadowy Dodge — the attack roll has Disadvantage", agentName(bm, defender_idx));
-    return true;
-}
-
-bool CombatEngine::isShadowyDodgeDestination(const BattleMap& bm, int idx, Cell dest) const
-{
-    return isSeenTeleportSpace(bm, idx, dest, 6);   // 30 ft
-}
-
 // A teleport destination within range_cells (5 ft each) of idx's footprint: not its own space, every
 // cell of the footprint a legal teleport cell, unoccupied, and a space it can see. Shared by Shadowy
 // Dodge (30 ft) and Indomitable Teleport (60 ft).
@@ -1153,58 +1122,6 @@ bool CombatEngine::isSeenTeleportSpace(const BattleMap& bm, int idx, Cell dest, 
             if (!isValidTeleportDestination(bm, dest.col + c, dest.row + r)) return false;
     if (bm.agentOccupancy(Cell{dest.col, dest.row}, sz, idx) != 0) return false;           // unoccupied
     return bm.hasLineOfSight(me.origin, sz, Cell{dest.col, dest.row}, sz);                 // a space you can see
-}
-
-Cell CombatEngine::shadowyDodgeDestination(const BattleMap& bm, int idx) const
-{
-    const Cell none{-1, -1};
-    const auto& agents = bm.placedAgents();
-    const int n = static_cast<int>(agents.size());
-    if (idx < 0 || idx >= n) return none;
-    const PlacedAgent& me = agents[static_cast<std::size_t>(idx)];
-    const int sz = me.agent->getSize();
-    // D6: a cell is safe when, for every enemy, it is out of that enemy's melee reach OR out of its
-    // line of sight. Reach is the enemy's longest melee weapon (5 ft at least), as isThreatened has it.
-    struct Foe { Cell origin; int size; int reach_cells; };
-    std::vector<Foe> foes;
-    for (int i = 0; i < n; ++i) {
-        if (i == idx || rules::alliedFactions(bm, idx, i)) continue;
-        const PlacedAgent& o = agents[static_cast<std::size_t>(i)];
-        if (o.removed_from_play || o.on_deck) continue;
-        if (rules::untouchableApart(bm, idx, i)) continue;   // Untouchable: out of reach
-        if (o.agent->getConditions().dead || o.agent->getStats().hp_cur <= 0) continue;
-        int reach_ft = 5;
-        for (const Weapon& w : bm.getAgentWeapons(i))
-            if (!w.name.empty() && w.type == WeaponType::Melee) reach_ft = std::max(reach_ft, w.reach_ft);
-        foes.push_back({o.origin, o.agent->getSize(), reach_ft / 5});
-    }
-    const auto safe = [&](Cell at) {
-        for (const Foe& f : foes)
-            if (footprintDistance(at, sz, f.origin, f.size) <= f.reach_cells &&
-                bm.hasLineOfSight(f.origin, f.size, at, sz)) return false;
-        return true;
-    };
-    if (safe(me.origin)) return none;   // already out of every enemy's reach (or sight): stay put
-    Cell best = none;
-    int best_d = 1 << 30;
-    for (int dr = -6 - (sz - 1); dr <= 6 + (sz - 1); ++dr)
-        for (int dc = -6 - (sz - 1); dc <= 6 + (sz - 1); ++dc) {
-            const Cell at{me.origin.col + dc, me.origin.row + dr};
-            if (!isShadowyDodgeDestination(bm, idx, at) || !safe(at)) continue;
-            const int d = footprintDistance(me.origin, sz, at, sz);
-            if (d < best_d) { best = at; best_d = d; }   // nearest first; ties keep row-major order
-        }
-    return best;
-}
-
-bool CombatEngine::shadowyDodgeTeleport(BattleMap& bm, int idx, Cell dest)
-{
-    if (!isShadowyDodgeDestination(bm, idx, dest)) return false;
-    const Cell from = bm.placedAgents()[static_cast<std::size_t>(idx)].origin;
-    if (!teleportAgent(bm, idx, dest.col, dest.row)) return false;
-    log_("{} teleports {} ft (Shadowy Dodge)", agentName(bm, idx),
-         5 * std::max(std::abs(dest.col - from.col), std::abs(dest.row - from.row)));
-    return true;
 }
 
 bool CombatEngine::canParry(const BattleMap& bm, int defender_idx) const
@@ -2492,33 +2409,6 @@ void CombatEngine::rollInFlightAttack(BattleMap& bm, InFlightAttack& s)
     maybeUnerringStrike(bm, s);  // Oath of Glory L20 Living Legend: promote the first weapon miss to a hit
     maybePeerlessAim(bm, s);     // Boon of Combat Prowess: NPC boon-holders auto-promote their first miss
     s.rolled = true;
-}
-
-// Shadowy Dodge accepted: the reaction is spent and the roll (not yet made) takes Disadvantage.
-void CombatEngine::takeShadowyDodge(BattleMap& bm, InFlightAttack& s)
-{
-    if (!applyShadowyDodge(bm, s.action.target_idx)) return;
-    s.dis = true;
-    s.shadowy_dodge = true;
-}
-
-// Shadowy Dodge's teleport, after the attack: a decided cell, else the engine's own pick (D6).
-void CombatEngine::shadowyDodgeFollowUp(BattleMap& bm, int idx, int col, int row)
-{
-    const Cell dest = (col >= 0 && row >= 0) ? Cell{col, row} : shadowyDodgeDestination(bm, idx);
-    if (dest.col < 0 || !shadowyDodgeTeleport(bm, idx, dest))
-        log_("{} stays put (Shadowy Dodge)", agentName(bm, idx));
-}
-
-std::vector<ReactionOption> CombatEngine::shadowyDodgeTeleportOptions() const
-{
-    std::vector<ReactionOption> opts;
-    opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Shadowy Dodge: teleport (safest cell)",
-                                  "ShadowyDodgeTeleport"});
-    opts.push_back(ReactionOption{ReactionOption::Feature, -1, "Shadowy Dodge: teleport (pick a cell)",
-                                  "ShadowyDodgeTeleportPick"});
-    opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Stay put", ""});
-    return opts;
 }
 
 // ── determineAdvantage: phase A — validate the attack and compute advantage/disadvantage + the
