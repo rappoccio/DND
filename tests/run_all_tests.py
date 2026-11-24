@@ -482,6 +482,7 @@ test_scripts = [
     "test_curving_shot.py",
     "test_arcane_archer_high.py",
     "test_arcane_archer_direct.py",
+    "test_unnamed_bindings.py",
     "test_send_to_floor.py",
     "test_border_doors.py",
     "test_load_blocked_alignment.py",
