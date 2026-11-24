@@ -331,6 +331,22 @@ void CombatEngine::rollDamage(const Weapon& w,
     // Build a per-type dice breakdown string for the log (mirrors the To-hit line so
     // every attack path — GUI/OA/reroll/RL — shows the dice that produced the damage).
     std::vector<std::string> log_parts;
+    std::vector<std::string> log_plain;   // the same parts without the " xM=N" scaling
+    // The primary damage roll (the one whose type the flat damage bonus shares). Resistance
+    // and vulnerability apply to the TOTAL of that type, rounded once: (1 + 9) x0.5 = 5, not
+    // 1x0.5 + 9x0.5 = 0 + 4. The dice's scaled share is recorded here and folded back in with
+    // the flat bonus below, once mod_mult is known.
+    bool        primary_set      = false;
+    int         primary_unscaled = 0;
+    int         primary_scaled   = 0;
+    std::size_t primary_log      = 0;
+    auto mark_primary = [&](int unscaled, int scaled) {
+        if (primary_set) return;
+        primary_set      = true;
+        primary_unscaled = unscaled;
+        primary_scaled   = scaled;
+        primary_log      = log_parts.size() - 1;   // the part format_type just pushed
+    };
     auto format_type = [&](int num_dice, int die_size, int type_damage,
                            float multiplier, const std::vector<int>& dice,
                            const char* type_name) {
@@ -341,6 +357,7 @@ void CombatEngine::rollDamage(const Weapon& w,
         }
         std::string part = std::format("{}d{} [{}]={} {}", num_dice, die_size,
                                        dice_str, type_damage, type_name);
+        log_plain.push_back(part);
         if (multiplier != 1.0f) {
             part += std::format(" x{:g}={}", multiplier,
                                 static_cast<int>(static_cast<float>(type_damage) * multiplier));
@@ -384,6 +401,7 @@ void CombatEngine::rollDamage(const Weapon& w,
             result.magic_damage_dealt[mt] += modified_damage;
             result.magic_damage_types.push_back(mt);
             format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice, magicDamageName(mt));
+            if (&dmg_roll == &w.physicalDamageRolls.front()) mark_primary(type_damage, modified_damage);
         } else {
             // Normal physical damage
             float multiplier = effectivePhysicalDamageMult(attacker, target, dmg_roll.type, bm, target_idx);
@@ -392,6 +410,7 @@ void CombatEngine::rollDamage(const Weapon& w,
             result.physical_damage_types.push_back(dmg_roll.type);
             format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice,
                         physicalDamageName(dmg_roll.type));
+            if (&dmg_roll == &w.physicalDamageRolls.front()) mark_primary(type_damage, modified_damage);
         }
     }
 
@@ -418,6 +437,8 @@ void CombatEngine::rollDamage(const Weapon& w,
         result.magic_damage_types.push_back(dmg_roll.type);
         format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice,
                     magicDamageName(dmg_roll.type));
+        if (w.physicalDamageRolls.empty() && &dmg_roll == &w.magicDamageRolls.front())
+            mark_primary(type_damage, modified_damage);
     }
 
     // Tavern Brawler (Origin feat) — Enhanced Unarmed Strike: a bare Unarmed Strike deals
@@ -437,10 +458,13 @@ void CombatEngine::rollDamage(const Weapon& w,
             type_damage += d;
         }
         float multiplier = effectivePhysicalDamageMult(attacker, target, Bludgeoning, bm, target_idx);
-        raw += static_cast<int>(static_cast<float>(type_damage) * multiplier);
+        const int scaled = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+        raw += scaled;
         result.physical_damage_types.push_back(Bludgeoning);
         format_type(num_dice, 4, type_damage, multiplier, type_dice,
                     physicalDamageName(Bludgeoning));
+        if (w.physicalDamageRolls.empty() && w.magicDamageRolls.empty())
+            mark_primary(type_damage, scaled);
     }
 
     // Unarmed Fighting style: a bare Unarmed Strike deals 1d6 Bludgeoning (vs the default
@@ -459,10 +483,13 @@ void CombatEngine::rollDamage(const Weapon& w,
             type_damage += d;
         }
         float multiplier = effectivePhysicalDamageMult(attacker, target, Bludgeoning, bm, target_idx);
-        raw += static_cast<int>(static_cast<float>(type_damage) * multiplier);
+        const int scaled = static_cast<int>(static_cast<float>(type_damage) * multiplier);
+        raw += scaled;
         result.physical_damage_types.push_back(Bludgeoning);
         format_type(num_dice, 6, type_damage, multiplier, type_dice,
                     physicalDamageName(Bludgeoning));
+        if (w.physicalDamageRolls.empty() && w.magicDamageRolls.empty())
+            mark_primary(type_damage, scaled);
     }
 
     int ability_mod = damageAbilityMod(w, attacker);
@@ -523,7 +550,11 @@ void CombatEngine::rollDamage(const Weapon& w,
         size_enfeeble_note += std::format(" -{}(enfeebled)", d);
     }
 
-    const int modified_mod = static_cast<int>(static_cast<float>(result.damage_mod) * mod_mult);
+    // Scale the primary dice and the flat bonus together and round once; modified_mod is what
+    // the flat bonus adds on top of the dice's own scaled share (already in `raw`).
+    const int combined_scaled = static_cast<int>(
+        static_cast<float>(primary_unscaled + result.damage_mod) * mod_mult);
+    const int modified_mod = combined_scaled - primary_scaled;
     result.total_damage = std::max(0, raw + modified_mod + size_enfeeble_mod);
     result.damage_breakdown.clear();
     result.damage_breakdown.push_back({"weapon", result.total_damage});
@@ -531,14 +562,18 @@ void CombatEngine::rollDamage(const Weapon& w,
     // Log: "Damage: 1d8 [6]=6 Slashing +4(dmg) = 10" — the per-type dice (with each die shown),
     // then the damage modifier (ability mod + weapon bonus). When resistance/vulnerability scales
     // the mod, show the scaled value. Crit doubles the dice count shown.
+    // A scaled hit shows the primary roll unscaled and the combined scaling after the bonus:
+    // "1d6 [1]=1 Piercing +9(dmg) → (1+9) x0.5=5 = 5".
+    const bool scaled_mod = mod_mult != 1.0f;
     std::string dmg_line;
     for (std::size_t i = 0; i < log_parts.size(); ++i) {
         if (i) dmg_line += " + ";
-        dmg_line += log_parts[i];
+        dmg_line += (scaled_mod && primary_set && i == primary_log) ? log_plain[i] : log_parts[i];
     }
     if (dmg_line.empty()) dmg_line = "—";
     log_("Damage: {} {:+}(dmg){}{} = {}{}", dmg_line, result.damage_mod,
-         mod_mult != 1.0f ? std::format(" x{:g}={}", mod_mult, modified_mod) : std::string{},
+         scaled_mod ? std::format(" → ({}{:+}) x{:g}={}", primary_unscaled, result.damage_mod,
+                                  mod_mult, combined_scaled) : std::string{},
          size_enfeeble_note,
          result.total_damage, result.critical ? " (CRIT)" : "");
 }

@@ -295,6 +295,49 @@ def test_no_resistance_keeps_full_modifier():
     print("✅ test_no_resistance_keeps_full_modifier passed")
 
 
+def test_resistance_rounds_dice_and_modifier_together():
+    """Resistance halves the TOTAL damage of the type, rounded once: a 1d1 Bludgeoning die plus a
+    +5 flat bonus against a raging Barbarian is (1 + 5) x0.5 = 3. Rounding the pieces separately
+    gave 1x0.5 + 5x0.5 = 0 + 2 = 2. A crit doubles the die: (2 + 5) x0.5 = 3 as well."""
+    bm = setup_battle_map()
+    engine = setup_combat_engine()
+    atk = add_agent_to_battle(engine, bm, create_test_agent("Attacker", 5, 5))
+    tgt = add_agent_to_battle(engine, bm, create_test_agent("RageBarb", 6, 5))
+
+    s = engine.get_agent_stats(bm, atk)
+    s.str = 18  # +4 modifier
+    engine.set_agent_stats(bm, atk, s)
+
+    w = rpg.Weapon()
+    w.name = "Club"
+    w.type = rpg.WeaponType.Melee
+    w.reach_ft = 5
+    w.bonus_hit = 50
+    w.bonus_damage = 1
+    roll = rpg.PhysicalDamageRoll()
+    roll.type = rpg.PhysicalDamage.Bludgeoning
+    roll.num_dice = 1
+    roll.die_size = 1
+    w.physical_damage_types = [roll]
+    engine.set_agent_weapons(bm, atk, [w, rpg.Weapon(), rpg.Weapon()])
+
+    ts = engine.get_agent_stats(bm, tgt)
+    ts.character_class = rpg.CharacterClass.Barbarian
+    ts.char_level = 1
+    ts.base_ac = 1
+    ts.hp_max = 1000
+    ts.hp_cur = 1000
+    ts.initialize_class_resources(rpg.CharacterClass.Barbarian, 1)
+    engine.set_agent_stats(bm, tgt, ts)
+    engine.activate_rage(bm, tgt)
+
+    r = _attack_until_hit(engine, bm, atk, tgt)
+    assert r.damage_mod == 5, r.damage_mod
+    assert r.total_damage == 3, (
+        f"(1 + 5) x0.5 should round once to 3, got {r.total_damage} (pieces rounded separately)")
+    print("✅ test_resistance_rounds_dice_and_modifier_together passed")
+
+
 def test_rage_end():
     """Test ending Rage clears resistance and flags"""
     bm = setup_battle_map()
@@ -608,6 +651,7 @@ def main():
     test_rage_activation()
     test_rage_resistance_halves_modifier()
     test_no_resistance_keeps_full_modifier()
+    test_resistance_rounds_dice_and_modifier_together()
     test_rage_end()
     test_rage_extend()
     test_berserker_frenzy_flag()
