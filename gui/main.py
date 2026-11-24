@@ -744,6 +744,9 @@ class App:
         # The Attack action's sequence across its swings, and the cast menu's staged choices:
         # both outlive a single arm (pending.py).
         self.attack_seq           = pending.AttackSequence()
+        # An Attack action's swings still owed when Hew interrupted it with its bonus-action
+        # attack: (remaining, weapon_idx, offhand, resource), or None. Restored when Hew ends.
+        self.hew_paused_action_seq = None
         self.cast_setup           = pending.CastSetup()
         self.pending_horde_breaker_targets = []  # Horde Breaker: the only creatures the armed attack may strike
         self.pending_sudden_strike_targets = []  # Sudden Strike (Gloom Stalker L11): likewise
@@ -3442,6 +3445,7 @@ class App:
         self.bonus_used            = False
         self.attack_seq.remaining  = 0
         self.attack_seq.slot       = ""
+        self.hew_paused_action_seq = None
         self.attack_action_taken   = False   # this turn's action was the Attack action
         self.grapple_bite_used     = False   # a vampire's Bite (grappled/charmed), once a turn
         # Every base mode but a Summon, which the turn boundary's clear disarms.

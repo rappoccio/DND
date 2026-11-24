@@ -14,6 +14,8 @@ runs. These checks pin:
   · a resolved pick ends the undo                          (test_a_resolved_pick_ends_the_undo)
   · a cancelled punch gives the weapon back                  (test_a_cancelled_punch_restores_the_weapons)
   · a cancelled Hew gives the Hew back                       (test_a_cancelled_hew_is_refunded)
+  · Hew mid-Attack, resolved or cancelled, leaves the remaining swing
+                   (test_hew_mid_attack_keeps_the_remaining_swing, test_a_cancelled_hew_mid_attack_*)
   · a cancelled Sweep continues the sequence                 (test_a_cancelled_sweep_continues_the_sequence)
   · a cancelled Vitality submits its Skip                    (test_a_cancelled_vitality_submits_its_skip)
   · every wired arm projects, and its cancel disarms         (test_every_wired_arm_projects_and_cancels)
@@ -447,6 +449,55 @@ def test_a_cancelled_hew_is_refunded():
     assert app.combat.get_agent_conditions(app.bm, aria).gwm_hew_available, "Hew not refunded"
     assert app.attack_seq.remaining == 0 and app.attack_seq.slot == ""
     print("✅ test_a_cancelled_hew_is_refunded")
+
+
+def _hew_after_one_swing(app, kira):
+    """Aria swings once of her two, then a crit/kill arms Hew (her Longsword made Heavy)."""
+    aria, skarn = _idx(app, "Aria"), _idx(app, "Skarn")
+    weapons = app.combat.get_agent_weapons(app.bm, aria)
+    weapons[0].heavy = True
+    app.combat.set_agent_weapons(app.bm, aria, weapons)
+    _choose(app, kira, "atk_action")
+    pick = _until_pick(app, kira)
+    assert app.prompts.submit(pick.id, Response(cell=_pos(app, skarn)), kira.id).ok
+    _frame(app)
+    assert app.attack_seq.slot == "action" and app.attack_seq.remaining == 1
+    cond = app.combat.get_agent_conditions(app.bm, aria)
+    cond.gwm_hew_available = True
+    app.combat.set_agent_conditions(app.bm, aria, cond)
+    _frame(app)
+    _choose(app, kira, "gwm_hew")
+    pick = _until_pick(app, kira)
+    assert app._armed_slot(pending.Attack) == "bonus", "Hew did not arm a bonus attack"
+    return aria, skarn, pick
+
+
+def test_hew_mid_attack_keeps_the_remaining_swing():
+    """Hew taken between the Attack action's swings is its own Bonus Action attack: once it
+    resolves, the Attack action's remaining swing is still owed and on offer."""
+    app, kira, _ = _aria_turn()
+    aria, skarn, pick = _hew_after_one_swing(app, kira)
+    assert app.prompts.submit(pick.id, Response(cell=_pos(app, skarn)), kira.id).ok
+    _frame(app)
+    assert app.bonus_used, "Hew did not spend the bonus action"
+    assert app.attack_seq.slot == "action" and app.attack_seq.remaining == 1, _attack_fields(app)
+    assert app.hew_paused_action_seq is None
+    assert any(o.id == "atk_action" and o.enabled for o in _offer(app).options), \
+        "Attack (1) not on offer after Hew"
+    print("✅ test_hew_mid_attack_keeps_the_remaining_swing")
+
+
+def test_a_cancelled_hew_mid_attack_keeps_the_remaining_swing():
+    """Cancelling Hew mid-Attack refunds Hew and leaves the Attack action's swing owed."""
+    app, kira, _ = _aria_turn()
+    aria, _skarn, pick = _hew_after_one_swing(app, kira)
+    assert app.prompts.cancel_as(pick.id, kira.id).ok
+    _frame(app)
+    assert app.combat.get_agent_conditions(app.bm, aria).gwm_hew_available, "Hew not refunded"
+    assert app.attack_seq.slot == "action" and app.attack_seq.remaining == 1, _attack_fields(app)
+    assert app.hew_paused_action_seq is None
+    assert any(o.id == "atk_action" and o.enabled for o in _offer(app).options)
+    print("✅ test_a_cancelled_hew_mid_attack_keeps_the_remaining_swing")
 
 
 def test_a_cancelled_sweep_continues_the_sequence():
@@ -2091,6 +2142,8 @@ if __name__ == "__main__":
         test_a_resolved_pick_ends_the_undo()
         test_a_cancelled_punch_restores_the_weapons()
         test_a_cancelled_hew_is_refunded()
+        test_hew_mid_attack_keeps_the_remaining_swing()
+        test_a_cancelled_hew_mid_attack_keeps_the_remaining_swing()
         test_a_cancelled_sweep_continues_the_sequence()
         test_a_cancelled_vitality_submits_its_skip()
         test_a_cancelled_shadowy_dodge_stays_put()

@@ -84,6 +84,8 @@ def continue_attack_sequence_after_rider(app, atk_idx: int):
         # the rider-path twin of the exhausted branch in _finish_attack).
         if seq_slot == "action":
             app._arm_blink_steps(atk_idx)
+        elif seq_slot == "bonus":
+            resume_hew_paused_action_seq(app)
 
     app._update_attack_overlay()
 
@@ -951,6 +953,8 @@ def finish_attack(app):
                 # Boon of Dimensional Travel — arm Blink Steps: the Attack action is fully spent.
                 if slot == "action":
                     app._arm_blink_steps(atk_idx)
+                elif slot == "bonus":
+                    resume_hew_paused_action_seq(app)
 
             # Restore original weapons if this was an unarmed strike
             if app._unarmed_strike_original_weapons:
@@ -1188,9 +1192,32 @@ def start_gwm_hew(app, atk_idx: int):
         return
     c.gwm_hew_available = False
     app.combat.set_agent_conditions(app.bm, atk_idx, c)
+    # Hew taken between the Attack action's swings: park the swings still owed, so the bonus
+    # attack runs as its own sequence and the Attack action resumes after it (restored by
+    # resume_hew_paused_action_seq when the Hew sequence ends). Cancel restores the arm
+    # snapshot instead, which already holds the action sequence.
+    seq = app.attack_seq
+    if seq.slot == "action" and seq.remaining > 0:
+        app.hew_paused_action_seq = (seq.remaining, seq.weapon_idx, seq.offhand, seq.resource)
+        seq.remaining = 0
     app._start_extra_attack(weapon_idx=weapon_idx, offhand=False,
                              label="Great Weapon Master: Hew")
     app._update_attack_overlay()
+
+
+def resume_hew_paused_action_seq(app) -> bool:
+    """A bonus sequence just ended: if Hew interrupted the Attack action, put back the swings it
+    still owed (the standing "⚔ Attack (N)" button resumes them). True if one was restored."""
+    paused = getattr(app, "hew_paused_action_seq", None)
+    if paused is None:
+        return False
+    app.hew_paused_action_seq = None
+    seq = app.attack_seq
+    seq.remaining, seq.weapon_idx, seq.offhand, seq.resource = paused
+    seq.slot = "action"
+    app._combat_log_add(f"Attack action: {seq.remaining} attack{'s' if seq.remaining != 1 else ''} "
+                        f"remaining — click Attack to continue.")
+    return True
 
 
 def eligible_guided_clerics(app, atk_idx):

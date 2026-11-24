@@ -147,6 +147,13 @@ def cancel_attack(app) -> None:
     app._beasts_strike_paid_now = False
     snap = app._attack_arm_snapshot
     app._attack_arm_snapshot = None
+    if getattr(app, "hew_paused_action_seq", None) is not None:
+        # Hew parked an Attack action's swings: the snapshot below already holds them; with
+        # no snapshot, put them back from the stash.
+        if snap is None:
+            import app_attacks   # deferred: app_attacks imports the GUI side of net/
+            app_attacks.resume_hew_paused_action_seq(app)
+        app.hew_paused_action_seq = None
     if snap is not None:
         (actor, app.attack_seq.remaining, app.attack_seq.slot, app.attack_seq.offhand,
          app.attack_seq.resource, app.attack_seq.weapon_idx, hew) = snap
