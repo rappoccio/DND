@@ -10,6 +10,8 @@ import re
 from widgets import Button, edit_line, caret_x
 
 _DIGITS = re.compile(r"\d*")
+# The item_bonuses keys the Bonuses row edits (helpers._ITEM_BONUS_KEYS has the full set).
+_ITEM_BONUS_FIELDS = ("spell_attack", "spell_dc")
 from helpers import _parse_physical_damage, _parse_magic_damage, _DEFAULT_WEAPON, _weapon_to_dict, _dict_to_weapon
 
 class WeaponDialog:
@@ -89,6 +91,12 @@ class WeaponDialog:
 
     def _save_form(self):
         """Write form dict back into the weapon list."""
+        # Zero item bonuses are dropped, so an untouched weapon stays an ordinary (stackable) one.
+        ib = {k: v for k, v in (self._f.get("item_bonuses") or {}).items() if v}
+        if ib:
+            self._f["item_bonuses"] = ib
+        else:
+            self._f.pop("item_bonuses", None)
         if 0 <= self._sel < len(self._weapons):
             self._weapons[self._sel] = dict(self._f)
 
@@ -116,7 +124,10 @@ class WeaponDialog:
 
     def _dice_entry(self, key: str):
         """(roll dict, "num_dice" | "die_size") for a per-type dice field key such as
-        ``phys_num_dice_Slashing``; (None, None) for any other key."""
+        ``phys_num_dice_Slashing``; (item_bonuses dict, field) for an ``ib_`` item-bonus key
+        such as ``ib_spell_dc``; (None, None) for any other key."""
+        if key.startswith("ib_") and key[3:] in _ITEM_BONUS_FIELDS:
+            return self._f.setdefault("item_bonuses", {}), key[3:]
         for prefix, list_key in (("phys_", "physical_damage_types"),
                                  ("mag_", "magic_damage_types")):
             if not key.startswith(prefix):
@@ -227,7 +238,8 @@ class WeaponDialog:
                     return True
 
             # Text / numeric input fields (includes per-type dice)
-            numeric_keys = ["name", "normal_range_ft", "long_range_ft", "quantity"]
+            numeric_keys = ["name", "normal_range_ft", "long_range_ft", "quantity",
+                            "bonus_hit", "bonus_damage"]
             numeric_keys += [k for k in self._rects.keys() if self._dice_entry(k)[0] is not None]
             for field_key in numeric_keys:
                 if field_key in self._rects and \
@@ -375,7 +387,8 @@ class WeaponDialog:
                                  (130, 160, 220) if active else (80, 80, 110),
                                  rect, 1, border_radius=3)
                 entry, field = self._dice_entry(key)
-                val = str(entry.get(field, "") if entry is not None else self._f.get(key, ""))
+                val = str(entry.get(field, 0 if key.startswith("ib_") else "")
+                          if entry is not None else self._f.get(key, ""))
                 ts  = self._font_md.render(val, True, (220, 220, 235))
                 screen.blit(ts, (rect.x + 4, rect.centery - ts.get_height() // 2))
                 if active:          # cursor
@@ -502,11 +515,18 @@ class WeaponDialog:
                 cy += FH + PAD
 
             # ── Bonuses ────────────────────────────────────────────────────
-            label("Bonuses", lx, cy)
-            label("+Dmg", lx + RW // 2, cy)
+            # +Hit / +Dmg: this weapon only. Spell Atk / Spell DC: passive item bonuses
+            # (item_bonuses) to the wielder's spells while carried — a staff or wand-like weapon.
+            QW = RW // 4
+            label("+Hit",       lx,          cy)
+            label("+Dmg",       lx + QW,     cy)
+            label("+Spell Atk", lx + 2 * QW, cy)
+            label("+Spell DC",  lx + 3 * QW, cy)
             cy += 14
-            text_field("bonus_hit",    lx,              cy, RW // 2 - 4)
-            text_field("bonus_damage", lx + RW // 2 + 4, cy, RW // 2 - 4)
+            text_field("bonus_hit",          lx,          cy, QW - 6)
+            text_field("bonus_damage",       lx + QW,     cy, QW - 6)
+            text_field("ib_spell_attack",    lx + 2 * QW, cy, QW - 6)
+            text_field("ib_spell_dc",        lx + 3 * QW, cy, QW - 6)
             cy += FH + PAD
 
             # ── Physical Damage ────────────────────────────────────────────

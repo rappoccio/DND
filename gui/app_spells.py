@@ -937,7 +937,7 @@ def resolve_planar_binding(app, target_idx):
         "con": cstats.spell_save_dc_con,   "intel": cstats.spell_save_dc_intel,
         "wis": cstats.spell_save_dc_wis,   "cha":   cstats.spell_save_dc_cha,
     }
-    dc = dc_by_ability.get(ab_name, cstats.spell_save_dc_cha)
+    dc = dc_by_ability.get(ab_name, cstats.spell_save_dc_cha) + cstats.spell_dc_bonus
     save_mod = app.combat.save_mod_for(app.bm, target_idx, rpg.SaveAbility.SaveCha)
     roll = app.combat.roll(20, save_mod)
     if roll >= dc:

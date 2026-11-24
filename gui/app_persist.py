@@ -364,6 +364,9 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
                 "athletics_prof":            s.athletics_prof,
                 "athletics_expertise":       s.athletics_expertise,
                 "initiative_bonus":          s.initiative_bonus,
+                "attack_bonus":              s.attack_bonus,
+                "spell_attack_bonus":        s.spell_attack_bonus,
+                "spell_dc_bonus":            s.spell_dc_bonus,
                 "num_attacks":        s.num_attacks,
                 # NPC segmented multiattack recipe: ordered (weapon_slot, count) segments.
                 # dict_to_stats reads it back; empty ⇒ legacy num_attacks behavior.

@@ -2066,7 +2066,7 @@ class StatsDialog:
     Callback: callback(agent_idx, new_stats_obj) called on OK.
     """
     DLG_W = 610
-    DLG_H = 880
+    DLG_H = 932   # +52 for the +Hit / Spell Attack / Spell DC row
     HDR_H = 36
     BTN_H = 32
     PAD   = 14
@@ -2116,6 +2116,10 @@ class StatsDialog:
         ("Fly (ft)",      "speed_fly",    0, 120),
         ("Burrow (ft)",   "speed_burrow", 0, 120),
         ("# Attacks",     "num_attacks",  1,  10),
+        # Flat DM bonuses: +Hit to every attack roll (weapon and spell), then spell-only extras.
+        ("+Hit (all attacks)", "attack_bonus",       -10, 20),
+        ("+Spell Attack",      "spell_attack_bonus", -10, 20),
+        ("+Spell Save DC",     "spell_dc_bonus",     -10, 20),
     ]
 
     def __init__(self, font_sm, font_md, font_lg, spells=None):
@@ -4896,8 +4900,10 @@ class ItemsDialog:
     One row per item stack: name, quantity with [−]/[+], and [✕] to drop the stack.
     ＋ Add Item opens the ItemSelectionDialog (items.json catalog). Adding an item the
     agent already carries bumps that stack's quantity rather than adding a second row —
-    matching BattleMap::addItemToAgent."""
-    DLG_W = 560
+    matching BattleMap::addItemToAgent. A row's [Bonus] opens an editor under the list for
+    the item's passive spell attack / spell save DC bonuses (item_bonuses, RAVENLOFT M1)."""
+    DLG_W = 616
+    EDITOR_H = 74
     PAD = 15
     ITEM_H = 32
     ROW_GAP = 5
@@ -4925,10 +4931,14 @@ class ItemsDialog:
         self._hover_slot = -1
         self.item_selection_dialog = None
         self.other_attuned = 0       # E4: attuned elsewhere on the creature (D5 warning)
+        self._bonus_row = -1         # row whose bonus editor is open; -1 = none
+        self._bonus_steppers = {}    # item_bonuses key → IntStepper
 
     def _recompute_rect(self, screen):
         n = max(1, len(self.current_items))
         body = 45 + n * (self.ITEM_H + self.ROW_GAP) + self.BTN_H + self.PAD * 2
+        if self._bonus_row >= 0:
+            body += self.EDITOR_H
         h = max(body, 160)
         sw, sh = screen.get_size()
         self.rect = pygame.Rect((sw - self.DLG_W) // 2, max(20, (sh - h) // 2), self.DLG_W, h)
@@ -4944,28 +4954,81 @@ class ItemsDialog:
         self.item_selection_dialog = item_selection_dialog
         self.current_items = [_item_to_dict(i) for i in item_array]
         self._hover_slot = -1
+        self._bonus_row = -1
+        self._bonus_steppers = {}
         self._recompute_rect(screen)
 
     def dismiss(self):
         self.active = False
+        self._bonus_row = -1
         if self.callback:
             self.callback()
 
     def _slot_rect(self, slot_idx: int) -> pygame.Rect:
         y = self.rect.y + 45 + slot_idx * (self.ITEM_H + self.ROW_GAP)
-        return pygame.Rect(self.rect.x + self.PAD, y, self.DLG_W - self.PAD * 2 - 150, self.ITEM_H)
+        return pygame.Rect(self.rect.x + self.PAD, y, self.DLG_W - self.PAD * 2 - 206, self.ITEM_H)
+
+    def _bonus_rect(self, slot_idx: int) -> pygame.Rect:
+        sr = self._slot_rect(slot_idx)
+        return pygame.Rect(sr.right + 6, sr.y, 50, self.ITEM_H)
 
     def _minus_rect(self, slot_idx: int) -> pygame.Rect:
         sr = self._slot_rect(slot_idx)
-        return pygame.Rect(sr.right + 6, sr.y, 28, self.ITEM_H)
+        return pygame.Rect(sr.right + 62, sr.y, 28, self.ITEM_H)
 
     def _plus_rect(self, slot_idx: int) -> pygame.Rect:
         sr = self._slot_rect(slot_idx)
-        return pygame.Rect(sr.right + 76, sr.y, 28, self.ITEM_H)
+        return pygame.Rect(sr.right + 132, sr.y, 28, self.ITEM_H)
 
     def _qty_rect(self, slot_idx: int) -> pygame.Rect:
         sr = self._slot_rect(slot_idx)
-        return pygame.Rect(sr.right + 36, sr.y, 38, self.ITEM_H)
+        return pygame.Rect(sr.right + 92, sr.y, 38, self.ITEM_H)
+
+    # ── Bonus editor (spell attack / spell save DC) ──────────────────────────
+    _BONUS_FIELDS = (("spell_attack", "+Spell Atk"), ("spell_dc", "+Spell DC"))
+
+    def _editor_rect(self) -> pygame.Rect:
+        a = self._add_rect()
+        return pygame.Rect(self.rect.x + self.PAD, a.bottom + 10,
+                           self.DLG_W - self.PAD * 2, self.EDITOR_H - 14)
+
+    def _editor_done_rect(self) -> pygame.Rect:
+        er = self._editor_rect()
+        return pygame.Rect(er.right - 70, er.bottom - 34, 60, 26)
+
+    def _open_bonus_editor(self, row: int, screen):
+        self._bonus_row = row
+        self._recompute_rect(screen)
+        er = self._editor_rect()
+        ib = self.current_items[row].get("item_bonuses") or {}
+        self._bonus_steppers = {}
+        x = er.x + 8
+        for key, label in self._BONUS_FIELDS:
+            x += self.font_sm.size(label)[0] + 8
+            self._bonus_steppers[key] = IntStepper(pygame.Rect(x, er.bottom - 34, 110, 26),
+                                                   int(ib.get(key, 0) or 0), 0, 10, self.font_md)
+            x += 110 + 24
+
+    def _close_bonus_editor(self, screen):
+        self._bonus_row = -1
+        self._bonus_steppers = {}
+        self._recompute_rect(screen)
+
+    def _sync_bonuses(self):
+        """Write the editor's steppers into the open row's item_bonuses (zeros dropped)."""
+        if not (0 <= self._bonus_row < len(self.current_items)):
+            return
+        row = self.current_items[self._bonus_row]
+        ib = dict(row.get("item_bonuses") or {})
+        for key, st in self._bonus_steppers.items():
+            if st.value:
+                ib[key] = st.value
+            else:
+                ib.pop(key, None)
+        if ib:
+            row["item_bonuses"] = ib
+        else:
+            row.pop("item_bonuses", None)
 
     def _remove_rect(self, slot_idx: int) -> pygame.Rect:
         sr = self._slot_rect(slot_idx)
@@ -4979,6 +5042,15 @@ class ItemsDialog:
     def handle(self, event, screen) -> bool:
         if not self.active or not self.rect:
             return False
+
+        # The bonus editor's steppers take typing and their own clicks first.
+        if self._bonus_row >= 0 and event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+            typing = any(st._active for st in self._bonus_steppers.values())
+            for st in self._bonus_steppers.values():
+                st.handle(event)
+            self._sync_bonuses()
+            if event.type == pygame.KEYDOWN and typing:
+                return True
 
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.dismiss()
@@ -4994,6 +5066,13 @@ class ItemsDialog:
                 if close_rect.collidepoint(*event.pos):
                     self.dismiss()
                     return True
+
+                if self._bonus_row >= 0:
+                    if self._editor_done_rect().collidepoint(*event.pos):
+                        self._close_bonus_editor(screen)
+                        return True
+                    if any(st.rect.collidepoint(*event.pos) for st in self._bonus_steppers.values()):
+                        return True
 
                 if self._add_rect().collidepoint(*event.pos):
                     def _on_item_selected(item_dict):
@@ -5015,14 +5094,24 @@ class ItemsDialog:
                         d = self.current_items[i]
                         d["attuned"] = not d.get("attuned", False)
                         return True
+                    if self._bonus_rect(i).collidepoint(*event.pos):
+                        if self._bonus_row == i:
+                            self._close_bonus_editor(screen)
+                        else:
+                            self._open_bonus_editor(i, screen)
+                        return True
                     if self._remove_rect(i).collidepoint(*event.pos):
                         del self.current_items[i]
+                        self._bonus_row = -1
+                        self._bonus_steppers = {}
                         self._recompute_rect(screen)
                         return True
                     if self._minus_rect(i).collidepoint(*event.pos):
                         q = int(self.current_items[i].get("quantity", 1)) - 1
                         if q <= 0:
                             del self.current_items[i]
+                            self._bonus_row = -1
+                            self._bonus_steppers = {}
                             self._recompute_rect(screen)
                         else:
                             self.current_items[i]["quantity"] = q
@@ -5087,6 +5176,12 @@ class ItemsDialog:
             surf.blit(self.font_sm.render(_fit_text(self.font_sm, label, text_w), True, (200, 200, 220)),
                       (slot_rect.x + 8, slot_rect.y + 6))
 
+            br = self._bonus_rect(i)
+            has_b = bool(item.get("item_bonuses")) or i == self._bonus_row
+            pygame.draw.rect(surf, (90, 110, 150) if has_b else self.C_BUTTON, br, border_radius=4)
+            g = self.font_sm.render("Bonus", True, (230, 230, 230))
+            surf.blit(g, g.get_rect(center=br.center))
+
             for rect, glyph, col in ((self._minus_rect(i), "−", self.C_BUTTON),
                                      (self._plus_rect(i),  "＋", self.C_BUTTON),
                                      (self._remove_rect(i), "✕", self.C_REMOVE)):
@@ -5102,6 +5197,24 @@ class ItemsDialog:
         pygame.draw.rect(surf, self.C_ADD, add_rect, border_radius=4)
         add_txt = self.font_sm.render("＋ Add Item", True, (220, 240, 220))
         surf.blit(add_txt, add_txt.get_rect(center=add_rect.center))
+
+        if 0 <= self._bonus_row < len(self.current_items):
+            er = self._editor_rect()
+            pygame.draw.rect(surf, self.C_SLOT_BG, er, border_radius=4)
+            pygame.draw.rect(surf, self.C_SLOT_BORDER, er, 1, border_radius=4)
+            name = self.current_items[self._bonus_row].get("name", "—")
+            hdr = f"{name}: bonuses while carried (and attuned, if it needs it)"
+            surf.blit(self.font_sm.render(_fit_text(self.font_sm, hdr, er.w - 16), True, self.C_LABEL),
+                      (er.x + 8, er.y + 4))
+            for key, label in self._BONUS_FIELDS:
+                st = self._bonus_steppers[key]
+                lt = self.font_sm.render(label, True, self.C_LABEL)
+                surf.blit(lt, lt.get_rect(right=st.rect.x - 6, centery=st.rect.centery))
+                st.draw(surf)
+            dr = self._editor_done_rect()
+            pygame.draw.rect(surf, self.C_ADD, dr, border_radius=4)
+            dt = self.font_sm.render("Done", True, (220, 240, 220))
+            surf.blit(dt, dt.get_rect(center=dr.center))
 
         warn = _attune_warning(self.current_items, self.other_attuned)
         if warn:

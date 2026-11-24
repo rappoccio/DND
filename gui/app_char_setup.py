@@ -160,6 +160,9 @@ def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_nam
     stats.speed_burrow = steppers["speed_burrow"].value
     stats.prof_bonus   = steppers["prof_bonus"].value
     stats.num_attacks  = steppers["num_attacks"].value
+    for key in ("attack_bonus", "spell_attack_bonus", "spell_dc_bonus"):
+        if key in steppers:
+            setattr(stats, key, steppers[key].value)
     # Saving throw proficiency per ability
     stats.save_prof_str   = prof_flags.get("save_prof_str",   False)
     stats.save_prof_dex   = prof_flags.get("save_prof_dex",   False)

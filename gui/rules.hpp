@@ -145,7 +145,8 @@ inline int attackModifier(const Weapon& w, const Agent::Stats& s) noexcept
     if (w.type == WeaponType::Ranged && !w.thrown && s.hasFeat("Archery"))
         base += 2;
 
-    return base + (w.proficient ? s.prof_bonus : 0);
+    // attack_bonus: the DM's flat +hit to every attack roll (Edit Stats).
+    return base + (w.proficient ? s.prof_bonus : 0) + s.attack_bonus;
 }
 
 inline int damageAbilityMod(const Weapon& w, const Agent::Stats& s) noexcept
@@ -195,16 +196,18 @@ inline int spellcastingAbilityMod(const Agent::Stats& s) noexcept
     return m;
 }
 
+// attack_bonus (every attack roll) and spell_attack_bonus are the DM's flat Edit Stats bonuses.
 inline int spellAttackMod(const Agent::Stats& s) noexcept
 {
-    return s.prof_bonus + spellcastingAbilityMod(s);
+    return s.prof_bonus + spellcastingAbilityMod(s) + s.attack_bonus + s.spell_attack_bonus;
 }
 
 inline int spellSaveDc(const Agent::Stats& s) noexcept
 {
     // Sorcerer Innate Sorcery: +1 to spell save DC while active.
     int innate = (s.innate_sorcery_turns > 0) ? 1 : 0;
-    return 8 + spellAttackMod(s) + innate;
+    // Not 8 + spellAttackMod: the attack bonuses must not leak into the DC.
+    return 8 + s.prof_bonus + spellcastingAbilityMod(s) + innate + s.spell_dc_bonus;
 }
 
 inline int spellSaveDcFromAbility(const Agent::Stats& s, SaveAbility_t ability) noexcept
@@ -315,7 +318,8 @@ inline int spellSaveDcFor(const PlacedAgent& pa, const Spell& sp) noexcept
 inline int spellAttackModFor(const PlacedAgent& pa, const Spell& sp) noexcept
 {
     const ItemSpells* is = itemSpellsFor(pa, sp);
-    if (is && is->spell_attack > 0) return is->spell_attack;
+    // The item's fixed bonus, plus the holder's flat attack_bonus (it applies to every attack roll).
+    if (is && is->spell_attack > 0) return is->spell_attack + pa.agent->getStats().attack_bonus;
     return spellAttackMod(pa.agent->getStats()) + carriedItemBonuses(pa, is == nullptr).spell_attack;
 }
 

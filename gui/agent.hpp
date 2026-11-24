@@ -228,6 +228,14 @@ namespace rpg {
       // block's printed Initiative (e.g. Strahd +14) can be matched exactly.
       int initiative_bonus{0};
 
+      // ── Flat DM-set bonuses (Edit Stats) ──────────────────────────────
+      // attack_bonus: every attack roll the creature makes, weapon and spell alike (a weapon's
+      // own bonus_hit stacks on top for that weapon). spell_attack_bonus: spell attack rolls
+      // only (stacks with attack_bonus). spell_dc_bonus: the creature's spell save DC.
+      int attack_bonus{0};
+      int spell_attack_bonus{0};
+      int spell_dc_bonus{0};
+
       // ── Character Class & Spell Slots ─────────────────────────────────
       // Multiclassing data model (see MULTICLASSING_PLAN.md Phase 0).
       // class_levels is the source of truth: one level (0–20) per CharacterClass,

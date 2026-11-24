@@ -389,6 +389,12 @@ void bindTypes(py::module_& m) {
         // Initiative
         .def_readwrite("initiative_prof", &Agent::Stats::initiative_prof)
         .def_readwrite("initiative_bonus", &Agent::Stats::initiative_bonus)
+        .def_readwrite("attack_bonus",       &Agent::Stats::attack_bonus,
+             "DM flat bonus to every attack roll, weapon and spell.")
+        .def_readwrite("spell_attack_bonus", &Agent::Stats::spell_attack_bonus,
+             "DM flat bonus to spell attack rolls (stacks with attack_bonus).")
+        .def_readwrite("spell_dc_bonus",     &Agent::Stats::spell_dc_bonus,
+             "DM flat bonus to the spell save DC.")
         .def_property_readonly("initiative_modifier", &Agent::Stats::initiativeModifier)
         // Character Class & Spell Slots. Multiclassing (MULTICLASSING_PLAN.md):
         // class_levels is the source of truth. character_class/char_level stay

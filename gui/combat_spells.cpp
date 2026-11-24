@@ -2402,7 +2402,8 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
                     } else if (spell_cond.save_dc_ability == SaveSpellcasterMod) {
                         cond.save_dc = rules::spellSaveDcFor(caster_pa, sp);   // item bonuses (M1)
                     } else {
-                        cond.save_dc = rules::spellSaveDcFromAbility(caster_stats, spell_cond.save_dc_ability);
+                        cond.save_dc = rules::spellSaveDcFromAbility(caster_stats, spell_cond.save_dc_ability)
+                                     + caster_stats.spell_dc_bonus;   // a spell's DC: the DM's flat bonus
                     }
                     // How often to repeat save checks
                     cond.save_repeat_turns = spell_cond.save_repeat_turns;
@@ -3361,7 +3362,8 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
             const ItemSpells*  eis = rules::itemSpellsFor(epa, sp);   // an item's spell_dc (ENSPELLED D1)
             dc = (eis && eis->spell_dc > 0)
                      ? eis->spell_dc
-                     : rules::spellSaveDcFromAbility(epa.agent->getStats(), sp.save_ability);
+                     : rules::spellSaveDcFromAbility(epa.agent->getStats(), sp.save_ability)
+                           + epa.agent->getStats().spell_dc_bonus;
         }
         saved = !auto_fail && (save_d20 + saveModFor(bm, target_idx, sp.save_ability) >= dc);
         if (saved && charm_fear) charmFearSaveSucceeded(bm, target_idx);   // Beguiling Twist's trigger

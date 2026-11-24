@@ -323,6 +323,24 @@ void testSpellMods()
     s.innate_sorcery_turns = 2;
     checkEq(rules::spellSaveDcFromAbility(s, rpg::SaveInt), 16,
             "Innate Sorcery also lifts an ability-named DC");
+    s.innate_sorcery_turns = 0;
+
+    // DM flat bonuses (Edit Stats): +Hit reaches spell attacks too; neither attack bonus leaks
+    // into the DC, and the DC bonus leaves the attack mod alone.
+    s.attack_bonus = 1;
+    s.spell_attack_bonus = 2;
+    checkEq(rules::spellAttackMod(s), 10, "+1 all-attacks and +2 spell attack stack on INT 7");
+    checkEq(rules::spellSaveDc(s), 15, "attack bonuses do not raise the save DC");
+    s.spell_dc_bonus = 2;
+    checkEq(rules::spellSaveDc(s), 17, "+2 spell DC bonus");
+    checkEq(rules::spellAttackMod(s), 10, "the DC bonus does not raise the attack mod");
+    rpg::Weapon w;
+    w.type = rpg::WeaponType::Melee;
+    w.proficient = true;
+    s.str = 10;
+    checkEq(rules::attackModifier(w, s), 4, "+Hit reaches weapon attacks (STR 0 + PB 3 + 1)");
+    checkEq(rules::attackModifier(w, s) - s.attack_bonus, 3,
+            "the spell attack bonus does not reach weapons");
 }
 
 void testNegativeAbilityRounding()
