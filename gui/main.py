@@ -8451,6 +8451,15 @@ class App:
                         self.bonus_used = True
                     else:
                         self._combat_log_add("Adrenaline Rush unavailable.")
+            if action_id == "howl":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    n = self.combat.use_howl(self.bm, idx)   # Lupin Howl (MORE_SPECIES_PLAN.md D8)
+                    self._flush_combat_log()
+                    if n >= 0:
+                        self.bonus_used = True
+                    else:
+                        self._combat_log_add("Howl unavailable.")
             if action_id == "draconic_flight":
                 self._toggle_draconic_flight()
             if action_id == "large_form":

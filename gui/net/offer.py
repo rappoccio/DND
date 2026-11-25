@@ -136,6 +136,7 @@ CLASS: dict[str, str] = {
     "draconic_flight_end": I,
     "large_form": I,
     "large_form_end": I,
+    "howl": I,
     "healing_light": A,
     "turn_undead": I,
     "divine_intervention": S,

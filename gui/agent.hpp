@@ -1168,6 +1168,13 @@ namespace rpg {
       // Bugbear Long-Limbed (D12) and Surprise Attack (D13).
       [[nodiscard]] bool hasLongLimbed() const noexcept { return hasSpeciesFlag(kSpeciesLongLimbed); }
       [[nodiscard]] bool hasSurpriseAttack() const noexcept { return hasSpeciesFlag(kSpeciesSurpriseAttack); }
+      // Lupin Howl (D8): uses spent since the last Long Rest (PB uses).
+      int howl_used{0};
+      [[nodiscard]] int howlRemaining() const noexcept {
+          return hasSpeciesFlag(kSpeciesHowl) ? std::max(0, prof_bonus - howl_used) : 0;
+      }
+      // Lupin Feral Pounce (D9): Unarmed Strikes deal Slashing, and a hit can also Shove.
+      [[nodiscard]] bool hasFeralPounce() const noexcept { return hasSpeciesFlag(kSpeciesFeralPounce); }
 
       // Fairy Flight (MORE_SPECIES_PLAN.md D11): fly Speed = walk Speed, except in Medium or
       // Heavy armor. armor_medium_heavy is kept by BattleMap::setAgentArmor (the minimum
@@ -1410,6 +1417,7 @@ namespace rpg {
         giant_ancestry_used = 0;          // Goliath Giant Ancestry
         large_form_used = false;          // Goliath Large Form
         past_life_used = 0;               // Reborn Knowledge from a Past Life
+        howl_used = 0;                    // Lupin Howl
         if (hasSpeciesFlag(kSpeciesHeroic)) heroic_inspiration = true;   // Human Resourceful
       }
 
@@ -1543,6 +1551,7 @@ namespace rpg {
       bool brutal_strike_used_this_turn{false}; // Brutal Strike effect already used this turn
       bool zealot_divine_fury_used{false};  // Zealot Divine Fury bonus already applied this turn
       bool keeper_of_souls_pending{false};  // Grave Domain Keeper of Souls: an enemy died within 60 ft and the GUI owes this cleric the heal prompt
+      int  howled_by{-1};                   // Lupin Howl (D8): index of the howling Lupin (-1 = none). Disadvantage on attack rolls and saves; ends at the start of that Lupin's next turn (mirrors grave_cursed_by)
       int  grave_cursed_by{-1};             // Grave Domain Path to the Grave: index of the cursing cleric (-1 = not cursed). Disadvantage on attack rolls and saves; ends at the start of that cleric's next turn
       int  pull_of_death_turn{-1};          // Grave Domain Pull of Death: ctx_.turnCounter_ of the turn it was last used (once per turn, any turn)
       bool fanatical_focus_used{false};     // Zealot Fanatical Focus reroll already used this Rage
@@ -1573,6 +1582,8 @@ namespace rpg {
       int  hand_of_harm_last_target{-1};    // Warrior of Mercy L11: index of the last creature struck by Hand of Harm this turn (can't reuse on the same target)
       bool grappler_punch_grab_available{false}; // Grappler feat: an Unarmed-Strike hit (Attack action) can also Grapple this attack
       bool grappler_punch_grab_used{false};      // Grappler feat: Punch-and-Grab already used this turn (once per turn)
+      bool feral_pounce_available{false};        // Lupin Feral Pounce (D9): an Unarmed-Strike hit (Attack action, own turn) can also Shove
+      bool feral_pounce_used{false};             // Lupin Feral Pounce: already used this turn (once per turn)
       bool divine_smite_available{false};   // Paladin: a melee/unarmed hit can apply Divine Smite this attack
       bool divine_smite_used{false};        // Paladin: Divine Smite already used this turn (bonus action, once per turn)
       bool eldritch_smite_available{false}; // Warlock (Eldritch Smite, inv 15): a pact-weapon hit can expend a pact slot this attack
@@ -1752,6 +1763,8 @@ namespace rpg {
       conditions_.elemental_attunement_move_available = false;  // per-turn on-hit eligibility (the active attunement itself persists across turns)
       conditions_.grappler_punch_grab_available = false;
       conditions_.grappler_punch_grab_used      = false;
+      conditions_.feral_pounce_available        = false;
+      conditions_.feral_pounce_used             = false;
       conditions_.divine_smite_available       = false;
       conditions_.divine_smite_used            = false;
       conditions_.eldritch_smite_available     = false;

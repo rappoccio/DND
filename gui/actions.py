@@ -753,6 +753,11 @@ class ActionMenu:
         # ── Goliath (SP6): Large Form (D6) and Cloud's Jaunt (D9) ──
         if app.combat.can_large_form(app.bm, agent_idx):
             out.append(Action("large_form", "⛰ Large Form", GROUP_BONUS))
+        # ── Lupin Howl (MORE_SPECIES_PLAN.md D8): WIS save or Howled, PB per Long Rest ──
+        if app.combat.can_howl(app.bm, agent_idx):
+            out.append(Action("howl",
+                              f"🐺 Howl ({stats.howl_remaining()}/{stats.prof_bonus})",
+                              GROUP_BONUS))
         if app.combat.can_clouds_jaunt(app.bm, agent_idx):
             out.append(Action("clouds_jaunt",
                               f"⛰ Cloud's Jaunt (30 ft, {stats.giant_ancestry_remaining()} left)",

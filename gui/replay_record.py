@@ -66,7 +66,7 @@ class RecordingCombat:
         "apply_eldritch_smite_effect",
         "execute_shove", "execute_grapple",
         "execute_grapple_escape", "drop_concentration", "clear_all_concentration",
-        "set_safe_targets", "arm_past_life",
+        "set_safe_targets", "arm_past_life", "use_howl", "apply_feral_pounce",
     }
 
     def __init__(self, engine, rpg_module):

@@ -193,6 +193,7 @@ def dict_to_stats(stats_dict):
     stats.large_form_rounds = int(stats_dict.get("large_form_rounds", 0))
     stats.large_form_speed_added = int(stats_dict.get("large_form_speed_added", 0))
     stats.past_life_used = int(stats_dict.get("past_life_used", 0))   # MS3: Reborn
+    stats.howl_used = int(stats_dict.get("howl_used", 0))             # MS4: Lupin
     stats.vampiric_strengthen_bonus = int(stats_dict.get("vampiric_strengthen_bonus", 0))
     stats.vampiric_strengthen_turns = int(stats_dict.get("vampiric_strengthen_turns", 0))
     # Barbarian L20 Primal Champion and L11 Relentless Rage

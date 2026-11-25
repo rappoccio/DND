@@ -183,7 +183,11 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
   offer. Tracker button `PLn` spends a use.
   - Long-Limbed (D12) and Surprise Attack (D13), once per combat.
   - Knowledge from a Past Life (D10): the prompt, the pool and the tracker button.
-- **MS4 — Lupin.**
+- **MS4 — Lupin.** Done 2026-11-25 (299/0): Howl is `useHowl` (a Bonus Action button, `I` in
+  the net offer table); `howled_by` sits beside `grave_cursed_by` at every read site and in
+  `curseSaveDisadvantage`. Feral Pounce swaps Bludgeoning → Slashing in `rollDamage` and sets
+  `feral_pounce_available` (Attack action, own turn, not an OA); `apply_feral_pounce` runs
+  `executeShove`, and a failed shove offers Past Life.
   - Feral Pounce (D9).
   - Howl (D8) and the `Howled` condition, with tests for the DC, the duration and the uses.
 - **MS5 — Aasimar actives.**

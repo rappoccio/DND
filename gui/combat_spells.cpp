@@ -220,6 +220,10 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
         caster_dis = true;
         log_("Disadvantage: caster is cursed (Path to the Grave)");
     }
+    if (caster_pa.agent->getConditions().howled_by >= 0) {   // Lupin Howl (D8)
+        caster_dis = true;
+        log_("Disadvantage: caster is Howled");
+    }
 
     // Grappled: caster has disadvantage on spell attacks except against the grappler
     if (caster_pa.agent->getConditions().grappled) {

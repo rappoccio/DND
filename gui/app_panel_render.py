@@ -72,7 +72,7 @@ _BON_FEY_TRIO = ("fey_effect", "steps_of_fey", "misty_escape")
 # thirteen, for exactly that reason. The feature groups survive as the comments.
 _BON_RUN_BAND      = (
     # Orc Adrenaline Rush, Dragonborn Draconic Flight, Goliath Large Form / Cloud's Jaunt (species)
-    "adrenaline_rush", "draconic_flight", "large_form", "clouds_jaunt",
+    "adrenaline_rush", "draconic_flight", "large_form", "howl", "clouds_jaunt",
     # Monk, Barbarian, Warlock — the class band
     "patient_defense", "step_of_wind", "hand_of_healing", "wholeness_of_body",
     "rage", "intimidating_presence", "zealous_presence",

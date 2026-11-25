@@ -86,6 +86,19 @@ void bindCombatFeats(py::class_<CombatEngine>& engine) {
              "again: it replays the recorded d20s (the defender's too) and adds the d6.")
         .def("spend_past_life", &CombatEngine::spendPastLife, py::arg("battle_map"), py::arg("idx"),
              "Tracker button: spend a Past Life use on a check the DM rolled at the table.")
+        // MS4: Lupin
+        .def("can_howl", &CombatEngine::canHowl, py::arg("battle_map"), py::arg("idx"),
+             "Lupin Howl is usable now (a use left, conscious, not Incapacitated).")
+        .def("howl_dc", &CombatEngine::howlDc, py::arg("battle_map"), py::arg("idx"),
+             "Lupin Howl save DC: 8 + CON mod + PB.")
+        .def("use_howl", &CombatEngine::useHowl, py::arg("battle_map"), py::arg("idx"),
+             "Lupin Howl: every hostile within 15 ft that can hear makes a WIS save or is Howled\n"
+             "(howled_by). Returns the number Howled, -1 when unavailable. The caller pays the\n"
+             "Bonus Action.")
+        .def("apply_feral_pounce", &CombatEngine::applyFeralPounce, py::arg("battle_map"),
+             py::arg("attacker_idx"), py::arg("target_idx"), py::arg("knock_prone"),
+             "Lupin Feral Pounce: after an Unarmed-Strike hit (feral_pounce_available), Shove the\n"
+             "target (push 5 ft or Prone), once per turn. Returns the ShoveResult.")
         .def("luck_available",
              &CombatEngine::luckAvailable,
              py::arg("battle_map"), py::arg("idx"),

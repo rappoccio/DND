@@ -63,6 +63,9 @@ inline constexpr std::uint32_t kSpeciesStealthProf   = 1u << 20;  // Bugbear: St
 inline constexpr std::uint32_t kSpeciesLongLimbed     = 1u << 21;  // Bugbear: +5 ft melee reach on its turn (D12)
 inline constexpr std::uint32_t kSpeciesSurpriseAttack = 1u << 22;  // Bugbear: +2d6 vs a creature yet to act, 1/combat (D13)
 inline constexpr std::uint32_t kSpeciesPastLife       = 1u << 23;  // Reborn: +1d6 to a failed check, PB/Long Rest (D10)
+// MS4:
+inline constexpr std::uint32_t kSpeciesHowl           = 1u << 24;  // Lupin: Howl, Bonus Action WIS save, PB/Long Rest (D8)
+inline constexpr std::uint32_t kSpeciesFeralPounce    = 1u << 25;  // Lupin: Slashing Unarmed Strikes + a Shove on hit (D9)
 
 // Creature type a species makes its member (MORE_SPECIES_PLAN.md D1). Humanoid is the default
 // and sets nothing; Fey sets Stats::is_fey.
@@ -174,7 +177,8 @@ inline constexpr std::array kSpeciesTable{
                .flags = kSpeciesSpellAbility, .creature_type = SpeciesCreatureType::Fey},
     SpeciesDef{.name = "Lupin", .darkvision = 60,
                .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
-               .flags = kSpeciesSkillful, .skill_options = kLupinSkills},
+               .flags = kSpeciesSkillful | kSpeciesHowl | kSpeciesFeralPounce,
+               .skill_options = kLupinSkills},
     SpeciesDef{.name = "Reborn", .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
                .flags = kSpeciesSkillful | kSpeciesDeathSaveAdv | kSpeciesPastLife,
                .option_label = "Endurance", .options = kStrangeEndurance},

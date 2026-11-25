@@ -383,6 +383,12 @@ void CombatEngine::rollDamage(const Weapon& w,
     // creature types (RAVENLOFT M2: the Thighbone's +2d6 Radiant vs Fiends and Undead) is
     // skipped against anyone else.
     const uint32_t target_types = target.creatureTypeMask();
+    // Lupin Feral Pounce (MORE_SPECIES_PLAN.md D9): an Unarmed Strike deals Slashing instead of
+    // Bludgeoning. An active Monk magic-type override (use_override below) still wins.
+    const bool feral_slash = attacker.hasFeralPounce() && (w.name == "Unarmed" || w.name == "MonkUnarmed");
+    auto unarmedType = [feral_slash](PhysicalDamage_t t) {
+        return (feral_slash && t == Bludgeoning) ? Slashing : t;
+    };
     for (const auto& dmg_roll : w.physicalDamageRolls) {
         if (!damageAppliesTo(dmg_roll.vs_creature_mask, target_types)) continue;
         const int num_dice = result.critical ? dmg_roll.num_dice * 2 : dmg_roll.num_dice;
@@ -413,12 +419,13 @@ void CombatEngine::rollDamage(const Weapon& w,
             if (&dmg_roll == &w.physicalDamageRolls.front()) mark_primary(type_damage, modified_damage);
         } else {
             // Normal physical damage
-            float multiplier = effectivePhysicalDamageMult(attacker, target, dmg_roll.type, bm, target_idx);
+            const PhysicalDamage_t pt = unarmedType(dmg_roll.type);
+            float multiplier = effectivePhysicalDamageMult(attacker, target, pt, bm, target_idx);
             int modified_damage = static_cast<int>(static_cast<float>(type_damage) * multiplier);
             raw += modified_damage;
-            result.physical_damage_types.push_back(dmg_roll.type);
+            result.physical_damage_types.push_back(pt);
             format_type(num_dice, dmg_roll.die_size, type_damage, multiplier, type_dice,
-                        physicalDamageName(dmg_roll.type));
+                        physicalDamageName(pt));
             if (&dmg_roll == &w.physicalDamageRolls.front()) mark_primary(type_damage, modified_damage);
         }
     }
@@ -466,12 +473,12 @@ void CombatEngine::rollDamage(const Weapon& w,
             type_dice.push_back(d);
             type_damage += d;
         }
-        float multiplier = effectivePhysicalDamageMult(attacker, target, Bludgeoning, bm, target_idx);
+        float multiplier = effectivePhysicalDamageMult(attacker, target, unarmedType(Bludgeoning), bm, target_idx);
         const int scaled = static_cast<int>(static_cast<float>(type_damage) * multiplier);
         raw += scaled;
-        result.physical_damage_types.push_back(Bludgeoning);
+        result.physical_damage_types.push_back(unarmedType(Bludgeoning));
         format_type(num_dice, 4, type_damage, multiplier, type_dice,
-                    physicalDamageName(Bludgeoning));
+                    physicalDamageName(unarmedType(Bludgeoning)));
         if (w.physicalDamageRolls.empty() && w.magicDamageRolls.empty())
             mark_primary(type_damage, scaled);
     }
@@ -491,12 +498,12 @@ void CombatEngine::rollDamage(const Weapon& w,
             type_dice.push_back(d);
             type_damage += d;
         }
-        float multiplier = effectivePhysicalDamageMult(attacker, target, Bludgeoning, bm, target_idx);
+        float multiplier = effectivePhysicalDamageMult(attacker, target, unarmedType(Bludgeoning), bm, target_idx);
         const int scaled = static_cast<int>(static_cast<float>(type_damage) * multiplier);
         raw += scaled;
-        result.physical_damage_types.push_back(Bludgeoning);
+        result.physical_damage_types.push_back(unarmedType(Bludgeoning));
         format_type(num_dice, 6, type_damage, multiplier, type_dice,
-                    physicalDamageName(Bludgeoning));
+                    physicalDamageName(unarmedType(Bludgeoning)));
         if (w.physicalDamageRolls.empty() && w.magicDamageRolls.empty())
             mark_primary(type_damage, scaled);
     }
@@ -527,14 +534,14 @@ void CombatEngine::rollDamage(const Weapon& w,
             mod_mult = target.magic_damage_multipliers[
                 static_cast<std::size_t>(attacker.unarmed_damage_override)];
         } else if (!w.physicalDamageRolls.empty()) {
-            mod_mult = effectivePhysicalDamageMult(attacker, target, w.physicalDamageRolls.front().type,
+            mod_mult = effectivePhysicalDamageMult(attacker, target, unarmedType(w.physicalDamageRolls.front().type),
                                                    bm, target_idx);
         } else if (!w.magicDamageRolls.empty()) {
             mod_mult = effectiveMagicDamageMult(attacker, target,
                                                 w.magicDamageRolls.front().type, false, bm, target_idx);
         } else {
             // No damage dice (default Unarmed / improvised strike = STR-mod-only Bludgeoning).
-            mod_mult = effectivePhysicalDamageMult(attacker, target, PhysicalDamage_t::Bludgeoning,
+            mod_mult = effectivePhysicalDamageMult(attacker, target, unarmedType(PhysicalDamage_t::Bludgeoning),
                                                    bm, target_idx);
         }
     }
@@ -2842,6 +2849,10 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         dis = true;
         log_("Disadvantage: attacker is cursed (Path to the Grave)");
     }
+    if (atk_cond.howled_by >= 0) {   // Lupin Howl (D8)
+        dis = true;
+        log_("Disadvantage: attacker is Howled");
+    }
 
     // Attacker frightened: disadvantage on attacks when fear source is in LOS
     if (atk_cond.frightened) {
@@ -3670,6 +3681,16 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         (w.name == "Unarmed" || w.name == "MonkUnarmed") &&
         action.attack_slot != "bonus" && !atk_cond.grappler_punch_grab_used) {
         updated_atk_cond.grappler_punch_grab_available = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+    // ── Lupin Feral Pounce (MORE_SPECIES_PLAN.md D9) — a Shove on an Unarmed-Strike hit ─
+    // Same gates as Punch-and-Grab (the Attack action, once per turn), and on the Lupin's own turn.
+    // The GUI offers it (riders.offer_feral_pounce → applyFeralPounce → executeShove).
+    if (r.hit && atk_stats.hasFeralPounce() &&
+        (w.name == "Unarmed" || w.name == "MonkUnarmed") && !action.opportunity &&
+        action.attack_slot != "bonus" && !atk_cond.feral_pounce_used &&
+        (ctx_.turn_agent_idx_ < 0 || ctx_.turn_agent_idx_ == action.attacker_idx)) {
+        updated_atk_cond.feral_pounce_available = true;
         bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
     }
 

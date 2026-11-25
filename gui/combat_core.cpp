@@ -163,7 +163,8 @@ bool CombatEngine::curseSaveDisadvantage(const BattleMap& bm, int agent_idx, Sav
     if (agent_idx < 0) return false;
     // Grave Domain Path to the Grave: Disadvantage on every saving throw while cursed.
     if (agent_idx < static_cast<int>(bm.placedAgents().size()) &&
-        bm.getAgentConditions(agent_idx).grave_cursed_by >= 0)
+        (bm.getAgentConditions(agent_idx).grave_cursed_by >= 0 ||
+         bm.getAgentConditions(agent_idx).howled_by >= 0))   // Lupin Howl (D8): the same Disadvantage
         return true;
     for (const ActiveAgentCondition& c : conditions_.all()) {
         if (c.agent_idx == agent_idx && c.curse_disadv_ability == static_cast<int>(ab))

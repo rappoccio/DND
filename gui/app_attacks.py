@@ -700,6 +700,7 @@ def finish_attack(app):
     has_psionic_strike = False
     has_arcane_shot = False
     has_punch_and_grab = False
+    has_feral_pounce = False
     has_divine_smite = False
     has_eldritch_smite = False
     has_reckless_reroll = False
@@ -745,6 +746,9 @@ def finish_attack(app):
             has_arcane_shot = True
         elif result.hit and atk_cond and atk_cond.grappler_punch_grab_available:
             has_punch_and_grab = True
+        # Lupin Feral Pounce (MORE_SPECIES_PLAN.md D9): after Punch-and-Grab, which wins a tie.
+        elif result.hit and atk_cond and atk_cond.feral_pounce_available:
+            has_feral_pounce = True
         elif result.hit and atk_cond and atk_cond.divine_smite_available:
             has_divine_smite = True
         elif result.hit and atk_cond and atk_cond.eldritch_smite_available:
@@ -905,6 +909,8 @@ def finish_attack(app):
             riders.offer_arcane_shot(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_punch_and_grab:
             riders.offer_punch_and_grab(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_feral_pounce:
+            riders.offer_feral_pounce(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_divine_smite:
             riders.offer_divine_smite(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_eldritch_smite:

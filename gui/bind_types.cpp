@@ -974,6 +974,13 @@ void bindTypes(py::module_& m) {
              "Bugbear Long-Limbed: +5 ft melee reach on its own turn.")
         .def("has_surprise_attack", &Agent::Stats::hasSurpriseAttack,
              "Bugbear Surprise Attack: +2d6 on a hit vs a creature yet to act, once per combat.")
+        // MS4: Lupin
+        .def_readwrite("howl_used", &Agent::Stats::howl_used,
+             "Lupin Howl: uses spent since the last Long Rest (pool = PB).")
+        .def("howl_remaining", &Agent::Stats::howlRemaining,
+             "Lupin Howl: uses left (0 for a non-Lupin).")
+        .def("has_feral_pounce", &Agent::Stats::hasFeralPounce,
+             "Lupin Feral Pounce: Slashing Unarmed Strikes, and a hit can also Shove.")
         .def_readwrite("armor_medium_heavy", &Agent::Stats::armor_medium_heavy,
              "Wearing Medium or Heavy armor (kept by set_agent_armor); grounds Fairy Flight.")
         .def("sync_species_flight", &Agent::Stats::syncSpeciesFlight,
@@ -1147,6 +1154,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("pull_of_death_turn", &Agent::Conditions::pull_of_death_turn)
         .def_readwrite("grave_cursed_by", &Agent::Conditions::grave_cursed_by)
+        .def_readwrite("howled_by", &Agent::Conditions::howled_by,
+             "Lupin Howl: index of the howling Lupin (-1 = none); Disadvantage on attacks and saves.")
         .def_readwrite("keeper_of_souls_pending", &Agent::Conditions::keeper_of_souls_pending)
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
         .def_readwrite("sneak_attack_used", &Agent::Conditions::sneak_attack_used)
@@ -1180,6 +1189,8 @@ void bindTypes(py::module_& m) {
              "Monk Elements L3: an unarmed hit this turn can push/pull the target 10 ft (per-turn eligibility)")
         .def_readwrite("grappler_punch_grab_available", &Agent::Conditions::grappler_punch_grab_available)
         .def_readwrite("grappler_punch_grab_used", &Agent::Conditions::grappler_punch_grab_used)
+        .def_readwrite("feral_pounce_available", &Agent::Conditions::feral_pounce_available)
+        .def_readwrite("feral_pounce_used", &Agent::Conditions::feral_pounce_used)
         .def_readwrite("divine_smite_available", &Agent::Conditions::divine_smite_available)
         .def_readwrite("divine_smite_used", &Agent::Conditions::divine_smite_used)
         .def_readwrite("eldritch_smite_available", &Agent::Conditions::eldritch_smite_available)

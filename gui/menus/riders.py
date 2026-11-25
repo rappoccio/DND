@@ -489,6 +489,34 @@ def offer_punch_and_grab(app, atk_idx, target_idx, atk_name, tgt_name, result, a
     app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Punch-and-Grab", options)
 
 
+def offer_feral_pounce(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+    """Lupin Feral Pounce (MORE_SPECIES_PLAN.md D9): after an Unarmed-Strike hit in the Attack
+    action, also Shove the target (push 5 ft or Prone), once per turn. The shove contest runs in
+    C++ via apply_feral_pounce → executeShove. Mirrors offer_punch_and_grab."""
+    def _apply(knock_prone):
+        app._combat_log_add(atk_msg)   # the unarmed-strike damage still landed
+        if knock_prone is not None:
+            sh = app.combat.apply_feral_pounce(app.bm, atk_idx, target_idx, knock_prone)
+            if sh.valid:
+                app._combat_log_add(f"{atk_name}→{tgt_name}: Feral Pounce — {sh.log_message}")
+                if not sh.success:
+                    # Past Life (D10) re-evaluates the same contest through executeShove.
+                    sa = rpg.ShoveAction()
+                    sa.attacker_idx, sa.target_idx, sa.knock_prone = atk_idx, target_idx, knock_prone
+                    app._offer_past_life(atk_idx, lambda: app._combat_log_add(
+                        app.combat.execute_shove(app.bm, sa).log_message))
+        app._flush_combat_log()
+        app._sync_spell_effect_cache()
+        app._mark_fog_dirty()
+        app._update_attack_overlay()
+    options = [
+        ("Feral Pounce: push 5 ft", lambda: _apply(False)),
+        ("Feral Pounce: knock Prone", lambda: _apply(True)),
+        ("Skip Shove", lambda: _apply(None)),
+    ]
+    app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Feral Pounce", options)
+
+
 def offer_elemental_move(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
     """After an unarmed hit while Elemental Attunement is active (Warrior of the Elements L3), offer
     to push the target 10 ft away or pull it 10 ft toward the Monk (no save). Mirrors

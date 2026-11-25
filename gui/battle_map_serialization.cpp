@@ -156,7 +156,7 @@ namespace {
     X(vampiric_strengthen_turns) X(breath_weapon_used) X(draconic_flight_used) \
     X(draconic_flight_rounds) X(draconic_flight_fly_from) X(giant_ancestry_used) \
     X(large_form_used) X(large_form_rounds) X(large_form_speed_added) X(armor_medium_heavy) \
-    X(past_life_used)
+    X(past_life_used) X(howl_used)
 
 // ── Agent::Conditions — every member, one X() each ───────────────────────────
 #define RPG_CONDITIONS_FIELDS(X) \
@@ -184,7 +184,7 @@ namespace {
     X(dreadful_strike_target) X(dreadful_strike_weapon) X(stalkers_flurry_pending) \
     X(ambushers_leap) X(sudden_strike_available) X(berserker_frenzy_used) X(vitality_used_this_turn) \
     X(branches_speed_zeroed) X(brutal_strike_used_this_turn) \
-    X(zealot_divine_fury_used) X(pull_of_death_turn) X(grave_cursed_by) X(keeper_of_souls_pending) X(fanatical_focus_used) X(brutal_strike_available) \
+    X(zealot_divine_fury_used) X(pull_of_death_turn) X(grave_cursed_by) X(howled_by) X(keeper_of_souls_pending) X(fanatical_focus_used) X(brutal_strike_available) \
     X(hamstrung) X(sundering_target_idx) X(staggered_next_save) X(radiant_soul_used) \
     X(sneak_attack_used) X(cunning_strike_available) X(steady_aim) \
     X(stunning_strike_available) X(stunning_strike_used) X(open_hand_rider_available) \
@@ -193,7 +193,7 @@ namespace {
     X(psionic_strike_used) X(arcane_shot_available) X(arcane_shot_used) X(curving_shot_available) X(hand_of_harm_available) \
     X(elemental_attunement_move_available) X(hand_of_harm_used) \
     X(hand_of_harm_last_target) X(grappler_punch_grab_available) \
-    X(grappler_punch_grab_used) X(divine_smite_available) X(divine_smite_used) \
+    X(grappler_punch_grab_used) X(feral_pounce_available) X(feral_pounce_used) X(divine_smite_available) X(divine_smite_used) \
     X(eldritch_smite_available) X(eldritch_smite_used) X(lifedrinker_used) \
     X(war_magic_used) X(eldritch_strike_by) X(guided_strike_available) \
     X(restore_balance_miss_available) X(maneuver_available) \

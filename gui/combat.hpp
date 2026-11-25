@@ -2583,6 +2583,19 @@ public:
     [[nodiscard]] bool canPastLife(const BattleMap& bm, int idx) const noexcept;
     int  armPastLife(BattleMap& bm, int idx);
     bool spendPastLife(BattleMap& bm, int idx);
+    // ── Lupin (MORE_SPECIES_PLAN.md MS4) ─────────────────────────────────────────────────────
+    // Howl (D8): a Bonus Action, PB uses per Long Rest. Every hostile within 15 ft that can hear
+    // the Lupin makes a WIS save against DC 8 + CON mod + PB; on a failure it is Howled
+    // (conditions.howled_by = the Lupin): Disadvantage on attack rolls and saving throws until the
+    // start of the Lupin's next turn. Not a Frightened save. useHowl returns how many were Howled,
+    // or -1 when it is unavailable. The caller pays the Bonus Action.
+    [[nodiscard]] bool canHowl(const BattleMap& bm, int idx) const noexcept;
+    [[nodiscard]] int  howlDc(const BattleMap& bm, int idx) const noexcept;
+    int useHowl(BattleMap& bm, int idx);
+    // Feral Pounce (D9): an Unarmed-Strike hit in the Attack action on the Lupin's own turn sets
+    // feral_pounce_available; this then Shoves the target (push 5 ft or Prone) through the normal
+    // executeShove contest, once per turn. Invalid result when the flag wasn't set.
+    ShoveResult applyFeralPounce(BattleMap& bm, int attacker_idx, int target_idx, bool knock_prone);
     void failedChestCheckTrap(BattleMap& bm, int agent_idx, int chest_id, ChestCheckResult& r);
 
     // Heroic Inspiration (D11): after a missed attack with the ★ held, the GUI offers a reroll

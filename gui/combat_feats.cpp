@@ -908,6 +908,74 @@ bool CombatEngine::spendPastLife(BattleMap& bm, int idx)
     return true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Lupin (MORE_SPECIES_PLAN.md MS4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool CombatEngine::canHowl(const BattleMap& bm, int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    const Agent::Stats s = bm.getAgentStats(idx);
+    if (s.hp_cur <= 0 || s.howlRemaining() <= 0) return false;
+    return !bm.getAgentConditions(idx).incapacitated;
+}
+
+int CombatEngine::howlDc(const BattleMap& bm, int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return 0;
+    const Agent::Stats s = bm.getAgentStats(idx);
+    return 8 + abilityMod(s.con) + s.prof_bonus;
+}
+
+int CombatEngine::useHowl(BattleMap& bm, int idx)
+{
+    if (!canHowl(bm, idx)) return -1;
+    Agent::Stats s = bm.getAgentStats(idx);
+    ++s.howl_used;
+    bm.setAgentStats(idx, s);
+    const int dc = howlDc(bm, idx);
+    log_("{} Howls (WIS save DC {}; {} use{} left)", agentName(bm, idx), dc,
+         s.howlRemaining(), s.howlRemaining() == 1 ? "" : "s");
+    const auto& agents = bm.placedAgents();
+    const PlacedAgent& lp = agents[static_cast<std::size_t>(idx)];
+    int howled = 0;
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        if (i == idx || areAllies(bm, idx, i) || sealedApart(bm, idx, i)) continue;
+        const PlacedAgent& tp = agents[static_cast<std::size_t>(i)];
+        if (tp.removed_from_play || tp.agent->getStats().hp_cur <= 0) continue;
+        const Agent::Conditions tc0 = bm.getAgentConditions(i);
+        if (tc0.dead || tc0.deafened) continue;   // "that can hear you"
+        if (footprintDistance(lp.origin, lp.agent->getSize(), tp.origin, tp.agent->getSize()) * 5 > 15)
+            continue;
+        if (rollFixedDcSave(bm, i, SaveWis, dc, "Howl", "")) continue;
+        Agent::Conditions tc = bm.getAgentConditions(i);
+        tc.howled_by = idx;
+        bm.setAgentConditions(i, tc);
+        ++howled;
+        log_("{} is Howled: Disadvantage on attacks and saves until {}'s next turn",
+             agentName(bm, i), agentName(bm, idx));
+    }
+    return howled;
+}
+
+ShoveResult CombatEngine::applyFeralPounce(BattleMap& bm, int attacker_idx, int target_idx, bool knock_prone)
+{
+    ShoveResult result;
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (attacker_idx < 0 || attacker_idx >= n || target_idx < 0 || target_idx >= n) return result;
+    Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+    if (!ac.feral_pounce_available || ac.feral_pounce_used) return result;   // once per turn
+    ac.feral_pounce_available = false;
+    ac.feral_pounce_used      = true;
+    bm.setAgentConditions(attacker_idx, ac);
+    log_("{}: Feral Pounce also Shoves {}", agentName(bm, attacker_idx), agentName(bm, target_idx));
+    ShoveAction sa;
+    sa.attacker_idx = attacker_idx;
+    sa.target_idx   = target_idx;
+    sa.knock_prone  = knock_prone;
+    return executeShove(bm, sa);
+}
+
 int CombatEngine::consumeStrengthenBonus(BattleMap& bm, int idx) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return 0;

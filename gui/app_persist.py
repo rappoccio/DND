@@ -466,6 +466,7 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
                 "large_form_speed_added": s.large_form_speed_added,
                 # MS3: Reborn Knowledge from a Past Life uses
                 "past_life_used": s.past_life_used,
+                "howl_used": s.howl_used,             # MS4: Lupin Howl uses
                 "vampiric_strengthen_bonus": s.vampiric_strengthen_bonus,
                 "vampiric_strengthen_turns": s.vampiric_strengthen_turns,
                 "primal_champion_applied": s.primal_champion_applied,
