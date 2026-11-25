@@ -14,6 +14,7 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 #include "character_class.hpp"
+#include "species.hpp"
 #include "damage.hpp"
 #include "weapon.hpp"
 #include "resource.hpp"
@@ -967,13 +968,18 @@ namespace rpg {
       // Available == hasFeat("Boon of Fate") && !boon_of_fate_used.
       bool boon_of_fate_used{false};
 
-      // ── Species (2024 PHB / Ravenloft) ──────────────────────────────────
-      // "" = none. Only "Dhampir" carries engine effects today. setSpecies() applies the
-      // one-time traits (Speed 35, Darkvision 60, Necrotic Resistance) and strips the previous
-      // species' on a swap; a save restores `species` directly with those already folded in.
-      // Dhampir's Spider Climb is not modeled.
+      // ── Species (2024 PHB / Ravenloft; SPECIES_PLAN.md D1) ──────────────
+      // "" = none. The traits come from the kSpeciesTable entry (species.hpp). setSpecies()
+      // folds them in and records what it changed in species_applied; a swap undoes that
+      // record. A save restores `species` and `species_applied` directly, with the traits
+      // already folded in; restoreSpecies() rebuilds the record for a save that predates it.
       std::string species{};
-      [[nodiscard]] bool isDhampir() const noexcept { return species == "Dhampir"; }
+      SpeciesApplied species_applied{};
+      [[nodiscard]] const SpeciesDef* speciesDef() const noexcept { return findSpecies(species); }
+      [[nodiscard]] bool isDhampir() const noexcept {
+          const SpeciesDef* d = speciesDef();
+          return d && (d->flags & kSpeciesVampiricBite);
+      }
 
       // Dhampir Vampiric Bite: empowerments (Drain / Strengthen) spent since the last Long
       // Rest; the pool is the Proficiency Bonus.
@@ -985,28 +991,70 @@ namespace rpg {
       int vampiric_strengthen_bonus{0};
       int vampiric_strengthen_turns{0};
 
-      // Necrotic multiplier the species grants with nothing else in play (Trace of Undeath).
-      // Effects that grant and later drop Necrotic Resistance restore to this, not to 1.0.
-      [[nodiscard]] float speciesNecroticMult() const noexcept { return isDhampir() ? 0.5f : 1.0f; }
+      // Multiplier the species grants for `type` with nothing else in play (Trace of Undeath:
+      // Necrotic 0.5). Effects that grant and later drop a resistance restore to this, not 1.0.
+      [[nodiscard]] float speciesMagicMult(MagicDamage_t type) const noexcept {
+          const SpeciesDef* d = speciesDef();
+          return d && d->resists(type) ? 0.5f : 1.0f;
+      }
 
       void setSpecies(const std::string& name) {
           if (name == species) return;
-          if (isDhampir()) {                       // strip the old species' traits
-              if (speed_walk == 35) speed_walk = 30;
-              if (darkvision_range == 60) darkvision_range = 0;
-              auto& nec = magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Necrotic)];
-              if (nec == 0.5f) nec = 1.0f;
-              vampiric_bite_used = 0;
-              vampiric_strengthen_bonus = 0;
-              vampiric_strengthen_turns = 0;
-          }
+          // Strip the old species: put back each field that still holds what it set.
+          const SpeciesApplied& a = species_applied;
+          if (a.speed_to != a.speed_from && speed_walk == a.speed_to) speed_walk = a.speed_from;
+          if (a.darkvision_to != a.darkvision_from && darkvision_range == a.darkvision_to)
+              darkvision_range = a.darkvision_from;
+          for (std::size_t t = 0; t < magic_damage_multipliers.size(); ++t)
+              if (((a.magic_resist_mask >> t) & 1u) && magic_damage_multipliers[t] == 0.5f)
+                  magic_damage_multipliers[t] = 1.0f;
+          save_advantage_mask &= ~a.save_advantage_bits;
+          species_applied = {};
+          vampiric_bite_used = 0;
+          vampiric_strengthen_bonus = 0;
+          vampiric_strengthen_turns = 0;
+
           species = name;
-          if (isDhampir()) {
-              speed_walk       = std::max(speed_walk, 35);
-              darkvision_range = std::max(darkvision_range, 60);
-              auto& nec = magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Necrotic)];
-              nec = std::min(nec, 0.5f);
-          }
+          const SpeciesDef* d = speciesDef();
+          if (!d) return;
+          SpeciesApplied& n = species_applied;
+          n.speed_from = speed_walk;
+          speed_walk = std::max(speed_walk, d->speed_walk);
+          n.speed_to = speed_walk;
+          n.darkvision_from = darkvision_range;
+          darkvision_range = std::max(darkvision_range, d->darkvision);
+          n.darkvision_to = darkvision_range;
+          for (std::size_t t = 0; t < magic_damage_multipliers.size(); ++t)
+              if (d->resists(static_cast<MagicDamage_t>(t)) && magic_damage_multipliers[t] > 0.5f) {
+                  magic_damage_multipliers[t] = 0.5f;
+                  n.magic_resist_mask |= 1u << t;
+              }
+          n.save_advantage_bits = d->save_advantage_bits & ~save_advantage_mask;
+          save_advantage_mask |= d->save_advantage_bits;
+      }
+
+      // Load a save that names `species` but carries no species_applied (written before D1).
+      // The traits are already folded in, except Darkvision, which the agent JSON does not
+      // save; re-derive it, and rebuild the record as the species applied to a plain stat
+      // block (Speed 30, no Darkvision, no resistance) so a later swap can strip it.
+      void restoreSpecies(const std::string& name) {
+          species = name;
+          species_applied = {};
+          const SpeciesDef* d = speciesDef();
+          if (!d) return;
+          SpeciesApplied& n = species_applied;
+          darkvision_range = std::max(darkvision_range, d->darkvision);
+          n.speed_from = n.speed_to = speed_walk;
+          if (d->speed_walk > 30 && speed_walk == d->speed_walk) n.speed_from = 30;
+          n.darkvision_from = n.darkvision_to = darkvision_range;
+          if (darkvision_range == d->darkvision) n.darkvision_from = 0;
+          for (std::size_t t = 0; t < magic_damage_multipliers.size(); ++t)
+              if (d->resists(static_cast<MagicDamage_t>(t))) {
+                  if (magic_damage_multipliers[t] > 0.5f) magic_damage_multipliers[t] = 0.5f;
+                  if (magic_damage_multipliers[t] == 0.5f) n.magic_resist_mask |= 1u << t;
+              }
+          n.save_advantage_bits = d->save_advantage_bits & ~save_advantage_mask;
+          save_advantage_mask |= d->save_advantage_bits;
       }
 
       // Grant a feat and apply its one-time stat-derived effects. Call AFTER ability

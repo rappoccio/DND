@@ -47,6 +47,10 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     name, current, max, short_rest_regen, long_rest_regen, duration, duration_remaining)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
+    SpeciesApplied,
+    speed_from, speed_to, darkvision_from, darkvision_to, magic_resist_mask, save_advantage_bits)
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Item,
     name, description, type, action_type, range, healing, temp_hp, applies_condition,
     applies_condition_turns, damage, save_ability, condition_applied, only_vs_fiend_undead, max_target_size, escape_dc,
@@ -141,7 +145,7 @@ namespace {
     X(fiendish_resilience_type) X(portent_dice) X(eldritch_invocations) \
     X(fiendish_vigor_applied) X(feats) X(stolen_spell_names) X(elemental_adept_types) \
     X(irresistible_offense_ability) X(luck_points) X(luck_points_max) \
-    X(boon_of_fate_used) X(species) X(vampiric_bite_used) X(vampiric_strengthen_bonus) \
+    X(boon_of_fate_used) X(species) X(species_applied) X(vampiric_bite_used) X(vampiric_strengthen_bonus) \
     X(vampiric_strengthen_turns)
 
 // ── Agent::Conditions — every member, one X() each ───────────────────────────

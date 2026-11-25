@@ -95,6 +95,57 @@ def test_species_traits_apply_and_strip():
     print("✅ test_species_traits_apply_and_strip passed")
 
 
+def test_species_table_records_and_strips_what_it_applied():
+    """SPECIES_PLAN.md D1: set_species records what it changed and a swap undoes that record,
+    leaving fields it did not set (or that were edited since) alone."""
+    assert list(rpg.species_names()) == ["Dhampir"]
+    s = rpg.Stats()
+    s.speed_walk, s.darkvision_range = 40, 120          # already faster / sharper than Dhampir
+    s.set_species("Dhampir")
+    a = s.species_applied
+    assert (a.speed_from, a.speed_to, a.darkvision_from, a.darkvision_to) == (40, 40, 120, 120)
+    assert a.magic_resist_mask == 1 << NECROTIC and a.save_advantage_bits == 0
+    s.set_species("")
+    assert (s.speed_walk, s.darkvision_range) == (40, 120), "nothing it didn't set is stripped"
+    assert s.species_applied.speed_to == 0 and s.species_applied.magic_resist_mask == 0
+    s = rpg.Stats()
+    s.set_magic_damage_multiplier(NECROTIC, 0.0)        # already immune: left as it is
+    s.set_species("Dhampir")
+    assert s.magic_damage_multipliers[NECROTIC] == 0.0 and s.species_applied.magic_resist_mask == 0
+    s.set_species("")
+    assert s.magic_damage_multipliers[NECROTIC] == 0.0
+    assert s.species_magic_mult(rpg.MagicDamage.Necrotic) == 1.0
+    s.set_species("Dhampir")
+    assert s.species_magic_mult(rpg.MagicDamage.Necrotic) == 0.5
+    assert s.species_magic_mult(rpg.MagicDamage.Fire) == 1.0
+    print("✅ test_species_table_records_and_strips_what_it_applied passed")
+
+
+def test_restore_species_rebuilds_a_legacy_record():
+    """A save from before D1 names the species with no species_applied: restore_species
+    rebuilds it, so the later swap still strips Speed 35 / Darkvision 60 / Resistance."""
+    from agent_loader import dict_to_stats
+    s = dict_to_stats({"species": "Dhampir", "speed_walk": 35,
+                       "magic_resistances": ["Necrotic"]})
+    a = s.species_applied
+    assert (a.speed_from, a.speed_to, a.darkvision_from, a.darkvision_to) == (30, 35, 0, 60)
+    s.set_species("")
+    assert (s.speed_walk, s.darkvision_range) == (30, 0)
+    assert s.magic_damage_multipliers[NECROTIC] == 1.0
+    # A record in the save wins over the rebuilt one.
+    s = dict_to_stats({"species": "Dhampir", "speed_walk": 35,
+                       "species_applied": {"speed_from": 35, "speed_to": 35,
+                                           "darkvision_from": 0, "darkvision_to": 60,
+                                           "magic_resist_mask": 1 << NECROTIC}})
+    assert s.species_applied.speed_from == 35
+    s.set_species("")
+    assert s.speed_walk == 35, "the saved record said Speed was 35 before the species"
+    t = rpg.Stats()
+    t.restore_species("")
+    assert t.species == "" and t.species_applied.darkvision_to == 0
+    print("✅ test_restore_species_rebuilds_a_legacy_record passed")
+
+
 def test_bite_is_1d4_plus_con_piercing():
     bm, engine, a, t = _scene(con=16)
     r, dmg = _bite_hit(engine, bm, a, t, empower=0)
@@ -294,6 +345,8 @@ def test_gui_stats_ok_applies_species():
 def main():
     print("Running Dhampir tests...\n")
     test_species_traits_apply_and_strip()
+    test_species_table_records_and_strips_what_it_applied()
+    test_restore_species_rebuilds_a_legacy_record()
     test_bite_is_1d4_plus_con_piercing()
     test_drain_heals_and_spends_a_use()
     test_strengthen_lands_on_the_next_attack_roll()

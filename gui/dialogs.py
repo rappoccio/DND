@@ -2121,8 +2121,9 @@ class StatsDialog:
     ORIGIN_FEATS = ["NONE", "Alert", "Crafter", "Healer", "Lucky", "Magic Initiate",
                     "Musician", "Savage Attacker", "Skilled", "Tavern Brawler", "Tough"]
 
-    # Species with engine effects. "NONE" = no species (stats.species == "").
-    SPECIES = ["NONE", "Dhampir"]
+    # Species with engine effects: the engine's table (species.hpp). "NONE" = no species
+    # (stats.species == "").
+    SPECIES = ["NONE"] + list(rpg.species_names())
 
     # Ordered ability-score fields
     ABILITIES = [

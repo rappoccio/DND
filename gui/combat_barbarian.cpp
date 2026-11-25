@@ -456,9 +456,8 @@ void CombatEngine::endRage(BattleMap& bm, int idx)
     if (cond.rage_of_gods_active) {
         cond.rage_of_gods_active = false;
         stats.speed_fly = 0;
-        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Necrotic)] = stats.speciesNecroticMult();
-        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Psychic)]  = 1.0f;
-        stats.magic_damage_multipliers[static_cast<std::size_t>(MagicDamage_t::Radiant)]  = 1.0f;
+        for (MagicDamage_t t : {MagicDamage_t::Necrotic, MagicDamage_t::Psychic, MagicDamage_t::Radiant})
+            stats.magic_damage_multipliers[static_cast<std::size_t>(t)] = stats.speciesMagicMult(t);
         log_("{} Rage of the Gods: divine form ends", agentName(bm, idx));
     }
 

@@ -306,6 +306,24 @@ void bindTypes(py::module_& m) {
                  + "/" + std::to_string(r.max) + ">"; });
 
     // ── Stats (nested inside Agent) ──────────────────────────────────────────
+    py::class_<SpeciesApplied>(m, "SpeciesApplied",
+        "What Stats.set_species() changed (SPECIES_PLAN.md D1); a swap undoes exactly this.")
+        .def(py::init<>())
+        .def("__eq__", [](const SpeciesApplied& a, const SpeciesApplied& b) { return a == b; })
+        .def_readwrite("speed_from", &SpeciesApplied::speed_from)
+        .def_readwrite("speed_to", &SpeciesApplied::speed_to)
+        .def_readwrite("darkvision_from", &SpeciesApplied::darkvision_from)
+        .def_readwrite("darkvision_to", &SpeciesApplied::darkvision_to)
+        .def_readwrite("magic_resist_mask", &SpeciesApplied::magic_resist_mask,
+             "Bit (1 << MagicDamage): Resistance the species set")
+        .def_readwrite("save_advantage_bits", &SpeciesApplied::save_advantage_bits,
+             "save_advantage_mask bits the species added");
+    m.def("species_names", [] {
+        std::vector<std::string> out;
+        for (const auto& d : kSpeciesTable) out.emplace_back(d.name);
+        return out;
+    }, "Names in the species table (species.hpp), in table order.");
+
     py::class_<Agent::Stats>(m, "Stats")
         .def(py::init<>())
         .def_static("from_json_string", &Agent::Stats::fromJsonString,
@@ -822,9 +840,17 @@ void bindTypes(py::module_& m) {
         .def_readwrite("species", &Agent::Stats::species,
              "Species name (\"\" = none). Set it with set_species() so the one-time traits apply; "
              "assign directly only when restoring a save (traits already folded in).")
+        .def_readwrite("species_applied", &Agent::Stats::species_applied,
+             "What set_species() folded in (SpeciesApplied); the next swap undoes exactly this.")
         .def("set_species", &Agent::Stats::setSpecies, py::arg("name"),
-             "Swap species: strip the old one's traits, apply the new one's (Dhampir: Speed 35, "
-             "Darkvision 60, Necrotic Resistance). No-op when unchanged.")
+             "Swap species: strip what the old one applied (species_applied), apply the new "
+             "one's table traits (Dhampir: Speed 35, Darkvision 60, Necrotic Resistance). "
+             "No-op when unchanged.")
+        .def("restore_species", &Agent::Stats::restoreSpecies, py::arg("name"),
+             "Load a save that predates species_applied: set the species, re-derive Darkvision "
+             "and rebuild species_applied from the table (traits assumed already folded in).")
+        .def("species_magic_mult", &Agent::Stats::speciesMagicMult, py::arg("type"),
+             "Multiplier the species alone grants for a magic damage type (0.5 = Resistance).")
         .def("is_dhampir", &Agent::Stats::isDhampir)
         .def_readwrite("vampiric_bite_used", &Agent::Stats::vampiric_bite_used,
              "Dhampir Vampiric Bite: empowerments spent since the last Long Rest (pool = PB).")

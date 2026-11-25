@@ -433,6 +433,10 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
                 "luck_points_max": s.luck_points_max,
                 "boon_of_fate_used": s.boon_of_fate_used,
                 "species": s.species,
+                "species_applied": {k: getattr(s.species_applied, k) for k in
+                                    ("speed_from", "speed_to", "darkvision_from",
+                                     "darkvision_to", "magic_resist_mask",
+                                     "save_advantage_bits")},
                 "vampiric_bite_used": s.vampiric_bite_used,
                 "vampiric_strengthen_bonus": s.vampiric_strengthen_bonus,
                 "vampiric_strengthen_turns": s.vampiric_strengthen_turns,
@@ -926,9 +930,11 @@ def load_agents(app, path: str | None = None):
             if vuln in magic_damage_names:
                 idx = magic_damage_names.index(vuln)
                 s.set_magic_damage_multiplier(idx, 2.0)
-        # Dhampir Trace of Undeath: Necrotic Resistance, even if the file only names the species.
-        if s.is_dhampir() and s.magic_damage_multipliers[5] > 0.5:
-            s.set_magic_damage_multiplier(5, 0.5)
+        # Species resistances (Dhampir Trace of Undeath), even if the file only names the species.
+        for idx, name in enumerate(magic_damage_names):
+            if (s.species_magic_mult(getattr(rpg.MagicDamage, name)) == 0.5
+                    and s.magic_damage_multipliers[idx] > 0.5):
+                s.set_magic_damage_multiplier(idx, 0.5)
 
         # Load physical damage multipliers
         physical_damage_names = ["Bludgeoning", "Piercing", "Slashing"]

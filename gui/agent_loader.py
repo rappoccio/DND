@@ -133,12 +133,17 @@ def dict_to_stats(stats_dict):
     stats.luck_points = int(stats_dict.get("luck_points", 0))
     stats.luck_points_max = int(stats_dict.get("luck_points_max", 0))
     stats.boon_of_fate_used = bool(stats_dict.get("boon_of_fate_used", False))
-    # Species: set directly (NOT set_species) — speed/darkvision/resistance are already saved
-    # with the species' traits folded in, like the feats above.
-    stats.species = str(stats_dict.get("species", ""))
-    if stats.is_dhampir():
-        # Darkvision is not in the saved dict, so re-derive it from the species.
-        stats.darkvision_range = max(stats.darkvision_range, 60)
+    # Species: NOT set_species — speed/resistance are already saved with the species' traits
+    # folded in, like the feats above. restore_species re-derives Darkvision (not in the saved
+    # dict) and rebuilds species_applied; a save that carries the record then overrides it.
+    stats.restore_species(str(stats_dict.get("species", "")))
+    applied = stats_dict.get("species_applied")
+    if isinstance(applied, dict) and stats.species:
+        a = rpg.SpeciesApplied()
+        for key in ("speed_from", "speed_to", "darkvision_from", "darkvision_to",
+                    "magic_resist_mask", "save_advantage_bits"):
+            setattr(a, key, int(applied.get(key, getattr(a, key))))
+        stats.species_applied = a
     stats.vampiric_bite_used = int(stats_dict.get("vampiric_bite_used", 0))
     stats.vampiric_strengthen_bonus = int(stats_dict.get("vampiric_strengthen_bonus", 0))
     stats.vampiric_strengthen_turns = int(stats_dict.get("vampiric_strengthen_turns", 0))
@@ -206,6 +211,11 @@ def apply_damage_multipliers(stats, stats_dict):
         for entry in stats_dict.get(key, []):
             if entry in names:
                 stats.set_physical_damage_multiplier(names.index(entry), mult)
+    # Species resistances (Dhampir Trace of Undeath), even if the file only names the species.
+    for idx, name in enumerate(MAGIC_DAMAGE_NAMES):
+        if (stats.species_magic_mult(getattr(rpg.MagicDamage, name)) == 0.5
+                and stats.magic_damage_multipliers[idx] > 0.5):
+            stats.set_magic_damage_multiplier(idx, 0.5)
 
 
 def restore_class_resources(stats, agent_dict, rpg_module=None):
