@@ -1425,9 +1425,10 @@ Deferred at Step 0 (SPECIES_PLAN.md D14); each is flavour, or table-side:
   outside these four is flavour, and the importer drops it.
 
 ### Importer and generator species mapping [LIMITATION] (2026-11-25, SP7)
-- `tools/import_character.py` maps the nine SRD species and Dhampir from D&D Beyond's race,
-  with the option (lineage, legacy, ancestry), size, spell ability and Skillful skill. Any
-  other race (Aasimar, Fairy, Kenku, Hexblood, Bugbear, …) imports with no species: its
+- `tools/import_character.py` maps the nine SRD species, Dhampir and (MORE_SPECIES_PLAN.md
+  MS6) Aasimar, Hexblood, Lupin, Reborn, Bugbear and Fairy from D&D Beyond's race, with the
+  option (lineage, legacy, ancestry, Strange Endurance), size, spell ability and Skillful /
+  Werewolf Instincts / Past Life skill. Any other race (Kenku, …) imports with no species: its
   speed, HP and damage adjustments still come from D&D Beyond, but no species features.
   A 2014 ("legacy") race maps to the 2024 species of that name; a legacy Tiefling has no
   Fiendish Legacy in the data and takes the default (Abyssal), with a warning.
@@ -1436,3 +1437,25 @@ Deferred at Step 0 (SPECIES_PLAN.md D14); each is flavour, or table-side:
   `species.hpp` has to be mirrored there (`test_species_import.py` loads every pair).
 - Generated Humans get no Versatile feat or Skillful skill, and Small/Medium is always
   Medium.
+- Generated Lupin and Reborn PCs get no skill pick (the loader's default applies). A
+  generated Fairy always flies at its walk Speed, even in a "heavy" or "medium" build:
+  generated PCs carry an AC, not armor pieces, so Fairy Flight's armor check never sees
+  Medium or Heavy armor.
+
+## More species (MORE_SPECIES_PLAN.md)
+
+### Species traits not modelled (D14) [LIMITATION] (2026-11-25, MS6)
+Deferred at Step 0 (MORE_SPECIES_PLAN.md D14); each is flavour, or table-side:
+- **Reborn Everlasting**: no exhaustion, sleep immunity and the 4-hour Long Rest (user,
+  2026-11-25: flavor).
+- **Hexblood Eerie Token** (flavor).
+- **Aasimar Inner Radiance**'s light source (the damage aura is modelled).
+- **Bugbear Sneaky** squeezing through Small spaces, and **Powerful Build** carrying capacity
+  (the Goliath grapple-escape flag stays off for Bugbear).
+- Goblinoid creature tagging (Bugbear).
+- **Survival** as a Lupin Werewolf Instincts pick: allowed, but flavour only.
+- Bugbear and Fairy follow the Monsters of the Multiverse text with ability score increases
+  and languages ignored (user, 2026-11-25).
+- **Hex** (Hexblood): the Disadvantage on one ability's checks is not modelled; the +1d6
+  Necrotic rider is.
+- **Light, Disguise Self, Druidcraft** cast, log and spend the use, nothing more.

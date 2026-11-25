@@ -413,12 +413,24 @@ SPECIES_OPTIONS = {
     "Human": [],
     "Orc": [],
     "Tiefling": ["Abyssal", "Chthonic", "Infernal"],
+    # MORE_SPECIES_PLAN.md MS6. DDB names Bugbear and Fairy (Monsters of the Multiverse) as
+    # plain races; a "(Legacy)"-style full name still matches by substring.
+    "Aasimar": [],
+    "Hexblood": [],
+    "Lupin": [],
+    "Reborn": ["Cold", "Necrotic", "Poison"],
+    "Bugbear": [],
+    "Fairy": [],
 }
 _OPTION_ALIASES = {"cthonic": "chthonic"}
 # Species whose granted spells take a picked ability (D2), and the SaveAbility ordinals.
-SPECIES_SPELL_ABILITY = {"Elf", "Gnome", "Tiefling"}
+SPECIES_SPELL_ABILITY = {"Elf", "Gnome", "Tiefling", "Hexblood", "Fairy"}
 _SPELL_ABILITY = {"intelligence": 3, "wisdom": 4, "charisma": 5}
 SPECIES_SKILLS = ("Athletics", "Perception", "Sleight of Hand", "Stealth")   # Skillful (D12)
+# The skill pick per species (gui/species.hpp skill_options): Lupin Werewolf Instincts offers
+# Perception / Stealth / Survival (Survival is flavor); Reborn takes the Human list.
+_SKILL_PICKS = {"Human": SPECIES_SKILLS, "Reborn": SPECIES_SKILLS,
+                "Lupin": ("Perception", "Stealth", "Survival")}
 _SIZE_BY_ID = {3: "Small", 4: "Medium"}
 
 
@@ -486,11 +498,11 @@ def map_species(data):
                 out["species_spell_ability"] = _SPELL_ABILITY[tail]
                 break
 
-    if species == "Human":
+    if species in _SKILL_PICKS:
         for c in race_choices:
             if c.get("label") == "Choose a Skill":
                 lab = _choice_label(data, c.get("optionValue"))
-                if lab in SPECIES_SKILLS:
+                if lab in _SKILL_PICKS[species]:
                     out["species_skill"] = lab
     return out
 

@@ -20,10 +20,11 @@ The rules, as frozen (B1–B13):
   · spells: signatures first, then the build's ranked lists round-robin from the highest
     castable spell level down, up to the class's prepared count (B9, B9a).
 
-Species (SPECIES_PLAN.md SP7): ``generate_party`` rolls one of the nine SRD species per PC,
-with its option, from its own random stream, so a seed's classes, roles and level are what
-they were before species existed. ``build_pc(..., species=)`` folds in what the loader takes
-as already applied (Speed, Dwarven Toughness HP); the loader re-derives the rest.
+Species (SPECIES_PLAN.md SP7, MORE_SPECIES_PLAN.md MS6): ``generate_party`` rolls one of the
+fifteen species in ``SPECIES`` per PC, with its option, from its own random stream, so a
+seed's classes, roles and level are what they were before species existed. ``build_pc(...,
+species=)`` folds in what the loader takes as already applied (Speed, Dwarven Toughness HP,
+Fairy fly Speed); the loader re-derives the rest.
 
 Signature spells go on the record as ``signature_spells`` (names, including ones a subclass
 or a class feature grants, such as Radiance of the Dawn); the arena's automated PCs cast them
@@ -72,15 +73,20 @@ METAMAGIC = ["NONE", "Careful", "Distant", "Empowered", "Extended", "Heightened"
 METAMAGIC_KNOWN = ((2, 2), (10, 4), (17, 6))                    # (Sorcerer level, options known)
 FIGHTER_MASTERY = ((1, 3), (4, 4), (10, 5), (16, 6))
 
-# The nine SRD species and their option picks (gui/species.hpp, in table order). The loader
-# (restore_species) treats Speed and HP as already folded in, so build_pc applies those two
-# here: SPECIES_SPEED is the base walk Speed (default 30), Dwarven Toughness is +1 HP a level.
+# The species and their option picks (gui/species.hpp; Dhampir is left out). The loader
+# (restore_species) treats Speed, HP and fly Speed as already folded in, so build_pc applies
+# them here: SPECIES_SPEED is the base walk Speed (default 30), Dwarven Toughness is +1 HP a
+# level, and Fairy Flight is a fly Speed equal to the walk Speed. Generated PCs carry no armor
+# pieces, so the loader's armor sync gives a Fairy its flight even in a "heavy" build.
 SPECIES = {
     "Dragonborn": ["Black", "Blue", "Brass", "Bronze", "Copper", "Gold", "Green", "Red",
                    "Silver", "White"],
     "Dwarf": [], "Elf": ["Drow", "High Elf", "Wood Elf"], "Gnome": ["Forest Gnome", "Rock Gnome"],
     "Goliath": ["Cloud", "Fire", "Frost", "Hill", "Stone", "Storm"], "Halfling": [], "Human": [],
     "Orc": [], "Tiefling": ["Abyssal", "Chthonic", "Infernal"],
+    # MORE_SPECIES_PLAN.md MS6: the six added species (Reborn's option is Strange Endurance).
+    "Aasimar": [], "Hexblood": [], "Lupin": [], "Reborn": ["Cold", "Necrotic", "Poison"],
+    "Bugbear": [], "Fairy": [],
 }
 SPECIES_SPEED = {("Goliath", ""): 35, ("Elf", "Wood Elf"): 35}
 SPECIES_SPELL_ABILITY = {"intel": 3, "wis": 4, "cha": 5}   # SaveAbility ordinals (D2)
@@ -315,7 +321,8 @@ def build_pc(sub_key: str, role: str, level: int, *, name: str | None = None,
 
     stats = {**scores, "hp_max": hp, "hp_cur": hp,
              "ac": _base_ac(b["armor"], level, dex_m, "Defense" in feats),
-             "speed_walk": speed, "speed_swim": 0, "speed_fly": 0, "speed_burrow": 0,
+             "speed_walk": speed, "speed_swim": 0, "speed_fly": speed if species == "Fairy" else 0,
+             "speed_burrow": 0,
              "prof_bonus": prof, "num_attacks": _threshold(attacks, level, 1),
              "weapon_mastery": mastery,
              "has_cunning_action": level >= cls.get("cunning_action", 99),
