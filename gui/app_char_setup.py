@@ -132,7 +132,7 @@ def set_general_feats(stats, names):
         stats.add_feat(n)
 
 
-def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0, class_levels: dict = None, subclasses: dict = None, species: str = None, arcane_shot_options: list = None):
+def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0, class_levels: dict = None, subclasses: dict = None, species: str = None, arcane_shot_options: list = None, species_option: str = None, species_size: str = None, species_spell_ability: int = None):
     """Called by StatsDialog when the user clicks OK.
 
     Multiclassing (MULTICLASSING_PLAN.md Phase 5): `class_levels` ({class:level})
@@ -266,8 +266,13 @@ def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_nam
     # Species (None = a legacy caller that doesn't pass one: leave it as it is). set_species
     # strips the old species' traits and applies the new one's; unchanged is a no-op, so a
     # hand-edited speed survives a re-confirm.
+    # The sub-choices (D2) follow it; set_species keeps each valid one and defaults the rest.
     if species is not None:
-        stats.set_species("" if species == "NONE" else species)
+        stats.set_species("" if species == "NONE" else species, species_option or "")
+        if species_size:
+            stats.set_species_size(species_size)
+        if species_spell_ability is not None:
+            stats.set_species_spell_ability(int(species_spell_ability))
     # Elemental Adept's chosen element(s) (set via the element picker). Kept only while the feat
     # is selected; cleared otherwise so a deselect doesn't leave stale types.
     stats.elemental_adept_types = list(elemental_adept_types or []) if stats.has_feat("Elemental Adept") else []

@@ -2093,7 +2093,7 @@ class StatsDialog:
     Callback: callback(agent_idx, new_stats_obj) called on OK.
     """
     DLG_W = 610
-    DLG_H = 932   # +52 for the +Hit / Spell Attack / Spell DC row
+    DLG_H = 980   # +52 for the +Hit / Spell Attack / Spell DC row, +48 for the species sub-choices
     HDR_H = 36
     BTN_H = 32
     PAD   = 14
@@ -2124,6 +2124,8 @@ class StatsDialog:
     # Species with engine effects: the engine's table (species.hpp). "NONE" = no species
     # (stats.species == "").
     SPECIES = ["NONE"] + list(rpg.species_names())
+    # Granted-spell ability picks (D2): label -> SaveAbility ordinal.
+    SPECIES_ABILITIES = [("INT", 3), ("WIS", 4), ("CHA", 5)]
 
     # Ordered ability-score fields
     ABILITIES = [
@@ -2192,6 +2194,10 @@ class StatsDialog:
         self._origin_feat_rects: dict = {}
         self._species            = "NONE"  # species (cycle picker, PCs only)
         self._species_rects: dict = {}
+        self._species_option     = ""      # D2 sub-choices, kept valid for self._species
+        self._species_size       = ""
+        self._species_ability    = 3       # SaveAbility ordinal (INT)
+        self._species_sub_rects: dict = {} # attr -> {"left", "right", "available"}
         self._feat_dialog        = None    # General Feats multi-select picker (PCs)
         self._feat_btn_rect      = None    # "Feats..." launch button
         self._general_feats      = set()   # selected general feat names
@@ -2250,6 +2256,10 @@ class StatsDialog:
         cur_feats = list(stats.feats) if hasattr(stats, 'feats') else []
         self._origin_feat = next((f for f in cur_feats if f in self.ORIGIN_FEATS), "NONE")
         self._species = getattr(stats, "species", "") or "NONE"
+        self._species_option = getattr(stats, "species_option", "") or ""
+        self._species_size = getattr(stats, "species_size", "") or ""
+        self._species_ability = int(getattr(stats, "species_spell_ability", 3))
+        self._normalize_species_choices()
         # Epic boons ride the same picker/set as general feats (both live in stats.feats).
         self._general_feats = {f for f in cur_feats
                                if f in GENERAL_FEAT_NAMES or f in EPIC_BOON_FEAT_NAMES}
@@ -2685,6 +2695,18 @@ class StatsDialog:
                 if step:
                     idx = available.index(self._species) if self._species in available else 0
                     self._species = available[(idx + step) % len(available)]
+                    self._species_option = ""        # a new species starts on its defaults
+                    self._normalize_species_choices()
+                    return True
+            # Species sub-choice cycle buttons (option / size / spell ability)
+            for attr, rr in self._species_sub_rects.items():
+                step = (-1 if rr["left"].collidepoint(event.pos) else
+                        1 if rr["right"].collidepoint(event.pos) else 0)
+                if step:
+                    available = rr["available"]
+                    cur = getattr(self, attr)
+                    idx = available.index(cur) if cur in available else 0
+                    setattr(self, attr, available[(idx + step) % len(available)])
                     return True
 
             # Origin feat cycle buttons (PCs only)
@@ -2824,8 +2846,73 @@ class StatsDialog:
             total_level = sum(class_levels.values())
             npc_data = {"is_npc": self._is_npc, "npc_spell_groups": self._npc_spell_groups} if self._is_npc else None
             self._cb(self._agent_idx, self.steppers, self.prof_flags, primary, total_level, npc_data, self._subclasses.get(primary, "NONE"), self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type, list(self._metamagic_options), self._irresistible_offense_ability, dict(class_levels), dict(self._subclasses), species=self._species,
-                     arcane_shot_options=list(self._arcane_shot_options))
+                     arcane_shot_options=list(self._arcane_shot_options),
+                     species_option=self._species_option, species_size=self._species_size,
+                     species_spell_ability=self._species_ability)
         self.active = False
+
+    def _normalize_species_choices(self):
+        """Keep the option / size / spell ability valid for self._species (mirrors
+        Stats.normalize_species_choices): an invalid pick takes the species' default."""
+        name = "" if self._species == "NONE" else self._species
+        options = list(rpg.species_options(name))
+        if not options:
+            self._species_option = ""
+        elif self._species_option not in options:
+            self._species_option = options[0]
+        sizes = list(rpg.species_sizes(name))
+        if not sizes:
+            self._species_size = ""
+        elif self._species_size not in sizes:
+            self._species_size = "Medium" if "Medium" in sizes else sizes[0]
+        if self._species_ability not in (3, 4, 5):
+            self._species_ability = 3
+
+    def _draw_species_sub_choices(self, screen, dlg, y):
+        """The species' option row (Lineage / Ancestry / Legacy) and a Size + Spell Ability row,
+        each only when the species has the choice. Returns the next free y."""
+        self._species_sub_rects = {}
+        name = "" if self._species == "NONE" else self._species
+        if not name:
+            return y
+
+        def picker(attr, x0, x1, row_y, text, available):
+            left_r  = pygame.Rect(x0, row_y, 20, 16)
+            right_r = pygame.Rect(x1 - 20, row_y, 20, 16)
+            txt_r   = pygame.Rect(left_r.right + 4, row_y, right_r.left - left_r.right - 8, 16)
+            for _r in (left_r, txt_r, right_r):
+                pygame.draw.rect(screen, (60, 55, 80), _r, border_radius=2)
+                pygame.draw.rect(screen, (120, 100, 150), _r, 1, border_radius=2)
+            for _r, _s in ((left_r, "<"), (txt_r, text), (right_r, ">")):
+                _t = self.font_sm.render(_s, True, (220, 210, 240)); screen.blit(_t, _t.get_rect(center=_r.center))
+            self._species_sub_rects[attr] = {"left": left_r, "right": right_r, "available": available}
+
+        x_pick = dlg.x + self.PAD + 95
+        x_lbl = dlg.x + self.PAD + 12
+        options = list(rpg.species_options(name))
+        if options:
+            label = rpg.species_option_label(name) or "Option"
+            screen.blit(self.font_sm.render(f"{label}:", True, self.C_LABEL), (x_lbl, y))
+            picker("_species_option", x_pick, dlg.right - self.PAD, y, self._species_option, options)
+            y += 24
+        sizes = list(rpg.species_sizes(name))
+        has_ability = rpg.species_has_spell_ability(name)
+        if len(sizes) > 1 or has_ability:
+            mid = x_pick + (dlg.right - self.PAD - x_pick) // 2
+            if len(sizes) > 1:
+                screen.blit(self.font_sm.render("Size:", True, self.C_LABEL), (x_lbl, y))
+                picker("_species_size", x_pick, mid - 6, y, self._species_size, sizes)
+            if has_ability:
+                lbl = self.font_sm.render("Spell Ability:", True, self.C_LABEL)
+                x0 = mid + 6 if len(sizes) > 1 else x_lbl
+                screen.blit(lbl, (x0, y))
+                names = dict((v, k) for k, v in self.SPECIES_ABILITIES)
+                x_ab = x0 + lbl.get_width() + 8 if len(sizes) > 1 else x_pick
+                # the picker cycles ordinals; its text shows the name
+                picker("_species_ability", x_ab, dlg.right - self.PAD, y,
+                       names.get(self._species_ability, "INT"), [v for _k, v in self.SPECIES_ABILITIES])
+            y += 24
+        return y
 
     # ── drawing ──────────────────────────────────────────────────────────────
     def draw(self, screen):
@@ -3271,6 +3358,7 @@ class StatsDialog:
                 _t = self.font_sm.render(_s, True, (220, 210, 240)); screen.blit(_t, _t.get_rect(center=_r.center))
             self._species_rects = {"left": left_s_r, "right": right_s_r, "available": self.SPECIES}
             npc_checkbox_y = sp_y + 24
+            npc_checkbox_y = self._draw_species_sub_choices(screen, dlg, npc_checkbox_y)
 
         # ── General Feats button (PCs only): launch the multi-select picker ──
         self._feat_btn_rect = None

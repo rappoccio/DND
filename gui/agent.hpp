@@ -975,6 +975,12 @@ namespace rpg {
       // already folded in; restoreSpecies() rebuilds the record for a save that predates it.
       std::string species{};
       SpeciesApplied species_applied{};
+      // Sub-choices (D2), kept valid for the species by setSpecies() and the two setters:
+      // the option ("" when the species has none), the size ("Small"/"Medium"; "" with no
+      // species) and the ability its granted spells use (a SaveAbility_t ordinal, INT/WIS/CHA).
+      std::string species_option{};
+      std::string species_size{};
+      int species_spell_ability{kSpeciesAbilityInt};
       [[nodiscard]] const SpeciesDef* speciesDef() const noexcept { return findSpecies(species); }
       [[nodiscard]] bool isDhampir() const noexcept {
           const SpeciesDef* d = speciesDef();
@@ -998,8 +1004,12 @@ namespace rpg {
           return d && d->resists(type) ? 0.5f : 1.0f;
       }
 
-      void setSpecies(const std::string& name) {
-          if (name == species) return;
+      // Swap species and/or option. `option` "" keeps the current option when it is valid
+      // for the species, else takes the species' first; an unknown option does the same.
+      // Re-sending the current species and option is a no-op (a hand edit survives).
+      void setSpecies(const std::string& name, const std::string& option = "") {
+          if (name == species && (option.empty() || option == species_option)) return;
+          std::string next_option = option.empty() && name == species ? species_option : option;
           // Strip the old species: put back each field that still holds what it set.
           const SpeciesApplied& a = species_applied;
           if (a.speed_to != a.speed_from && speed_walk == a.speed_to) speed_walk = a.speed_from;
@@ -1016,6 +1026,7 @@ namespace rpg {
 
           species = name;
           const SpeciesDef* d = speciesDef();
+          normalizeSpeciesChoices(next_option);
           if (!d) return;
           SpeciesApplied& n = species_applied;
           n.speed_from = speed_walk;
@@ -1031,6 +1042,36 @@ namespace rpg {
               }
           n.save_advantage_bits = d->save_advantage_bits & ~save_advantage_mask;
           save_advantage_mask |= d->save_advantage_bits;
+      }
+
+      // Bring option, size and spell ability in line with the species (D2): keep each that is
+      // valid, else take the default. `option` is the requested pick ("" = the default).
+      void normalizeSpeciesChoices(const std::string& option) {
+          const SpeciesDef* d = speciesDef();
+          if (!d) { species_option.clear(); species_size.clear(); return; }
+          if (d->options.empty())        species_option.clear();
+          else if (d->hasOption(option)) species_option = option;
+          else                           species_option = std::string(d->options.front());
+          if (!d->allowsSize(speciesSizeBit(species_size)))
+              species_size = std::string(speciesSizeName(d->defaultSize()));
+          if (species_spell_ability < kSpeciesAbilityInt || species_spell_ability > kSpeciesAbilityCha)
+              species_spell_ability = kSpeciesAbilityInt;
+      }
+      // Pick a size the species allows ("Small"/"Medium"); false (unchanged) otherwise.
+      bool setSpeciesSize(const std::string& size) {
+          const SpeciesDef* d = speciesDef();
+          if (!d || !d->allowsSize(speciesSizeBit(size))) return false;
+          species_size = size;
+          return true;
+      }
+      // Pick the granted-spell ability (INT 3 / WIS 4 / CHA 5); false (unchanged) otherwise,
+      // including for a species without the choice.
+      bool setSpeciesSpellAbility(int ability) {
+          const SpeciesDef* d = speciesDef();
+          if (!d || !(d->flags & kSpeciesSpellAbility)) return false;
+          if (ability < kSpeciesAbilityInt || ability > kSpeciesAbilityCha) return false;
+          species_spell_ability = ability;
+          return true;
       }
 
       // Load a save that names `species` but carries no species_applied (written before D1).

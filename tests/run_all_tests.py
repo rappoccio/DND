@@ -300,6 +300,7 @@ test_scripts = [
     "test_origins.py",
     "test_feats.py",
     "test_dhampir.py",
+    "test_species.py",
     "test_stats_initiative.py",
     "test_attack_bonuses.py",
     "test_xp_split.py",

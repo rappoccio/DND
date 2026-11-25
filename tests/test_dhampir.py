@@ -98,7 +98,7 @@ def test_species_traits_apply_and_strip():
 def test_species_table_records_and_strips_what_it_applied():
     """SPECIES_PLAN.md D1: set_species records what it changed and a swap undoes that record,
     leaving fields it did not set (or that were edited since) alone."""
-    assert list(rpg.species_names()) == ["Dhampir"]
+    assert list(rpg.species_names())[0] == "Dhampir"
     s = rpg.Stats()
     s.speed_walk, s.darkvision_range = 40, 120          # already faster / sharper than Dhampir
     s.set_species("Dhampir")
@@ -313,7 +313,7 @@ def test_gui_stats_ok_applies_species():
     from main import App
     from dialogs import StatsDialog
     from test_combat_panel import MAP_PATH, SEED, _build_scene, _idx
-    assert StatsDialog.SPECIES == ["NONE", "Dhampir"]
+    assert StatsDialog.SPECIES[:2] == ["NONE", "Dhampir"]
     app = App(MAP_PATH, seed=SEED)
     _build_scene(app)
     aria = _idx(app, "Aria")

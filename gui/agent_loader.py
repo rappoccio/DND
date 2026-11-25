@@ -144,6 +144,10 @@ def dict_to_stats(stats_dict):
                     "magic_resist_mask", "save_advantage_bits"):
             setattr(a, key, int(applied.get(key, getattr(a, key))))
         stats.species_applied = a
+    # Sub-choices (D2); a save from before SP1 carries none and gets the species' defaults.
+    stats.species_size = str(stats_dict.get("species_size", ""))
+    stats.species_spell_ability = int(stats_dict.get("species_spell_ability", 3))
+    stats.normalize_species_choices(str(stats_dict.get("species_option", "")))
     stats.vampiric_bite_used = int(stats_dict.get("vampiric_bite_used", 0))
     stats.vampiric_strengthen_bonus = int(stats_dict.get("vampiric_strengthen_bonus", 0))
     stats.vampiric_strengthen_turns = int(stats_dict.get("vampiric_strengthen_turns", 0))

@@ -323,6 +323,27 @@ void bindTypes(py::module_& m) {
         for (const auto& d : kSpeciesTable) out.emplace_back(d.name);
         return out;
     }, "Names in the species table (species.hpp), in table order.");
+    m.def("species_option_label", [](const std::string& name) {
+        const SpeciesDef* d = findSpecies(name);
+        return d ? std::string(d->option_label) : std::string{};
+    }, py::arg("name"), "What the species' one pick is called (\"Lineage\", …); \"\" = none.");
+    m.def("species_options", [](const std::string& name) {
+        std::vector<std::string> out;
+        if (const SpeciesDef* d = findSpecies(name))
+            for (const auto& o : d->options) out.emplace_back(o);
+        return out;
+    }, py::arg("name"), "The species' option picks in table order (empty = none); the first is the default.");
+    m.def("species_sizes", [](const std::string& name) {
+        std::vector<std::string> out;
+        if (const SpeciesDef* d = findSpecies(name))
+            for (std::uint8_t b : {kSpeciesSizeSmall, kSpeciesSizeMedium})
+                if (d->allowsSize(b)) out.emplace_back(speciesSizeName(b));
+        return out;
+    }, py::arg("name"), "Sizes the species may be (\"Small\", \"Medium\").");
+    m.def("species_has_spell_ability", [](const std::string& name) {
+        const SpeciesDef* d = findSpecies(name);
+        return d && (d->flags & kSpeciesSpellAbility);
+    }, py::arg("name"), "True when the species picks INT/WIS/CHA for its granted spells (D2).");
 
     py::class_<Agent::Stats>(m, "Stats")
         .def(py::init<>())
@@ -842,7 +863,19 @@ void bindTypes(py::module_& m) {
              "assign directly only when restoring a save (traits already folded in).")
         .def_readwrite("species_applied", &Agent::Stats::species_applied,
              "What set_species() folded in (SpeciesApplied); the next swap undoes exactly this.")
-        .def("set_species", &Agent::Stats::setSpecies, py::arg("name"),
+        .def_readwrite("species_option", &Agent::Stats::species_option,
+             "The species' one pick (dragon colour, lineage, ancestry, legacy); \"\" = none.")
+        .def_readwrite("species_size", &Agent::Stats::species_size,
+             "\"Small\" or \"Medium\" as the species allows; \"\" with no species.")
+        .def_readwrite("species_spell_ability", &Agent::Stats::species_spell_ability,
+             "SaveAbility ordinal the species' granted spells use (INT 3, WIS 4, CHA 5).")
+        .def("normalize_species_choices", &Agent::Stats::normalizeSpeciesChoices, py::arg("option"),
+             "Keep option/size/spell ability where valid for the species, else take the defaults.")
+        .def("set_species_size", &Agent::Stats::setSpeciesSize, py::arg("size"),
+             "Pick a size the species allows; False (unchanged) otherwise.")
+        .def("set_species_spell_ability", &Agent::Stats::setSpeciesSpellAbility, py::arg("ability"),
+             "Pick INT/WIS/CHA (3/4/5) for a species with the choice; False (unchanged) otherwise.")
+        .def("set_species", &Agent::Stats::setSpecies, py::arg("name"), py::arg("option") = "",
              "Swap species: strip what the old one applied (species_applied), apply the new "
              "one's table traits (Dhampir: Speed 35, Darkvision 60, Necrotic Resistance). "
              "No-op when unchanged.")

@@ -433,6 +433,9 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
                 "luck_points_max": s.luck_points_max,
                 "boon_of_fate_used": s.boon_of_fate_used,
                 "species": s.species,
+                "species_option": s.species_option,
+                "species_size": s.species_size,
+                "species_spell_ability": s.species_spell_ability,
                 "species_applied": {k: getattr(s.species_applied, k) for k in
                                     ("speed_from", "speed_to", "darkvision_from",
                                      "darkvision_to", "magic_resist_mask",

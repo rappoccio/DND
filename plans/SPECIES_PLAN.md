@@ -1,7 +1,8 @@
 # SRD Species — Plan
 
-Drafted 2026-11-24. Source: `character_origins.pdf` (SRD 5.2, pp. 83–86). Status: **DRAFT —
-Step 0 not frozen.** Nothing is implemented until D1–D14 are signed off.
+Drafted 2026-11-24. Source: `character_origins.pdf` (SRD 5.2, pp. 83–86). Status: **Step 0
+FROZEN 2026-11-24** — D1 signed off and committed (9380611); D2–D14 signed off by the user the
+same day. SP0 audit done 2026-11-24 (results below). SP1 done 2026-11-24 (288/0). Next: SP2.
 
 ## Scope
 
@@ -38,7 +39,7 @@ already in `character_class.hpp` (`BackgroundDef` table) and need no work.
   - engine effects for these spells: Hellish Rebuke, Pass without Trace, Faerie Fire,
     Detect Magic, and the utility cantrips.
 
-## Step 0 — decisions (proposed, NOT frozen)
+## Step 0 — decisions (FROZEN 2026-11-24)
 
 - **D1 Table-driven species.** Replace the Dhampir `if` chain with a `SpeciesDef` table in a new
   `species.hpp`. Each entry gives the base Speed, Darkvision, size options, damage resistances,
@@ -130,6 +131,14 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
   `test_dhampir.py` unchanged and green. Serialization and bindings. Species, option, size and
   ability pickers in the Stats dialog. The `speciesNecroticMult()` logic is generalized to "the
   species' resistance floor" for every damage type.
+  **Done 2026-11-24 (288/0).** The table holds the nine SRD species after Dhampir, with
+  `option_label`/`options`, `size_options` and the `kSpeciesSpellAbility` flag. Their traits are
+  still zero, and SP2 fills them in. Stats gains `species_option`, `species_size` ("Small"/"Medium") and
+  `species_spell_ability` (SaveAbility ordinal). `setSpecies(name, option = "")` and
+  `normalizeSpeciesChoices` keep them valid, and `setSpeciesSize`/`setSpeciesSpellAbility` refuse
+  invalid picks. All three are serialized, in the agent JSON and the snapshot, and older saves get
+  the defaults. The Stats dialog has an option row and a Size + Spell Ability row (DLG_H 980).
+  `test_species.py` is new. `test_dhampir.py` loses only its two exact-table-list asserts.
 - **SP2 — Passive traits.**
   - Darkvision 60 or 120.
   - Speed 35 for Goliath and Wood Elf.
@@ -157,11 +166,49 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
 - **SP6 — Goliath, plus the combat spells left over.** Giant Ancestry (D9): on-hit prompt,
   bonus-action teleport, the two reactions. Large Form (D6): bonus action, Large, +10 Speed,
   advantage on STR checks, 100 rounds, once per Long Rest. Hellish Rebuke and Faerie Fire
-  engine effects, if SP0 shows they are missing.
+  engine effects, if SP0 shows they are missing. SP0 showed both are missing; fix the
+  Faerie Fire record too. **Chill Touch's no-heal rider is built here as well** (user,
+  2026-11-24: it should have existed already).
 - **SP7 — Import, NPC and docs.** `tools/import_character.py` maps the D&D Beyond race and
   subrace to species and option. Random party generation (`party_gen.py`) can roll species.
   `known_limitations.md` gets the D14 list. Update `memory/` architecture notes.
 - **SP8 — Live check.** Do a `run.sh` pass with one PC of each species, then close the plan.
+
+## SP0 audit results (2026-11-24)
+
+**Spells.** All 21 species spells exist in `spells.json`.
+
+| Status | Spells |
+|---|---|
+| Works in the engine, tested | Fire Bolt, Poison Spray (attack + tier dice), Misty Step, Darkness (`light_level` 4, magical), Longstrider, False Life (temp-HP pool), Hold Person, Ray of Enfeeblement, Ray of Sickness (Poisoned on hit) |
+| Works, rider missing | **Chill Touch**: damage and scaling work, but "can't regain HP until the end of your next turn" has no engine primitive |
+| Data only (D4 flavor) | Dancing Lights, Prestidigitation, Druidcraft, Minor Illusion, Mending, Thaumaturgy, Detect Magic, Speak with Animals, Pass without Trace. Each is a no-damage `Automatic` record, and casting it already resolves as a no-op |
+| Missing (SP6) | **Hellish Rebuke**: the record is a plain action-cast DEX save for 2d10 Fire, with no reaction trigger and no `casting_time`. **Faerie Fire**: no engine effect, and the record is wrong: `AttackRoll` and a 15-ft Sphere, where it should be a DEX save in a 20-ft Cube |
+
+Added to SP6: fix the Faerie Fire record, and build the Chill Touch no-heal rider (user,
+2026-11-24).
+
+**Condition saves (D5).** A condition-aware hook already exists:
+`beguilingTwistAdvantage(bm, saver, condition_name)` (`combat_ranger.cpp:134`), Charmed/Frightened
+only. D5 should generalize it into a `conditionSaveAdvantage(bm, saver, cond)` that also reads
+`condition_save_adv`, and then call it at every site below.
+
+- Already calls the hook: `rollSpellSave` (`combat_spells.cpp:444`), `executeSpell` condition
+  saves (`:2337`), `applySpellEffect` save-for-half (`:3369`), the `beginTurn` repeat-save loop
+  (`combat_turn.cpp:1049`), the `endTurn` save loop (`:1205`), and the hard-coded Frightened and
+  Charmed sites: Aura of Courage/Dread (`combat_turn.cpp:336`), Intimidating Presence
+  (`combat_barbarian.cpp:551`), Fighter (`combat_fighter.cpp:192`, `:664`), Ranger
+  (`combat_ranger.cpp:111`, `:200`), Beguiling Magic (`combat_bard.cpp:307`).
+- **Gaps:**
+  - The weapon on-hit condition save (`applyAttackResult`, `combat_attack.cpp:4705`) rolls a
+    flat d20 with no advantage logic at all, not even `saveAdvantageFor`. This is the main path
+    for monster **Poisoned** riders (5 in `DND2024_MonsterStats.json`), so Dwarven Resilience
+    needs it.
+  - The skip-turn save loop in `beginTurn` (`combat_turn.cpp:940`) has no hook.
+  - `rollFixedDcSave` (`combat_contested.cpp:269`, used by `lair.py`) takes no condition name.
+- Not condition saves, so no change is needed: concentration, Counterspell, thrown items, Cunning
+  Strike, Telekinetic, Elemental Burst, slipping terrain, Steps of the Fey, Clairvoyant
+  Combatant, delayed effects.
 
 ## Rules constants
 
