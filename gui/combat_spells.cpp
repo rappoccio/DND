@@ -2239,6 +2239,19 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
             }
         }
 
+        // Aasimar Celestial Revelation (MORE_SPECIES_PLAN.md D6): once on each of the Aasimar's
+        // turns, the first damaging spell adds PB Radiant (Necrotic for the Shroud) to that target.
+        if (tr.total_damage > 0 && sp.type != Spell::Heal) {
+            MagicDamage_t crt = Radiant;
+            const int cr = celestialRevelationDamage(bm, action.caster_idx, tgt_idx, crt);
+            if (cr > 0) {
+                int overflow = std::max(0, cr - tgt_stats.temp_hp);
+                tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - cr);
+                tgt_stats.hp_cur  = std::max(0, tgt_stats.hp_cur - overflow);
+                tr.total_damage += cr;
+            }
+        }
+
         // Cleric Blessed Strikes — Potent Spellcasting (L7+): add WIS mod to Cleric cantrip damage.
         if (tr.total_damage > 0 && sp.type != Spell::Heal && sp.level == 0 &&
             caster_stats.hasClass(CharacterClass::Cleric) &&

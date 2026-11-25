@@ -66,6 +66,9 @@ inline constexpr std::uint32_t kSpeciesPastLife       = 1u << 23;  // Reborn: +1
 // MS4:
 inline constexpr std::uint32_t kSpeciesHowl           = 1u << 24;  // Lupin: Howl, Bonus Action WIS save, PB/Long Rest (D8)
 inline constexpr std::uint32_t kSpeciesFeralPounce    = 1u << 25;  // Lupin: Slashing Unarmed Strikes + a Shove on hit (D9)
+// MS5:
+inline constexpr std::uint32_t kSpeciesHealingHands   = 1u << 26;  // Aasimar: Magic action heal PB d4, 1/Long Rest (D5)
+inline constexpr std::uint32_t kSpeciesCelestialRev   = 1u << 27;  // Aasimar: Celestial Revelation, L3, 1/Long Rest (D6)
 
 // Creature type a species makes its member (MORE_SPECIES_PLAN.md D1). Humanoid is the default
 // and sets nothing; Fey sets Stats::is_fey.
@@ -171,7 +174,8 @@ inline constexpr std::array kSpeciesTable{
     // text with the ability scores and languages ignored.
     SpeciesDef{.name = "Aasimar", .darkvision = 60,
                .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
-               .magic_resist_mask = (1u << Necrotic) | (1u << Radiant)},
+               .magic_resist_mask = (1u << Necrotic) | (1u << Radiant),
+               .flags = kSpeciesHealingHands | kSpeciesCelestialRev},
     SpeciesDef{.name = "Hexblood", .darkvision = 60,
                .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
                .flags = kSpeciesSpellAbility, .creature_type = SpeciesCreatureType::Fey},
@@ -286,6 +290,17 @@ inline constexpr int kFrostsChillSpeed   = 10;   // ft of Speed lost
 inline constexpr int kLargeFormLevel  = 5;
 inline constexpr int kLargeFormRounds = 100;
 inline constexpr int kLargeFormSpeed  = 10;
+
+// Aasimar Celestial Revelation (MORE_SPECIES_PLAN.md D6, level 3): a Bonus Action, 1 minute,
+// once per Long Rest, the form picked each time. It ends only when dismissed (free) or when the
+// rounds run out — not on Incapacitated (RAW, unlike Draconic Flight).
+inline constexpr int kCelestialRevelationLevel  = 3;
+inline constexpr int kCelestialRevelationRounds = 10;
+inline constexpr int kCelestialFormNone           = 0;
+inline constexpr int kCelestialFormHeavenlyWings  = 1;   // fly Speed = Speed
+inline constexpr int kCelestialFormInnerRadiance  = 2;   // end of turn: PB Radiant to non-allies within 10 ft
+inline constexpr int kCelestialFormNecroticShroud = 3;   // on transforming: CHA save or Frightened
+inline constexpr int kCelestialRevelationAuraCells = 2;  // 10 ft (Inner Radiance, Necrotic Shroud)
 
 // Size bit <-> the name saved and shown ("Small", "Medium"; "" for an unknown bit).
 [[nodiscard]] constexpr std::string_view speciesSizeName(std::uint8_t bit) noexcept {

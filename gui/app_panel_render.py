@@ -59,9 +59,10 @@ _BON_RUN_ESCAPE    = ("grapple_esc", "telekinetic_feat")
 # The ones drawn OUTSIDE the band, in draw order. What they have in common is exactly
 # their `economy`: none of them costs the Bonus Action, which is why spending it must
 # not take them (`actions._BONUS_ECONOMY`).
-_BON_RUN_UNBANDED  = ("grapple_drop", "use_item", "extinguish", "escape_net",
+_BON_RUN_UNBANDED  = ("grapple_drop", "use_item", "extinguish", "escape_net", "healing_hands",
                       "haste_action", "horde_breaker", "sudden_strike", "beasts_strike",
-                      "action_surge", "draconic_flight_end", "large_form_end")
+                      "action_surge", "draconic_flight_end", "large_form_end",
+                      "celestial_revelation_end")
 
 # The Archfey trio, named on its own only because the rider selector's label is the one
 # thing in §7 the draw pass WRITES back to the app. See the draw site.
@@ -71,8 +72,10 @@ _BON_FEY_TRIO = ("fey_effect", "steps_of_fey", "misty_escape")
 # no still-fused button left to cut the column. M2c needed six of these tuples and M2d
 # thirteen, for exactly that reason. The feature groups survive as the comments.
 _BON_RUN_BAND      = (
-    # Orc Adrenaline Rush, Dragonborn Draconic Flight, Goliath Large Form / Cloud's Jaunt (species)
-    "adrenaline_rush", "draconic_flight", "large_form", "howl", "clouds_jaunt",
+    # Orc Adrenaline Rush, Dragonborn Draconic Flight, Goliath Large Form / Cloud's Jaunt,
+    # Lupin Howl, Aasimar Celestial Revelation (species)
+    "adrenaline_rush", "draconic_flight", "large_form", "howl", "celestial_revelation",
+    "clouds_jaunt",
     # Monk, Barbarian, Warlock — the class band
     "patient_defense", "step_of_wind", "hand_of_healing", "wholeness_of_body",
     "rage", "intimidating_presence", "zealous_presence",

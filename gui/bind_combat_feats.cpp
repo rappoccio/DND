@@ -99,6 +99,31 @@ void bindCombatFeats(py::class_<CombatEngine>& engine) {
              py::arg("attacker_idx"), py::arg("target_idx"), py::arg("knock_prone"),
              "Lupin Feral Pounce: after an Unarmed-Strike hit (feral_pounce_available), Shove the\n"
              "target (push 5 ft or Prone), once per turn. Returns the ShoveResult.")
+        // MS5: Aasimar
+        .def("can_healing_hands", &CombatEngine::canHealingHands, py::arg("battle_map"), py::arg("idx"),
+             "Aasimar Healing Hands is usable now (its use left, conscious, not Incapacitated).")
+        .def("use_healing_hands", &CombatEngine::useHealingHands, py::arg("battle_map"),
+             py::arg("healer_idx"), py::arg("target_idx"),
+             "Aasimar Healing Hands: a creature within 5 ft regains PB d4 HP. Returns the HP regained,\n"
+             "-1 when unavailable. The caller pays the Action.")
+        .def("spend_healing_hands", &CombatEngine::spendHealingHands, py::arg("battle_map"), py::arg("idx"),
+             "Tracker button: spend Healing Hands for a heal rolled at the table.")
+        .def("can_celestial_revelation", &CombatEngine::canCelestialRevelation,
+             py::arg("battle_map"), py::arg("idx"),
+             "Aasimar Celestial Revelation can start now (level 3, its use left, conscious).")
+        .def("celestial_revelation_dc", &CombatEngine::celestialRevelationDc,
+             py::arg("battle_map"), py::arg("idx"),
+             "Necrotic Shroud save DC: 8 + CHA mod + PB.")
+        .def("start_celestial_revelation", &CombatEngine::startCelestialRevelation,
+             py::arg("battle_map"), py::arg("idx"), py::arg("form"),
+             "Start Celestial Revelation in form 1 Heavenly Wings, 2 Inner Radiance or 3 Necrotic\n"
+             "Shroud. The caller pays the Bonus Action.")
+        .def("end_celestial_revelation",
+             [](CombatEngine& e, BattleMap& bm, int idx) { e.endCelestialRevelation(bm, idx, " (dismissed)"); },
+             py::arg("battle_map"), py::arg("idx"),
+             "End Celestial Revelation early (free).")
+        .def("inner_radiance_tick", &CombatEngine::innerRadianceTick, py::arg("battle_map"), py::arg("idx"),
+             "Inner Radiance's end-of-turn burst (end_turn runs it). Returns creatures damaged.")
         .def("luck_available",
              &CombatEngine::luckAvailable,
              py::arg("battle_map"), py::arg("idx"),

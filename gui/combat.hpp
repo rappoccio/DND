@@ -2596,6 +2596,31 @@ public:
     // feral_pounce_available; this then Shoves the target (push 5 ft or Prone) through the normal
     // executeShove contest, once per turn. Invalid result when the flag wasn't set.
     ShoveResult applyFeralPounce(BattleMap& bm, int attacker_idx, int target_idx, bool knock_prone);
+    // ── Aasimar (MORE_SPECIES_PLAN.md MS5) ───────────────────────────────────────────────────
+    // Healing Hands (D5): a Magic action, once per Long Rest — one creature within 5 ft regains
+    // PB d4 HP (none while it can't regain HP). Returns the HP regained, -1 when unavailable. The
+    // caller pays the Action. spendHealingHands is the tracker button: it spends the use for a
+    // heal the table rolled (the DM types the amount in the HP box).
+    [[nodiscard]] bool canHealingHands(const BattleMap& bm, int idx) const noexcept;
+    int  useHealingHands(BattleMap& bm, int healer_idx, int target_idx);
+    bool spendHealingHands(BattleMap& bm, int idx);
+    // Celestial Revelation (D6, level 3): a Bonus Action, once per Long Rest, for 10 rounds, in
+    // one of three forms (kCelestialForm*). Heavenly Wings gives fly Speed = Speed; Inner Radiance
+    // deals PB Radiant to each non-ally within 10 ft at the end of each of the Aasimar's turns;
+    // Necrotic Shroud makes each non-ally within 10 ft save (CHA, DC 8 + CHA mod + PB) or be
+    // Frightened until the end of the Aasimar's next turn. Every form adds PB damage (Necrotic for
+    // the Shroud, else Radiant) to the first damaging attack or spell on each of its turns. It ends
+    // when dismissed (free) or when the rounds run out, never on Incapacitated. The caller pays the
+    // Bonus Action for a start.
+    [[nodiscard]] bool canCelestialRevelation(const BattleMap& bm, int idx) const noexcept;
+    [[nodiscard]] int  celestialRevelationDc(const BattleMap& bm, int idx) const noexcept;
+    bool startCelestialRevelation(BattleMap& bm, int idx, int form);
+    void endCelestialRevelation(BattleMap& bm, int idx, std::string_view why);
+    // The once-per-turn extra damage: PB of the form's type with `target`'s multiplier, or -1
+    // when it doesn't apply (not transformed, not the Aasimar's turn, already used). Marks it used.
+    int  celestialRevelationDamage(BattleMap& bm, int attacker_idx, int target_idx, MagicDamage_t& type);
+    // Inner Radiance's end-of-turn burst (endTurn). Returns the number of creatures damaged.
+    int  innerRadianceTick(BattleMap& bm, int idx);
     void failedChestCheckTrap(BattleMap& bm, int agent_idx, int chest_id, ChestCheckResult& r);
 
     // Heroic Inspiration (D11): after a missed attack with the ★ held, the GUI offers a reroll

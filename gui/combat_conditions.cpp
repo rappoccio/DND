@@ -79,6 +79,7 @@ nlohmann::json conditionToJson(const ActiveAgentCondition& c)
         {"condition_id", c.condition_id},
         {"cast_level", c.cast_level},
         {"on_damage", static_cast<int>(c.on_damage)},
+        {"ends_at_caster_turn_end", c.ends_at_caster_turn_end},
         {"dot_dice", c.dot_dice},
         {"dot_die_size", c.dot_die_size},
         {"dot_flat_bonus", c.dot_flat_bonus},
@@ -122,6 +123,7 @@ ActiveAgentCondition conditionFromJson(const nlohmann::json& j)
     c.condition_id         = j.value("condition_id", c.condition_id);
     c.cast_level           = j.value("cast_level", c.cast_level);
     c.on_damage            = static_cast<OnDamage_t>(j.value("on_damage", static_cast<int>(c.on_damage)));
+    c.ends_at_caster_turn_end = j.value("ends_at_caster_turn_end", c.ends_at_caster_turn_end);
     c.dot_dice             = j.value("dot_dice", c.dot_dice);
     c.dot_die_size         = j.value("dot_die_size", c.dot_die_size);
     c.dot_flat_bonus       = j.value("dot_flat_bonus", c.dot_flat_bonus);

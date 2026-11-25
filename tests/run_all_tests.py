@@ -311,6 +311,7 @@ test_scripts = [
     "test_more_species_spells.py",
     "test_more_species_actives.py",
     "test_more_species_lupin.py",
+    "test_more_species_aasimar.py",
     "test_teleport_slot.py",
     "test_stats_initiative.py",
     "test_attack_bonuses.py",

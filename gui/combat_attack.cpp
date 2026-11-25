@@ -4303,6 +4303,27 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
+    // ── Aasimar Celestial Revelation (MORE_SPECIES_PLAN.md D6), AUTOMATIC ──
+    // Once on each of the Aasimar's turns, the first damaging hit adds PB Radiant (Necrotic for
+    // the Shroud). celestialRevelationDamage marks the per-turn flag on the map, so the local
+    // attacker-conditions copy picks it up before it is written back below.
+    if (r.hit && r.total_damage > 0 && !updated_atk_cond.celestial_revelation_dmg_used) {
+        MagicDamage_t crt = Radiant;
+        const int cr = celestialRevelationDamage(bm, action.attacker_idx, action.target_idx, crt);
+        if (cr >= 0) {
+            updated_atk_cond.celestial_revelation_dmg_used = true;
+            r.total_damage += cr;
+            r.damage_breakdown.push_back({"Celestial Revelation", cr});
+            r.magic_damage_types.push_back(crt);
+            r.magic_damage_dealt[static_cast<std::size_t>(crt)] += cr;
+            int overflow = std::max(0, cr - tgt_stats.temp_hp);
+            tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - cr);
+            tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+            r.hp_after    = tgt_stats.hp_cur;
+            r.target_down = (r.hp_after <= 0);
+        }
+    }
+
     // ── Hunter (Ranger subclass) on-hit features ──────────────────────────
     const bool is_weapon_atk = (w.type == WeaponType::Melee || w.type == WeaponType::Ranged || w.thrown);
     if (r.hit && atk_stats.hasClass(CharacterClass::Ranger) &&

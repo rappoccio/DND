@@ -194,6 +194,12 @@ def dict_to_stats(stats_dict):
     stats.large_form_speed_added = int(stats_dict.get("large_form_speed_added", 0))
     stats.past_life_used = int(stats_dict.get("past_life_used", 0))   # MS3: Reborn
     stats.howl_used = int(stats_dict.get("howl_used", 0))             # MS4: Lupin
+    # MS5: Aasimar Healing Hands and Celestial Revelation
+    stats.healing_hands_used = bool(stats_dict.get("healing_hands_used", False))
+    stats.celestial_revelation_used = bool(stats_dict.get("celestial_revelation_used", False))
+    stats.celestial_revelation_rounds = int(stats_dict.get("celestial_revelation_rounds", 0))
+    stats.celestial_revelation_form = int(stats_dict.get("celestial_revelation_form", 0))
+    stats.celestial_revelation_fly_from = int(stats_dict.get("celestial_revelation_fly_from", 0))
     stats.vampiric_strengthen_bonus = int(stats_dict.get("vampiric_strengthen_bonus", 0))
     stats.vampiric_strengthen_turns = int(stats_dict.get("vampiric_strengthen_turns", 0))
     # Barbarian L20 Primal Champion and L11 Relentless Rage

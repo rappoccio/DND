@@ -210,6 +210,21 @@ def init_combat_panel(app):
     app.btn_cbt_large_form_end = Button(pygame.Rect(px, dummy_y, W, B),
                                      "End Large Form",
                                      (120, 100, 80), (160, 135, 110), app.font_md)
+    # Lupin Howl (MORE_SPECIES_PLAN.md MS4, D8): Bonus Action.
+    app.btn_cbt_howl = Button(pygame.Rect(px, dummy_y, W, B),
+                                     "Howl",
+                                     (110, 90, 70), (150, 125, 100), app.font_md)
+    # Aasimar (MORE_SPECIES_PLAN.md MS5): Healing Hands (Action), Celestial Revelation start
+    # (Bonus Action) / free end.
+    app.btn_cbt_healing_hands = Button(pygame.Rect(px, dummy_y, W, B),
+                                     "Healing Hands",
+                                     (170, 150, 70), (210, 190, 100), app.font_md)
+    app.btn_cbt_celestial_revelation = Button(pygame.Rect(px, dummy_y, W, B),
+                                     "Celestial Revelation",
+                                     (170, 150, 70), (210, 190, 100), app.font_md)
+    app.btn_cbt_celestial_revelation_end = Button(pygame.Rect(px, dummy_y, W, B),
+                                     "End Celestial Revelation",
+                                     (170, 150, 70), (210, 190, 100), app.font_md)
     app.btn_cbt_clouds_jaunt = Button(pygame.Rect(px, dummy_y, W, B),
                                      "Cloud's Jaunt",
                                      (90, 60, 170), (125, 90, 210), app.font_md)
@@ -684,6 +699,12 @@ def draw_tracker_section(app, lx, W, y):
                     hero_x -= 32 + 2
                     button(f"PL{st.past_life_remaining()}", pygame.Rect(hero_x, y, 32, 18),
                            "past_life", e.agent_idx)
+                # Aasimar Healing Hands (D5): a heal rolled at the table spends the use;
+                # the DM types the HP in the HP box. HH1 = unspent, HH0 = spent.
+                if st.species == "Aasimar":
+                    hero_x -= 32 + 2
+                    button(f"HH{int(st.healing_hands_available())}", pygame.Rect(hero_x, y, 32, 18),
+                           "healing_hands", e.agent_idx)
             hp = _hp_label(app, e.agent_idx) if e.agent_idx >= 0 else ""
             if hp:
                 s = font.render(hp, True, col)

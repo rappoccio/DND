@@ -467,6 +467,12 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
                 # MS3: Reborn Knowledge from a Past Life uses
                 "past_life_used": s.past_life_used,
                 "howl_used": s.howl_used,             # MS4: Lupin Howl uses
+                # MS5: Aasimar Healing Hands and Celestial Revelation
+                "healing_hands_used": s.healing_hands_used,
+                "celestial_revelation_used": s.celestial_revelation_used,
+                "celestial_revelation_rounds": s.celestial_revelation_rounds,
+                "celestial_revelation_form": s.celestial_revelation_form,
+                "celestial_revelation_fly_from": s.celestial_revelation_fly_from,
                 "vampiric_strengthen_bonus": s.vampiric_strengthen_bonus,
                 "vampiric_strengthen_turns": s.vampiric_strengthen_turns,
                 "primal_champion_applied": s.primal_champion_applied,

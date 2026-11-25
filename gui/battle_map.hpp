@@ -292,6 +292,10 @@ struct ActiveAgentCondition {
     int              condition_id         = -1;   // unique ID for tracking/removal
     int              cast_level           = 0;    // slot level the spell was cast at (for Dispel Magic / Aid)
     OnDamage_t       on_damage            = OnDamage_t::None;  // End / RepeatSave on taking damage
+    bool             ends_at_caster_turn_end = false; // removed at the END of caster_idx's next turn
+                                                  // (CombatEngine::endTurn, once turns_remaining has
+                                                  // ticked to 1): Necrotic Shroud's "until the end of
+                                                  // your next turn". Set turns_remaining = 2.
 
     // ── Damage-over-time rider (Pit Fiend poison, generic recurring DoT) ─────────
     // Copied verbatim from the AttackCondition that created this tracked condition.

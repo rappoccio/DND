@@ -1175,6 +1175,26 @@ namespace rpg {
       }
       // Lupin Feral Pounce (D9): Unarmed Strikes deal Slashing, and a hit can also Shove.
       [[nodiscard]] bool hasFeralPounce() const noexcept { return hasSpeciesFlag(kSpeciesFeralPounce); }
+      // Aasimar Healing Hands (MORE_SPECIES_PLAN.md D5): spent since the last Long Rest.
+      bool healing_hands_used{false};
+      [[nodiscard]] bool healingHandsAvailable() const noexcept {
+          return hasSpeciesFlag(kSpeciesHealingHands) && !healing_hands_used;
+      }
+      // Aasimar Celestial Revelation (D6, level 3): once per Long Rest; while rounds > 0 the
+      // form (kCelestialForm*) is active. fly_from is the fly Speed before Heavenly Wings, put
+      // back when it ends unless something else has changed it since (as Draconic Flight).
+      bool celestial_revelation_used{false};
+      int celestial_revelation_rounds{0};
+      int celestial_revelation_form{kCelestialFormNone};
+      int celestial_revelation_fly_from{0};
+      [[nodiscard]] bool canStartCelestialRevelation() const noexcept {
+          return hasSpeciesFlag(kSpeciesCelestialRev) && char_level >= kCelestialRevelationLevel
+              && !celestial_revelation_used && celestial_revelation_rounds <= 0;
+      }
+      [[nodiscard]] bool inCelestialRevelation() const noexcept { return celestial_revelation_rounds > 0; }
+      [[nodiscard]] int celestialForm() const noexcept {
+          return inCelestialRevelation() ? celestial_revelation_form : kCelestialFormNone;
+      }
 
       // Fairy Flight (MORE_SPECIES_PLAN.md D11): fly Speed = walk Speed, except in Medium or
       // Heavy armor. armor_medium_heavy is kept by BattleMap::setAgentArmor (the minimum
@@ -1418,6 +1438,8 @@ namespace rpg {
         large_form_used = false;          // Goliath Large Form
         past_life_used = 0;               // Reborn Knowledge from a Past Life
         howl_used = 0;                    // Lupin Howl
+        healing_hands_used = false;       // Aasimar Healing Hands
+        celestial_revelation_used = false; // Aasimar Celestial Revelation
         if (hasSpeciesFlag(kSpeciesHeroic)) heroic_inspiration = true;   // Human Resourceful
       }
 
@@ -1551,6 +1573,7 @@ namespace rpg {
       bool brutal_strike_used_this_turn{false}; // Brutal Strike effect already used this turn
       bool zealot_divine_fury_used{false};  // Zealot Divine Fury bonus already applied this turn
       bool keeper_of_souls_pending{false};  // Grave Domain Keeper of Souls: an enemy died within 60 ft and the GUI owes this cleric the heal prompt
+      bool celestial_revelation_dmg_used{false}; // Aasimar Celestial Revelation (D6): the once-per-turn extra damage already dealt this turn
       int  howled_by{-1};                   // Lupin Howl (D8): index of the howling Lupin (-1 = none). Disadvantage on attack rolls and saves; ends at the start of that Lupin's next turn (mirrors grave_cursed_by)
       int  grave_cursed_by{-1};             // Grave Domain Path to the Grave: index of the cursing cleric (-1 = not cursed). Disadvantage on attack rolls and saves; ends at the start of that cleric's next turn
       int  pull_of_death_turn{-1};          // Grave Domain Pull of Death: ctx_.turnCounter_ of the turn it was last used (once per turn, any turn)
@@ -1746,6 +1769,7 @@ namespace rpg {
       conditions_.branches_speed_zeroed        = false;
       conditions_.zealot_divine_fury_used      = false;
       conditions_.radiant_soul_used            = false;
+      conditions_.celestial_revelation_dmg_used = false;
       conditions_.sneak_attack_used            = false;
       conditions_.cunning_strike_available     = false;
       conditions_.attacked_while_invisible     = false;

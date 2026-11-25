@@ -156,7 +156,9 @@ namespace {
     X(vampiric_strengthen_turns) X(breath_weapon_used) X(draconic_flight_used) \
     X(draconic_flight_rounds) X(draconic_flight_fly_from) X(giant_ancestry_used) \
     X(large_form_used) X(large_form_rounds) X(large_form_speed_added) X(armor_medium_heavy) \
-    X(past_life_used) X(howl_used)
+    X(past_life_used) X(howl_used) \
+    X(healing_hands_used) X(celestial_revelation_used) X(celestial_revelation_rounds) \
+    X(celestial_revelation_form) X(celestial_revelation_fly_from)
 
 // ── Agent::Conditions — every member, one X() each ───────────────────────────
 #define RPG_CONDITIONS_FIELDS(X) \
@@ -184,7 +186,7 @@ namespace {
     X(dreadful_strike_target) X(dreadful_strike_weapon) X(stalkers_flurry_pending) \
     X(ambushers_leap) X(sudden_strike_available) X(berserker_frenzy_used) X(vitality_used_this_turn) \
     X(branches_speed_zeroed) X(brutal_strike_used_this_turn) \
-    X(zealot_divine_fury_used) X(pull_of_death_turn) X(grave_cursed_by) X(howled_by) X(keeper_of_souls_pending) X(fanatical_focus_used) X(brutal_strike_available) \
+    X(zealot_divine_fury_used) X(pull_of_death_turn) X(grave_cursed_by) X(howled_by) X(celestial_revelation_dmg_used) X(keeper_of_souls_pending) X(fanatical_focus_used) X(brutal_strike_available) \
     X(hamstrung) X(sundering_target_idx) X(staggered_next_save) X(radiant_soul_used) \
     X(sneak_attack_used) X(cunning_strike_available) X(steady_aim) \
     X(stunning_strike_available) X(stunning_strike_used) X(open_hand_rider_available) \

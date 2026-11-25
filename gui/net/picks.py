@@ -496,6 +496,8 @@ ARMS: tuple[Arm, ...] = (
         _drop("bastion_of_law", "Bastion of Law", ("pending_bastion_sp", 0))),
     Arm("hand_of_healing", PICK, TARGET, _t("Hand of Healing: choose a creature"),
         _drop("hand_of_healing", "Hand of Healing")),
+    Arm("healing_hands", PICK, TARGET, _t("Healing Hands: choose a creature within 5 ft"),
+        _drop("healing_hands", "Healing Hands")),
     Arm("use_item", PICK, TARGET, _t("Use Item: choose a creature"),
         _drop("use_item", "Use Item")),
     Arm("escape_net", PICK, TARGET, _t("Free from Net: choose the netted creature"),
@@ -528,7 +530,7 @@ WIRED = frozenset({
     "feint", "shove", "unarmed", "flurry_target",
     # M5d.2 — single-creature picks
     "heal_light", "lay_on_hands", "bastion_of_law",
-    "hand_of_healing", "use_item", "escape_net",
+    "hand_of_healing", "healing_hands", "use_item", "escape_net",
     "grant_inspiration", "telekinetic", "clairvoyant",
     "vow_of_enmity", "inspiring_smite", "vitality_target",
     "path_to_the_grave", "move_hunters_mark",

@@ -981,6 +981,23 @@ void bindTypes(py::module_& m) {
              "Lupin Howl: uses left (0 for a non-Lupin).")
         .def("has_feral_pounce", &Agent::Stats::hasFeralPounce,
              "Lupin Feral Pounce: Slashing Unarmed Strikes, and a hit can also Shove.")
+        // MS5: Aasimar
+        .def_readwrite("healing_hands_used", &Agent::Stats::healing_hands_used,
+             "Aasimar Healing Hands: spent since the last Long Rest.")
+        .def("healing_hands_available", &Agent::Stats::healingHandsAvailable,
+             "Aasimar Healing Hands: an Aasimar with its use left.")
+        .def_readwrite("celestial_revelation_used", &Agent::Stats::celestial_revelation_used,
+             "Aasimar Celestial Revelation: spent since the last Long Rest.")
+        .def_readwrite("celestial_revelation_rounds", &Agent::Stats::celestial_revelation_rounds,
+             "Aasimar Celestial Revelation: rounds left (0 = not transformed).")
+        .def_readwrite("celestial_revelation_form", &Agent::Stats::celestial_revelation_form,
+             "Aasimar Celestial Revelation form: 0 none, 1 Heavenly Wings, 2 Inner Radiance, 3 Necrotic Shroud.")
+        .def_readwrite("celestial_revelation_fly_from", &Agent::Stats::celestial_revelation_fly_from,
+             "Aasimar Heavenly Wings: the fly Speed before it, put back when it ends.")
+        .def("can_start_celestial_revelation", &Agent::Stats::canStartCelestialRevelation)
+        .def("in_celestial_revelation", &Agent::Stats::inCelestialRevelation)
+        .def("celestial_form", &Agent::Stats::celestialForm,
+             "The active Celestial Revelation form (0 when none).")
         .def_readwrite("armor_medium_heavy", &Agent::Stats::armor_medium_heavy,
              "Wearing Medium or Heavy armor (kept by set_agent_armor); grounds Fairy Flight.")
         .def("sync_species_flight", &Agent::Stats::syncSpeciesFlight,
@@ -1154,6 +1171,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("zealot_divine_fury_used", &Agent::Conditions::zealot_divine_fury_used)
         .def_readwrite("pull_of_death_turn", &Agent::Conditions::pull_of_death_turn)
         .def_readwrite("grave_cursed_by", &Agent::Conditions::grave_cursed_by)
+        .def_readwrite("celestial_revelation_dmg_used", &Agent::Conditions::celestial_revelation_dmg_used,
+             "Aasimar Celestial Revelation: this turn's extra damage already dealt.")
         .def_readwrite("howled_by", &Agent::Conditions::howled_by,
              "Lupin Howl: index of the howling Lupin (-1 = none); Disadvantage on attacks and saves.")
         .def_readwrite("keeper_of_souls_pending", &Agent::Conditions::keeper_of_souls_pending)
@@ -2798,6 +2817,7 @@ void bindTypes(py::module_& m) {
         .def_readwrite("condition_id",    &ActiveAgentCondition::condition_id)
         .def_readwrite("cast_level",      &ActiveAgentCondition::cast_level)
         .def_readwrite("on_damage",       &ActiveAgentCondition::on_damage)
+        .def_readwrite("ends_at_caster_turn_end", &ActiveAgentCondition::ends_at_caster_turn_end)
         // ── Delayed / stored effect (Quivering Palm, Delayed Blast Fireball, …) ──
         .def_readwrite("delayed_trigger",      &ActiveAgentCondition::delayed_trigger)
         .def_readwrite("delay_dice",           &ActiveAgentCondition::delay_dice)

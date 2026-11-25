@@ -3312,6 +3312,8 @@ class App:
             self._resolve_bastion_of_law(hit)
         elif self._picking("hand_of_healing") and hit >= 0:
             self._resolve_hand_of_healing(hit)
+        elif self._picking("healing_hands") and hit >= 0:
+            self._resolve_healing_hands(hit)
         elif self._pick_data("use_item") >= 0 and hit >= 0:
             self._resolve_use_item(hit)
         elif self._picking("escape_net") and hit >= 0:
@@ -5320,6 +5322,52 @@ class App:
         self._combat_log_add(msg + ".")
         self.bonus_used = True
         self._update_attack_overlay()
+
+    def _resolve_healing_hands(self, target_idx: int):
+        """Aasimar Healing Hands (MORE_SPECIES_PLAN.md D5): the clicked creature within 5 ft
+        regains PB d4 HP. Pays the Action; a refused click (out of reach) keeps the pick armed."""
+        healer_idx = self._current_agent_idx()
+        if not (0 <= healer_idx < len(self.bm.placed_agents)
+                and 0 <= target_idx < len(self.bm.placed_agents)):
+            self._drop_pick("healing_hands")
+            return
+        healed = self.combat.use_healing_hands(self.bm, healer_idx, target_idx)
+        self._flush_combat_log()
+        if healed < 0:
+            return
+        self._drop_pick("healing_hands")
+        self.action_used = True
+        self._update_attack_overlay()
+
+    def _start_celestial_revelation(self, form: int):
+        """Aasimar Celestial Revelation (MS5, D6): transform into `form` (1 Heavenly Wings,
+        2 Inner Radiance, 3 Necrotic Shroud). Pays the Bonus Action; Heavenly Wings also sets
+        this turn's fly budget, as Draconic Flight does."""
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return
+        if not self.combat.start_celestial_revelation(self.bm, idx, form):
+            self._combat_log_add("Celestial Revelation unavailable.")
+            return
+        self._flush_combat_log()
+        if form == 1:
+            st = self.combat.get_agent_stats(self.bm, idx)
+            w, _f, sw, bu = self.bm.placed_agents[idx].raw_movement
+            self.bm.placed_agents[idx].init_movement(w, max(0, st.speed_fly - (st.speed_walk - w)), sw, bu)
+            self._update_reach()
+        self.bonus_used = True
+        self._sync_spell_effect_cache()
+        self._update_attack_overlay()
+
+    def _end_celestial_revelation(self, idx: int):
+        """Dismiss Celestial Revelation (free); Heavenly Wings' fly budget goes with it."""
+        wings = self.combat.get_agent_stats(self.bm, idx).celestial_form() == 1
+        self.combat.end_celestial_revelation(self.bm, idx)
+        self._flush_combat_log()
+        if wings:
+            w, _f, sw, bu = self.bm.placed_agents[idx].raw_movement
+            self.bm.placed_agents[idx].init_movement(w, 0, sw, bu)
+            self._update_reach()
 
     @staticmethod
     def _item_menu_dice(it) -> str:
@@ -8305,6 +8353,10 @@ class App:
             self._resolve_extinguish()
         if action_id == "escape_net":
             self._begin_escape_net()
+        # Aasimar Healing Hands (MORE_SPECIES_PLAN.md D5) costs the Action, not the Bonus Action.
+        if action_id == "healing_hands":
+            self._arm_pick("healing_hands")
+            self._combat_log_add("Healing Hands — click a creature within 5 ft (or yourself).")
         # F14, closed: the bonus band's attack header is the mirror of
         # `atk_action` above and is dispatched the same way — ungated, on the
         # offer the panel drew. `bonus_used` is already True while an off-hand
@@ -8325,6 +8377,11 @@ class App:
             self._toggle_draconic_flight()
         if action_id == "large_form_end":
             self._toggle_large_form()
+        # Ending Celestial Revelation is free (MS5, D6).
+        if action_id == "celestial_revelation_end":
+            idx = self._current_agent_idx()
+            if 0 <= idx < len(self.bm.placed_agents):
+                self._end_celestial_revelation(idx)
         if not self.bonus_used:
             # `spell_bonus` stays behind the gate, and that is D-M2-4 rather
             # than F14: it is `spell_action`'s mirror, drawn mid-sequence with
@@ -8460,6 +8517,8 @@ class App:
                         self.bonus_used = True
                     else:
                         self._combat_log_add("Howl unavailable.")
+            if action_id == "celestial_revelation":
+                features.show_celestial_revelation_menu(self, anchor)   # Aasimar (MS5, D6)
             if action_id == "draconic_flight":
                 self._toggle_draconic_flight()
             if action_id == "large_form":

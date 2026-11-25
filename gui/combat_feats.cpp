@@ -976,6 +976,208 @@ ShoveResult CombatEngine::applyFeralPounce(BattleMap& bm, int attacker_idx, int 
     return executeShove(bm, sa);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Aasimar (MORE_SPECIES_PLAN.md MS5)
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+// Conscious, not Incapacitated, on the board: the gate for an Aasimar feature on its own turn.
+bool aasimarReady(const BattleMap& bm, int idx) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    if (bm.isAgentOnDeck(idx)) return false;
+    return bm.getAgentStats(idx).hp_cur > 0 && !bm.getAgentConditions(idx).incapacitated;
+}
+} // namespace
+
+bool CombatEngine::canHealingHands(const BattleMap& bm, int idx) const noexcept
+{
+    return aasimarReady(bm, idx) && bm.getAgentStats(idx).healingHandsAvailable();
+}
+
+int CombatEngine::useHealingHands(BattleMap& bm, int healer_idx, int target_idx)
+{
+    const auto& agents = bm.placedAgents();
+    const int n = static_cast<int>(agents.size());
+    if (!canHealingHands(bm, healer_idx) || target_idx < 0 || target_idx >= n) return -1;
+    const PlacedAgent& hp = agents[static_cast<std::size_t>(healer_idx)];
+    const PlacedAgent& tp = agents[static_cast<std::size_t>(target_idx)];
+    if (tp.removed_from_play || tp.agent->getConditions().dead) return -1;
+    if (target_idx != healer_idx &&
+        footprintDistance(hp.origin, hp.agent->getSize(), tp.origin, tp.agent->getSize()) > 1) {
+        log_("{}: Healing Hands needs a creature within 5 ft", agentName(bm, healer_idx));
+        return -1;
+    }
+    Agent::Stats hs = bm.getAgentStats(healer_idx);
+    hs.healing_hands_used = true;
+    bm.setAgentStats(healer_idx, hs);
+    int total = 0;
+    std::string dice;
+    for (int i = 0; i < hs.prof_bonus; ++i) {
+        const int d = roll(4);
+        total += d;
+        dice += (i ? ", " : "") + std::to_string(d);
+    }
+    Agent::Stats ts = bm.getAgentStats(target_idx);
+    if (ts.cant_heal) {
+        log_("{}: Healing Hands on {} — {}d4 [{}] = {}, but it can't regain HP", agentName(bm, healer_idx),
+             agentName(bm, target_idx), hs.prof_bonus, dice, total);
+        return 0;
+    }
+    const int healed = std::max(0, std::min(total, ts.effectiveMaxHp() - ts.hp_cur));
+    ts.hp_cur += healed;
+    bm.setAgentStats(target_idx, ts);
+    reviveOnHeal(bm, target_idx);   // a healed downed ally rejoins initiative
+    log_("{}: Healing Hands — {}d4 [{}] = {}; {} regains {} HP", agentName(bm, healer_idx),
+         hs.prof_bonus, dice, total, agentName(bm, target_idx), healed);
+    return healed;
+}
+
+bool CombatEngine::spendHealingHands(BattleMap& bm, int idx)
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (!s.healingHandsAvailable()) return false;
+    s.healing_hands_used = true;
+    bm.setAgentStats(idx, s);
+    log_("{}: Healing Hands spent (heal rolled at the table)", agentName(bm, idx));
+    return true;
+}
+
+bool CombatEngine::canCelestialRevelation(const BattleMap& bm, int idx) const noexcept
+{
+    return aasimarReady(bm, idx) && bm.getAgentStats(idx).canStartCelestialRevelation();
+}
+
+int CombatEngine::celestialRevelationDc(const BattleMap& bm, int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return 0;
+    const Agent::Stats s = bm.getAgentStats(idx);
+    return 8 + abilityMod(s.cha) + s.prof_bonus;
+}
+
+bool CombatEngine::startCelestialRevelation(BattleMap& bm, int idx, int form)
+{
+    if (form < kCelestialFormHeavenlyWings || form > kCelestialFormNecroticShroud) return false;
+    if (!canCelestialRevelation(bm, idx)) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    s.celestial_revelation_used   = true;
+    s.celestial_revelation_rounds = kCelestialRevelationRounds;
+    s.celestial_revelation_form   = form;
+    if (form == kCelestialFormHeavenlyWings) {
+        s.celestial_revelation_fly_from = s.speed_fly;
+        s.speed_fly = std::max(s.speed_fly, s.speed_walk);
+    }
+    bm.setAgentStats(idx, s);
+    static constexpr const char* kForms[] = {"", "Heavenly Wings", "Inner Radiance", "Necrotic Shroud"};
+    log_("{}: Celestial Revelation — {} for 1 minute (+{} {} damage once per turn)", agentName(bm, idx),
+         kForms[form], s.prof_bonus, form == kCelestialFormNecroticShroud ? "Necrotic" : "Radiant");
+    if (form == kCelestialFormHeavenlyWings)
+        log_("{} sprouts spectral wings: fly Speed {} ft", agentName(bm, idx), s.speed_fly);
+    if (form != kCelestialFormNecroticShroud) return true;
+
+    // Necrotic Shroud: each non-ally within 10 ft saves (CHA) or is Frightened until the end of
+    // the Aasimar's next turn. Condition-save Advantage (Brave, …) applies.
+    const int dc = celestialRevelationDc(bm, idx);
+    const auto& agents = bm.placedAgents();
+    const PlacedAgent& ap = agents[static_cast<std::size_t>(idx)];
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        if (i == idx || areAllies(bm, idx, i) || sealedApart(bm, idx, i)) continue;
+        const PlacedAgent& tp = agents[static_cast<std::size_t>(i)];
+        if (tp.removed_from_play || bm.isAgentOnDeck(i)) continue;
+        if (tp.agent->getConditions().dead || tp.agent->getStats().hp_cur <= 0) continue;
+        if (footprintDistance(ap.origin, ap.agent->getSize(), tp.origin, tp.agent->getSize())
+                > kCelestialRevelationAuraCells) continue;
+        if (rollFixedDcSave(bm, i, SaveCha, dc, "Necrotic Shroud", "Frightened")) {
+            charmFearSaveSucceeded(bm, i);   // Beguiling Twist's trigger
+            continue;
+        }
+        if (hasAuraOfCourage(bm, i)) {
+            log_("{} can't be Frightened (Aura of Courage) — Necrotic Shroud has no effect", agentName(bm, i));
+            continue;
+        }
+        if (conditionImmune(bm, i, "Frightened")) continue;
+        ActiveAgentCondition cond;
+        cond.agent_idx         = i;
+        cond.caster_idx        = idx;     // the fear source; ticks at the Aasimar's turn starts
+        cond.condition_name    = "Frightened";
+        cond.turns_remaining   = 2;       // through the Aasimar's next turn …
+        cond.ends_at_caster_turn_end = true;   // … and removed as that turn ends (endTurn)
+        cond.save_repeat_turns = -1;      // no repeated save
+        (void)addAgentCondition(bm, cond);
+        log_("{} is Frightened of {} (Necrotic Shroud) until the end of its next turn",
+             agentName(bm, i), agentName(bm, idx));
+    }
+    return true;
+}
+
+void CombatEngine::endCelestialRevelation(BattleMap& bm, int idx, std::string_view why)
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (!s.inCelestialRevelation()) return;
+    const bool wings = s.celestial_revelation_form == kCelestialFormHeavenlyWings;
+    s.celestial_revelation_rounds = 0;
+    s.celestial_revelation_form   = kCelestialFormNone;
+    if (wings && s.speed_fly == std::max(s.celestial_revelation_fly_from, s.speed_walk))
+        s.speed_fly = s.celestial_revelation_fly_from;
+    bm.setAgentStats(idx, s);
+    log_("{}'s Celestial Revelation ends{}", agentName(bm, idx), why);
+}
+
+int CombatEngine::celestialRevelationDamage(BattleMap& bm, int attacker_idx, int target_idx, MagicDamage_t& type)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (attacker_idx < 0 || attacker_idx >= n || target_idx < 0 || target_idx >= n) return -1;
+    // "Once on each of your turns" (no turn tracked, as in a bare engine, counts as its own).
+    if (ctx_.turn_agent_idx_ >= 0 && ctx_.turn_agent_idx_ != attacker_idx) return -1;
+    const Agent::Stats as = bm.getAgentStats(attacker_idx);
+    const int form = as.celestialForm();
+    if (form == kCelestialFormNone) return -1;
+    Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+    if (ac.celestial_revelation_dmg_used) return -1;
+    ac.celestial_revelation_dmg_used = true;
+    bm.setAgentConditions(attacker_idx, ac);
+    type = form == kCelestialFormNecroticShroud ? Necrotic : Radiant;
+    const Agent::Stats ts = bm.getAgentStats(target_idx);
+    const float mult = effectiveMagicDamageMult(as, ts, type, false, &bm, target_idx);
+    const int dmg = std::max(0, static_cast<int>(static_cast<float>(as.prof_bonus) * mult));
+    log_("{}: Celestial Revelation +{} {} to {}", agentName(bm, attacker_idx), dmg,
+         type == Necrotic ? "Necrotic" : "Radiant", agentName(bm, target_idx));
+    return dmg;
+}
+
+int CombatEngine::innerRadianceTick(BattleMap& bm, int idx)
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return 0;
+    const Agent::Stats as = bm.getAgentStats(idx);
+    if (as.celestialForm() != kCelestialFormInnerRadiance || as.hp_cur <= 0) return 0;
+    const PlacedAgent& ap = agents[static_cast<std::size_t>(idx)];
+    int hit = 0;
+    for (int i = 0; i < static_cast<int>(agents.size()); ++i) {
+        if (i == idx || areAllies(bm, idx, i) || sealedApart(bm, idx, i)) continue;   // allies skipped (D6)
+        const PlacedAgent& tp = agents[static_cast<std::size_t>(i)];
+        if (tp.removed_from_play || bm.isAgentOnDeck(i)) continue;
+        if (tp.agent->getConditions().dead || tp.agent->getStats().hp_cur <= 0) continue;
+        if (footprintDistance(ap.origin, ap.agent->getSize(), tp.origin, tp.agent->getSize())
+                > kCelestialRevelationAuraCells) continue;
+        const Agent::Stats ts = bm.getAgentStats(i);
+        const float mult = effectiveMagicDamageMult(as, ts, Radiant, false, &bm, i);
+        const int dmg = std::max(0, static_cast<int>(static_cast<float>(as.prof_bonus) * mult));
+        if (dmg > 0) {
+            damageAgent(bm, i, dmg);
+            processDamageTaken(bm, i, dmg, 1u << static_cast<unsigned>(Radiant));
+            checkConcentrationOnDamage(bm, i, dmg);
+        }
+        ++hit;
+        const Agent::Stats after = bm.getAgentStats(i);
+        log_("{}: Inner Radiance sears {} for {} Radiant → {}/{}", agentName(bm, idx), agentName(bm, i),
+             dmg, after.hp_cur, after.hp_max);
+    }
+    return hit;
+}
+
 int CombatEngine::consumeStrengthenBonus(BattleMap& bm, int idx) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return 0;

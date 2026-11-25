@@ -258,6 +258,8 @@ def tracker_handle_event(app, event) -> bool:
             toggle_heroic_inspiration(app, arg)
         elif kind == "past_life":
             spend_past_life(app, arg)
+        elif kind == "healing_hands":
+            spend_healing_hands(app, arg)
         elif kind == "dm_view":
             app._set_dm_view(not app.dm_view)
         elif kind == "hp_close":
@@ -317,6 +319,19 @@ def spend_past_life(app, agent_idx: int):
                             f"({left} use{'' if left == 1 else 's'} left).")
     else:
         app._combat_log_add(f"{name} has no Knowledge from a Past Life uses left.")
+
+
+def spend_healing_hands(app, agent_idx: int):
+    """Tracker button: an Aasimar spends Healing Hands on a heal rolled at the table
+    (MORE_SPECIES_PLAN.md D5). The DM enters the HP in the HP box."""
+    if not (0 <= agent_idx < len(app.bm.placed_agents)):
+        return
+    name = app.bm.placed_agents[agent_idx].name
+    if app.combat.spend_healing_hands(app.bm, agent_idx):
+        app._combat_log_add(f"{name}: Healing Hands — roll {app.combat.get_agent_stats(app.bm, agent_idx).prof_bonus}d4 "
+                            f"and add it in the HP box.")
+    else:
+        app._combat_log_add(f"{name} has already used Healing Hands since the last Long Rest.")
 
 
 def tracker_select(app, agent_idx: int):

@@ -215,6 +215,28 @@ def show_vampiric_bite_menu(app, anchor=None):
                    anchor=(px, py))
 
 
+def show_celestial_revelation_menu(app, anchor=None):
+    """Aasimar Celestial Revelation (MORE_SPECIES_PLAN.md D6): pick the form for this
+    transformation. Each adds PB damage once per turn; the form decides the rest."""
+    idx = app._current_agent_idx()
+    if idx < 0:
+        return
+    stats = app.combat.get_agent_stats(app.bm, idx)
+    pb = stats.prof_bonus
+    dc = app.combat.celestial_revelation_dc(app.bm, idx)
+    items = [(f"🕊 Heavenly Wings — fly Speed {stats.speed_walk} ft, +{pb} Radiant",
+              lambda: app._start_celestial_revelation(1)),
+             (f"☀ Inner Radiance — {pb} Radiant to foes within 10 ft each turn end",
+              lambda: app._start_celestial_revelation(2)),
+             (f"💀 Necrotic Shroud — foes within 10 ft CHA DC {dc} or Frightened, +{pb} Necrotic",
+              lambda: app._start_celestial_revelation(3))]
+    px, py = anchor if anchor else pygame.mouse.get_pos()
+    if px >= app._panel_x():
+        px = max(8, app._panel_x() - app.context_menu.MIN_W - 8)
+    app._ask_actor(idx, "action", f"{app._agent_name(idx)}: Celestial Revelation", items,
+                   anchor=(px, py))
+
+
 def show_use_item_menu(app, pos):
     """Pop the current actor's inventory: pick which carried item to use, then click a target.
     Items the actor can no longer pay for this turn (the Bonus Action is gone, or there is no

@@ -56,6 +56,7 @@ from dataclasses import dataclass, field
 #   lay_on_hands         pending_lay_on_hands           Lay on Hands: target
 #   bastion_of_law       pending_bastion_of_law         Bastion of Law: ward target
 #   hand_of_healing      pending_hand_of_healing        Hand of Healing: target
+#   healing_hands        (new, MS5)                     Aasimar Healing Hands: target within 5 ft
 #   use_item             pending_use_item               Use Item: target; data = inventory slot
 #   escape_net           pending_escape_net             Free from Net: the netted creature
 #   piercing_shot        (new, AA3)                     Arcane Archer Piercing Shot: aim cell; data = {"weapon"}

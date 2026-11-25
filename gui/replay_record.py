@@ -67,6 +67,8 @@ class RecordingCombat:
         "execute_shove", "execute_grapple",
         "execute_grapple_escape", "drop_concentration", "clear_all_concentration",
         "set_safe_targets", "arm_past_life", "use_howl", "apply_feral_pounce",
+        "use_healing_hands", "spend_healing_hands", "start_celestial_revelation",
+        "end_celestial_revelation",
     }
 
     def __init__(self, engine, rpg_module):

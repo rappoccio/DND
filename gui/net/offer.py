@@ -60,7 +60,7 @@ WIRED = frozenset({
     "atk_action", "atk_bonus", "unarmed", "vampiric_bite", "nick", "flurry_of_blows", "martial_arts",
     "gwm_hew", "horde_breaker", "sudden_strike", "beasts_strike", "war_priest", "shove_push", "shove_prone", "telekinetic_feat", "bm_maneuver",
     # M5d.2 — single-creature picks
-    "escape_net", "hand_of_healing", "clairvoyant_combatant", "vow_of_enmity",
+    "escape_net", "hand_of_healing", "healing_hands", "clairvoyant_combatant", "vow_of_enmity",
     "path_to_the_grave", "move_hunters_mark",
     "inspiring_smite", "healing_light", "lay_on_hands", "grant_inspiration",
     "telekinetic_psi", "use_item", "bastion_of_law",
@@ -137,6 +137,9 @@ CLASS: dict[str, str] = {
     "large_form": I,
     "large_form_end": I,
     "howl": I,
+    "celestial_revelation": C_I,
+    "celestial_revelation_end": I,
+    "healing_hands": A,
     "healing_light": A,
     "turn_undead": I,
     "divine_intervention": S,

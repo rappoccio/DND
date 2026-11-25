@@ -1043,6 +1043,28 @@ def build_output():
     app.armed_metamagic2 = rpg.MetamagicOption.NONE
     app.armed_seeking = False
 
+    # 70-72 — the species Bonus Action band and Healing Hands (MORE_SPECIES_PLAN.md MS4/MS5).
+    # Howl shipped in MS4 with no widget behind its id, which only a drawn checkpoint catches.
+    def _species(name, **fields):
+        idx = _reclass(app, "Cyra", rpg.CharacterClass.Fighter, 3)
+        s = app.combat.get_agent_stats(app.bm, idx)
+        s.set_species(name, "")
+        for k, v in fields.items():
+            setattr(s, k, v)
+        app.combat.set_agent_stats(app.bm, idx, s)
+        return idx
+    cyra_sp = _goto(app, "Cyra")
+    cyra_species = app.combat.get_agent_stats(app.bm, cyra_sp).species
+    _species("Lupin")
+    out += cap.capture("70 lupin fighter 3 — Cyra (howl)")
+    _species("Aasimar")
+    out += cap.capture("71 aasimar fighter 3 — Cyra (healing_hands, celestial_revelation)")
+    _species("Aasimar", celestial_revelation_used=True, celestial_revelation_rounds=10,
+             celestial_revelation_form=2, healing_hands_used=True)
+    out += cap.capture("72 aasimar transformed, Healing Hands spent — Cyra (celestial_revelation_end)")
+    _species(cyra_species, celestial_revelation_used=False, celestial_revelation_rounds=0,
+             celestial_revelation_form=0, healing_hands_used=False)
+
     # 99 — combat running with NOBODY on turn (`_current_agent_idx()` out of range:
     # combat started with no combatants, or the acting token was removed). Twice now
     # this block has recorded a behaviour change rather than only asserting about one.

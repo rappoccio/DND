@@ -68,6 +68,8 @@ PLAY_STATS = (
     "breath_weapon_used", "draconic_flight_used", "draconic_flight_rounds",
     "draconic_flight_fly_from", "giant_ancestry_used", "large_form_used",
     "large_form_rounds", "large_form_speed_added", "past_life_used", "howl_used",
+    "healing_hands_used", "celestial_revelation_used", "celestial_revelation_rounds",
+    "celestial_revelation_form", "celestial_revelation_fly_from",
 )
 # Any of these set ⇒ the PC's base numbers are not its own right now (held whole).
 UNSETTLED_STATS = ("hasted", "haste_speed_bonus", "aid_hp_bonus", "longstrider_bonus",

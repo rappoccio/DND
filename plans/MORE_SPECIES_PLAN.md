@@ -190,7 +190,14 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
   `executeShove`, and a failed shove offers Past Life.
   - Feral Pounce (D9).
   - Howl (D8) and the `Howled` condition, with tests for the DC, the duration and the uses.
-- **MS5 — Aasimar actives.**
+- **MS5 — Aasimar actives.** Done 2026-11-25 (300/0): Healing Hands is `useHealingHands` (an
+  Action, drawn outside the Bonus band, pick `healing_hands`; tracker button `HH` spends it for a
+  heal the table rolled). Celestial Revelation is `startCelestialRevelation(form)` from a form menu,
+  counted down in `beginTurn`, free `celestial_revelation_end`; the extra damage is
+  `celestialRevelationDamage` on the weapon and spell hit paths (`celestial_revelation_dmg_used`);
+  Inner Radiance ticks in `endTurn`; the Shroud's Frightened uses the new
+  `ActiveAgentCondition::ends_at_caster_turn_end`. Also fixed MS4's missing `btn_cbt_howl`
+  widget; panel golden checkpoints 70–72 now draw the species band.
   - Healing Hands (D5).
   - Celestial Revelation (D6): the three forms, once-per-turn extra damage, the Inner Radiance
     end-of-turn tick and the Necrotic Shroud save.

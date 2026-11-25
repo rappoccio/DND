@@ -105,6 +105,8 @@ _BONUS_ECONOMY = {
     "action_surge":          ECONOMY_FREE,     # Fighter: grants an extra Action, costs none
     "draconic_flight_end":   ECONOMY_FREE,     # Dragonborn: dismissing Draconic Flight is free
     "large_form_end":        ECONOMY_FREE,     # Goliath: ending Large Form is free
+    "celestial_revelation_end": ECONOMY_FREE,  # Aasimar: dismissing Celestial Revelation is free
+    "healing_hands":         ECONOMY_ACTION,   # Aasimar: a Magic action, so outside the band
 
     # ── inside the band, and Action-costing with it ──
     "turn_undead":           ECONOMY_ACTION,
@@ -647,6 +649,12 @@ class ActionMenu:
             out.append(Action("escape_net", "🕸 Free from Net" if any_net else "🕸 Free from Grasping Shot",
                               GROUP_BONUS))
 
+        # Aasimar Healing Hands (MORE_SPECIES_PLAN.md D5): a Magic action, once per Long Rest,
+        # then a click on a creature within 5 ft. Outside the band: spending the Bonus Action
+        # (Celestial Revelation, say) must not hide an Action-cost feature.
+        if not app.action_used and app.combat.can_healing_hands(app.bm, agent_idx):
+            out.append(Action("healing_hands", "✋ Healing Hands", GROUP_BONUS))
+
         # Haste's extra limited action, refilled at the top of each of the hasted
         # creature's turns. Outside the band because it IS an Action: spending the Bonus
         # Action first must not dead-key it. The flag is the whole guard — the engine
@@ -691,6 +699,11 @@ class ActionMenu:
         if stats.large_form_rounds > 0:
             out.append(Action("large_form_end",
                               f"⛰ End Large Form ({stats.large_form_rounds} rds)", GROUP_BONUS))
+        # Aasimar Celestial Revelation (MS5, D6): dismissing it is free.
+        if stats.celestial_revelation_rounds > 0:
+            out.append(Action("celestial_revelation_end",
+                              f"✨ End Celestial Revelation ({stats.celestial_revelation_rounds} rds)",
+                              GROUP_BONUS))
 
         # ── F11, closed: Open Hand L11 Fleet Step ──
         # The one option in §7 whose gate is the OPPOSITE of the band's. Step of the
@@ -758,6 +771,9 @@ class ActionMenu:
             out.append(Action("howl",
                               f"🐺 Howl ({stats.howl_remaining()}/{stats.prof_bonus})",
                               GROUP_BONUS))
+        # ── Aasimar Celestial Revelation (MS5, D6): pick a form, 1 minute, once per Long Rest ──
+        if app.combat.can_celestial_revelation(app.bm, agent_idx):
+            out.append(Action("celestial_revelation", "✨ Celestial Revelation", GROUP_BONUS))
         if app.combat.can_clouds_jaunt(app.bm, agent_idx):
             out.append(Action("clouds_jaunt",
                               f"⛰ Cloud's Jaunt (30 ft, {stats.giant_ancestry_remaining()} left)",

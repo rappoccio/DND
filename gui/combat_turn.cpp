@@ -232,6 +232,18 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         }
     }
 
+    // Aasimar Celestial Revelation (MS5, D6): counts down one per round at its owner's turn start.
+    // Incapacitated does not end it (RAW).
+    if (const Agent::Stats cs = bm.getAgentStats(agent_idx); cs.celestial_revelation_rounds > 0) {
+        if (cs.celestial_revelation_rounds == 1) {
+            endCelestialRevelation(bm, agent_idx, ": 1 minute is up");
+        } else {
+            Agent::Stats dec = cs;
+            --dec.celestial_revelation_rounds;
+            bm.setAgentStats(agent_idx, dec);
+        }
+    }
+
     // Self-heal any grapple whose grappler can no longer maintain it (died/downed/incapacitated,
     // possibly on another creature's turn, or via a kill path that missed the down chokepoint, or
     // a stale grappler_idx). This frees a creature grappled by a now-dead captor at the start of its
@@ -1208,6 +1220,23 @@ void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
                 }
             }
         }
+    }
+
+    // ── Aasimar Celestial Revelation (MS5, D6) ───────────────────────────────────
+    // Inner Radiance sears each non-ally within 10 ft as the Aasimar's turn ends.
+    (void)innerRadianceTick(bm, agent_idx);
+    // Necrotic Shroud's Frightened lasts until the end of the Aasimar's next turn: by now its
+    // duration has ticked once at this turn's start (2 → 1), so this is that next turn ending.
+    for (std::size_t i = 0; i < conditions_.mutableAll().size();) {
+        const ActiveAgentCondition& ac = conditions_.mutableAll()[i];
+        if (ac.caster_idx == agent_idx && ac.ends_at_caster_turn_end && ac.turns_remaining <= 1) {
+            const ActiveAgentCondition ended = ac;   // copy: removal erases the slot
+            removeAgentCondition(bm, ended.condition_id);
+            log_("{} is no longer {} ({}'s turn ends)", agentName(bm, ended.agent_idx),
+                 ended.condition_name, agentName(bm, agent_idx));
+            continue;   // the same index now holds the next condition
+        }
+        ++i;
     }
 
     // ── Hold Person / Hold Monster: end-of-turn "shrug off" save ─────────────────
