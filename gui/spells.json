@@ -10773,5 +10773,65 @@
     "school": "evocation",
     "moves_with_caster": false,
     "selective_targeting": false
+  },
+  {
+    "name": "Breath Weapon (Cone)",
+    "description": "Dragonborn Breath Weapon: when you take the Attack action, replace one attack with an exhalation of magical energy in a 15-foot Cone. Each creature in it makes a Dexterity saving throw (DC 8 + Constitution modifier + Proficiency Bonus), taking 1d10 damage of your Draconic Ancestry's type on a failed save or half as much on a success. The damage rises to 2d10 at level 5, 3d10 at 11 and 4d10 at 17. Proficiency Bonus uses per Long Rest, shared with the Line.",
+    "type": "Harm",
+    "geometry": "Cone",
+    "attack_type": "Save",
+    "save_ability": "SaveDex",
+    "range": 0,
+    "radius": 15,
+    "width": 0,
+    "length": 0,
+    "duration": 1,
+    "magic_damage_types": [
+      {
+        "type": "Fire",
+        "num_dice": 1,
+        "die_size": 10
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "cantrip_dice_per_tier": 1,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "",
+    "resource_name": "Breath Weapon",
+    "resource_cost": 1
+  },
+  {
+    "name": "Breath Weapon (Line)",
+    "description": "Dragonborn Breath Weapon: when you take the Attack action, replace one attack with an exhalation of magical energy in a 30-foot-long, 5-foot-wide Line. Each creature in it makes a Dexterity saving throw (DC 8 + Constitution modifier + Proficiency Bonus), taking 1d10 damage of your Draconic Ancestry's type on a failed save or half as much on a success. The damage rises to 2d10 at level 5, 3d10 at 11 and 4d10 at 17. Proficiency Bonus uses per Long Rest, shared with the Cone.",
+    "type": "Harm",
+    "geometry": "Line",
+    "attack_type": "Save",
+    "save_ability": "SaveDex",
+    "range": 0,
+    "radius": 0,
+    "width": 5,
+    "length": 30,
+    "duration": 1,
+    "magic_damage_types": [
+      {
+        "type": "Fire",
+        "num_dice": 1,
+        "die_size": 10
+      }
+    ],
+    "physical_damage_types": [],
+    "level": 0,
+    "upcast_dice_bonus": 0,
+    "cantrip_dice_per_tier": 1,
+    "requires_concentration": false,
+    "requires_los": false,
+    "check_los_on_center": true,
+    "school": "",
+    "resource_name": "Breath Weapon",
+    "resource_cost": 1
   }
 ]

@@ -570,6 +570,15 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         action.free_cast  = false;
     }
 
+    // A species pool (Breath Weapon, SP5) refuses the cast when it is empty, before any effect.
+    if (!sp.resource_name.empty()) {
+        const int pool = caster_pa.agent->getStats().speciesPoolLeft(sp.resource_name);
+        if (pool >= 0 && pool < std::max(1, sp.resource_cost)) {
+            log_("{} can't use {} — no uses left", agentName(bm, action.caster_idx), sp.name);
+            return result;
+        }
+    }
+
     // Granted spells (SPECIES_PLAN.md D3). A free cast is refused when none is left; it casts at
     // the spell's base level and takes no slot. A PC with no slot for a leveled granted spell
     // (an automated PC passes slot 0, the GUI never offers it) falls back to a free cast, so
@@ -686,6 +695,12 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
     if (action.damage_type_override >= 0 && action.damage_type_override < NumMagicDamage_t) {
         auto chosen = static_cast<MagicDamage_t>(action.damage_type_override);
         for (auto& r : sp.magic_damage_rolls) r.type = chosen;
+    }
+    // Breath Weapon (SPECIES_PLAN.md D7): the type is the caster's Draconic Ancestry's.
+    if (sp.resource_name == kBreathWeaponPool) {
+        const int t = draconicDamageType(caster_pa.agent->getStats().species_option);
+        if (t >= 0)
+            for (auto& r : sp.magic_damage_rolls) r.type = static_cast<MagicDamage_t>(t);
     }
 
     result.valid       = true;
@@ -1840,8 +1855,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
             // A save cantrip deals no damage on a successful save (bar Potent Cantrip's half).
             // cantrip_dice_per_tier marks a real cantrip: monster level-0 breath weapons and
             // auras leave it at 0 and keep half on a save.
+            // A level-0 feature paid from a resource (Breath Weapon) scales like a cantrip but
+            // is not one: it keeps half on a save.
             if (sp.level == 0 && sp.cantrip_dice_per_tier > 0 && sp.type == Spell::Harm &&
-                tr.saved && !potent_cantrip)
+                sp.resource_name.empty() && tr.saved && !potent_cantrip)
                 dmg = 0;
             // All or nothing (RAVENLOFT M8: Disruption).
             if (sp.no_damage_on_save && sp.type == Spell::Harm && tr.saved)
@@ -3132,10 +3149,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
             }
         } else if (!spell_mut.resource_name.empty()) {
             // Class feature: spend its named resource (e.g. Channel Divinity) instead of a slot.
+            // A species pool (Breath Weapon, SP5) is a Stats counter, not a Resource.
             int cost = std::max(1, spell_mut.resource_cost);
-            Resource* res = stats.getResource(spell_mut.resource_name);
-            if (res) res->spend(cost);
-            log_("{} spends {} {}", agentName(bm, action.caster_idx), cost, spell_mut.resource_name);
+            if (stats.speciesPoolLeft(spell_mut.resource_name) >= 0) {
+                stats.spendSpeciesPool(spell_mut.resource_name, cost);
+                log_("{} spends {} {} ({} left)", agentName(bm, action.caster_idx), cost,
+                     spell_mut.resource_name, stats.speciesPoolLeft(spell_mut.resource_name));
+            } else {
+                Resource* res = stats.getResource(spell_mut.resource_name);
+                if (res) res->spend(cost);
+                log_("{} spends {} {}", agentName(bm, action.caster_idx), cost, spell_mut.resource_name);
+            }
         } else if (stats.is_npc) {
             // NPC: decrement N/day uses
             if (spell_mut.uses_max > 0) {
@@ -3241,8 +3265,10 @@ std::vector<int> CombatEngine::availableCastableSpells(
 
         // Class feature: castable iff its named resource has enough charges.
         if (!spell.resource_name.empty()) {
-            const Resource* res = stats.getResource(spell.resource_name);
-            if (res && res->current >= std::max(1, spell.resource_cost))
+            const int cost = std::max(1, spell.resource_cost);
+            const int pool = stats.speciesPoolLeft(spell.resource_name);   // SP5 species pool
+            const Resource* res = pool >= 0 ? nullptr : stats.getResource(spell.resource_name);
+            if (pool >= 0 ? pool >= cost : (res && res->current >= cost))
                 result.push_back(static_cast<int>(i));
             continue;
         }

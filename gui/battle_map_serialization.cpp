@@ -153,7 +153,8 @@ namespace {
     X(boon_of_fate_used) X(species) X(species_applied) X(condition_save_adv) X(species_option) X(species_size) X(species_spell_ability) X(granted_spells) \
     X(vampiric_bite_used) X(vampiric_strengthen_bonus) \
     X(species_skill) X(adrenaline_rush_used) X(relentless_endurance_used) X(heroic_inspiration) \
-    X(vampiric_strengthen_turns)
+    X(vampiric_strengthen_turns) X(breath_weapon_used) X(draconic_flight_used) \
+    X(draconic_flight_rounds) X(draconic_flight_fly_from)
 
 // ── Agent::Conditions — every member, one X() each ───────────────────────────
 #define RPG_CONDITIONS_FIELDS(X) \

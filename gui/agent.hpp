@@ -1034,10 +1034,11 @@ namespace rpg {
               (g.source == "species" ? old_species : kept).push_back(g);
           const SpeciesDef* d = speciesDef();
           if (d) {
-              const int ab = (d->flags & kSpeciesSpellAbility) ? species_spell_ability : -1;
+              const int pick = (d->flags & kSpeciesSpellAbility) ? species_spell_ability : -1;
               for (const auto& e : kSpeciesSpellTable) {
                   if (e.species != d->name || (!e.option.empty() && e.option != species_option))
                       continue;
+                  const int ab = e.ability >= 0 ? e.ability : pick;
                   GrantedSpell g{std::string(e.spell), "species", e.unlock_level, e.uses, 0, ab};
                   for (const auto& o : old_species)
                       if (o.name == g.name) g.free_used = o.free_used;
@@ -1085,6 +1086,45 @@ namespace rpg {
       int adrenaline_rush_used{0};
       [[nodiscard]] int adrenalineRushRemaining() const noexcept {
           return hasSpeciesFlag(kSpeciesAdrenaline) ? std::max(0, prof_bonus - adrenaline_rush_used) : 0;
+      }
+      // Dragonborn Breath Weapon (D7): uses spent since the last Long Rest (PB uses), shared
+      // by the Cone and Line spells through their resource_name.
+      int breath_weapon_used{0};
+      [[nodiscard]] int breathWeaponRemaining() const noexcept {
+          return hasSpeciesFlag(kSpeciesBreathWeapon) ? std::max(0, prof_bonus - breath_weapon_used) : 0;
+      }
+      // Species pools a spell's resource_name may name: the uses left, or -1 when `name`
+      // is not one (the caller then reads Stats::resources).
+      [[nodiscard]] int speciesPoolLeft(std::string_view name) const noexcept {
+          return name == kBreathWeaponPool ? breathWeaponRemaining() : -1;
+      }
+      bool spendSpeciesPool(std::string_view name, int cost) noexcept {
+          if (name != kBreathWeaponPool || breathWeaponRemaining() < cost) return false;
+          breath_weapon_used += cost;
+          return true;
+      }
+      // Dragonborn Draconic Flight (D8, level 5): once per Long Rest; while rounds > 0 the
+      // creature has a fly Speed equal to its Speed. fly_from is the fly Speed it had before,
+      // put back when the flight ends (unless something else has changed it since).
+      bool draconic_flight_used{false};
+      int draconic_flight_rounds{0};
+      int draconic_flight_fly_from{0};
+      [[nodiscard]] bool canStartDraconicFlight() const noexcept {
+          return hasSpeciesFlag(kSpeciesDraconicFlight) && char_level >= kDraconicFlightLevel
+              && !draconic_flight_used && draconic_flight_rounds <= 0;
+      }
+      void startDraconicFlight() noexcept {
+          draconic_flight_used     = true;
+          draconic_flight_rounds   = kDraconicFlightRounds;
+          draconic_flight_fly_from = speed_fly;
+          speed_fly                = std::max(speed_fly, speed_walk);
+      }
+      // End it: the fly Speed goes back unless something has changed it since.
+      void endDraconicFlight() noexcept {
+          if (draconic_flight_rounds <= 0) return;
+          draconic_flight_rounds = 0;
+          if (speed_fly == std::max(draconic_flight_fly_from, speed_walk))
+              speed_fly = draconic_flight_fly_from;
       }
       // Orc Relentless Endurance: spent since the last Long Rest.
       bool relentless_endurance_used{false};
@@ -1299,6 +1339,8 @@ namespace rpg {
         vampiric_bite_used = 0;           // Dhampir Vampiric Bite: all uses regained on a Long Rest
         adrenaline_rush_used = 0;         // Orc Adrenaline Rush
         relentless_endurance_used = false; // Orc Relentless Endurance
+        breath_weapon_used = 0;           // Dragonborn Breath Weapon
+        draconic_flight_used = false;     // Dragonborn Draconic Flight
         if (hasSpeciesFlag(kSpeciesHeroic)) heroic_inspiration = true;   // Human Resourceful
       }
 

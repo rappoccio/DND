@@ -346,6 +346,31 @@ bool CombatEngine::useAdrenalineRush(BattleMap& bm, int idx)
     return true;
 }
 
+bool CombatEngine::canDraconicFlight(const BattleMap& bm, int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    const Agent::Stats s = bm.getAgentStats(idx);
+    if (s.hp_cur <= 0 || !s.canStartDraconicFlight()) return false;
+    return !bm.getAgentConditions(idx).incapacitated;
+}
+
+bool CombatEngine::toggleDraconicFlight(BattleMap& bm, int idx)
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.draconic_flight_rounds > 0) {
+        s.endDraconicFlight();
+        bm.setAgentStats(idx, s);
+        log_("{} folds their spectral wings (Draconic Flight ends)", agentName(bm, idx));
+        return true;
+    }
+    if (!canDraconicFlight(bm, idx)) return false;
+    s.startDraconicFlight();
+    bm.setAgentStats(idx, s);
+    log_("{}: Draconic Flight — fly Speed {} ft for 10 minutes", agentName(bm, idx), s.speed_fly);
+    return true;
+}
+
 AttackResult CombatEngine::applyHeroicReroll(BattleMap& bm, int attacker_idx, int target_idx,
                                              int weapon_idx)
 {

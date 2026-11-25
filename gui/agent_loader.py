@@ -176,6 +176,11 @@ def dict_to_stats(stats_dict):
     stats.adrenaline_rush_used = int(stats_dict.get("adrenaline_rush_used", 0))
     stats.relentless_endurance_used = bool(stats_dict.get("relentless_endurance_used", False))
     stats.heroic_inspiration = bool(stats_dict.get("heroic_inspiration", False))
+    # SP5: Dragonborn Breath Weapon uses, Draconic Flight (absent in older saves → defaults)
+    stats.breath_weapon_used = int(stats_dict.get("breath_weapon_used", 0))
+    stats.draconic_flight_used = bool(stats_dict.get("draconic_flight_used", False))
+    stats.draconic_flight_rounds = int(stats_dict.get("draconic_flight_rounds", 0))
+    stats.draconic_flight_fly_from = int(stats_dict.get("draconic_flight_fly_from", 0))
     stats.vampiric_strengthen_bonus = int(stats_dict.get("vampiric_strengthen_bonus", 0))
     stats.vampiric_strengthen_turns = int(stats_dict.get("vampiric_strengthen_turns", 0))
     # Barbarian L20 Primal Champion and L11 Relentless Rage

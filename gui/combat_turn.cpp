@@ -208,6 +208,19 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, rs);
     }
 
+    // Dragonborn Draconic Flight (SP5, D8): counts down one per round at its owner's turn start,
+    // and lapses on Incapacitated.
+    if (Agent::Stats fs = bm.getAgentStats(agent_idx); fs.draconic_flight_rounds > 0) {
+        const bool incap = bm.getAgentConditions(agent_idx).incapacitated;
+        if (incap || fs.draconic_flight_rounds == 1) {
+            fs.endDraconicFlight();
+            log_("{}'s Draconic Flight ends{}", agentName(bm, agent_idx), incap ? " (Incapacitated)" : "");
+        } else {
+            --fs.draconic_flight_rounds;
+        }
+        bm.setAgentStats(agent_idx, fs);
+    }
+
     // Self-heal any grapple whose grappler can no longer maintain it (died/downed/incapacitated,
     // possibly on another creature's turn, or via a kill path that missed the down chokepoint, or
     // a stale grappler_idx). This frees a creature grappled by a now-dead captor at the start of its

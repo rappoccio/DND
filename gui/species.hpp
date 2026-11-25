@@ -49,6 +49,9 @@ inline constexpr std::uint32_t kSpeciesRelentless    = 1u << 10;  // Orc: Relent
 inline constexpr std::uint32_t kSpeciesHeroic        = 1u << 11;  // Human: Heroic Inspiration on a Long Rest (D11)
 inline constexpr std::uint32_t kSpeciesSkillful      = 1u << 12;  // Human: one skill proficiency (D12)
 inline constexpr std::uint32_t kSpeciesVersatile     = 1u << 13;  // Human: a second origin feat (D13)
+// SP5:
+inline constexpr std::uint32_t kSpeciesBreathWeapon  = 1u << 14;  // Dragonborn: Breath Weapon (D7)
+inline constexpr std::uint32_t kSpeciesDraconicFlight = 1u << 15; // Dragonborn: Draconic Flight (D8)
 
 // Condition-save Advantage (D5): the condition a flag covers, "" for a flag that covers none.
 [[nodiscard]] constexpr bool speciesFlagCoversCondition(std::uint32_t flags,
@@ -59,6 +62,7 @@ inline constexpr std::uint32_t kSpeciesVersatile     = 1u << 13;  // Human: a se
 }
 
 // SaveAbility_t ordinals a species spell ability may take (agent.hpp can't see condition.hpp).
+inline constexpr int kSpeciesAbilityCon = 2;   // Breath Weapon's fixed ability (D7)
 inline constexpr int kSpeciesAbilityInt = 3;
 inline constexpr int kSpeciesAbilityWis = 4;
 inline constexpr int kSpeciesAbilityCha = 5;
@@ -113,8 +117,9 @@ inline constexpr std::array kSpeciesTable{
                1u << Necrotic, 0, kSpeciesVampiricBite},
     // The nine SRD 5.2 species (SPECIES_PLAN.md). SP2: passive traits. Option-driven
     // traits are in kSpeciesOptionTable below.
-    SpeciesDef{.name = "Dragonborn", .darkvision = 60, .option_label = "Ancestry",
-               .options = kDraconicAncestries},
+    SpeciesDef{.name = "Dragonborn", .darkvision = 60,
+               .flags = kSpeciesBreathWeapon | kSpeciesDraconicFlight,
+               .option_label = "Ancestry", .options = kDraconicAncestries},
     SpeciesDef{.name = "Dwarf", .darkvision = 120, .magic_resist_mask = 1u << Poison,
                .flags = kSpeciesResilience | kSpeciesToughness},
     SpeciesDef{.name = "Elf", .darkvision = 60,
@@ -191,6 +196,22 @@ struct SpeciesTraits {
     return t;
 }
 
+// Breath Weapon (D7): the damage type of a Draconic Ancestry, the type it resists; -1 for
+// anything else. Read at cast time, so a changed ancestry needs no rebuilt spell.
+[[nodiscard]] constexpr int draconicDamageType(std::string_view option) noexcept {
+    for (const auto& o : kSpeciesOptionTable)
+        if (o.species == "Dragonborn" && o.option == option)
+            for (int t = 0; t < NumMagicDamage_t; ++t)
+                if ((o.magic_resist_mask >> static_cast<unsigned>(t)) & 1u) return t;
+    return -1;
+}
+
+// The pool a Breath Weapon spell's resource_name names. It is a species counter
+// (Stats::breath_weapon_used), not an entry in Stats::resources, which class setup clears.
+inline constexpr std::string_view kBreathWeaponPool = "Breath Weapon";
+inline constexpr int kDraconicFlightRounds = 100;   // 10 minutes (D8)
+inline constexpr int kDraconicFlightLevel  = 5;
+
 // Size bit <-> the name saved and shown ("Small", "Medium"; "" for an unknown bit).
 [[nodiscard]] constexpr std::string_view speciesSizeName(std::uint8_t bit) noexcept {
     return bit == kSpeciesSizeSmall ? "Small" : bit == kSpeciesSizeMedium ? "Medium" : "";
@@ -235,15 +256,21 @@ struct GrantedSpell {
 
 // What a species (and option) grants. option "" = every option of the species.
 // uses as in GrantedSpell (0 cantrip, 1 = once per Long Rest, -1 = PB per Long Rest).
+// ability: a fixed SaveAbility_t ordinal, or -1 for the species' pick (kSpeciesSpellAbility).
 struct SpeciesSpellDef {
     std::string_view species;
     std::string_view option;
     std::string_view spell;
     int unlock_level;
     int uses;
+    int ability{-1};
 };
 
 inline constexpr std::array kSpeciesSpellTable{
+    // Breath Weapon (D7): one entry per shape, at will here; the casts come out of the
+    // PB-per-Long-Rest pool the spells' resource_name names. CON sets the DC.
+    SpeciesSpellDef{"Dragonborn", "", "Breath Weapon (Cone)", 1, 0, kSpeciesAbilityCon},
+    SpeciesSpellDef{"Dragonborn", "", "Breath Weapon (Line)", 1, 0, kSpeciesAbilityCon},
     // Elven Lineage: a cantrip at 1, a spell at 3 and at 5, each once per Long Rest.
     SpeciesSpellDef{"Elf", "Drow",     "Dancing Lights",     1, 0},
     SpeciesSpellDef{"Elf", "Drow",     "Faerie Fire",        3, 1},

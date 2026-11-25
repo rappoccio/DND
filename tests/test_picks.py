@@ -1844,7 +1844,8 @@ def test_wish_is_one_choice_prompt_over_the_bus():
     next."""
     app, kira, _ = _aria_turn()
     aria, browser = _wish_browser(app, kira)
-    expected = [d["name"] for d in app.all_spells if d.get("level", 0) <= 8]
+    expected = [d["name"] for d in app.all_spells
+                if d.get("level", 0) <= 8 and not d.get("resource_name")]
     assert (browser.kind, browser.expects, browser.render) == \
         ("action", "choice", SPELL_BROWSER_RENDER), browser
     assert [o.label for o in browser.options] == expected, len(browser.options)

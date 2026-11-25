@@ -337,6 +337,11 @@ void CombatEngine::applyIncapacitated(BattleMap& bm, int idx) noexcept
 
     // Set all movement speeds to 0
     Agent::Stats stats = bm.getAgentStats(idx);
+    // Dragonborn Draconic Flight ends on Incapacitated (SP5, D8).
+    if (stats.draconic_flight_rounds > 0) {
+        stats.endDraconicFlight();
+        log_("{}'s Draconic Flight ends (Incapacitated)", agentName(bm, idx));
+    }
     stats.speed_walk_remaining = 0;
     stats.speed_fly_remaining = 0;
     stats.speed_swim_remaining = 0;
@@ -603,6 +608,13 @@ void CombatEngine::applyUnconscious(BattleMap& bm, int idx) noexcept
     // Release all remaining influence: non-concentration conditions this agent imposed on others,
     // plus every reverse-reference mark (charmed_by, *_marked_by, goaded_by, …) pointing back at it.
     releaseAgentInfluence(bm, idx);
+
+    // Unconscious is Incapacitated: Dragonborn Draconic Flight ends (SP5, D8).
+    if (Agent::Stats fs = bm.getAgentStats(idx); fs.draconic_flight_rounds > 0) {
+        fs.endDraconicFlight();
+        bm.setAgentStats(idx, fs);
+        log_("{}'s Draconic Flight ends (Unconscious)", agentName(bm, idx));
+    }
 
     // applyUnconscious is dual-purpose: it is the 0-HP down/death chokepoint AND the setter for the
     // Unconscious *condition* (Sleep), which leaves HP intact. The rules below that key off dropping

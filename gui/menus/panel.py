@@ -196,6 +196,13 @@ def init_combat_panel(app):
     app.btn_cbt_adrenaline_rush = Button(pygame.Rect(px, dummy_y, W, B),
                                      "Adrenaline Rush",
                                      (170, 70, 50), (210, 100, 80), app.font_md)
+    # Dragonborn Draconic Flight (SPECIES_PLAN.md SP5): start (Bonus Action) and free dismissal.
+    app.btn_cbt_draconic_flight = Button(pygame.Rect(px, dummy_y, W, B),
+                                     "Draconic Flight",
+                                     (150, 60, 50), (195, 90, 75), app.font_md)
+    app.btn_cbt_draconic_flight_end = Button(pygame.Rect(px, dummy_y, W, B),
+                                     "End Draconic Flight",
+                                     (150, 60, 50), (195, 90, 75), app.font_md)
     app.btn_cbt_magical_cunning = Button(pygame.Rect(px, dummy_y, W, B),
                                      "Magical Cunning",
                                      (120, 80, 180), (150, 110, 210), app.font_md)

@@ -112,7 +112,9 @@ def test_json_opt_in():
         assert by_name[n].get("cantrip_dice_per_tier") == 1, f"{n} should scale"
         assert _load_spell(n).cantrip_dice_per_tier == 1, f"{n}: loader drops the field"
     for d in _spell_dicts():
-        if d.get("level") == 0 and d["name"] not in SCALING:
+        # Breath Weapon (SPECIES_PLAN.md D7) scales by character level but is paid from its
+        # pool (resource_name), and keeps half damage on a save; tests/test_species_dragonborn.py.
+        if d.get("level") == 0 and d["name"] not in SCALING and not d.get("resource_name"):
             assert d.get("cantrip_dice_per_tier", 0) == 0, f"{d['name']} must not scale"
     assert by_name["Mind Sliver"]["upcast_dice_bonus"] == 0
     print("✅ test_json_opt_in passed")

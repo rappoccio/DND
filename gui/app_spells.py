@@ -120,6 +120,14 @@ CURSE_CHOICE_SPELLS = {
 }
 
 
+BREATH_WEAPON_POOL = "Breath Weapon"
+
+
+def is_breath_weapon(sp) -> bool:
+    """A Dragonborn Breath Weapon shape (Cone / Line): paid from the species pool."""
+    return sp.resource_name == BREATH_WEAPON_POOL
+
+
 def start_cast_spell(app, slot: str):
     app.jump_overlay_active = False  # Close jump overlay when casting spell
     app.jump_reachable_cells = []
@@ -133,6 +141,11 @@ def start_cast_spell(app, slot: str):
         available_indices = app.combat.available_war_magic_spells(app.bm, idx)
     else:
         available_indices = app.combat.available_castable_spells(app.bm, idx)
+    # Dragonborn Breath Weapon (SPECIES_PLAN.md D7) replaces one attack of the Attack action:
+    # the "breath" slot lists only its two shapes, and the plain cast menus never list them.
+    _all = app.combat.get_agent_spells(app.bm, idx)
+    available_indices = [i for i in available_indices
+                         if is_breath_weapon(_all[i]) == (slot == "breath")]
     if not available_indices:
         # Nothing was cast, so nothing is spent: the Action and its attacks remain available.
         app._combat_log_add("No available spells!")
@@ -207,7 +220,9 @@ def start_cast_spell(app, slot: str):
             # Cantrip - always available, no level to pick
             def _pick_cantrip(s=slot, si_=si):
                 _activate(s, si_, 0)
-            options.append((f"{sp.name} ∞", _pick_cantrip))
+            label = (f"{sp.name} ({stats.breath_weapon_remaining()} left)"
+                     if is_breath_weapon(sp) else f"{sp.name} ∞")
+            options.append((label, _pick_cantrip))
         elif stats.is_npc:
             # NPC: just add the spell (availability already checked by available_castable_spells)
             def _pick_npc(s=slot, si_=si):
@@ -274,7 +289,8 @@ def start_cast_spell(app, slot: str):
         # Multi-column grid of clickable buttons — the spell list can hold dozens
         # of entries, far more than a single vertical column can show on-screen.
         slot_label = {"action": "Cast a spell", "bonus": "Bonus-action spell",
-                      "war_magic": "War Magic spell"}.get(slot, "Cast a spell")
+                      "war_magic": "War Magic spell",
+                      "breath": "Breath Weapon"}.get(slot, "Cast a spell")
         # `slot_label` is the widget's own title strip, so it is the prompt title too:
         # a fuller sentence here would change what the DM sees. The wire's `actor`
         # field is what names the caster for a remote renderer.
@@ -312,7 +328,8 @@ def activate_spell(app, s, si_, slot_level_, idx, spells, stats, free_cast=False
         wish_slot = max(slot_level_, sp_.level)   # the slot Wish itself is cast from (9)
         ask_spell_browser(app, 
             idx, "Wish — duplicate a spell (≤ 8th level)",
-            [d for d in app.all_spells if d.get("level", 0) <= 8],
+            # A spell paid from a feature's pool (Breath Weapon) is not a spell Wish copies.
+            [d for d in app.all_spells if d.get("level", 0) <= 8 and not d.get("resource_name")],
             lambda d, s=s, wl=wish_slot: app._on_wish_duplicate(idx, s, wl, d),
             # Greater DI's free Wish ends with its list: left set, the caster's next
             # real Wish would cost no slot (F-M5e-12). DI's use stays spent (F-M5e-2).
@@ -1100,7 +1117,11 @@ def consume_cast_slot(app, slot: str, caster_idx: int, spell=None):
     (slot=='war_magic') instead replaces ONE weapon attack inside the Attack action: mark the
     once-per-Attack-action gate, spend one attack, and either re-prompt for the remaining
     attack(s) or end the action."""
-    if slot == "war_magic":
+    if slot == "breath":
+        # Breath Weapon replaced one attack of the Attack action (D7).
+        from app_attacks import consume_attack_replacement
+        consume_attack_replacement(app, caster_idx)
+    elif slot == "war_magic":
         app.combat.mark_war_magic_used(app.bm, caster_idx)
         app.attack_seq.remaining -= 1
         if app.attack_seq.remaining > 0:

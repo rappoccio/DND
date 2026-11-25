@@ -42,6 +42,14 @@ void bindCombatFeats(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("idx"),
              "Orc Adrenaline Rush: Dash plus temp HP = PB, one use spent. The caller pays the\n"
              "Bonus Action. Returns False when unavailable.")
+        .def("can_draconic_flight", &CombatEngine::canDraconicFlight,
+             py::arg("battle_map"), py::arg("idx"),
+             "Dragonborn Draconic Flight can start now (level 5+, unused since the Long Rest,\n"
+             "not already flying by it, conscious, not Incapacitated).")
+        .def("toggle_draconic_flight", &CombatEngine::toggleDraconicFlight,
+             py::arg("battle_map"), py::arg("idx"),
+             "Dragonborn Draconic Flight: start it (fly Speed = Speed for 100 rounds; the caller\n"
+             "pays the Bonus Action) or, while it runs, dismiss it for free. False if neither.")
         .def("apply_heroic_reroll", &CombatEngine::applyHeroicReroll,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx"),
              "Heroic Inspiration after a miss (conditions.heroic_reroll_available): spend the ★ and\n"

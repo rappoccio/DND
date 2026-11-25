@@ -2513,6 +2513,13 @@ public:
     // PB uses per Short or Long Rest. The caller pays the Bonus Action (as for Cunning Action).
     [[nodiscard]] bool canAdrenalineRush(const BattleMap& bm, int idx) const noexcept;
     bool useAdrenalineRush(BattleMap& bm, int idx);
+    // Dragonborn Draconic Flight (SP5, D8): from level 5, a Bonus Action gives a fly Speed equal
+    // to the Speed for 100 rounds, once per Long Rest. It ends early on Incapacitated (beginTurn,
+    // applyIncapacitated) or when dismissed, which is free. toggleDraconicFlight starts it when
+    // canDraconicFlight holds (the caller pays the Bonus Action) and dismisses it while it runs;
+    // false when it did neither.
+    [[nodiscard]] bool canDraconicFlight(const BattleMap& bm, int idx) const noexcept;
+    bool toggleDraconicFlight(BattleMap& bm, int idx);
     // Heroic Inspiration (D11): after a missed attack with the ★ held, the GUI offers a reroll
     // (heroic_reroll_available). Spending it clears the ★ and re-resolves the same attack; the
     // new roll stands. Returns the new AttackResult (default when the offer was not open).

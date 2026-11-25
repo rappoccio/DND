@@ -65,12 +65,14 @@ PLAY_STATS = (
     "boon_of_fate_used", "vampiric_bite_used", "vampiric_strengthen_bonus",
     "vampiric_strengthen_turns", "relentless_rage_dc",
     "adrenaline_rush_used", "relentless_endurance_used", "heroic_inspiration",
+    "breath_weapon_used", "draconic_flight_used", "draconic_flight_rounds",
+    "draconic_flight_fly_from",
 )
 # Any of these set ⇒ the PC's base numbers are not its own right now (held whole).
 UNSETTLED_STATS = ("hasted", "haste_speed_bonus", "aid_hp_bonus", "longstrider_bonus",
                    "expeditious_retreat", "barkskin_ac_bonus", "enfeebled",
                    "size_damage_dice", "dragon_wings_active", "revelation_in_flesh_turns",
-                   "vampiric_strengthen_bonus")
+                   "vampiric_strengthen_bonus", "draconic_flight_rounds")
 UNSETTLED_KEYS = ("druid_wild_shape_active",)
 
 

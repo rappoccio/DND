@@ -132,6 +132,8 @@ CLASS: dict[str, str] = {
     "living_legend": I,
     "magical_cunning": I,
     "adrenaline_rush": I,
+    "draconic_flight": I,
+    "draconic_flight_end": I,
     "healing_light": A,
     "turn_undead": I,
     "divine_intervention": S,

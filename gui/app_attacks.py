@@ -225,6 +225,9 @@ def start_attack(app, slot: str):
 
     # Arcane Archer (AA3): Piercing / Seeking Shot replace one attack of the Attack action.
     arcane_options = arcane_shot_attack_options(app, idx, weapons) if slot == "action" else []
+    # Dragonborn Breath Weapon (SPECIES_PLAN.md D7) replaces one attack of the Attack action.
+    if slot == "action":
+        arcane_options += breath_weapon_attack_options(app, idx)
 
     if len(weapons_to_use) == 1 and war_magic_option is None and not arcane_options:
         # Auto-select if only one weapon (or one off-hand weapon for bonus)
@@ -254,6 +257,24 @@ def start_attack(app, slot: str):
         app._ask_actor(idx, "action",
                         f"{app._agent_name(idx)}: pick a weapon for the {slot} attack",
                         options, anchor=(app._panel_x() + app._PANEL_PAD, 290))
+
+
+def breath_weapon_attack_options(app, idx: int) -> list:
+    """Dragonborn Breath Weapon (D7): one picker entry while a use is left. It opens the
+    shape menu (Cone / Line); the cast replaces one attack of the Attack action."""
+    stats = app.combat.get_agent_stats(app.bm, idx)
+    left = stats.breath_weapon_remaining()
+    if left <= 0:
+        return []
+    spells = app.combat.get_agent_spells(app.bm, idx)
+    if not any(sp.resource_name == "Breath Weapon" for sp in spells):
+        return []
+
+    def _breathe():
+        app._disarm(pending.Attack)   # leave attack-target mode; enter spell-target mode
+        app.attack_seq.weapon_idx = 0
+        app._start_cast_spell("breath")
+    return [(f"🐉 Breath Weapon ({left} left, replaces an attack)", _breathe)]
 
 
 def arcane_shot_attack_options(app, idx: int, weapons) -> list:

@@ -103,6 +103,7 @@ _BONUS_ECONOMY = {
     "sudden_strike":         ECONOMY_FREE,     # Gloom Stalker L11: Stalker's Flurry grants it
     "beasts_strike":         ECONOMY_ATTACK,   # Beast Master: replaces one attack of the Attack action
     "action_surge":          ECONOMY_FREE,     # Fighter: grants an extra Action, costs none
+    "draconic_flight_end":   ECONOMY_FREE,     # Dragonborn: dismissing Draconic Flight is free
 
     # ── inside the band, and Action-costing with it ──
     "turn_undead":           ECONOMY_ACTION,
@@ -680,6 +681,11 @@ class ActionMenu:
         if (stats.character_class == rpg.CharacterClass.Fighter
                 and _res(stats, "Action Surge") > 0):
             out.append(Action("action_surge", "Action Surge", GROUP_BONUS))
+        # Dragonborn Draconic Flight (SPECIES_PLAN.md D8): dismissing it costs nothing.
+        if stats.draconic_flight_rounds > 0:
+            out.append(Action("draconic_flight_end",
+                              f"🐉 End Draconic Flight ({stats.draconic_flight_rounds} rds)",
+                              GROUP_BONUS))
 
         # ── F11, closed: Open Hand L11 Fleet Step ──
         # The one option in §7 whose gate is the OPPOSITE of the band's. Step of the
@@ -736,6 +742,9 @@ class ActionMenu:
             out.append(Action("adrenaline_rush",
                               f"Adrenaline Rush ({stats.adrenaline_rush_remaining()}/{stats.prof_bonus})",
                               GROUP_BONUS))
+        # ── Dragonborn Draconic Flight (SP5, D8): fly Speed = Speed, 10 min, once per Long Rest ──
+        if app.combat.can_draconic_flight(app.bm, agent_idx):
+            out.append(Action("draconic_flight", "🐉 Draconic Flight", GROUP_BONUS))
 
         # ── Monk ──
         if cls == CC.Monk:

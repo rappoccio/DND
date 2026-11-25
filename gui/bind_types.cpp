@@ -955,6 +955,17 @@ void bindTypes(py::module_& m) {
              "Orc Adrenaline Rush: uses left (0 for a non-Orc).")
         .def_readwrite("relentless_endurance_used", &Agent::Stats::relentless_endurance_used,
              "Orc Relentless Endurance: spent since the last Long Rest.")
+        // SP5: Dragonborn
+        .def_readwrite("breath_weapon_used", &Agent::Stats::breath_weapon_used,
+             "Dragonborn Breath Weapon: uses spent since the last Long Rest (pool = PB).")
+        .def("breath_weapon_remaining", &Agent::Stats::breathWeaponRemaining,
+             "Dragonborn Breath Weapon: uses left (0 for a non-Dragonborn).")
+        .def_readwrite("draconic_flight_used", &Agent::Stats::draconic_flight_used,
+             "Dragonborn Draconic Flight: spent since the last Long Rest.")
+        .def_readwrite("draconic_flight_rounds", &Agent::Stats::draconic_flight_rounds,
+             "Dragonborn Draconic Flight: rounds left (0 = not flying by it).")
+        .def_readwrite("draconic_flight_fly_from", &Agent::Stats::draconic_flight_fly_from,
+             "Dragonborn Draconic Flight: the fly Speed to put back when it ends.")
         .def_readwrite("heroic_inspiration", &Agent::Stats::heroic_inspiration,
              "Heroic Inspiration (★): held or not. A Human regains it on a Long Rest.")
         .def_readwrite("vampiric_bite_used", &Agent::Stats::vampiric_bite_used,

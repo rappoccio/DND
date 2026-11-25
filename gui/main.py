@@ -8126,6 +8126,25 @@ class App:
                                      self.attack_seq.offhand, self.attack_seq.resource,
                                      self.attack_seq.weapon_idx, hew)
 
+    def _toggle_draconic_flight(self):
+        """Start Draconic Flight (pays the Bonus Action) or end it (free), and reset this
+        turn's fly budget: the new fly Speed less what was already walked, none once it ends."""
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return
+        starting = self.combat.get_agent_stats(self.bm, idx).draconic_flight_rounds == 0
+        if not self.combat.toggle_draconic_flight(self.bm, idx):
+            self._combat_log_add("Draconic Flight unavailable.")
+            return
+        self._flush_combat_log()
+        st = self.combat.get_agent_stats(self.bm, idx)
+        w, _f, sw, bu = self.bm.placed_agents[idx].raw_movement
+        fly = max(0, st.speed_fly - (st.speed_walk - w)) if st.draconic_flight_rounds else 0
+        self.bm.placed_agents[idx].init_movement(w, fly, sw, bu)
+        self._update_reach()
+        if starting:
+            self.bonus_used = True
+
     def _perform_action(self, action_id: str, anchor):
         """`perform`'s dispatch: the bodies that stood under `_action_clicked` in
         `_handle_events` until D-M5-1, moved verbatim with their guards. Only one id
@@ -8235,6 +8254,9 @@ class App:
             idx = self._current_agent_idx()
             if 0 <= idx < len(self.bm.placed_agents):
                 self._use_action_surge(idx)
+        # Ending Draconic Flight is free (SPECIES_PLAN.md D8), so it is outside the gate too.
+        if action_id == "draconic_flight_end":
+            self._toggle_draconic_flight()
         if not self.bonus_used:
             # `spell_bonus` stays behind the gate, and that is D-M2-4 rather
             # than F14: it is `spell_action`'s mirror, drawn mid-sequence with
@@ -8361,6 +8383,8 @@ class App:
                         self.bonus_used = True
                     else:
                         self._combat_log_add("Adrenaline Rush unavailable.")
+            if action_id == "draconic_flight":
+                self._toggle_draconic_flight()
             if action_id == "magical_cunning":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):

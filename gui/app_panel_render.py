@@ -61,7 +61,7 @@ _BON_RUN_ESCAPE    = ("grapple_esc", "telekinetic_feat")
 # not take them (`actions._BONUS_ECONOMY`).
 _BON_RUN_UNBANDED  = ("grapple_drop", "use_item", "extinguish", "escape_net",
                       "haste_action", "horde_breaker", "sudden_strike", "beasts_strike",
-                      "action_surge")
+                      "action_surge", "draconic_flight_end")
 
 # The Archfey trio, named on its own only because the rider selector's label is the one
 # thing in §7 the draw pass WRITES back to the app. See the draw site.
@@ -71,8 +71,8 @@ _BON_FEY_TRIO = ("fey_effect", "steps_of_fey", "misty_escape")
 # no still-fused button left to cut the column. M2c needed six of these tuples and M2d
 # thirteen, for exactly that reason. The feature groups survive as the comments.
 _BON_RUN_BAND      = (
-    # Orc Adrenaline Rush (species)
-    "adrenaline_rush",
+    # Orc Adrenaline Rush, Dragonborn Draconic Flight (species)
+    "adrenaline_rush", "draconic_flight",
     # Monk, Barbarian, Warlock — the class band
     "patient_defense", "step_of_wind", "hand_of_healing", "wholeness_of_body",
     "rage", "intimidating_presence", "zealous_presence",

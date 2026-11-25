@@ -454,6 +454,11 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
                 "adrenaline_rush_used": s.adrenaline_rush_used,
                 "relentless_endurance_used": s.relentless_endurance_used,
                 "heroic_inspiration": s.heroic_inspiration,
+                # SP5: Dragonborn pools and a Draconic Flight in progress
+                "breath_weapon_used": s.breath_weapon_used,
+                "draconic_flight_used": s.draconic_flight_used,
+                "draconic_flight_rounds": s.draconic_flight_rounds,
+                "draconic_flight_fly_from": s.draconic_flight_fly_from,
                 "vampiric_strengthen_bonus": s.vampiric_strengthen_bonus,
                 "vampiric_strengthen_turns": s.vampiric_strengthen_turns,
                 "primal_champion_applied": s.primal_champion_applied,

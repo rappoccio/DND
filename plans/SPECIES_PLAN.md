@@ -3,7 +3,7 @@
 Drafted 2026-11-24. Source: `character_origins.pdf` (SRD 5.2, pp. 83–86). Status: **Step 0
 FROZEN 2026-11-24** — D1 signed off and committed (9380611); D2–D14 signed off by the user the
 same day. SP0 audit done 2026-11-24 (results below). SP1 done 2026-11-24 (288/0). SP2 done 2026-11-24
-(289/0), committed 7cd4c1b. SP3 done 2026-11-25 (290/0). SP4 done 2026-11-25 (292/0). Next: SP5.
+(289/0), committed 7cd4c1b. SP3 done 2026-11-25 (290/0). SP4 done 2026-11-25 (292/0). SP5 done 2026-11-25 (293/0). Next: SP6.
 
 ## Scope
 
@@ -214,6 +214,17 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
 - **SP5 — Dragonborn.** Breath Weapon (D7) as an attack-list entry with the shape chosen per
   use. Draconic Flight (D8). Tests for the DC, scaling dice, half damage, the use count and the
   flight lapsing on Incapacitated.
+  *Done 2026-11-25 (293/0).* Breath Weapon is two granted spells, `Breath Weapon (Cone)` and
+  `(Line)` in `spells.json`, cast with CON (a fixed `ability` column on `kSpeciesSpellTable`). Their
+  `resource_name` "Breath Weapon" names a species pool (`Stats::breath_weapon_used`, PB per Long
+  Rest), not a class Resource. The ancestry sets the damage type at cast time
+  (`draconicDamageType`). `cantrip_dice_per_tier` scales the dice, and a resource-paid level-0
+  spell keeps half damage on a save. In the GUI it is a `🐉 Breath Weapon` entry in the Attack
+  weapon picker; the `breath` cast slot spends one attack. The plain cast menus and Wish don't list
+  it. Draconic Flight: a `🐉 Draconic Flight` Bonus Action and a free `End Draconic Flight`.
+  It ticks at turn start and ends on Unconscious, on `applyIncapacitated`, or when found
+  Incapacitated at turn start. Known gap: the DM's `+Spell DC` bonus (`spell_dc_bonus`) also
+  raises the breath DC.
 - **SP6 — Goliath, plus the combat spells left over.** Giant Ancestry (D9): on-hit prompt,
   bonus-action teleport, the two reactions. Large Form (D6): bonus action, Large, +10 Speed,
   advantage on STR checks, 100 rounds, once per Long Rest. Hellish Rebuke and Faerie Fire
