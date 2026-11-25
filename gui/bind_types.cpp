@@ -322,6 +322,20 @@ void bindTypes(py::module_& m) {
              "Dwarven Toughness HP folded into hp_max / hp_cur")
         .def_readwrite("perception_prof", &SpeciesApplied::perception_prof,
              "Keen Senses turned perception_prof on");
+    py::class_<GrantedSpell>(m, "GrantedSpell",
+        "A spell a trait grants (SPECIES_PLAN.md D3): always prepared, its own casting ability, "
+        "free casts per Long Rest.")
+        .def(py::init<>())
+        .def_readwrite("name", &GrantedSpell::name)
+        .def_readwrite("source", &GrantedSpell::source, "\"species\", …")
+        .def_readwrite("unlock_level", &GrantedSpell::unlock_level,
+             "Character level the spell needs")
+        .def_readwrite("uses", &GrantedSpell::uses,
+             "0 = cantrip (at will); > 0 = free casts per Long Rest; -1 = proficiency bonus")
+        .def_readwrite("free_used", &GrantedSpell::free_used,
+             "Free casts spent since the last Long Rest")
+        .def_readwrite("ability", &GrantedSpell::ability,
+             "SaveAbility ordinal its casts use; -1 = the caster's own");
     m.def("species_names", [] {
         std::vector<std::string> out;
         for (const auto& d : kSpeciesTable) out.emplace_back(d.name);
@@ -875,6 +889,24 @@ void bindTypes(py::module_& m) {
              "SaveAbility ordinal the species' granted spells use (INT 3, WIS 4, CHA 5).")
         .def("normalize_species_choices", &Agent::Stats::normalizeSpeciesChoices, py::arg("option"),
              "Keep option/size/spell ability where valid for the species, else take the defaults.")
+        .def_readwrite("granted_spells", &Agent::Stats::granted_spells,
+             "Granted spells (D3); the species' entries are rebuilt by sync_species_spells(). "
+             "Assign the whole list (a bound vector copies).")
+        .def("sync_species_spells", &Agent::Stats::syncSpeciesSpells,
+             "Rebuild the species' granted_spells for the species and option (free_used kept).")
+        .def("granted_free_left", [](const Agent::Stats& s, const std::string& n) {
+                 return s.grantedFreeLeft(n); }, py::arg("spell"),
+             "Free casts left for an unlocked granted spell (0 = none, or a cantrip).")
+        .def("is_granted_spell", [](const Agent::Stats& s, const std::string& n) {
+                 return s.grantedSpell(n) != nullptr; }, py::arg("spell"),
+             "True when `spell` is granted and unlocked at this character level.")
+        .def("unlocked_granted_spell_names", &Agent::Stats::unlockedGrantedSpellNames,
+             "Names of the unlocked granted spells, in list order.")
+        .def("spend_granted_free", [](Agent::Stats& s, const std::string& n) {
+                 return s.spendGrantedFree(n); }, py::arg("spell"),
+             "Spend one free cast of a granted spell; False (nothing spent) when none is left.")
+        .def("refill_granted_spells", &Agent::Stats::refillGrantedSpells,
+             "Long Rest: every granted spell's free casts back.")
         .def("set_species_size", &Agent::Stats::setSpeciesSize, py::arg("size"),
              "Pick a size the species allows; False (unchanged) otherwise.")
         .def("set_species_spell_ability", &Agent::Stats::setSpeciesSpellAbility, py::arg("ability"),
@@ -2056,6 +2088,8 @@ void bindTypes(py::module_& m) {
              "Name of the granting item; checked against item_slot at cast time.")
         .def_readwrite("item_charge_cost", &Spell::item_charge_cost,
              "> 0: a charge_spells entry costing this many pool charges. 0: an N/day group spell.")
+        .def_readwrite("granted", &Spell::granted,
+             "Granted spells (D3): this list entry was added for a Stats.granted_spells grant.")
         .def_readwrite("instant_kill_threshold", &Spell::instant_kill_threshold,
              "Power Word Kill: a creature whose current HP <= this dies outright (no damage\n"
              "roll, no death saves). Above the threshold the spell deals its normal damage.\n"
@@ -2162,6 +2196,9 @@ void bindTypes(py::module_& m) {
         .def_readwrite("free_cast", &SpellAction::free_cast,
              "Free cast: when true, executeSpell does not expend a spell slot (the caller still\n"
              "charges the action economy). Used for Mantle of Majesty's slot-free Command casts.")
+        .def_readwrite("use_grant", &SpellAction::use_grant,
+             "Granted spell (D3): pay with one of its free casts per Long Rest, not a slot.\n"
+             "Refused when none is left; cast at the spell's base level.")
         .def_readwrite("command_word", &SpellAction::command_word,
              "Command spell word (only read for the Command spell): 0=Drop, 1=Flee, 2=Grovel,\n"
              "3=Halt, 4=Approach. -1 = unspecified → engine defaults to Halt.")

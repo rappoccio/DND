@@ -155,6 +155,7 @@ class CastSetup:
     `_curse_choice`, `pending_forcecage_sealed` and `pending_summon_fey_reinforcements`."""
     damage_type: int = -1                       # Chromatic Orb / Sorcerous Burst; -1 = stored type
     free_cast: bool = False                     # Mantle of Majesty Command, Wish: no slot
+    use_grant: bool = False                     # granted spell (SPECIES D3): a free cast, no slot
     command_word: int = -1                      # Command word (0=Drop..4=Approach); -1 = n/a
     curse_choice: int = -1                      # Vistani Curse sub-choice; -1 = n/a
     forcecage_sealed: bool = False              # Forcecage: False = Cage, True = Box

@@ -74,7 +74,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     caster_idx, spell_idx, slot_level, target_indices,
     aoe_col, aoe_row, aoe_col2, aoe_row2,
     metamagic, metamagic2, careful_targets, transmuted_damage_type,
-    damage_type_override, chromatic_leap_targets, free_cast,
+    damage_type_override, chromatic_leap_targets, free_cast, use_grant,
     command_word, curse_choice, overchannel, enhanced_necromancy,
     dispel_condition_ids, dispel_spell_effect_ids, dispel_terrain_ids,
     ward_creature_mask, ward_traps, forcecage_sealed)

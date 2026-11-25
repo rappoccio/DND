@@ -148,6 +148,7 @@ def test_field_lists_match_structs():
             ("ActiveSpellEffect",   "battle_map.hpp", board),
             ("Resource",            "resource.hpp",   board),
             ("SpeciesApplied",      "species.hpp",    board),
+            ("GrantedSpell",        "species.hpp",    board),
             ("Item",                "item.hpp",       board),
             ("Armor",               "armor.hpp",      board),
             ("ItemSpells",          "item_spells.hpp", shared),

@@ -2028,6 +2028,36 @@ def test_divine_smite_is_a_bonus_action_and_keeps_the_attack_action():
     print("✅ test_divine_smite_is_a_bonus_action_and_keeps_the_attack_action passed")
 
 
+def test_a_granted_spell_offers_its_free_cast():
+    """SPECIES SP3: an Abyssal Tiefling's Ray of Sickness lists a "free ×1" row ahead of its
+    slot rows. Picking it casts with no slot and spends the free cast."""
+    app = _app()
+    aria = _reclass(app, "Aria", rpg.CharacterClass.Paladin, 6)
+    skarn = _idx(app, "Skarn")
+    s = app.combat.get_agent_stats(app.bm, aria)
+    s.set_species("Tiefling", "Abyssal")
+    s.spell_slots_remaining = [2, 0, 0, 0, 0, 0, 0, 0, 0]
+    app.combat.set_agent_stats(app.bm, aria, s)
+    app.combat.set_agent_spells(app.bm, aria, [])
+    app._sync_item_spells(aria)
+
+    seen = []
+    app._ask_actor = lambda idx, kind, title, pairs, **kw: seen.append((title, pairs))
+    app._start_cast_spell("action")
+    rows = dict(seen[0][1])
+    assert "Ray of Sickness ▸" in rows, list(rows)
+    seen.clear()
+    rows["Ray of Sickness ▸"]()                  # the level popup: free first, then the slot
+    labels = [lbl for lbl, _ in seen[0][1]]
+    assert labels[0].endswith("free ×1") and "1st" in labels[1], labels
+    seen[0][1][0][1]()
+    app._resolve_spell_cast(skarn)
+    s = app.combat.get_agent_stats(app.bm, aria)
+    assert (s.spell_slots_remaining[0], s.granted_free_left("Ray of Sickness")) == (2, 0)
+    assert app.action_used
+    print("✅ test_a_granted_spell_offers_its_free_cast passed")
+
+
 def test_an_empty_spell_menu_spends_nothing():
     """Clicking a spell button with nothing castable used to burn that Action or Bonus Action,
     and an Extra Attack sequence with it. It only logs now."""
@@ -2179,6 +2209,7 @@ if __name__ == "__main__":
         test_every_action_carries_an_economy_from_the_vocabulary()
         test_wild_magic_bonus_cast_offers_action_spells()
         test_divine_smite_is_a_bonus_action_and_keeps_the_attack_action()
+        test_a_granted_spell_offers_its_free_cast()
         test_an_empty_spell_menu_spends_nothing()
         test_shield_of_faith_and_spiritual_weapon_are_bonus_actions()
         test_searing_and_shining_smite_cost_the_action_and_the_bonus_action()

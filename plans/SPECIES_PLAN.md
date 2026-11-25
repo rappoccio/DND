@@ -3,7 +3,7 @@
 Drafted 2026-11-24. Source: `character_origins.pdf` (SRD 5.2, pp. 83–86). Status: **Step 0
 FROZEN 2026-11-24** — D1 signed off and committed (9380611); D2–D14 signed off by the user the
 same day. SP0 audit done 2026-11-24 (results below). SP1 done 2026-11-24 (288/0). SP2 done 2026-11-24
-(289/0). Next: SP3.
+(289/0), committed 7cd4c1b. SP3 done 2026-11-25 (290/0). Next: SP4.
 
 ## Scope
 
@@ -169,6 +169,24 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
   free-cast path. Elf lineage cantrips plus level 3 and 5 spells, Forest Gnome, Rock Gnome
   cantrips, Tiefling legacy plus Thaumaturgy. The spell dialog shows them with "free ×N" or a slot
   choice. Tests cover unlock levels, the free cast, recharge and the casting ability.
+  **Done 2026-11-25 (290/0).** `species.hpp` adds `GrantedSpell {name, source, unlock_level,
+  uses (0 cantrip, N per Long Rest, -1 = PB), free_used, ability}` and `kSpeciesSpellTable`
+  (option "" = every option, for Thaumaturgy). `Stats::granted_spells` is rebuilt by
+  `syncSpeciesSpells()` from `setSpecies` / `restoreSpecies` (free_used kept for a spell that
+  stays, other sources' entries kept); `setSpeciesSpellAbility` re-tags the species' entries.
+  Unlock is read live against `char_level`. Payment is by name (`grantedSpell(name)`), so a
+  same-named class spell gets the free casts and ability too. `SpellAction::use_grant` spends a
+  free cast at base level, with no slot and no one-slot-spell mark; refused when none is left. A
+  PC's plain cast with no slot for it falls back to the free cast (automation passes slot 0),
+  and so does the automated teleport path. The cast swaps `spellcasting_ability` to the grant's
+  for the whole of `executeSpell` (RAII guard, by caster index) — a stopgap until MC5's
+  per-spell ability helpers. `availableCastableSpells` lists a leveled grant with a free cast
+  left, outside the one-slot rule. Long Rest refills. Python: `Spell.granted` tags the list
+  entries, which `helpers.sync_item_spells` now derives along with item spells (skipping a name
+  the creature already knows), so every existing sync call site covers them; the Stats dialog
+  OK syncs too. They are left out of `spell_indices`; `granted_spells` is saved in the agent
+  JSON and the snapshot. The cast menu adds a "free ×N" row ahead of the slot rows (those still
+  honour the one-slot rule). New suite `test_species_spells.py`.
 - **SP4 — Halfling, Orc and Human.**
   - Luck (D10).
   - Adrenaline Rush: bonus-action Dash plus PB temp HP, PB uses per Short or Long Rest.

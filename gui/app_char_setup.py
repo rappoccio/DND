@@ -373,6 +373,8 @@ def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_nam
             sp.expended = False
     app._grant_class_features(agent_idx, cpp_spells)
     app.combat.set_agent_spells(app.bm, agent_idx, cpp_spells)
+    # Species spells (SPECIES D3) follow the species, option and level just set.
+    app._sync_item_spells(agent_idx)
 
     if agent_idx == app.selected_idx:
         app._update_reach()

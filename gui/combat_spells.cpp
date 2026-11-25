@@ -589,6 +589,48 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         action.free_cast  = false;
     }
 
+    // Granted spells (SPECIES_PLAN.md D3). A free cast is refused when none is left; it casts at
+    // the spell's base level and takes no slot. A PC with no slot for a leveled granted spell
+    // (an automated PC passes slot 0, the GUI never offers it) falls back to a free cast, so
+    // the slot decrement below can't turn into a free cast of its own.
+    const Agent::Stats& caster_stats0 = caster_pa.agent->getStats();
+    const GrantedSpell* sp_grant = sp.item_source == Spell::NoItem ? caster_stats0.grantedSpell(sp.name)
+                                                                : nullptr;
+    if (sp_grant && sp.level > 0 && !caster_stats0.is_npc && !action.use_grant && !action.free_cast) {
+        const int want = action.slot_level > 0 ? action.slot_level : sp.level;
+        const bool has_slot = want >= 1 && want <= 9 &&
+            caster_stats0.spell_slots_remaining[static_cast<std::size_t>(want - 1)] > 0;
+        if (!has_slot && caster_stats0.grantedFreeLeft(sp.name) > 0) action.use_grant = true;
+    }
+    if (action.use_grant) {
+        if (!sp_grant || sp.level <= 0 || caster_stats0.grantedFreeLeft(sp.name) <= 0) {
+            log_("{} can't cast {} for free — no free cast left",
+                 agentName(bm, action.caster_idx), sp.name);
+            return result;
+        }
+        action.slot_level = sp.level;
+        action.free_cast  = true;    // skips the slot decrement; the grant is spent below
+    }
+    // A granted spell uses its own casting ability for the whole cast (free or with a slot),
+    // put back when executeSpell returns. By caster index: a summon may grow the agent list.
+    struct GrantAbilityGuard {
+        BattleMap* bm{nullptr};
+        int idx{-1};
+        int saved{0};
+        ~GrantAbilityGuard() {
+            if (bm && idx >= 0 && idx < static_cast<int>(bm->placedAgents().size()))
+                bm->placedAgentMut(idx).agent->getStats().spellcasting_ability = saved;
+        }
+    } grant_ability_guard;
+    if (sp_grant && sp_grant->ability >= 0) {
+        const int ability = sp_grant->ability;
+        Agent::Stats& live = bm.placedAgentMut(action.caster_idx).agent->getStats();
+        grant_ability_guard.saved = live.spellcasting_ability;
+        grant_ability_guard.idx   = action.caster_idx;
+        grant_ability_guard.bm    = &bm;
+        live.spellcasting_ability = ability;
+    }
+
     // Spell Thief (Arcane Trickster L17): a caster whose spell was stolen can't cast that spell
     // until its next long rest (the lock clears in applyLongRest). Refuse before any effect/slot.
     if (caster_pa.agent->getStats().spellIsStolen(sp.name)) {
@@ -3087,12 +3129,17 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         const bool from_item = spell_mut.item_source != Spell::NoItem;
 
         // Mark leveled spell cast (once per turn, even if upcasted). An item cast expends no slot,
-        // so the one-slot-per-turn rule doesn't see it (ENSPELLED D2).
-        if (sp.level > 0 && !from_item) {
+        // so the one-slot-per-turn rule doesn't see it (ENSPELLED D2); a granted free cast neither.
+        if (sp.level > 0 && !from_item && !action.use_grant) {
             stats.markLeveledSpellCast(sp.level);
         }
 
-        if (from_item) {
+        if (action.use_grant) {
+            // Granted spell (D3): one of its free casts per Long Rest, no slot.
+            stats.spendGrantedFree(spell_mut.name);
+            log_("{} casts {} without a slot ({} free left)", agentName(bm, action.caster_idx),
+                 spell_mut.name, stats.grantedFreeLeft(spell_mut.name));
+        } else if (from_item) {
             // Enspelled item: spend the item's use or charges (E2). The state lives on the item, so
             // it travels with it (D0).
             if (ItemSpells* is = rules::itemSpellsFor(pa, spell_mut)) {
@@ -3228,6 +3275,13 @@ std::vector<int> CombatEngine::availableCastableSpells(
         // expended breath keeps showing as castable and the automation re-casts it every turn.
         if (spell.level == 0 &&
             !(stats.is_npc && (spell.uses_max > 0 || spell.recharge_min > 0))) {
+            result.push_back(static_cast<int>(i));
+            continue;
+        }
+
+        // Granted spell (SPECIES_PLAN.md D3): a free cast left makes it castable, and it takes no
+        // slot, so the one-slot-per-turn rule below doesn't see it.
+        if (!stats.is_npc && stats.grantedFreeLeft(spell.name) > 0) {
             result.push_back(static_cast<int>(i));
             continue;
         }

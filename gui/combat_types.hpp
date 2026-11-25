@@ -165,6 +165,10 @@ struct SpellAction {
     // executeSpell skips the player slot decrement. The action economy (action/bonus) is still
     // charged by the caller.
     bool free_cast = false;
+    // Granted spell (SPECIES_PLAN.md D3): pay with one of the spell's free casts per Long
+    // Rest instead of a slot. Refused when none is left. No slot, so the one-slot-per-turn
+    // rule doesn't see it, and the spell is cast at its base level.
+    bool use_grant = false;
     // Command spell word choice (only read when the cast is the Command spell): 0=Drop, 1=Flee,
     // 2=Grovel, 3=Halt, 4=Approach. -1 = caller did not specify → engine defaults to Halt. Applied
     // to each target that fails the save (see applyCommandEffect).

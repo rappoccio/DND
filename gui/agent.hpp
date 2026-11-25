@@ -981,6 +981,64 @@ namespace rpg {
       std::string species_option{};
       std::string species_size{};
       int species_spell_ability{kSpeciesAbilityInt};
+      // Granted spells (D3): always prepared, each with its own ability and its free casts
+      // per Long Rest. The species' entries (source "species") are rebuilt by
+      // syncSpeciesSpells(); other sources may add their own.
+      std::vector<GrantedSpell> granted_spells{};
+
+      // The unlocked grant for `spell` (character level ≥ unlock_level), else nullptr.
+      [[nodiscard]] const GrantedSpell* grantedSpell(std::string_view spell) const noexcept {
+          for (const auto& g : granted_spells)
+              if (g.name == spell && char_level >= g.unlock_level) return &g;
+          return nullptr;
+      }
+      [[nodiscard]] int grantedFreeMax(const GrantedSpell& g) const noexcept {
+          return g.uses < 0 ? std::max(1, prof_bonus) : g.uses;
+      }
+      // Free casts left for `spell` (0 when it has none, or for a cantrip grant).
+      [[nodiscard]] int grantedFreeLeft(std::string_view spell) const noexcept {
+          const GrantedSpell* g = grantedSpell(spell);
+          return g ? std::max(0, grantedFreeMax(*g) - g->free_used) : 0;
+      }
+      // Spend one free cast of `spell`; false (nothing spent) when none is left.
+      bool spendGrantedFree(std::string_view spell) noexcept {
+          if (grantedFreeLeft(spell) <= 0) return false;
+          for (auto& g : granted_spells)
+              if (g.name == spell && char_level >= g.unlock_level) { ++g.free_used; return true; }
+          return false;
+      }
+      void refillGrantedSpells() noexcept {
+          for (auto& g : granted_spells) g.free_used = 0;
+      }
+      // Names of the unlocked granted spells, in list order (what the spell list should hold).
+      [[nodiscard]] std::vector<std::string> unlockedGrantedSpellNames() const {
+          std::vector<std::string> out;
+          for (const auto& g : granted_spells)
+              if (char_level >= g.unlock_level) out.push_back(g.name);
+          return out;
+      }
+      // Rebuild the species' entries from kSpeciesSpellTable for the current species and
+      // option, keeping free_used for a spell that stays. The ability is the species' pick
+      // (INT/WIS/CHA). Entries from other sources are left alone.
+      void syncSpeciesSpells() {
+          std::vector<GrantedSpell> kept;
+          std::vector<GrantedSpell> old_species;
+          for (auto& g : granted_spells)
+              (g.source == "species" ? old_species : kept).push_back(g);
+          const SpeciesDef* d = speciesDef();
+          if (d) {
+              const int ab = (d->flags & kSpeciesSpellAbility) ? species_spell_ability : -1;
+              for (const auto& e : kSpeciesSpellTable) {
+                  if (e.species != d->name || (!e.option.empty() && e.option != species_option))
+                      continue;
+                  GrantedSpell g{std::string(e.spell), "species", e.unlock_level, e.uses, 0, ab};
+                  for (const auto& o : old_species)
+                      if (o.name == g.name) g.free_used = o.free_used;
+                  kept.push_back(std::move(g));
+              }
+          }
+          granted_spells = std::move(kept);
+      }
       [[nodiscard]] const SpeciesDef* speciesDef() const noexcept { return findSpecies(species); }
       // The species' traits with its option folded in (all zero with no species).
       [[nodiscard]] SpeciesTraits speciesTraitsNow() const noexcept {
@@ -1050,6 +1108,7 @@ namespace rpg {
           species = name;
           const SpeciesDef* d = speciesDef();
           normalizeSpeciesChoices(next_option);
+          syncSpeciesSpells();
           if (!d) return;
           const SpeciesTraits tr = speciesTraits(*d, species_option);
           SpeciesApplied& n = species_applied;
@@ -1112,6 +1171,8 @@ namespace rpg {
           if (!d || !(d->flags & kSpeciesSpellAbility)) return false;
           if (ability < kSpeciesAbilityInt || ability > kSpeciesAbilityCha) return false;
           species_spell_ability = ability;
+          for (auto& g : granted_spells)
+              if (g.source == "species") g.ability = ability;
           return true;
       }
 
@@ -1128,6 +1189,7 @@ namespace rpg {
           species_applied = {};
           const SpeciesDef* d = speciesDef();
           normalizeSpeciesChoices(option);
+          syncSpeciesSpells();
           if (!d) return;
           const SpeciesTraits tr = speciesTraits(*d, species_option);
           SpeciesApplied& n = species_applied;

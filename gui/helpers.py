@@ -1425,6 +1425,11 @@ def _item_spell_key(sp) -> tuple:
     return (int(sp.item_source), sp.item_slot, sp.item_name, sp.name, sp.item_charge_cost)
 
 
+def _derived_spell_key(sp) -> tuple:
+    """Identity of an item-granted or granted-spell (D3) entry across a rebuild."""
+    return ("granted", sp.name) if is_granted_spell_entry(sp) else _item_spell_key(sp)
+
+
 def item_spell_entries(combat, bm, idx: int, spell_catalog: dict) -> list:
     """The tagged Spells creature ``idx`` gets from its carried items right now.
 
@@ -1465,24 +1470,53 @@ def item_spell_entries(combat, bm, idx: int, spell_catalog: dict) -> list:
     return out
 
 
-def sync_item_spells(combat, bm, idx: int, spell_catalog: dict):
-    """Rebuild creature ``idx``'s item-granted spell entries from what it carries now (E3).
+def is_granted_spell_entry(sp) -> bool:
+    """True for a list entry added for a Stats.granted_spells grant (SPECIES_PLAN.md D3)."""
+    return bool(sp.granted) and not is_item_spell(sp)
 
-    Its own spells keep their order; item entries that still match are kept in place,
-    stale ones (the item left, moved slot, or lost attunement) are dropped and new ones
-    appended. Returns None when nothing changed, else ``moved``: for each new spell index,
-    the old index it came from (None for a newly granted entry) — so per-index metadata
-    can follow."""
+
+def granted_spell_entries(combat, bm, idx: int, spell_catalog: dict, own_names: set) -> list:
+    """The tagged Spells creature ``idx`` gets from its unlocked granted spells (D3), skipping
+    a name it already has as one of its own spells (the engine pays a grant by name, so the
+    own entry gets the free casts and the ability). A name missing from the catalog is
+    skipped with a warning."""
+    out = []
+    stats = combat.get_agent_stats(bm, idx)
+    for name in stats.unlocked_granted_spell_names():
+        if name in own_names:
+            continue
+        record = spell_catalog.get(name)
+        if record is None:
+            print(f"⚠ granted spell '{name}' not in spells.json — not granted")
+            continue
+        sp = _dict_to_spell(record)
+        sp.granted = True
+        out.append(sp)
+    return out
+
+
+def sync_item_spells(combat, bm, idx: int, spell_catalog: dict):
+    """Rebuild creature ``idx``'s item-granted and granted-spell (SPECIES D3) entries from
+    what it carries and what it is granted now (E3).
+
+    Its own spells keep their order; derived entries that still match are kept in place,
+    stale ones (the item left, moved slot, or lost attunement; the species changed or the
+    level dropped) are dropped and new ones appended. Returns None when nothing changed,
+    else ``moved``: for each new spell index, the old index it came from (None for a newly
+    granted entry) — so per-index metadata can follow."""
     if not (0 <= idx < len(bm.placed_agents)):
         return None
     combat.discard_spent_scrolls(bm, idx)   # SPELL_SCROLLS S3: a used scroll is gone
     current = list(combat.get_agent_spells(bm, idx))
+    own_names = {sp.name for sp in current
+                 if not is_item_spell(sp) and not is_granted_spell_entry(sp)}
     wanted = item_spell_entries(combat, bm, idx, spell_catalog)
-    wanted_keys = [_item_spell_key(sp) for sp in wanted]
+    wanted += granted_spell_entries(combat, bm, idx, spell_catalog, own_names)
+    wanted_keys = [_derived_spell_key(sp) for sp in wanted]
     kept, moved, have = [], [], set()
     for j, sp in enumerate(current):
-        if is_item_spell(sp):
-            k = _item_spell_key(sp)
+        if is_item_spell(sp) or is_granted_spell_entry(sp):
+            k = _derived_spell_key(sp)
             if k not in wanted_keys or k in have:
                 continue
             have.add(k)

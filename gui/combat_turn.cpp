@@ -3020,6 +3020,9 @@ bool CombatEngine::npcTeleportEscape(BattleMap& bm, int agent_idx) noexcept
         if (sm.item_source != Spell::NoItem) {
             // Enspelled item: the item pays, no slot, and D2 doesn't see it (mirrors executeSpell).
             if (ItemSpells* is = rules::itemSpellsFor(pam, sm)) is->spend(sm.name, sm.item_charge_cost);
+        } else if (!stats.is_npc && sm.level > 0 && slot == 0 && stats.grantedFreeLeft(sm.name) > 0) {
+            // Granted spell with no slot to pay: a free cast (SPECIES D3; mirrors executeSpell).
+            stats.spendGrantedFree(sm.name);
         } else {
             if (slot > 0) {
                 int& left = stats.spell_slots_remaining[static_cast<std::size_t>(slot - 1)];

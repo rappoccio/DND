@@ -34,7 +34,7 @@ from helpers import (
     _armor_to_dict, _dict_to_armor,
     _dict_to_spell,
     _item_to_dict, _dict_to_item,
-    is_item_spell,
+    is_item_spell, is_granted_spell_entry,
     _condition_to_dict, _dict_to_condition,
     edge_key, edge_from_key,
 )
@@ -442,6 +442,12 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
                                      "save_advantage_bits", "hp_bonus",
                                      "perception_prof")},
                 "condition_save_adv": list(s.condition_save_adv),
+                # Granted spells (D3): the species' entries are rebuilt on load; the list
+                # carries their free casts spent and any other source's entries.
+                "granted_spells": [{k: getattr(g, k) for k in
+                                    ("name", "source", "unlock_level", "uses",
+                                     "free_used", "ability")}
+                                   for g in s.granted_spells],
                 "vampiric_bite_used": s.vampiric_bite_used,
                 "vampiric_strengthen_bonus": s.vampiric_strengthen_bonus,
                 "vampiric_strengthen_turns": s.vampiric_strengthen_turns,
@@ -502,7 +508,8 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
             },
             "spell_indices": [s.name
                               for s in app.combat.get_agent_spells(app.bm, i)
-                              if not is_item_spell(s)],   # item spells are re-derived (E3)
+                              if not is_item_spell(s)            # item spells are re-derived (E3),
+                              and not is_granted_spell_entry(s)],  # granted ones too (D3)
             # Carried consumables. Full dicts (not just names) so the quantity left mid-campaign
             # and any hand-tuned dice survive the round-trip without re-reading items.json.
             "items": [_item_to_dict(it)
@@ -567,8 +574,8 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
             npc_recharge, npc_uses, npc_expended = {}, {}, {}
             spells = app.combat.get_agent_spells(app.bm, i)
             for spell in spells:
-                if is_item_spell(spell):   # paid for by its item, which saves its own uses
-                    continue
+                if is_item_spell(spell) or is_granted_spell_entry(spell):
+                    continue   # paid for by its item / its grant, which save their own uses
                 if spell.uses_max > 0:  # N/day or recharge spell → record its group + count
                     npc_groups.setdefault(str(spell.uses_max), []).append(spell.name)
                     npc_uses[spell.name] = spell.uses_remaining

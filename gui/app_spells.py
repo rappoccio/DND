@@ -144,8 +144,8 @@ def start_cast_spell(app, slot: str):
     # Thin wrapper so the menu builders below keep their simple (slot, spell_idx, level)
     # signature. The real dispatch lives in _activate_spell so the Wish flow can reuse the
     # full element/curse/summon/geometry handling for a duplicated spell.
-    def _activate(s, si_, slot_level_=0):
-        app._activate_spell(s, si_, slot_level_, idx, spells, stats)
+    def _activate(s, si_, slot_level_=0, use_grant=False):
+        app._activate_spell(s, si_, slot_level_, idx, spells, stats, use_grant=use_grant)
 
     def _ordinal(n):
         return {1:"1st",2:"2nd",3:"3rd"}.get(n, f"{n}th")
@@ -216,9 +216,19 @@ def start_cast_spell(app, slot: str):
         else:
             # Player leveled spell: gather every castable level into a per-spell sub-list.
             level_options = []
+            # Granted spell (SPECIES_PLAN.md D3): its free casts per Long Rest come first, at
+            # the spell's base level and with no slot; the slot rows follow as usual.
+            free_left = stats.granted_free_left(sp.name)
+            if free_left > 0:
+                def _pick_free(s=slot, si_=si, lvl=sp_level):
+                    _activate(s, si_, lvl, use_grant=True)
+                level_options.append((f"free ×{free_left}", _pick_free))
+            # A granted spell is listed for its free cast even after this turn's slot spell,
+            # so its slot rows still honour the one-slot-spell-per-turn rule.
+            slots_ok = free_left == 0 or stats.can_cast_leveled_spell()
             for lvl in range(sp_level, 10):
                 remaining = stats.spell_slots_remaining[lvl - 1]
-                if remaining > 0:
+                if remaining > 0 and slots_ok:
                     label = f"@ {_ordinal(lvl)} ({remaining} slot{'s' if remaining != 1 else ''})"
                     def _pick_slot(s=slot, si_=si, sl=lvl):
                         _activate(s, si_, sl)
@@ -271,7 +281,8 @@ def start_cast_spell(app, slot: str):
         app._ask_actor(idx, "action", slot_label, options, render="grid")
 
 
-def activate_spell(app, s, si_, slot_level_, idx, spells, stats, free_cast=False):
+def activate_spell(app, s, si_, slot_level_, idx, spells, stats, free_cast=False,
+                   use_grant=False):
     """Set up targeting for a chosen spell and dispatch by its special-case / geometry.
 
     Shared by the normal cast menu (via the _activate wrapper in _start_cast_spell) and by
@@ -283,6 +294,8 @@ def activate_spell(app, s, si_, slot_level_, idx, spells, stats, free_cast=False
     # normally False (a normal cast expends a slot); the Wish flow passes True.
     app.cast_setup.damage_type = -1
     app.cast_setup.free_cast    = free_cast
+    # Granted spell (SPECIES_PLAN.md D3): the menu's "free" row pays with a free cast, no slot.
+    app.cast_setup.use_grant    = use_grant
     app.cast_setup.command_word = -1
     app.cast_setup.curse_choice = -1
     app.cast_setup.forcecage_sealed   = False   # Forcecage form: False = Cage (20 ft), True = Box (10 ft)
@@ -403,7 +416,7 @@ def activate_spell(app, s, si_, slot_level_, idx, spells, stats, free_cast=False
                 app._summon_conc_chosen = True
                 try:
                     app._activate_spell(s, si_, slot_level_, idx, spells, stats,
-                                         free_cast=free_cast)
+                                         free_cast=free_cast, use_grant=use_grant)
                 finally:
                     app._summon_conc_chosen = False
                 if app._armed(pending.Summon):
@@ -651,6 +664,7 @@ def resolve_spell_cast(app, target_idx: int | None):
     action.damage_type_override = app.cast_setup.damage_type  # cast-time element choice (-1 = none)
     # Mantle of Majesty: free Command cast (no slot) + the chosen Command word.
     action.free_cast      = app.cast_setup.free_cast
+    action.use_grant      = app.cast_setup.use_grant   # granted spell's free cast (D3)
     action.command_word   = app.cast_setup.command_word
     action.curse_choice   = app.cast_setup.curse_choice  # Vistani Curse sub-choice (-1 = n/a)
     action.forcecage_sealed = app.cast_setup.forcecage_sealed   # Forcecage form (Box seals the occupant)
@@ -670,12 +684,13 @@ def resolve_spell_cast(app, target_idx: int | None):
     app._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=ps.idx,
                            aoe=False,
                            slot_level=ps.slot_level,
-                           free_cast=action.free_cast)
+                           free_cast=action.free_cast or action.use_grant)
     app._reaction_finish = app._finish_cast
 
     app._disarm(pending.Spell)
     app.cast_setup.damage_type = -1
     app.cast_setup.free_cast   = False
+    app.cast_setup.use_grant   = False
     app.cast_setup.command_word = -1
     app.cast_setup.curse_choice = -1
     app.spell_hover_cell          = None
@@ -712,6 +727,7 @@ def resolve_spell_cast_aoe(app, cell):
     action.slot_level     = ps.slot_level
     action.target_indices = []
     action.free_cast      = app.cast_setup.free_cast  # Wish-duplicated AoE: no slot of its own
+    action.use_grant      = app.cast_setup.use_grant  # granted spell's free cast (D3)
     action.overchannel    = app.overchannel_armed  # Evoker L14 (engine ignores if ineligible)
     apply_dispel_selection(app, action)  # Dispel Magic picker (cell-aimed dispel of an AoE)
     apply_armed_metamagic(app, action, caster_idx)  # Sorcerer Metamagic (engine no-ops if inapplicable)
@@ -734,12 +750,13 @@ def resolve_spell_cast_aoe(app, cell):
     # the spell resolves; _finish_cast does the post-resolution logging (incl. AoE no-targets and
     # slip handling) whether the cast resolves inline or after a parked reaction.
     app._cast_post = dict(caster_idx=caster_idx, slot=slot, spell_idx=ps.idx,
-                           aoe=True, free_cast=action.free_cast,
+                           aoe=True, free_cast=action.free_cast or action.use_grant,
                            slot_level=ps.slot_level)
     app._reaction_finish = app._finish_cast
 
     app._disarm(pending.Spell)
     app.cast_setup.free_cast  = False
+    app.cast_setup.use_grant  = False
     app.spell_hover_cell         = None
     app.spell_anchor_cell        = None
 
@@ -797,6 +814,14 @@ def resolve_teleport_spell(app, destination_cell):
     cast_name = agents[caster_idx].name if caster_idx < len(agents) else "?"
     app._combat_log_add(f"{cast_name} casts {sp.name} and teleports to ({destination_cell.col}, {destination_cell.row}).")
 
+    # Granted spell (D3): the "free" row spends one free cast (this path takes no slot).
+    used_grant = app.cast_setup.use_grant
+    if used_grant:
+        cstats = app.combat.get_agent_stats(app.bm, caster_idx)
+        if cstats.spend_granted_free(sp.name):
+            app.combat.set_agent_stats(app.bm, caster_idx, cstats)
+        app.cast_setup.use_grant = False
+
     # Clean up pending spell state
     app._disarm(pending.Spell)
     app.spell_hover_cell          = None
@@ -805,7 +830,7 @@ def resolve_teleport_spell(app, destination_cell):
     app._consume_cast_slot(slot, caster_idx)
     # Wild Magic Surge: a teleport spell (e.g. Misty Step) cast with a spell slot triggers a surge.
     # `ps` was taken before the disarm above, so its slot level is still the cast's.
-    if ps.slot_level >= 1:
+    if ps.slot_level >= 1 and not used_grant:
         features.maybe_wild_magic_surge(app, caster_idx)
 
 

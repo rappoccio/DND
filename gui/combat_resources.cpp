@@ -488,6 +488,9 @@ void CombatEngine::applyLongRest(BattleMap& bm) noexcept
         // Evoker L14 Overchannel: the next use is free again after a Long Rest.
         stats.overchannel_uses = 0;
 
+        // Granted spells (SPECIES_PLAN.md D3): every free cast comes back on a Long Rest.
+        stats.refillGrantedSpells();
+
         // Save stats back (includes resource restoration)
         bm.setAgentStats(agent_idx, stats);
 

@@ -151,6 +151,25 @@ def dict_to_stats(stats_dict):
     stats.species_size = str(stats_dict.get("species_size", ""))
     stats.species_spell_ability = int(stats_dict.get("species_spell_ability", 3))
     stats.normalize_species_choices(str(stats_dict.get("species_option", "")))
+    # Granted spells (D3): rebuild the species' entries now the spell ability is loaded, then
+    # put back the saved free casts spent and keep any other source's saved entries.
+    stats.sync_species_spells()
+    saved_grants = [g for g in stats_dict.get("granted_spells", []) if isinstance(g, dict)]
+    used = {str(g.get("name", "")): int(g.get("free_used", 0))
+            for g in saved_grants if g.get("source") == "species"}
+    grants = list(stats.granted_spells)
+    for g in grants:
+        if g.source == "species" and g.name in used:
+            g.free_used = used[g.name]
+    for d in saved_grants:
+        if d.get("source") == "species":
+            continue
+        g = rpg.GrantedSpell()
+        g.name, g.source = str(d.get("name", "")), str(d.get("source", ""))
+        g.unlock_level, g.uses = int(d.get("unlock_level", 1)), int(d.get("uses", 0))
+        g.free_used, g.ability = int(d.get("free_used", 0)), int(d.get("ability", -1))
+        grants.append(g)
+    stats.granted_spells = grants
     stats.vampiric_bite_used = int(stats_dict.get("vampiric_bite_used", 0))
     stats.vampiric_strengthen_bonus = int(stats_dict.get("vampiric_strengthen_bonus", 0))
     stats.vampiric_strengthen_turns = int(stats_dict.get("vampiric_strengthen_turns", 0))

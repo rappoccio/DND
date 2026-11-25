@@ -104,7 +104,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     teleportation_spell, max_teleport_targets, teleport_range_ft, \
     effects_on_begin_turn, effects_on_end_turn, effects_on_enter, conditions
 #define RPG_SPELL_FIELDS_B \
-    affects_creature_mask, weapon_rider, no_damage_on_save
+    affects_creature_mask, weapon_rider, no_damage_on_save, granted
 
 inline void to_json(nlohmann::json& nlohmann_json_j, const Spell& nlohmann_json_t) {
     NLOHMANN_JSON_EXPAND(NLOHMANN_JSON_PASTE(NLOHMANN_JSON_TO, RPG_SPELL_FIELDS_A))

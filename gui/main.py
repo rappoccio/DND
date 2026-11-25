@@ -5798,8 +5798,10 @@ class App:
         },
     }
 
-    def _activate_spell(self, s, si_, slot_level_, idx, spells, stats, free_cast=False):
-        return app_spells.activate_spell(self, s, si_, slot_level_, idx, spells, stats, free_cast)
+    def _activate_spell(self, s, si_, slot_level_, idx, spells, stats, free_cast=False,
+                        use_grant=False):
+        return app_spells.activate_spell(self, s, si_, slot_level_, idx, spells, stats, free_cast,
+                                         use_grant)
 
     def _on_wish_duplicate(self, caster_idx: int, slot: str, wish_slot_level: int, spell_dict: dict):
         return app_spells.on_wish_duplicate(self, caster_idx, slot, wish_slot_level, spell_dict)

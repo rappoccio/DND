@@ -52,6 +52,10 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     hp_bonus, perception_prof)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
+    GrantedSpell,
+    name, source, unlock_level, uses, free_used, ability)
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Item,
     name, description, type, action_type, range, healing, temp_hp, applies_condition,
     applies_condition_turns, damage, save_ability, condition_applied, only_vs_fiend_undead, max_target_size, escape_dc,
@@ -146,7 +150,7 @@ namespace {
     X(fiendish_resilience_type) X(portent_dice) X(eldritch_invocations) \
     X(fiendish_vigor_applied) X(feats) X(stolen_spell_names) X(elemental_adept_types) \
     X(irresistible_offense_ability) X(luck_points) X(luck_points_max) \
-    X(boon_of_fate_used) X(species) X(species_applied) X(condition_save_adv) X(species_option) X(species_size) X(species_spell_ability) \
+    X(boon_of_fate_used) X(species) X(species_applied) X(condition_save_adv) X(species_option) X(species_size) X(species_spell_ability) X(granted_spells) \
     X(vampiric_bite_used) X(vampiric_strengthen_bonus) \
     X(vampiric_strengthen_turns)
 

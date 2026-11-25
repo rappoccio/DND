@@ -22,6 +22,7 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
 
 #include "damage.hpp"
@@ -204,6 +205,59 @@ struct SpeciesApplied {
     int save_advantage_bits{0};         // bits this species added (not already set)
     int hp_bonus{0};                    // Dwarven Toughness HP folded into hp_max / hp_cur
     bool perception_prof{false};        // Keen Senses set perception_prof (it was off)
+};
+
+// A spell a trait grants (D3): always prepared, cast with its own ability, and (for a
+// leveled spell) a few casts per Long Rest that need no slot. Generic so a feat (Magic
+// Initiate, Fey Touched) can add entries later; species entries carry source "species"
+// and are rebuilt by Stats::syncSpeciesSpells(). A leveled spell can also be cast with a
+// slot when the caster has one. Every entry recharges on a Long Rest.
+struct GrantedSpell {
+    std::string name;
+    std::string source;      // "species", …
+    int unlock_level{1};     // character level the spell needs
+    int uses{0};             // 0 = cantrip (at will); > 0 = free casts per Long Rest; -1 = PB
+    int free_used{0};        // free casts spent since the last Long Rest
+    int ability{-1};         // SaveAbility_t ordinal its casts use; -1 = the caster's own
+};
+
+// What a species (and option) grants. option "" = every option of the species.
+// uses as in GrantedSpell (0 cantrip, 1 = once per Long Rest, -1 = PB per Long Rest).
+struct SpeciesSpellDef {
+    std::string_view species;
+    std::string_view option;
+    std::string_view spell;
+    int unlock_level;
+    int uses;
+};
+
+inline constexpr std::array kSpeciesSpellTable{
+    // Elven Lineage: a cantrip at 1, a spell at 3 and at 5, each once per Long Rest.
+    SpeciesSpellDef{"Elf", "Drow",     "Dancing Lights",     1, 0},
+    SpeciesSpellDef{"Elf", "Drow",     "Faerie Fire",        3, 1},
+    SpeciesSpellDef{"Elf", "Drow",     "Darkness",           5, 1},
+    SpeciesSpellDef{"Elf", "High Elf", "Prestidigitation",   1, 0},
+    SpeciesSpellDef{"Elf", "High Elf", "Detect Magic",       3, 1},
+    SpeciesSpellDef{"Elf", "High Elf", "Misty Step",         5, 1},
+    SpeciesSpellDef{"Elf", "Wood Elf", "Druidcraft",         1, 0},
+    SpeciesSpellDef{"Elf", "Wood Elf", "Longstrider",        3, 1},
+    SpeciesSpellDef{"Elf", "Wood Elf", "Pass without Trace", 5, 1},
+    // Gnomish Lineage. Forest Gnome: Speak with Animals PB times per Long Rest.
+    SpeciesSpellDef{"Gnome", "Forest Gnome", "Minor Illusion",     1, 0},
+    SpeciesSpellDef{"Gnome", "Forest Gnome", "Speak with Animals", 1, -1},
+    SpeciesSpellDef{"Gnome", "Rock Gnome",   "Mending",            1, 0},
+    SpeciesSpellDef{"Gnome", "Rock Gnome",   "Prestidigitation",   1, 0},
+    // Fiendish Legacy, plus Otherworldly Presence (Thaumaturgy) for every legacy.
+    SpeciesSpellDef{"Tiefling", "",         "Thaumaturgy",         1, 0},
+    SpeciesSpellDef{"Tiefling", "Abyssal",  "Poison Spray",        1, 0},
+    SpeciesSpellDef{"Tiefling", "Abyssal",  "Ray of Sickness",     3, 1},
+    SpeciesSpellDef{"Tiefling", "Abyssal",  "Hold Person",         5, 1},
+    SpeciesSpellDef{"Tiefling", "Chthonic", "Chill Touch",         1, 0},
+    SpeciesSpellDef{"Tiefling", "Chthonic", "False Life",          3, 1},
+    SpeciesSpellDef{"Tiefling", "Chthonic", "Ray of Enfeeblement", 5, 1},
+    SpeciesSpellDef{"Tiefling", "Infernal", "Fire Bolt",           1, 0},
+    SpeciesSpellDef{"Tiefling", "Infernal", "Hellish Rebuke",      3, 1},
+    SpeciesSpellDef{"Tiefling", "Infernal", "Darkness",            5, 1},
 };
 
 // Out of the struct so tests/test_board_snapshot.py's member parser sees only fields.

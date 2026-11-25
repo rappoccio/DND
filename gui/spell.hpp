@@ -118,6 +118,12 @@ namespace rpg {
       std::string  item_name{};         // the item's name, checked against that slot at cast time
       int          item_charge_cost{0}; // > 0 ⇒ a charge_spells entry costing this; 0 ⇒ N/day group
 
+      // Granted spells (SPECIES_PLAN.md D3): Python sets this on a list entry it added for a
+      // Stats::granted_spells grant, so a species swap can drop it. The engine pays for a
+      // granted spell by name (Stats::grantedSpell), so a same-named class spell pays the
+      // same way; the tag only marks which entry the grant put there.
+      bool granted{false};
+
       // Door interaction (Knock): opens/unlocks a door at the target cell. Detected
       // by this flag, not by spell name. Suppresses Arcane Lock for a few turns.
       bool opens_doors{false};
