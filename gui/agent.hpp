@@ -335,7 +335,8 @@ namespace rpg {
         return perception_prof || skillfulIn("Perception");
       }
       [[nodiscard]] int stealthBonus() const noexcept {
-        return _mod(dex) + ((stealth_prof || skillfulIn("Stealth")) ? prof_bonus : 0);
+        return _mod(dex) + ((stealth_prof || skillfulIn("Stealth")
+                             || hasSpeciesFlag(kSpeciesStealthProf)) ? prof_bonus : 0);
       }
       [[nodiscard]] int passivePerception() const noexcept {
         return 10 + _mod(wis) + (hasPerceptionProf() ? prof_bonus : 0);
@@ -1078,7 +1079,8 @@ namespace rpg {
       std::string species_skill{};
       bool setSpeciesSkill(const std::string& skill) {
           if (skill.empty()) { species_skill.clear(); return true; }
-          for (auto k : kSpeciesSkills)
+          const SpeciesDef* d = speciesDef();
+          for (auto k : d ? d->skillOptions() : std::span<const std::string_view>(kSpeciesSkills))
               if (k == skill) { species_skill = skill; return true; }
           return false;
       }
@@ -1153,6 +1155,24 @@ namespace rpg {
       // on each Long Rest; the DM may award it to anyone.
       bool heroic_inspiration{false};
       [[nodiscard]] bool hasLuck() const noexcept { return hasSpeciesFlag(kSpeciesLuck); }
+      // Reborn Deathless Nature: Advantage on Death Saving Throws (with Durable, at both roll sites).
+      [[nodiscard]] bool hasDeathSaveAdvantage() const noexcept {
+          return hasFeat("Durable") || hasSpeciesFlag(kSpeciesDeathSaveAdv);
+      }
+
+      // Fairy Flight (MORE_SPECIES_PLAN.md D11): fly Speed = walk Speed, except in Medium or
+      // Heavy armor. armor_medium_heavy is kept by BattleMap::setAgentArmor (the minimum
+      // dex_mod_cap over the worn pieces is 2 or less).
+      bool armor_medium_heavy{false};
+      // Re-derive the Fairy's fly Speed from walk Speed and armor. Leaves it alone when it no
+      // longer holds what Fairy Flight last set (something else changed it since).
+      void syncSpeciesFlight() noexcept {
+          if (!hasSpeciesFlag(kSpeciesFairyFlight)) return;
+          SpeciesApplied& a = species_applied;
+          if (speed_fly != a.fly_to) return;
+          speed_fly = armor_medium_heavy ? a.fly_from : std::max(a.fly_from, speed_walk);
+          a.fly_to = speed_fly;
+      }
 
       // Dhampir Vampiric Bite: empowerments (Drain / Strengthen) spent since the last Long
       // Rest; the pool is the Proficiency Bonus.
@@ -1190,6 +1210,8 @@ namespace rpg {
               hp_cur = std::max(1, std::min(hp_max, hp_cur - a.hp_bonus));
           }
           if (a.perception_prof) perception_prof = false;
+          if (a.fey) is_fey = false;
+          if (a.fly_to != a.fly_from && speed_fly == a.fly_to) speed_fly = a.fly_from;
           species_applied = {};
           vampiric_bite_used = 0;
           vampiric_strengthen_bonus = 0;
@@ -1219,6 +1241,12 @@ namespace rpg {
               perception_prof = true;
               n.perception_prof = true;
           }
+          if (d->creature_type == SpeciesCreatureType::Fey && !is_fey) {
+              is_fey = true;
+              n.fey = true;
+          }
+          n.fly_from = n.fly_to = speed_fly;
+          syncSpeciesFlight();
           syncSpeciesHp();
           if (tr.flags & kSpeciesHeroic) heroic_inspiration = true;   // a new Human starts with it
       }
@@ -1300,6 +1328,14 @@ namespace rpg {
               perception_prof = true;
               n.perception_prof = true;
           }
+          // Fey type and Fairy Flight are saved folded in (is_fey, speed_fly): record them as
+          // this species' doing. A Fairy's saved fly Speed equal to its walk Speed is Flight's.
+          if (d->creature_type == SpeciesCreatureType::Fey) {
+              is_fey = true;
+              n.fey = true;
+          }
+          n.fly_from = n.fly_to = speed_fly;
+          if ((tr.flags & kSpeciesFairyFlight) && speed_fly == speed_walk) n.fly_from = 0;
       }
 
       // Grant a feat and apply its one-time stat-derived effects. Call AFTER ability

@@ -125,7 +125,8 @@ def test_keen_senses_perception():
 
 
 def test_condition_save_adv_flags():
-    expect = {"Halfling": {"Frightened"}, "Elf": {"Charmed"}, "Dwarf": {"Poisoned"}}
+    expect = {"Halfling": {"Frightened"}, "Elf": {"Charmed"}, "Dwarf": {"Poisoned"},
+              "Bugbear": {"Charmed"}}
     for name in rpg.species_names():
         s = _stats()
         s.set_species(name)

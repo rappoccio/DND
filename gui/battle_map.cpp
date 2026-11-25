@@ -1220,7 +1220,18 @@ std::array<Armor, 6> BattleMap::getAgentArmor(int idx) const noexcept
 void BattleMap::setAgentArmor(int idx, std::array<Armor, 6> armor) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(placedAgents_.size())) return;
-    placedAgents_[static_cast<std::size_t>(idx)].armor = std::move(armor);
+    auto& pa = placedAgents_[static_cast<std::size_t>(idx)];
+    pa.armor = std::move(armor);
+    // Medium or Heavy armor (MORE_SPECIES_PLAN.md D11): the tightest DEX cap worn is 2 or
+    // less, the same reading as the AC calculation (rules.hpp). It grounds a Fairy.
+    if (pa.agent) {
+        int cap = 30;
+        for (const auto& piece : pa.armor)
+            if (!piece.name.empty()) cap = std::min(cap, piece.dex_mod_cap);
+        auto& st = pa.agent->getStats();
+        st.armor_medium_heavy = cap <= 2;
+        st.syncSpeciesFlight();
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

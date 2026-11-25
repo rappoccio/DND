@@ -321,7 +321,12 @@ void bindTypes(py::module_& m) {
         .def_readwrite("hp_bonus", &SpeciesApplied::hp_bonus,
              "Dwarven Toughness HP folded into hp_max / hp_cur")
         .def_readwrite("perception_prof", &SpeciesApplied::perception_prof,
-             "Keen Senses turned perception_prof on");
+             "Keen Senses turned perception_prof on")
+        .def_readwrite("fey", &SpeciesApplied::fey, "A Fey species turned is_fey on")
+        .def_readwrite("fly_from", &SpeciesApplied::fly_from,
+             "Fairy Flight: the fly Speed before the species")
+        .def_readwrite("fly_to", &SpeciesApplied::fly_to,
+             "Fairy Flight: the fly Speed it last set (equal to fly_from = untouched)");
     py::class_<GrantedSpell>(m, "GrantedSpell",
         "A spell a trait grants (SPECIES_PLAN.md D3): always prepared, its own casting ability, "
         "free casts per Long Rest.")
@@ -367,6 +372,19 @@ void bindTypes(py::module_& m) {
         for (auto k : kSpeciesSkills) out.emplace_back(k);
         return out;
     }, "Skillful (D12): the skills a species may grant (the four the engine models).");
+    m.def("species_skill_options", [](const std::string& name) {
+        std::vector<std::string> out;
+        const SpeciesDef* d = findSpecies(name);
+        if (d && (d->flags & kSpeciesSkillful))
+            for (auto k : d->skillOptions()) out.emplace_back(k);
+        return out;
+    }, py::arg("name"),
+       "The skills this species' Skillful-style pick offers ([] without one); Lupin adds "
+       "Survival, which is flavor only (MORE_SPECIES_PLAN.md D2).");
+    m.def("species_creature_type", [](const std::string& name) {
+        const SpeciesDef* d = findSpecies(name);
+        return std::string(d && d->creature_type == SpeciesCreatureType::Fey ? "Fey" : "Humanoid");
+    }, py::arg("name"), "\"Fey\" or \"Humanoid\" (MORE_SPECIES_PLAN.md D1).");
     m.def("species_has_skillful", [](const std::string& name) {
         const SpeciesDef* d = findSpecies(name);
         return d && (d->flags & kSpeciesSkillful);
@@ -945,6 +963,13 @@ void bindTypes(py::module_& m) {
         .def("is_dhampir", &Agent::Stats::isDhampir)
         // SP4: Halfling, Orc, Human
         .def("has_luck", &Agent::Stats::hasLuck, "Halfling Luck: a natural 1 on a d20 Test is rerolled.")
+        .def("has_death_save_advantage", &Agent::Stats::hasDeathSaveAdvantage,
+             "Durable or Reborn: Advantage on Death Saving Throws.")
+        .def_readwrite("armor_medium_heavy", &Agent::Stats::armor_medium_heavy,
+             "Wearing Medium or Heavy armor (kept by set_agent_armor); grounds Fairy Flight.")
+        .def("sync_species_flight", &Agent::Stats::syncSpeciesFlight,
+             "Fairy Flight (D11): re-derive the fly Speed from walk Speed and armor. Call after "
+             "a walk Speed change; no-op for other species or a fly Speed changed elsewhere.")
         .def_readwrite("species_skill", &Agent::Stats::species_skill,
              "Skillful (Human): one of species_skills() (\"\" = none), read live as a proficiency.")
         .def("set_species_skill", &Agent::Stats::setSpeciesSkill, py::arg("skill"),

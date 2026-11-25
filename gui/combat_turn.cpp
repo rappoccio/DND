@@ -820,9 +820,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     else if (cond.unconscious && stats.hp_cur <= 0 && !cond.stabilized && !cond.dead) {
         int con_mod = (stats.con - 10) / 2;
         if (stats.con < 10 && (stats.con - 10) % 2 != 0) --con_mod;
-        // Durable (general feat) — Defy Death: Advantage on Death Saving Throws (take the higher d20).
+        // Durable (general feat) Defy Death and Reborn Deathless Nature: Advantage on Death Saving Throws.
         // Halfling Luck rerolls a natural 1 (D10).
-        int death_d20 = d20Test(stats.hasLuck(), stats.hasFeat("Durable"), false, agentName(bm, agent_idx));
+        int death_d20 = d20Test(stats.hasLuck(), stats.hasDeathSaveAdvantage(), false, agentName(bm, agent_idx));
         int death_total = death_d20 + con_mod;
 
         if (death_d20 == 20) {
@@ -1431,9 +1431,9 @@ void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
 
     int con_mod = (stats.con - 10) / 2;
     if (stats.con < 10 && (stats.con - 10) % 2 != 0) --con_mod;
-    // Durable (general feat) — Defy Death: Advantage on Death Saving Throws (take the higher d20).
+    // Durable (general feat) Defy Death and Reborn Deathless Nature: Advantage on Death Saving Throws.
     // Halfling Luck rerolls a natural 1 (D10).
-    int death_d20 = d20Test(stats.hasLuck(), stats.hasFeat("Durable"), false, agentName(bm, idx));
+    int death_d20 = d20Test(stats.hasLuck(), stats.hasDeathSaveAdvantage(), false, agentName(bm, idx));
     int death_total = death_d20 + con_mod;
 
     if (death_d20 == 20) {

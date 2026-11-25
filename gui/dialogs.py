@@ -2876,8 +2876,8 @@ class StatsDialog:
             self._species_ability = 3
         if not (name and rpg.species_has_skillful(name)):
             self._species_skill = ""
-        elif self._species_skill not in rpg.species_skills():
-            self._species_skill = rpg.species_skills()[0]
+        elif self._species_skill not in rpg.species_skill_options(name):
+            self._species_skill = rpg.species_skill_options(name)[0]
         if not (name and rpg.species_has_versatile(name)):
             self._versatile_feat = "NONE"
 
@@ -2923,7 +2923,7 @@ class StatsDialog:
             screen.blit(lbl, (x0, y))
             x_sk = x0 + lbl.get_width() + 8 if len(sizes) > 1 else x_pick
             picker("_species_skill", x_sk, dlg.right - self.PAD, y, self._species_skill,
-                   list(rpg.species_skills()))
+                   list(rpg.species_skill_options(name)))
             y += 24
         elif len(sizes) > 1 or has_ability:
             mid = x_pick + (dlg.right - self.PAD - x_pick) // 2

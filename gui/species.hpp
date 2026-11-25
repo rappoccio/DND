@@ -55,6 +55,14 @@ inline constexpr std::uint32_t kSpeciesDraconicFlight = 1u << 15; // Dragonborn:
 // SP6:
 inline constexpr std::uint32_t kSpeciesGiantAncestry = 1u << 16;  // Goliath: Giant Ancestry (D9)
 inline constexpr std::uint32_t kSpeciesLargeForm     = 1u << 17;  // Goliath: Large Form (D6)
+// MORE_SPECIES_PLAN.md MS1:
+inline constexpr std::uint32_t kSpeciesDeathSaveAdv  = 1u << 18;  // Reborn: Adv. on death saves
+inline constexpr std::uint32_t kSpeciesFairyFlight   = 1u << 19;  // Fairy: fly = walk unless Medium/Heavy armor (D11)
+inline constexpr std::uint32_t kSpeciesStealthProf   = 1u << 20;  // Bugbear: Stealth proficiency
+
+// Creature type a species makes its member (MORE_SPECIES_PLAN.md D1). Humanoid is the default
+// and sets nothing; Fey sets Stats::is_fey.
+enum class SpeciesCreatureType : std::uint8_t { Humanoid, Fey };
 
 // Condition-save Advantage (D5): the condition a flag covers, "" for a flag that covers none.
 [[nodiscard]] constexpr bool speciesFlagCoversCondition(std::uint32_t flags,
@@ -80,6 +88,10 @@ inline constexpr std::array<std::string_view, 3> kFiendishLegacies{"Abyssal", "C
 // Skillful (D12): the four skills the engine models.
 inline constexpr std::array<std::string_view, 4> kSpeciesSkills{
     "Athletics", "Perception", "Sleight of Hand", "Stealth"};
+// Lupin Werewolf Instincts (MORE_SPECIES_PLAN.md D2). Survival is not modelled: flavor only.
+inline constexpr std::array<std::string_view, 3> kLupinSkills{"Perception", "Stealth", "Survival"};
+// Reborn Strange Endurance: one Resistance, picked as the species option.
+inline constexpr std::array<std::string_view, 3> kStrangeEndurance{"Cold", "Necrotic", "Poison"};
 
 // Gnomish Cunning: INT, WIS and CHA save bits (SaveAbility_t ordinals 3, 4, 5).
 inline constexpr int kGnomishCunningBits = (1 << 3) | (1 << 4) | (1 << 5);
@@ -94,7 +106,13 @@ struct SpeciesDef {
     std::uint32_t flags{0};
     std::string_view option_label{};              // "Lineage", "Legacy", … ("" = no option)
     std::span<const std::string_view> options{};  // the picks; the first is the default
+    SpeciesCreatureType creature_type{SpeciesCreatureType::Humanoid};
+    // Skillful-style skill picks ("" span = kSpeciesSkills), for a species with kSpeciesSkillful.
+    std::span<const std::string_view> skill_options{};
 
+    [[nodiscard]] constexpr std::span<const std::string_view> skillOptions() const noexcept {
+        return skill_options.empty() ? std::span<const std::string_view>(kSpeciesSkills) : skill_options;
+    }
     [[nodiscard]] constexpr bool hasOption(std::string_view o) const noexcept {
         for (const auto& x : options)
             if (x == o) return true;
@@ -142,6 +160,27 @@ inline constexpr std::array kSpeciesTable{
     SpeciesDef{.name = "Tiefling", .darkvision = 60,
                .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
                .flags = kSpeciesSpellAbility, .option_label = "Legacy", .options = kFiendishLegacies},
+    // MORE_SPECIES_PLAN.md (MS1, D3). Bugbear and Fairy are the Monsters of the Multiverse
+    // text with the ability scores and languages ignored.
+    SpeciesDef{.name = "Aasimar", .darkvision = 60,
+               .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
+               .magic_resist_mask = (1u << Necrotic) | (1u << Radiant)},
+    SpeciesDef{.name = "Hexblood", .darkvision = 60,
+               .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
+               .flags = kSpeciesSpellAbility, .creature_type = SpeciesCreatureType::Fey},
+    SpeciesDef{.name = "Lupin", .darkvision = 60,
+               .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
+               .flags = kSpeciesSkillful, .skill_options = kLupinSkills},
+    SpeciesDef{.name = "Reborn", .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
+               .flags = kSpeciesSkillful | kSpeciesDeathSaveAdv,
+               .option_label = "Endurance", .options = kStrangeEndurance},
+    // Powerful Build is off: MotM's is carrying capacity only (not modelled), not the
+    // Goliath grapple-escape Advantage the flag gives (D3).
+    SpeciesDef{.name = "Bugbear", .darkvision = 60,
+               .flags = kSpeciesFeyAncestry | kSpeciesStealthProf},
+    SpeciesDef{.name = "Fairy", .size_options = kSpeciesSizeSmall,
+               .flags = kSpeciesSpellAbility | kSpeciesFairyFlight,
+               .creature_type = SpeciesCreatureType::Fey},
 };
 
 // Traits one option adds on top of its species' entry. Each field replaces the species'
@@ -173,6 +212,10 @@ inline constexpr std::array kSpeciesOptionTable{
     SpeciesOptionDef{"Tiefling", "Abyssal",  0, 0, 1u << Poison},
     SpeciesOptionDef{"Tiefling", "Chthonic", 0, 0, 1u << Necrotic},
     SpeciesOptionDef{"Tiefling", "Infernal", 0, 0, 1u << Fire},
+    // Reborn Strange Endurance → Damage Resistance.
+    SpeciesOptionDef{"Reborn", "Cold",     0, 0, 1u << Cold},
+    SpeciesOptionDef{"Reborn", "Necrotic", 0, 0, 1u << Necrotic},
+    SpeciesOptionDef{"Reborn", "Poison",   0, 0, 1u << Poison},
 };
 
 // A species' one-time traits with its option folded in: what setSpecies() applies.
@@ -261,6 +304,9 @@ struct SpeciesApplied {
     int save_advantage_bits{0};         // bits this species added (not already set)
     int hp_bonus{0};                    // Dwarven Toughness HP folded into hp_max / hp_cur
     bool perception_prof{false};        // Keen Senses set perception_prof (it was off)
+    bool fey{false};                    // a Fey species set is_fey (it was off) (D1)
+    int fly_from{0};                    // Fairy Flight: fly Speed before / as last set (D11)
+    int fly_to{0};
 };
 
 // A spell a trait grants (D3): always prepared, cast with its own ability, and (for a
@@ -328,7 +374,8 @@ inline constexpr std::array kSpeciesSpellTable{
         && a.darkvision_from == b.darkvision_from && a.darkvision_to == b.darkvision_to
         && a.magic_resist_mask == b.magic_resist_mask
         && a.save_advantage_bits == b.save_advantage_bits
-        && a.hp_bonus == b.hp_bonus && a.perception_prof == b.perception_prof;
+        && a.hp_bonus == b.hp_bonus && a.perception_prof == b.perception_prof
+        && a.fey == b.fey && a.fly_from == b.fly_from && a.fly_to == b.fly_to;
 }
 
 } // namespace rpg

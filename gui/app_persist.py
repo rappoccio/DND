@@ -440,7 +440,7 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
                                     ("speed_from", "speed_to", "darkvision_from",
                                      "darkvision_to", "magic_resist_mask",
                                      "save_advantage_bits", "hp_bonus",
-                                     "perception_prof")},
+                                     "perception_prof", "fey", "fly_from", "fly_to")},
                 "condition_save_adv": list(s.condition_save_adv),
                 # Granted spells (D3): the species' entries are rebuilt on load; the list
                 # carries their free casts spent and any other source's entries.

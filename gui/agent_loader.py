@@ -145,6 +145,12 @@ def dict_to_stats(stats_dict):
                     "magic_resist_mask", "save_advantage_bits", "hp_bonus"):
             setattr(a, key, int(applied.get(key, getattr(a, key))))
         a.perception_prof = bool(applied.get("perception_prof", a.perception_prof))
+        # MORE_SPECIES_PLAN.md MS1: a save from before these keys keeps what restore_species
+        # derived from the folded-in is_fey and speed_fly.
+        derived = stats.species_applied
+        a.fey = bool(applied.get("fey", derived.fey))
+        a.fly_from = int(applied.get("fly_from", derived.fly_from))
+        a.fly_to = int(applied.get("fly_to", derived.fly_to))
         stats.species_applied = a
     stats.condition_save_adv = [str(c) for c in stats_dict.get("condition_save_adv", [])]
     # Sub-choices (D2); a save from before SP1 carries none and gets the species' defaults.

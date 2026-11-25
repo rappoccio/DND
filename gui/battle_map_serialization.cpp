@@ -49,7 +49,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     SpeciesApplied,
     speed_from, speed_to, darkvision_from, darkvision_to, magic_resist_mask, save_advantage_bits,
-    hp_bonus, perception_prof)
+    hp_bonus, perception_prof, fey, fly_from, fly_to)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     GrantedSpell,
@@ -155,7 +155,7 @@ namespace {
     X(species_skill) X(adrenaline_rush_used) X(relentless_endurance_used) X(heroic_inspiration) \
     X(vampiric_strengthen_turns) X(breath_weapon_used) X(draconic_flight_used) \
     X(draconic_flight_rounds) X(draconic_flight_fly_from) X(giant_ancestry_used) \
-    X(large_form_used) X(large_form_rounds) X(large_form_speed_added)
+    X(large_form_used) X(large_form_rounds) X(large_form_speed_added) X(armor_medium_heavy)
 
 // ── Agent::Conditions — every member, one X() each ───────────────────────────
 #define RPG_CONDITIONS_FIELDS(X) \

@@ -25,7 +25,8 @@ SRD = ["Dragonborn", "Dwarf", "Elf", "Gnome", "Goliath", "Halfling", "Human", "O
 
 
 def test_table_lists_the_srd_species():
-    assert list(rpg.species_names()) == ["Dhampir"] + SRD
+    # MORE_SPECIES_PLAN.md rows follow; tests/test_more_species.py covers them.
+    assert list(rpg.species_names())[:10] == ["Dhampir"] + SRD
     expect = {
         "Dragonborn": ("Ancestry", ["Black", "Blue", "Brass", "Bronze", "Copper", "Gold", "Green",
                                     "Red", "Silver", "White"]),
