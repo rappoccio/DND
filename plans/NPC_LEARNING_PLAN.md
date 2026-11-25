@@ -20,6 +20,8 @@ Step 6 code committed 16a0b6b (untrained). Step 7 machinery implemented 2026-11-
 untrained. **No training until Step 3b's generated parties exist** (user, 2026-11-09): order is
 3b → **Ranger subclasses (user, 2026-11-10: code them up before any training)** → Step 6
 training/gate → Step 7 training. Step 3b implemented 2026-11-10 (233/0).
+**Ranger PIN lifted 2026-11-24**: `RANGER_SUBCLASSES_PLAN.md` R1–R5 are done (287/0), so the
+next step is Step 6 training/gate.
 
 ---
 

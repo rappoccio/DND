@@ -1097,40 +1097,75 @@ N-faction team system (`PlacedAgent.faction`, int; 0 = neutral, allied with no o
 ---
 
 <details>
-<summary><b>Ranger — Beast Master (Primal Companion) — IMPLEMENTED ✅ (2026-06-13, built + 71 suites green)</b></summary>
+<summary><b>Ranger subclasses — all four complete (RANGER_SUBCLASSES_PLAN.md R1–R5, 2026-11-24)</b></summary>
 
-L3 Primal Companion (Land/Sea/Sky stat blocks in `primal_companions.json`, HP/AC/to-hit/dmg scale with level; faction/summoner-linked, tombstoned on death/dismiss; `compute_companion_loadout`). L7 Exceptional Training (companion gains Cunning Action + natural weapon → Force). L11 Bestial Fury (`num_attacks=2` + once/turn the first hit on the HM target deals +Force = the mark's dice). L15 Share Spells (a Self-range buff the Ranger casts is re-applied to the companion ≤30 ft, same concentration, no extra slot). Deferred: L7 Dodge/Help, L7 Force has no opt-out, L15 GUI-only + true-Self-buffs only. See [[ranger_progress]].
+Hunter, Gloom Stalker, Fey Wanderer and Beast Master follow the 2024 PHB text for every combat
+feature, in the GUI and for automated Rangers (Level 4 driver, arena, generated parties).
+Tests: `test_ranger.py`, `test_ranger_subclasses.py`, `test_ranger_arena.py`,
+`test_action_menu.py`. Skipped by decision (plan D1): Otherworldly Glamour, the Iron Mind INT/CHA
+fallback, the Beast Master's out-of-combat restore (no menu item was built either), and swapping the
+companion's form on a Long Rest (dismiss and resummon instead). No Ranger feature is a macro action
+(plan D2): automated Rangers use them inside macro execution. Base-Ranger items still deferred,
+outside this plan: Favored Enemy free-cast accounting, re-marking on a kill, spell-attack marks,
+and the Roving armor gate.
 
-</details>
+**Hunter.** Horde Breaker arms on any weapon attack on the Hunter's own turn, hit or miss, never on
+an Opportunity Attack. Superior Hunter's Defense resists the hit's damage types until the turn
+ends. Hunter's Lore logs the mark's immunities, resistances and vulnerabilities.
+- **The automated Horde Breaker swing comes after the whole attack loop** and picks the weakest
+  legal target. In the GUI it is a free row offered once the Attack action's swings are done.
 
-<details>
-<summary><b>Ranger — Fey Wanderer — IMPLEMENTED ✅ (2026-06-13, combat-core; awaiting build)</b></summary>
-
-L3 Dreadful Strikes (first weapon hit each turn +1d4→1d6 Psychic at L11, no resource). L7 Beguiling Twist (Advantage on saves vs Charmed/Frightened spells, gated inline at both spell-save sites). Always-prepared spells: Charm Person / Misty Step / Dimension Door / Mislead. Tests `test_ranger.py`. Deferred: L9 Summon Fey (not in spells.json), the L7 redirect Reaction, L11/L15 free-casts, out-of-combat Otherworldly Glamour.
-
-**Fey Wanderer update — RANGER_SUBCLASSES_PLAN.md R3 (2026-11-10).** Summon Fey is always prepared at L9. Fey Reinforcements (L11, 1/LR, a slotless Summon Fey; any Summon Fey may skip Concentration for a 1-minute duration, `summon_rounds_left = 10`), Misty Wanderer (L15, max(1, WIS mod)/LR slotless Misty Steps, bringing one willing creature from within 5 ft) and the Beguiling Twist Reaction are built, for both the GUI and automated Rangers. `beguilingTwistAdvantage` / `charmFearSaveSucceeded` are called at every Charm/Fear save site: the spell saves, Mass Fear, Menacing Attack, Intimidating Presence, Frightful Aura, Beguiling Magic, Beguiling Twist's own save, and the start- and end-of-turn repeat saves. Tests `test_ranger_subclasses.py`, `test_action_menu.py`. What remains approximate:
-- **The automated Summon Fey is Python-side and spends the whole turn.** The engine NpcDriver casts no summon spells, so `App._auto_summon_fey` runs at the top of an automated Fey Wanderer's turn (the arena and the GUI's Level 4 driver). When it casts, the Ranger neither moves nor uses its Bonus Action that turn. It casts when the Ranger has no spirit out and an enemy is on the board; the mood is always the first in `summons.json` (Fuming). A Policy (Level 5/6) turn is pre-empted the same way. A headless engine with no App never summons.
-- **Fixed-duration summons tick on the summoner's turns** and stop counting while it is dead or skipped. Concentration summons are unchanged.
-- **Beguiling Twist's trigger fires when the save is rolled.** For a spell save that is before the OnSaveFail / OnD20Seen windows, so a reroll that later flips the result is not seen. The "can see" test is line of sight plus `canPerceiveTarget`, which lets a Ranger see an Invisible ally. A human Ranger's offer is queued and prompted on the next frame, once nothing else is waiting. An automated Ranger always Frightens, never Charms. Auto-fail saves never trigger it.
-- **Misty Wanderer's passenger lands in the first free space** beside the destination. The GUI asks who comes along, but not where they land. The NpcDriver uses it only to get a ranged Ranger out of melee, at the start of its turn. `npcTeleportEscape` does not spend it.
-- **Otherworldly Glamour and the Iron Mind fallback are skipped** (D1).
-
-</details>
-
----
-
-<details>
-<summary><b>Ranger — Hunter & Gloom Stalker (Phase 3 leftovers) — IMPLEMENTED ✅ (2026-06-14, built + 71 suites green)</b></summary>
-
-Hunter L11 Superior Hunter's Prey (after the mark takes HM damage, splash a fresh roll of the same dice to the nearest enemy ≤30 ft of the mark, once/turn). Hunter L15 Superior Hunter's Defense (OnHit defender reaction, like Uncanny Dodge — v1 resists only the triggering hit). Gloom L11 Sudden Strike (one free extra attack). In-dialog Hunter's Prey / Defensive Tactics pickers. Deferred: Gloom L11 Mass Fear, L15 Shadowy Dodge (needs a pre-roll defender-disadvantage window + teleport), L3 Umbral Sight (lighting model), Phase-2 follow-ups (favored-enemy free-cast accounting, re-mark-on-kill, spell-attack marks, Roving armor gate). See [[ranger_progress]].
-
-**Gloom Stalker update — RANGER_SUBCLASSES_PLAN.md R2 (2026-11-10).** Dreadful Strike is now an on-hit choice (GUI prompt / NpcDriver), Ambusher's Leap is automatic, and Mass Fear, Umbral Sight and Shadowy Dodge are built; the Gloom Stalker spells are always prepared. What remains approximate:
-- **Mass Fear never includes the Ranger itself**, even when it stands within 10 ft of the target (RAW "each creature" would). It does include the Ranger's allies. A Fey Wanderer saves against it with Beguiling Twist's Advantage (R3).
-- **Dreadful Strike is not offered on an Opportunity Attack**: the OA path runs no rider chain (GUI) and the NpcDriver only spends it on its own turn. The flag clears at the Ranger's next turn.
-- **Sudden Strike, in the GUI, is taken from a free row once the Attack action's swings are done** (like Horde Breaker), not strictly "immediately". The NpcDriver takes it between swings.
-- **Shadowy Dodge covers weapon attacks only**: spell attack rolls go through the cast flow, which has no pre-roll window. In the GUI it isn't offered against an Opportunity Attack (OAs resolve inline, as with Shield). The "space you can see" test is line of sight only.
-- **Umbral Sight changes attack rolls only** (Advantage for the Ranger, Disadvantage against it). It doesn't hide the Ranger from targeting, perception or the fog of war.
+**Gloom Stalker.** Dreadful Strike is an on-hit choice (GUI rider prompt / NpcDriver), Ambusher's
+Leap is automatic, Stalker's Flurry offers Sudden Strike or Mass Fear, and Umbral Sight and
+Shadowy Dodge are built. The subclass spells are always prepared.
+- **Mass Fear never includes the Ranger itself**, even when it stands within 10 ft of the target
+  (RAW "each creature" would). It does include the Ranger's allies.
+- **Dreadful Strike is not offered on an Opportunity Attack**: the OA path runs no rider chain
+  (GUI) and the NpcDriver only spends it on its own turn. The flag clears at the Ranger's next turn.
+- **Sudden Strike, in the GUI, is taken from a free row once the Attack action's swings are done**
+  (like Horde Breaker), not strictly "immediately". The NpcDriver takes it between swings, and
+  falls back to Mass Fear when it has no target.
+- **Shadowy Dodge covers weapon attacks only**: spell attack rolls go through the cast flow, which
+  has no pre-roll window. In the GUI it isn't offered against an Opportunity Attack (OAs resolve
+  inline, as with Shield). The "space you can see" test is line of sight only.
+- **Umbral Sight changes attack rolls only** (Advantage for the Ranger, Disadvantage against it).
+  It doesn't hide the Ranger from targeting, perception or the fog of war.
 - **Ambusher's Leap adds walking speed only** (as Speedy and Aura of Alacrity do).
+
+**Fey Wanderer.** Dreadful Strikes, Summon Fey always prepared at L9, Fey Reinforcements (L11, a
+slotless Summon Fey; any Summon Fey may skip Concentration for 1 minute), Misty Wanderer (L15) and
+both halves of Beguiling Twist. `beguilingTwistAdvantage` / `charmFearSaveSucceeded` run at every
+Charm/Fear save site. Generated Fey Wanderers carry Summon Fey as a signature from L9.
+- **The automated Summon Fey is Python-side and spends the whole turn.** The engine NpcDriver casts
+  no summon spells, so `App._auto_summon_fey` runs at the top of an automated Fey Wanderer's turn
+  (the arena and the GUI's Level 4 driver). When it casts, the Ranger neither moves nor uses its
+  Bonus Action that turn. The mood is always the first in `summons.json` (Fuming). A Policy
+  (Level 5/6) turn is pre-empted the same way. A headless engine with no App never summons.
+- **Fixed-duration summons tick on the summoner's turns** and stop counting while it is dead or
+  skipped. Concentration summons are unchanged.
+- **Beguiling Twist's trigger fires when the save is rolled.** For a spell save that is before the
+  OnSaveFail / OnD20Seen windows, so a reroll that later flips the result is not seen. The "can
+  see" test is line of sight plus `canPerceiveTarget`, which lets a Ranger see an Invisible ally.
+  A human Ranger's offer is queued and prompted on the next frame. An automated Ranger always
+  Frightens, never Charms. Auto-fail saves never trigger it.
+- **Misty Wanderer's passenger lands in the first free space** beside the destination. The GUI
+  asks who comes along, but not where they land. The NpcDriver uses it only to get a ranged Ranger
+  out of melee, at the start of its turn. `npcTeleportEscape` does not spend it.
+
+**Beast Master.** The Primal Companion (Land/Sea/Sky, `primal_companions.json`, scaled by
+`compute_companion_loadout`) keeps its initiative slot right after the Ranger. Its action is Dodge
+unless the Ranger commanded it with a Bonus Action or is Incapacitated; it still moves and reacts.
+Exceptional Training's bonus Dash/Disengage/Hide and Bestial Fury's second strike apply only on a
+commanded turn. Beast's Strike replaces one of the Ranger's attacks (twice from L11). The L7
+damage type is Force unless Force does less. The companion vanishes when the Ranger dies. Share
+Spells is engine-side (`executeSpell`): one slot, one Concentration. In the arena, a Beast Master
+(L3+) starts every fight with its companion out, in its stored form (Land when none is stored).
+- **The automated Ranger trades an attack for Beast's Strike only with one attack or a ranged
+  weapon** (plan D9). A melee Ranger with Extra Attack commands with its Bonus Action instead, so
+  an automated L5+ melee Beast Master never uses Beast's Strike.
+- **The arena's companion spawn is logged to the console, not the trace log.** It goes through
+  the GUI's `_summon_companion`; the trace still records the companion as a turn-0 spawn.
+- **The Force-or-natural choice has no prompt**, in the GUI or automated: the rule picks.
 
 </details>
 

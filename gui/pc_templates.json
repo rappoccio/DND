@@ -515,7 +515,7 @@
                             "signatures": {"spells": ["Hunter's Mark"], "features": ["Primal Companion"]},
                             "choices": {"agent_primal_companion": "Land"}},
     "Ranger.FeyWanderer":  {"enum": "FeyWanderer", "primary": "CC", "secondary": "ST",
-                            "signatures": {"spells": ["Hunter's Mark", "Charm Person"], "features": ["Dreadful Strikes", "Beguiling Twist"]}},
+                            "signatures": {"spells": ["Hunter's Mark", "Charm Person", "Summon Fey"], "features": ["Dreadful Strikes", "Beguiling Twist"]}},
     "Ranger.GloomStalker": {"enum": "GloomStalker", "primary": "ST", "secondary": "CC",
                             "signatures": {"spells": ["Hunter's Mark"], "features": ["Dread Ambusher", "Umbral Sight"]}},
     "Ranger.Hunter":       {"enum": "Hunter", "primary": "ST", "secondary": "MT",

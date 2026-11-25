@@ -100,7 +100,7 @@ reference counts in the combat sources on 2026-07-07.
 - [x] Beast Master
 - [x] Fey Wanderer
 - [x] Gloom Stalker
-- Deferred (see known_limitations.md): Gloom Shadowy Dodge, Mass Fear, Umbral Sight
+- All four subclasses complete per the 2024 PHB, GUI and automated (RANGER_SUBCLASSES_PLAN.md, 2026-11-24)
 
 ## Rogue
 - [x] Base chassis (Sneak Attack, Cunning Action)

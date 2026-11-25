@@ -825,10 +825,40 @@ class _Fight:
         self._flush()
         return self.round_num < self.round_cap
 
+    def _spawn_companions(self):
+        """Ranger R5 (D11): a Beast Master (L3+) starts the fight with its Primal Companion
+        out, in its stored form (Land when none is stored), through the GUI's own summon.
+        The companion shares the Ranger's initiative count right after it, is automated at
+        the Ranger's level, and the trace records it as a spawn on the first turn."""
+        bm, eng = self.bm, self.eng
+        for idx in range(self._nagents):
+            pt = bm.placed_agents[idx]
+            if pt.removed_from_play or pt.conditions.dead:
+                continue
+            st = eng.get_agent_stats(bm, idx)
+            if (st.ranger_subclass != rpg.RangerSubclass.BeastMaster
+                    or st.class_level(rpg.CharacterClass.Ranger) < 3):
+                continue
+            form = st.primal_companion
+            if form == rpg.PrimalCompanion.NONE:
+                form = rpg.PrimalCompanion.Land
+            if self.app._find_companion_idx(idx) >= 0:
+                continue
+            self.app._summon_companion(idx, form.name)
+            new_idx = self.app._find_companion_idx(idx)
+            if new_idx < 0:
+                continue
+            bm.set_agent_npc_automated(new_idx, True)
+            bm.set_agent_npc_automation_difficulty(
+                new_idx, bm.get_agent_npc_automation_difficulty(idx))
+            self._adopt_spawned(idx)
+
     def run(self) -> dict:
         bm, eng = self.bm, self.eng
         self._trace_n = self._nagents
         self.order = list(eng.roll_initiative(bm))
+        if self.order:
+            self._spawn_companions()
         eng.apply_superior_inspiration(bm)
         eng.apply_ever_ready_shot(bm)
         bm.clear_terrain_effects()
