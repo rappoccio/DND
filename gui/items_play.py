@@ -381,7 +381,10 @@ def _spend_action(app, what: str) -> bool:
     return True
 
 
-def _after_check(app, res):
+def _after_check(app, res, actor=-1, cid=-1, again=None):
+    """Report a chest check. When it failed and `again` re-runs it, a Reborn is offered
+    Knowledge from a Past Life (D10); a trap the failure would set off waits on that offer
+    (res.trap_deferred) and fires on Skip."""
     if not res.valid:
         app._combat_log_add(res.log_message or "Nothing to do.")
         return
@@ -391,6 +394,26 @@ def _after_check(app, res):
     if app.combat_active and res.roll > 0:
         app.action_used = True
     _after_chest_change(app)
+    if again is None or res.success or res.roll <= 0:
+        return
+
+    def _retry():
+        r2 = again()
+        app._combat_log_add(r2.log_message)
+        if r2.trap.fired:
+            app._combat_log_add(r2.trap.log_message)
+        _after_chest_change(app)
+
+    def _decline():
+        if res.trap_deferred:
+            t = app.combat.trigger_chest_trap(app.bm, actor, cid)
+            if t.fired:
+                app._combat_log_add(t.log_message)
+            _after_chest_change(app)
+
+    offer = getattr(app, "_offer_past_life", None)
+    if offer is None or not offer(actor, _retry, _decline):
+        _decline()
 
 
 def _after_chest_change(app):
@@ -425,7 +448,8 @@ def pick_lock(app, actor: int, cid: int):
         app._combat_log_add("No creature selected to pick the lock.")
         return
     if _spend_action(app, "pick the lock"):
-        _after_check(app, app.combat.attempt_pick_chest_lock(app.bm, actor, cid))
+        _after_check(app, app.combat.attempt_pick_chest_lock(app.bm, actor, cid), actor, cid,
+                     lambda: app.combat.attempt_pick_chest_lock(app.bm, actor, cid))
 
 
 def break_open(app, actor: int, cid: int):
@@ -433,7 +457,8 @@ def break_open(app, actor: int, cid: int):
         app._combat_log_add("No creature selected to force the chest.")
         return
     if _spend_action(app, "force the chest"):
-        _after_check(app, app.combat.attempt_break_chest(app.bm, actor, cid))
+        _after_check(app, app.combat.attempt_break_chest(app.bm, actor, cid), actor, cid,
+                     lambda: app.combat.attempt_break_chest(app.bm, actor, cid))
 
 
 def search(app, actor: int, cid: int):
@@ -441,7 +466,8 @@ def search(app, actor: int, cid: int):
         app._combat_log_add("No creature selected to search the chest.")
         return
     if _spend_action(app, "search the chest"):
-        _after_check(app, app.combat.attempt_find_chest_trap(app.bm, actor, cid))
+        _after_check(app, app.combat.attempt_find_chest_trap(app.bm, actor, cid), actor, cid,
+                     lambda: app.combat.attempt_find_chest_trap(app.bm, actor, cid))
 
 
 def disarm(app, actor: int, cid: int):
@@ -449,7 +475,8 @@ def disarm(app, actor: int, cid: int):
         app._combat_log_add("No creature selected to disarm the trap.")
         return
     if _spend_action(app, "disarm the trap"):
-        _after_check(app, app.combat.attempt_disarm_chest_trap(app.bm, actor, cid))
+        _after_check(app, app.combat.attempt_disarm_chest_trap(app.bm, actor, cid), actor, cid,
+                     lambda: app.combat.attempt_disarm_chest_trap(app.bm, actor, cid))
 
 
 def unlock_with_key(app, actor: int, cid: int):

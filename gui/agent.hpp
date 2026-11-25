@@ -1159,6 +1159,15 @@ namespace rpg {
       [[nodiscard]] bool hasDeathSaveAdvantage() const noexcept {
           return hasFeat("Durable") || hasSpeciesFlag(kSpeciesDeathSaveAdv);
       }
+      // Reborn Knowledge from a Past Life (MORE_SPECIES_PLAN.md D10): uses spent since the
+      // last Long Rest (PB uses). Each adds 1d6 to an ability check that failed.
+      int past_life_used{0};
+      [[nodiscard]] int pastLifeRemaining() const noexcept {
+          return hasSpeciesFlag(kSpeciesPastLife) ? std::max(0, prof_bonus - past_life_used) : 0;
+      }
+      // Bugbear Long-Limbed (D12) and Surprise Attack (D13).
+      [[nodiscard]] bool hasLongLimbed() const noexcept { return hasSpeciesFlag(kSpeciesLongLimbed); }
+      [[nodiscard]] bool hasSurpriseAttack() const noexcept { return hasSpeciesFlag(kSpeciesSurpriseAttack); }
 
       // Fairy Flight (MORE_SPECIES_PLAN.md D11): fly Speed = walk Speed, except in Medium or
       // Heavy armor. armor_medium_heavy is kept by BattleMap::setAgentArmor (the minimum
@@ -1400,6 +1409,7 @@ namespace rpg {
         draconic_flight_used = false;     // Dragonborn Draconic Flight
         giant_ancestry_used = 0;          // Goliath Giant Ancestry
         large_form_used = false;          // Goliath Large Form
+        past_life_used = 0;               // Reborn Knowledge from a Past Life
         if (hasSpeciesFlag(kSpeciesHeroic)) heroic_inspiration = true;   // Human Resourceful
       }
 
@@ -1630,6 +1640,7 @@ namespace rpg {
       int  zealous_blessing_by{-1};         // index of the Zealot who granted zealous_blessing; cleared in CombatEngine::beginTurn as that Zealot's turn begins (mirrors goaded_by)
       // ── Per-COMBAT marker (NOT reset in turn()) ─────────────────────────────
       bool ambushers_leap{false};           // Gloom Stalker Ambusher's Leap: +10 ft walk this turn (set by beginTurn on the first turn of combat)
+      bool surprise_attack_used{false};     // Bugbear Surprise Attack (D13): spent this combat; reset with has_taken_turn_this_combat
       bool has_taken_turn_this_combat{false}; // set true at the start of this agent's first turn (CombatEngine::beginTurn); drives Assassin "Assassinate" Advantage vs creatures that haven't acted yet. Reset to false at combat start (GUI _start_combat).
       // ── Monk Phase 0 Features ────────────────────────────────────────────────
       bool uncanny_metabolism_used_this_combat{false}; // L2: restore Focus + heal on initiative roll (once per combat)

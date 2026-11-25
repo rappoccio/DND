@@ -2561,6 +2561,30 @@ public:
     // first, else the lowest slot.
     [[nodiscard]] bool canHellishRebuke(const BattleMap& bm, int reactor_idx, int attacker_idx) const;
     bool applyHellishRebuke(BattleMap& bm, int reactor_idx, int attacker_idx);
+    // ── More species (MORE_SPECIES_PLAN.md MS3) ──────────────────────────────────────────────
+    // Bugbear Surprise Attack (D13): when a hit with an attack roll lands on a creature that
+    // hasn't taken a turn this combat, 2d6 extra damage of the attack's type, once per combat.
+    // Returns the damage after `mult` (the target's multiplier for that type), or -1 when it
+    // doesn't apply. The caller adds it, folds it into HP and sets surprise_attack_used.
+    int surpriseAttackDamage(BattleMap& bm, int attacker_idx, int target_idx, float mult);
+    // Reborn Knowledge from a Past Life (D10): PB uses per Long Rest, each +1d6 to an ability
+    // check that failed. Engine-rolled checks (shove, grapple, grapple escape, Net, doors,
+    // chests) go through beginCheck / checkD20 / checkContestD20 / checkBonus / endCheck, which
+    // record the d20s. After a failure canPastLife(idx) holds; armPastLife spends a use and rolls
+    // the d6, and the caller runs the same check again: it replays the recorded d20s (the
+    // defender's too) and adds the d6, so it is the same check re-evaluated. A check that was
+    // already re-evaluated is not offered again. spendPastLife is the tracker button for a check
+    // the DM rolls at the table: it only spends a use.
+    void beginCheck(int idx) noexcept;
+    int  checkD20(int rolled) noexcept;
+    int  checkContestD20(int defender_idx, int rolled) noexcept;
+    int  checkBonus(BattleMap& bm, int idx) noexcept;
+    void endCheck(bool success) noexcept;
+    [[nodiscard]] bool canPastLife(const BattleMap& bm, int idx) const noexcept;
+    int  armPastLife(BattleMap& bm, int idx);
+    bool spendPastLife(BattleMap& bm, int idx);
+    void failedChestCheckTrap(BattleMap& bm, int agent_idx, int chest_id, ChestCheckResult& r);
+
     // Heroic Inspiration (D11): after a missed attack with the ★ held, the GUI offers a reroll
     // (heroic_reroll_available). Spending it clears the ★ and re-resolves the same attack; the
     // new roll stands. Returns the new AttackResult (default when the offer was not open).

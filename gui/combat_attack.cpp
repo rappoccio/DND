@@ -2574,6 +2574,14 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
         w.reach_ft += 5;
     }
 
+    // Bugbear Long-Limbed (MORE_SPECIES_PLAN.md D12): +5 ft melee reach on its own turn only, so an
+    // Opportunity Attack (or any off-turn swing) keeps the weapon's reach. The OA/threat scans
+    // read reach_ft directly and are untouched.
+    if (w.type == WeaponType::Melee && atk_pt.agent->getStats().hasLongLimbed() && !action.opportunity &&
+        ctx_.turn_agent_idx_ == action.attacker_idx) {
+        w.reach_ft += 5;
+    }
+
     // Warrior of the Elements L3 Elemental Attunement: +10 ft reach on unarmed strikes while active.
     // Non-consuming — persists for every unarmed strike until a short/long rest ends the attunement.
     if (w.name == "MonkUnarmed" && atk_pt.agent->getConditions().elemental_attunement_active) {
@@ -4245,6 +4253,29 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             r.magic_damage_dealt[static_cast<std::size_t>(Necrotic)] += pod;
             int overflow = std::max(0, pod - tgt_stats.temp_hp);
             tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - pod);
+            tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+            r.hp_after    = tgt_stats.hp_cur;
+            r.target_down = (r.hp_after <= 0);
+        }
+    }
+
+    // ── Bugbear Surprise Attack (MORE_SPECIES_PLAN.md D13), AUTOMATIC ────
+    // Once per combat: a hit on a creature that hasn't taken a turn yet adds 2d6 of the attack's
+    // damage type. The flag goes on the local attacker-conditions copy, which is written back below.
+    if (r.hit && r.total_damage > 0 && !updated_atk_cond.surprise_attack_used) {
+        float mult = 1.0f;
+        if (!r.physical_damage_types.empty())
+            mult = effectivePhysicalDamageMult(atk_stats, tgt_stats, r.physical_damage_types.front());
+        else if (!r.magic_damage_types.empty())
+            mult = effectiveMagicDamageMult(atk_stats, tgt_stats, r.magic_damage_types.front(), false);
+        const int sa = surpriseAttackDamage(bm, action.attacker_idx, action.target_idx, mult);
+        if (sa >= 0) {
+            updated_atk_cond.surprise_attack_used = true;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+            r.total_damage += sa;
+            r.damage_breakdown.push_back({"Surprise Attack", sa});
+            int overflow = std::max(0, sa - tgt_stats.temp_hp);
+            tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - sa);
             tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
             r.hp_after    = tgt_stats.hp_cur;
             r.target_down = (r.hp_after <= 0);

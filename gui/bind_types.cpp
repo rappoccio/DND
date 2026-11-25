@@ -965,6 +965,15 @@ void bindTypes(py::module_& m) {
         .def("has_luck", &Agent::Stats::hasLuck, "Halfling Luck: a natural 1 on a d20 Test is rerolled.")
         .def("has_death_save_advantage", &Agent::Stats::hasDeathSaveAdvantage,
              "Durable or Reborn: Advantage on Death Saving Throws.")
+        // MS3: Reborn and Bugbear
+        .def_readwrite("past_life_used", &Agent::Stats::past_life_used,
+             "Reborn Knowledge from a Past Life: uses spent since the last Long Rest (pool = PB).")
+        .def("past_life_remaining", &Agent::Stats::pastLifeRemaining,
+             "Reborn Knowledge from a Past Life: uses left (0 for a non-Reborn).")
+        .def("has_long_limbed", &Agent::Stats::hasLongLimbed,
+             "Bugbear Long-Limbed: +5 ft melee reach on its own turn.")
+        .def("has_surprise_attack", &Agent::Stats::hasSurpriseAttack,
+             "Bugbear Surprise Attack: +2d6 on a hit vs a creature yet to act, once per combat.")
         .def_readwrite("armor_medium_heavy", &Agent::Stats::armor_medium_heavy,
              "Wearing Medium or Heavy armor (kept by set_agent_armor); grounds Fairy Flight.")
         .def("sync_species_flight", &Agent::Stats::syncSpeciesFlight,
@@ -1142,6 +1151,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("radiant_soul_used", &Agent::Conditions::radiant_soul_used)
         .def_readwrite("sneak_attack_used", &Agent::Conditions::sneak_attack_used)
         .def_readwrite("has_taken_turn_this_combat", &Agent::Conditions::has_taken_turn_this_combat)
+        .def_readwrite("surprise_attack_used", &Agent::Conditions::surprise_attack_used,
+             "Bugbear Surprise Attack spent this combat (reset at combat start).")
         .def_readwrite("cunning_strike_available", &Agent::Conditions::cunning_strike_available)
         .def_readwrite("attacked_while_invisible", &Agent::Conditions::attacked_while_invisible)
         .def_readwrite("steady_aim", &Agent::Conditions::steady_aim)
@@ -2638,6 +2649,8 @@ void bindTypes(py::module_& m) {
         .def_readonly("total",       &ChestCheckResult::total)
         .def_readonly("dc",          &ChestCheckResult::dc)
         .def_readonly("trap",        &ChestCheckResult::trap)
+        .def_readonly("trap_deferred", &ChestCheckResult::trap_deferred,
+             "Failed by 5+ but the trap waits on a Past Life offer: re-run the check or trigger_chest_trap.")
         .def_readonly("log_message", &ChestCheckResult::log_message);
 
     // ── BreakDoorResult (Strength/Athletics vs a door's break DC) ──────────────

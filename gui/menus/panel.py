@@ -676,6 +676,14 @@ def draw_tracker_section(app, lx, W, y):
                 held = app.combat.get_agent_stats(app.bm, e.agent_idx).heroic_inspiration
                 hero_x -= aw + 2
                 button("★" if held else "☆", pygame.Rect(hero_x, y, aw, 18), "heroic", e.agent_idx)
+            # Reborn Knowledge from a Past Life (MORE_SPECIES_PLAN.md D10): for a check the DM
+            # rolls at the table, a click spends a use. PLn = uses left.
+            if e.agent_idx >= 0:
+                st = app.combat.get_agent_stats(app.bm, e.agent_idx)
+                if st.species == "Reborn":
+                    hero_x -= 32 + 2
+                    button(f"PL{st.past_life_remaining()}", pygame.Rect(hero_x, y, 32, 18),
+                           "past_life", e.agent_idx)
             hp = _hp_label(app, e.agent_idx) if e.agent_idx >= 0 else ""
             if hp:
                 s = font.render(hp, True, col)

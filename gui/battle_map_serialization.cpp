@@ -155,7 +155,8 @@ namespace {
     X(species_skill) X(adrenaline_rush_used) X(relentless_endurance_used) X(heroic_inspiration) \
     X(vampiric_strengthen_turns) X(breath_weapon_used) X(draconic_flight_used) \
     X(draconic_flight_rounds) X(draconic_flight_fly_from) X(giant_ancestry_used) \
-    X(large_form_used) X(large_form_rounds) X(large_form_speed_added) X(armor_medium_heavy)
+    X(large_form_used) X(large_form_rounds) X(large_form_speed_added) X(armor_medium_heavy) \
+    X(past_life_used)
 
 // ── Agent::Conditions — every member, one X() each ───────────────────────────
 #define RPG_CONDITIONS_FIELDS(X) \
@@ -206,7 +207,7 @@ namespace {
     X(slasher_slow_used_this_turn) X(gwm_hew_available) X(battle_magic_available) \
     X(crusher_marked) X(crusher_marked_by) X(slasher_marked) X(slasher_marked_by) \
     X(cleave_available) X(cleave_used_this_turn) X(offhand_attack_used) \
-    X(zealous_blessing) X(zealous_blessing_by) X(has_taken_turn_this_combat) \
+    X(zealous_blessing) X(zealous_blessing_by) X(has_taken_turn_this_combat) X(surprise_attack_used) \
     X(uncanny_metabolism_used_this_combat) X(superior_defense_active) \
     X(shadow_step_advantage) X(bonus_reach_available) X(cloak_of_shadows_active) \
     X(elemental_attunement_active)

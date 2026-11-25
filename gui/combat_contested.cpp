@@ -85,14 +85,16 @@ ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
     auto attacker_stats = getAgentStats(bm, action.attacker_idx);
     int attacker_prof = attacker_stats.prof_bonus;
     // Halfling Luck; Goliath Large Form: Advantage on Strength checks.
-    int attacker_d20 = d20TestFor(bm, action.attacker_idx, attacker_stats.inLargeForm());
+    // The check is recorded so a Reborn can re-evaluate it with Past Life (D10).
+    beginCheck(action.attacker_idx);
+    int attacker_d20 = checkD20(d20TestFor(bm, action.attacker_idx, attacker_stats.inLargeForm()));
     int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof
-                       + consumeStrengthenBonus(bm, action.attacker_idx);
+                       + checkBonus(bm, action.attacker_idx);
 
     // Roll defender: max(Athletics, Acrobatics) = max(STR, DEX) + d20
     int target_str_mod = (target.agent->getStats().str - 10) / 2;
     int target_dex_mod = (target.agent->getStats().dex - 10) / 2;
-    int target_d20 = d20TestFor(bm, action.target_idx);
+    int target_d20 = checkContestD20(action.target_idx, d20TestFor(bm, action.target_idx));
     int target_athletic = target_d20 + target_str_mod;
     int target_acrobatic = target_d20 + target_dex_mod;
     int defender_total = std::max(target_athletic, target_acrobatic);
@@ -101,6 +103,7 @@ ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
     result.attacker_roll = attacker_total;
     result.defender_roll = defender_total;
     result.success = (attacker_total > defender_total);  // ties go to defender
+    endCheck(result.success);
 
     if (result.success) {
         if (action.knock_prone) {
@@ -172,13 +175,15 @@ PickLockResult CombatEngine::attemptPickLock(BattleMap& bm, int agent_idx, int d
 
     const Agent::Stats st = getAgentStats(bm, agent_idx);
     int bonus = st.sleightOfHand();
-    int d20 = roll(20);
+    beginCheck(agent_idx);
+    int d20 = checkD20(roll(20));
 
     result.valid   = true;
     result.roll    = d20;
-    result.total   = d20 + bonus + consumeStrengthenBonus(bm, agent_idx);
+    result.total   = d20 + bonus + checkBonus(bm, agent_idx);
     result.dc      = door->lock_dc;
     result.success = result.total >= result.dc;
+    endCheck(result.success);
 
     if (result.success) {
         bm.unlockDoor(door_id);
@@ -238,13 +243,15 @@ BreakDoorResult CombatEngine::attemptBreakDoor(BattleMap& bm, int agent_idx, int
 
     const Agent::Stats st = getAgentStats(bm, agent_idx);
     int bonus = st.athletics();
-    int d20 = st.inLargeForm() ? d20TestFor(bm, agent_idx, true) : roll(20);   // Large Form: Advantage
+    beginCheck(agent_idx);
+    int d20 = checkD20(st.inLargeForm() ? d20TestFor(bm, agent_idx, true) : roll(20));   // Large Form: Advantage
 
     result.valid   = true;
     result.roll    = d20;
-    result.total   = d20 + bonus + consumeStrengthenBonus(bm, agent_idx);
+    result.total   = d20 + bonus + checkBonus(bm, agent_idx);
     result.dc      = dc;
     result.success = result.total >= result.dc;
+    endCheck(result.success);
 
     if (result.success && lair_locked) {
         bm.setDoorLairLock(door_id, false);
@@ -415,6 +422,14 @@ std::string checkText(const char* skill, const ChestCheckResult& r)
 }
 }  // namespace
 
+// A pick or disarm that failed by 5 or more sets the trap off, unless the picker can still add
+// Knowledge from a Past Life (D10): then it waits (trap_deferred) on the caller's offer.
+void CombatEngine::failedChestCheckTrap(BattleMap& bm, int agent_idx, int chest_id, ChestCheckResult& r)
+{
+    if (canPastLife(bm, agent_idx)) { r.trap_deferred = true; return; }
+    r.trap = triggerChestTrap(bm, agent_idx, chest_id);
+}
+
 ChestCheckResult CombatEngine::attemptPickChestLock(BattleMap& bm, int agent_idx, int chest_id)
 {
     ChestCheckResult r;
@@ -434,9 +449,11 @@ ChestCheckResult CombatEngine::attemptPickChestLock(BattleMap& bm, int agent_idx
     }
     const Agent::Stats st = getAgentStats(bm, agent_idx);
     r.valid   = true;
-    r.roll    = roll(20);
-    r.total   = r.roll + st.sleightOfHand() + consumeStrengthenBonus(bm, agent_idx);
+    beginCheck(agent_idx);
+    r.roll    = checkD20(roll(20));
+    r.total   = r.roll + st.sleightOfHand() + checkBonus(bm, agent_idx);
     r.success = r.total >= r.dc;
+    endCheck(r.success);
     if (r.success) {
         bm.unlockChest(chest_id);
         r.log_message = "\"" + name + "\" picks the chest's lock " + checkText("Sleight of Hand", r) + ".";
@@ -444,7 +461,7 @@ ChestCheckResult CombatEngine::attemptPickChestLock(BattleMap& bm, int agent_idx
         r.log_message = "\"" + name + "\" fails to pick the chest's lock " + checkText("Sleight of Hand", r) + ".";
     }
     log_("{}", r.log_message);
-    if (!r.success && r.total <= r.dc - 5) r.trap = triggerChestTrap(bm, agent_idx, chest_id);
+    if (!r.success && r.total <= r.dc - 5) failedChestCheckTrap(bm, agent_idx, chest_id, r);
     return r;
 }
 
@@ -462,9 +479,11 @@ ChestCheckResult CombatEngine::attemptBreakChest(BattleMap& bm, int agent_idx, i
     r.dc = c->break_dc + ((c->arcane_lock && c->arcane_suppressed_turns <= 0) ? 10 : 0);
     const Agent::Stats st = getAgentStats(bm, agent_idx);
     r.valid   = true;
-    r.roll    = st.inLargeForm() ? d20TestFor(bm, agent_idx, true) : roll(20);   // Large Form: Advantage
-    r.total   = r.roll + st.athletics() + consumeStrengthenBonus(bm, agent_idx);
+    beginCheck(agent_idx);
+    r.roll    = checkD20(st.inLargeForm() ? d20TestFor(bm, agent_idx, true) : roll(20));   // Large Form: Advantage
+    r.total   = r.roll + st.athletics() + checkBonus(bm, agent_idx);
     r.success = r.total >= r.dc;
+    endCheck(r.success);
     if (r.success) {
         bm.breakChest(chest_id);
         r.log_message = "\"" + name + "\" smashes the chest open " + checkText("Athletics", r) + ".";
@@ -488,9 +507,12 @@ ChestCheckResult CombatEngine::attemptFindChestTrap(BattleMap& bm, int agent_idx
     int investigation = (st.intel - 10) / 2;   // no Investigation proficiency is modelled
     if (st.intel < 10 && (st.intel - 10) % 2 != 0) --investigation;
     r.valid = true;
-    r.roll  = roll(20);
-    r.total = r.roll + std::max(perception, investigation) + consumeStrengthenBonus(bm, agent_idx);
+    beginCheck(agent_idx);
+    r.roll  = checkD20(roll(20));
+    r.total = r.roll + std::max(perception, investigation) + checkBonus(bm, agent_idx);
     r.dc    = trap.detect_dc;
+    // Only a live, unfound trap makes this a check that can fail (no trap: nothing to find).
+    endCheck(!(chestTrapLive(trap) && !trap.found) || r.total >= r.dc);
     if (chestTrapLive(trap) && !trap.found && r.total >= r.dc) {
         ChestTrap t = trap;
         t.found = true;
@@ -523,10 +545,12 @@ ChestCheckResult CombatEngine::attemptDisarmChestTrap(BattleMap& bm, int agent_i
     }
     const Agent::Stats st = getAgentStats(bm, agent_idx);
     r.valid   = true;
-    r.roll    = roll(20);
-    r.total   = r.roll + st.sleightOfHand() + consumeStrengthenBonus(bm, agent_idx);
+    beginCheck(agent_idx);
+    r.roll    = checkD20(roll(20));
+    r.total   = r.roll + st.sleightOfHand() + checkBonus(bm, agent_idx);
     r.dc      = trap.disarm_dc;
     r.success = r.total >= r.dc;
+    endCheck(r.success);
     if (r.success) {
         ChestTrap t = trap;
         t.disarmed = true;
@@ -536,7 +560,7 @@ ChestCheckResult CombatEngine::attemptDisarmChestTrap(BattleMap& bm, int agent_i
         r.log_message = "\"" + name + "\" fails to disarm the trap " + checkText("Sleight of Hand", r) + ".";
     }
     log_("{}", r.log_message);
-    if (!r.success && r.total <= r.dc - 5) r.trap = triggerChestTrap(bm, agent_idx, chest_id);
+    if (!r.success && r.total <= r.dc - 5) failedChestCheckTrap(bm, agent_idx, chest_id, r);
     return r;
 }
 
@@ -574,17 +598,19 @@ GrappleResult CombatEngine::resolveGrapple(BattleMap& bm, int attacker_idx, int 
     result.valid = true;
     if (contested) {
         // Halfling Luck; Goliath Large Form: Advantage on Strength checks.
-        int attacker_d20 = d20TestFor(bm, attacker_idx, attacker_stats.inLargeForm());
+        beginCheck(attacker_idx);   // recorded for Past Life (D10)
+        int attacker_d20 = checkD20(d20TestFor(bm, attacker_idx, attacker_stats.inLargeForm()));
         int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof
-                           + consumeStrengthenBonus(bm, attacker_idx);
+                           + checkBonus(bm, attacker_idx);
         // Defender: max(Athletics, Acrobatics) = max(STR, DEX) + the same d20.
         int target_str_mod = (target.agent->getStats().str - 10) / 2;
         int target_dex_mod = (target.agent->getStats().dex - 10) / 2;
-        int target_d20 = d20TestFor(bm, target_idx);
+        int target_d20 = checkContestD20(target_idx, d20TestFor(bm, target_idx));
         int defender_total = std::max(target_d20 + target_str_mod, target_d20 + target_dex_mod);
         result.attacker_roll = attacker_total;
         result.defender_roll = defender_total;
         result.success = (attacker_total > defender_total);  // ties go to defender
+        endCheck(result.success);
     } else {
         // Automatic on a qualifying hit (the attack already landed).
         result.success = true;
@@ -678,11 +704,13 @@ GrappleEscapeResult CombatEngine::executeGrappleEscape(BattleMap& bm, int agent_
     // Roll best of STR (Athletics) or DEX (Acrobatics). Goliath Powerful Build: Advantage
     // (Large Form's Advantage on Strength checks adds nothing more).
     const bool powerful = stats.hasPowerfulBuild();
-    int str_d20 = d20TestFor(bm, agent_idx, powerful || stats.inLargeForm());   // Halfling Luck
-    int dex_d20 = d20TestFor(bm, agent_idx, powerful);
+    beginCheck(agent_idx);   // recorded for Past Life (D10)
+    int str_d20 = checkD20(d20TestFor(bm, agent_idx, powerful || stats.inLargeForm()));   // Halfling Luck
+    int dex_d20 = checkD20(d20TestFor(bm, agent_idx, powerful));
     int str_roll = str_d20 + str_mod;
     int dex_roll = dex_d20 + dex_mod;
-    result.escape_roll = std::max(str_roll, dex_roll) + consumeStrengthenBonus(bm, agent_idx);
+    result.escape_roll = std::max(str_roll, dex_roll) + checkBonus(bm, agent_idx);
+    endCheck(result.escape_roll >= result.escape_dc);
 
     // Check success
     if (result.escape_roll >= result.escape_dc) {

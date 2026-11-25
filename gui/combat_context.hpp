@@ -118,6 +118,25 @@ struct CombatContext {
     // begins a turn). "Once on each of your turns" features (Horde Breaker) key on it.
     int turn_agent_idx_{-1};
 
+    // ── Reborn Knowledge from a Past Life (MORE_SPECIES_PLAN.md D10; not serialized) ──
+    // The last engine-rolled ability check: who made it, its d20s (in roll order), a contest's
+    // defender d20, the Strengthen bonus it spent, and how it ended. armPastLife arms a replay
+    // of it for past_life_idx_ with +past_life_d6_; beginCheck starts the replay.
+    struct CheckRecord {
+        int idx{-1};
+        std::vector<int> d20s;
+        int def_idx{-1};
+        int def_d20{0};
+        int strengthen{0};
+        bool failed{false};
+        bool replayed{false};
+    };
+    CheckRecord last_check_;
+    int  past_life_idx_{-1};
+    int  past_life_d6_{0};
+    bool check_replaying_{false};
+    std::size_t check_replay_pos_{0};
+
     // ── NPC turn playback (GUI animation seam; not serialized) ──────────────
     // Recording is ON only while an automated NPC turn is in flight — set in runNpcTurn, kept on
     // across a park (the parked action resolves inside submitDecision and must record too), and

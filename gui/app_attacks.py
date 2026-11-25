@@ -442,6 +442,15 @@ def mark_offhand_attack_used(app, idx: int):
     app.combat.set_agent_conditions(app.bm, idx, conds)
 
 
+def long_limbed_ft(app, idx: int) -> int:
+    """Bugbear Long-Limbed (MORE_SPECIES_PLAN.md D12): +5 ft melee reach on its own turn. The
+    engine adds it in the attack path; the GUI mirrors it for the overlay and the throw test."""
+    if not (app.combat_active and 0 <= idx < len(app.bm.placed_agents)
+            and idx == app._current_agent_idx()):
+        return 0
+    return 5 if app.combat.get_agent_stats(app.bm, idx).has_long_limbed() else 0
+
+
 def attack_is_a_throw(app, atk_idx: int, target_idx: int, weapon_idx: int) -> bool:
     """Is this attack a THROW — i.e. does the weapon leave the attacker's hand?
 
@@ -460,7 +469,7 @@ def attack_is_a_throw(app, atk_idx: int, target_idx: int, weapon_idx: int) -> bo
     if w.type == rpg.WeaponType.Ranged:
         return True
     dist_ft = app._footprint_dist_ft(atk_idx, target_idx)
-    return dist_ft > w.reach_ft
+    return dist_ft > w.reach_ft + long_limbed_ft(app, atk_idx)
 
 
 def untouchable_apart(app, a: int, b: int) -> bool:
@@ -1043,6 +1052,7 @@ def cleave_valid_targets(app, atk: int, first: int, weapon_idx: int) -> list:
     agents = app.bm.placed_agents
     weapons = app.combat.get_agent_weapons(app.bm, atk)
     reach = weapons[weapon_idx].reach_ft if 0 <= weapon_idx < len(weapons) else 5
+    reach += long_limbed_ft(app, atk)
     out = []
     for t in range(len(agents)):
         if t == atk or t == first:
@@ -1589,6 +1599,34 @@ def spend_unarmed_attack(app, atk_idx: int) -> bool:
     return False
 
 
+def offer_past_life(app, idx: int, retry, decline=None) -> bool:
+    """Reborn Knowledge from a Past Life (MORE_SPECIES_PLAN.md D10): after an engine-rolled
+    ability check by `idx` fails, offer +1d6 to the same roll. `retry` runs the same engine
+    check again, which replays the recorded d20s and adds the d6, and reports it as the first
+    try was reported; `decline` runs on Skip or cancel. Offered, never automatic (spending a use
+    is a choice). Returns True when the offer opened."""
+    if idx < 0 or not app.combat.can_past_life(app.bm, idx):
+        return False
+    name = app.bm.placed_agents[idx].name
+    left = app.combat.get_agent_stats(app.bm, idx).past_life_remaining()
+
+    def _apply():
+        d6 = app.combat.arm_past_life(app.bm, idx)
+        app._combat_log_add(f"📜 {name}: Knowledge from a Past Life, +{d6} to the same roll")
+        retry()
+        app._flush_combat_log()
+
+    def _skip():
+        if decline is not None:
+            decline()
+        app._flush_combat_log()
+
+    app._ask_actor(idx, "action", f"{name}: the check failed",
+                   [(f"📜 Knowledge from a Past Life: +1d6 ({left} left)", _apply),
+                    ("Skip", _skip)], on_cancel=_skip)
+    return True
+
+
 def resolve_unarmed_grapple(app, target_idx: int):
     """Grapple as an Unarmed Strike (counts against the Attack action's attacks). The grapple
     itself runs in C++ via execute_grapple (contested check + computed escape DC). An invalid
@@ -1601,13 +1639,30 @@ def resolve_unarmed_grapple(app, target_idx: int):
     action.target_idx   = target_idx
     result = app.combat.execute_grapple(app.bm, action)
     if result.valid:
-        app._combat_log_add(result.log_message)
-        if result.success:
-            app._update_reach()
-            app._update_attack_overlay()
+        _report_grapple(app, result)
         spend_unarmed_attack(app, atk_idx)
+        if not result.success:
+            offer_past_life(app, atk_idx,
+                            lambda: _report_grapple(app, app.combat.execute_grapple(app.bm, action)))
     else:
         app._combat_log_add(f"Grapple failed: {result.log_message}")
+
+
+def _report_grapple(app, result):
+    app._combat_log_add(result.log_message)
+    if result.success:
+        app._update_reach()
+        app._update_attack_overlay()
+
+
+def _report_shove(app, result):
+    if not result.valid:
+        app._combat_log_add(f"Shove failed: {result.log_message}")
+        return
+    app._combat_log_add(result.log_message)
+    if result.push_ft_applied > 0 or result.knocked_prone:
+        app._update_reach()
+        app._update_attack_overlay()
 
 
 def resolve_unarmed_push(app, target_idx: int):
@@ -1622,14 +1677,12 @@ def resolve_unarmed_push(app, target_idx: int):
     action.target_idx   = target_idx
     action.knock_prone  = False  # the unarmed Push option pushes 5 ft (Shove-Prone uses the bonus action)
     result = app.combat.execute_shove(app.bm, action)
+    _report_shove(app, result)
     if result.valid:
-        app._combat_log_add(result.log_message)
-        if result.push_ft_applied > 0 or result.knocked_prone:
-            app._update_reach()
-            app._update_attack_overlay()
         spend_unarmed_attack(app, atk_idx)
-    else:
-        app._combat_log_add(f"Shove failed: {result.log_message}")
+        if not result.success:
+            offer_past_life(app, atk_idx,
+                            lambda: _report_shove(app, app.combat.execute_shove(app.bm, action)))
 
 
 def quivering_palm_id_for(app, idx):
@@ -1742,19 +1795,14 @@ def resolve_shove(app, target_idx: int):
 
     # Execute shove
     result = app.combat.execute_shove(app.bm, action)
-
-    # Log result
-    if result.valid:
-        app._combat_log_add(result.log_message)
-        if result.push_ft_applied > 0 or result.knocked_prone:
-            app._update_reach()
-            app._update_attack_overlay()
-    else:
-        app._combat_log_add(f"Shove failed: {result.log_message}")
+    _report_shove(app, result)
 
     # Mark bonus action as used
     app._disarm(pending.Shove)
     app.bonus_used = True
+    if result.valid and not result.success:
+        offer_past_life(app, atk_idx,
+                        lambda: _report_shove(app, app.combat.execute_shove(app.bm, action)))
 
 
 def execute_grapple_escape(app):
@@ -1775,17 +1823,21 @@ def execute_grapple_escape(app):
     # Execute escape
     result = app.combat.execute_grapple_escape(app.bm, agent_idx)
 
-    # Log result
-    if result.valid:
-        app._combat_log_add(result.log_message)
-        if result.success:
-            app._update_reach()
-            app._update_attack_overlay()
-    else:
-        app._combat_log_add(f"Escape failed: {result.log_message}")
+    def _report(res):
+        if res.valid:
+            app._combat_log_add(res.log_message)
+            if res.success:
+                app._update_reach()
+                app._update_attack_overlay()
+        else:
+            app._combat_log_add(f"Escape failed: {res.log_message}")
+    _report(result)
 
     # Mark bonus action as used
     app.bonus_used = True
+    if result.valid and not result.success:
+        offer_past_life(app, agent_idx,
+                        lambda: _report(app.combat.execute_grapple_escape(app.bm, agent_idx)))
 
 
 def execute_grapple_drop(app):

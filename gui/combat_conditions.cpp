@@ -537,9 +537,11 @@ EscapeNetResult CombatEngine::escapeNet(BattleMap& bm, int actor_idx, int target
 
     res.valid = true;
     res.dc    = tc.net_escape_dc;
-    res.d20   = roll(20);
-    res.total = res.d20 + str_mod;
+    beginCheck(actor_idx);   // recorded for Past Life (D10)
+    res.d20   = checkD20(roll(20));
+    res.total = res.d20 + str_mod + checkBonus(bm, actor_idx);
     res.freed = (res.total >= res.dc);
+    endCheck(res.freed);
 
     if (res.freed) {
         tc.netted     = false;

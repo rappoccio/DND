@@ -173,7 +173,14 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
   - Enlarge/Reduce mode picker at cast time (MS0 decision (a)), for every caster, not only
     Fairies.
   - Tests: free casts, slot casts, the casting ability, and the Fairy unlocks at levels 3 and 5.
-- **MS3 — Bugbear and Reborn actives.**
+- **MS3 — Bugbear and Reborn actives.** Done 2026-11-25 (298/0): Long-Limbed keys on
+  `turn_agent_idx_` and `!opportunity` (the GUI mirrors it in the overlay, the throw test and
+  Cleave); Surprise Attack is `surpriseAttackDamage` on the weapon and spell-attack hit paths.
+  Past Life records each engine-rolled check (`beginCheck`/`checkD20`/`checkContestD20`/
+  `checkBonus`/`endCheck`); `arm_past_life` then re-running the same check replays its d20s
+  plus the d6. Grasping Shot's escape is covered too, and the Net escape now spends a Vampiric
+  Strengthen bonus. A chest pick/disarm failed by 5+ defers its trap (`trap_deferred`) to the
+  offer. Tracker button `PLn` spends a use.
   - Long-Limbed (D12) and Surprise Attack (D13), once per combat.
   - Knowledge from a Past Life (D10): the prompt, the pool and the tracker button.
 - **MS4 — Lupin.**

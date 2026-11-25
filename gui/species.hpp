@@ -59,6 +59,10 @@ inline constexpr std::uint32_t kSpeciesLargeForm     = 1u << 17;  // Goliath: La
 inline constexpr std::uint32_t kSpeciesDeathSaveAdv  = 1u << 18;  // Reborn: Adv. on death saves
 inline constexpr std::uint32_t kSpeciesFairyFlight   = 1u << 19;  // Fairy: fly = walk unless Medium/Heavy armor (D11)
 inline constexpr std::uint32_t kSpeciesStealthProf   = 1u << 20;  // Bugbear: Stealth proficiency
+// MS3:
+inline constexpr std::uint32_t kSpeciesLongLimbed     = 1u << 21;  // Bugbear: +5 ft melee reach on its turn (D12)
+inline constexpr std::uint32_t kSpeciesSurpriseAttack = 1u << 22;  // Bugbear: +2d6 vs a creature yet to act, 1/combat (D13)
+inline constexpr std::uint32_t kSpeciesPastLife       = 1u << 23;  // Reborn: +1d6 to a failed check, PB/Long Rest (D10)
 
 // Creature type a species makes its member (MORE_SPECIES_PLAN.md D1). Humanoid is the default
 // and sets nothing; Fey sets Stats::is_fey.
@@ -172,12 +176,13 @@ inline constexpr std::array kSpeciesTable{
                .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
                .flags = kSpeciesSkillful, .skill_options = kLupinSkills},
     SpeciesDef{.name = "Reborn", .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
-               .flags = kSpeciesSkillful | kSpeciesDeathSaveAdv,
+               .flags = kSpeciesSkillful | kSpeciesDeathSaveAdv | kSpeciesPastLife,
                .option_label = "Endurance", .options = kStrangeEndurance},
     // Powerful Build is off: MotM's is carrying capacity only (not modelled), not the
     // Goliath grapple-escape Advantage the flag gives (D3).
     SpeciesDef{.name = "Bugbear", .darkvision = 60,
-               .flags = kSpeciesFeyAncestry | kSpeciesStealthProf},
+               .flags = kSpeciesFeyAncestry | kSpeciesStealthProf | kSpeciesLongLimbed
+                      | kSpeciesSurpriseAttack},
     SpeciesDef{.name = "Fairy", .size_options = kSpeciesSizeSmall,
                .flags = kSpeciesSpellAbility | kSpeciesFairyFlight,
                .creature_type = SpeciesCreatureType::Fey},

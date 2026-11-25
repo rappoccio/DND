@@ -1165,9 +1165,11 @@ GraspingEscapeResult CombatEngine::escapeGraspingShot(BattleMap& bm, int actor_i
     const Agent::Stats st = bm.getAgentStats(actor_idx);
     const int str_mod = dndMod(st.str);
     res.valid = true;
-    res.d20   = roll(20);
-    res.total = res.d20 + str_mod;
+    beginCheck(actor_idx);   // recorded for Past Life (MORE_SPECIES_PLAN.md D10)
+    res.d20   = checkD20(roll(20));
+    res.total = res.d20 + str_mod + checkBonus(bm, actor_idx);
     res.freed = res.total >= res.dc;
+    endCheck(res.freed);
     if (res.freed) removeAgentCondition(bm, cond_id);
     log_("{} makes a DC {} STR check to free {} from the Grasping Shot: {} + {} = {} ({})",
          agentName(bm, actor_idx), res.dc,

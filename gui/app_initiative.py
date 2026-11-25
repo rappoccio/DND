@@ -256,6 +256,8 @@ def tracker_handle_event(app, event) -> bool:
             tracker_select(app, arg)
         elif kind == "heroic":
             toggle_heroic_inspiration(app, arg)
+        elif kind == "past_life":
+            spend_past_life(app, arg)
         elif kind == "dm_view":
             app._set_dm_view(not app.dm_view)
         elif kind == "hp_close":
@@ -301,6 +303,20 @@ def toggle_heroic_inspiration(app, agent_idx: int):
     name = app.bm.placed_agents[agent_idx].name
     app._combat_log_add(f"★ {name} {'gains' if st.heroic_inspiration else 'spends'} "
                         f"Heroic Inspiration.")
+
+
+def spend_past_life(app, agent_idx: int):
+    """Tracker button: a Reborn spends a Knowledge from a Past Life use on a check the DM
+    rolled at the table (MORE_SPECIES_PLAN.md D10). The player rolls the d6."""
+    if not (0 <= agent_idx < len(app.bm.placed_agents)):
+        return
+    name = app.bm.placed_agents[agent_idx].name
+    if app.combat.spend_past_life(app.bm, agent_idx):
+        left = app.combat.get_agent_stats(app.bm, agent_idx).past_life_remaining()
+        app._combat_log_add(f"{name}: Knowledge from a Past Life, +1d6 to the check "
+                            f"({left} use{'' if left == 1 else 's'} left).")
+    else:
+        app._combat_log_add(f"{name} has no Knowledge from a Past Life uses left.")
 
 
 def tracker_select(app, agent_idx: int):
@@ -517,9 +533,12 @@ def begin_combat(app):
         cond = app.combat.get_agent_conditions(app.bm, i)
         # Also clear Warrior of the Elements' Elemental Attunement (a per-encounter marker; the
         # unarmed damage override it sets is reset in initializeClassResources). Re-activate each combat.
-        if cond.has_taken_turn_this_combat or cond.elemental_attunement_active:
+        # Bugbear Surprise Attack (MORE_SPECIES_PLAN.md D13) is once per combat: re-armed here too.
+        if (cond.has_taken_turn_this_combat or cond.elemental_attunement_active
+                or cond.surprise_attack_used):
             cond.has_taken_turn_this_combat = False
             cond.elemental_attunement_active = False
+            cond.surprise_attack_used = False
             app.combat.set_agent_conditions(app.bm, i, cond)
     # A lair creature's Lair entry at count 20 (lair.py): turn_idx stays 0, so it can act first.
     lair.ensure_entry(app, shift=False)

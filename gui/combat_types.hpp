@@ -507,6 +507,9 @@ struct ChestCheckResult {
     int  total   = 0;
     int  dc      = 0;
     ChestTrapResult trap{};   // set when the attempt set the trap off
+    // Failed by 5 or more, but the trap waits: a Reborn may first add Knowledge from a Past Life
+    // (MORE_SPECIES_PLAN.md D10). The caller re-runs the check, or calls triggerChestTrap.
+    bool trap_deferred = false;
     std::string log_message;
 };
 

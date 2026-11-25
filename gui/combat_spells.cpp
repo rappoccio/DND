@@ -2263,6 +2263,29 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
             }
         }
 
+        // Bugbear Surprise Attack (MORE_SPECIES_PLAN.md D13): a spell-attack hit on a creature yet to
+        // act adds 2d6 of the spell's (first) damage type, once per combat.
+        if (sp.attack_type == Spell::AttackRoll && tr.hit && sp.type == Spell::Harm && tr.total_damage > 0) {
+            Agent::Conditions cc = bm.getAgentConditions(action.caster_idx);
+            if (!cc.surprise_attack_used) {
+                float mult = 1.0f;
+                if (!sp.magic_damage_rolls.empty())
+                    mult = effectiveMagicDamageMult(caster_stats, tgt_stats, sp.magic_damage_rolls.front().type,
+                                                    true, &bm, tgt_idx);
+                else if (!sp.physical_damage_rolls.empty())
+                    mult = tgt_stats.physical_damage_multipliers[sp.physical_damage_rolls.front().type];
+                const int sa = surpriseAttackDamage(bm, action.caster_idx, tgt_idx, mult);
+                if (sa >= 0) {
+                    cc.surprise_attack_used = true;
+                    bm.setAgentConditions(action.caster_idx, cc);
+                    int overflow = std::max(0, sa - tgt_stats.temp_hp);
+                    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - sa);
+                    tgt_stats.hp_cur  = std::max(0, tgt_stats.hp_cur - overflow);
+                    tr.total_damage += sa;
+                }
+            }
+        }
+
         // Grave Domain Path to the Grave: a spell-attack hit on a cursed creature ends the curse for
         // +cleric-level Radiant/Necrotic damage. Taken automatically (both GUI and auto) — the spell
         // flow has no post-hit rider prompt. The knock-down logic below handles a 0-HP result.

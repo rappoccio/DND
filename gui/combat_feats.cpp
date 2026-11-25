@@ -804,6 +804,110 @@ int CombatEngine::applyBoonOfFate(BattleMap& bm, int idx, bool boost) noexcept
     return value;
 }
 
+// ── More species (MORE_SPECIES_PLAN.md MS3) ──────────────────────────────────────────────────
+
+int CombatEngine::surpriseAttackDamage(BattleMap& bm, int attacker_idx, int target_idx, float mult)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (attacker_idx < 0 || attacker_idx >= n || target_idx < 0 || target_idx >= n) return -1;
+    if (!bm.getAgentStats(attacker_idx).hasSurpriseAttack()) return -1;
+    if (bm.getAgentConditions(attacker_idx).surprise_attack_used) return -1;
+    if (bm.getAgentConditions(target_idx).has_taken_turn_this_combat) return -1;
+    const int a = roll(6), b = roll(6);
+    const int dmg = std::max(0, static_cast<int>(static_cast<float>(a + b) * mult));
+    log_("{}: Surprise Attack +2d6 [{}, {}]{} = {} ({} hasn't acted yet)", agentName(bm, attacker_idx),
+         a, b, mult != 1.0f ? std::format(" x{:g}", mult) : std::string{}, dmg, agentName(bm, target_idx));
+    return dmg;
+}
+
+void CombatEngine::beginCheck(int idx) noexcept
+{
+    if (ctx_.past_life_idx_ == idx && ctx_.last_check_.idx == idx) {   // armed: replay
+        ctx_.check_replaying_  = true;
+        ctx_.check_replay_pos_ = 0;
+        return;
+    }
+    ctx_.check_replaying_ = false;
+    ctx_.past_life_idx_   = -1;
+    ctx_.past_life_d6_    = 0;
+    ctx_.last_check_      = {};
+    ctx_.last_check_.idx  = idx;
+}
+
+int CombatEngine::checkD20(int rolled) noexcept
+{
+    auto& c = ctx_.last_check_;
+    if (ctx_.check_replaying_) {
+        if (ctx_.check_replay_pos_ < c.d20s.size()) return c.d20s[ctx_.check_replay_pos_++];
+        return rolled;
+    }
+    c.d20s.push_back(rolled);
+    return rolled;
+}
+
+int CombatEngine::checkContestD20(int defender_idx, int rolled) noexcept
+{
+    auto& c = ctx_.last_check_;
+    if (ctx_.check_replaying_) return c.def_idx == defender_idx ? c.def_d20 : rolled;
+    c.def_idx = defender_idx;
+    c.def_d20 = rolled;
+    return rolled;
+}
+
+int CombatEngine::checkBonus(BattleMap& bm, int idx) noexcept
+{
+    if (ctx_.check_replaying_ && ctx_.last_check_.idx == idx) {
+        log_("{}: Knowledge from a Past Life +{} to the same roll", agentName(bm, idx), ctx_.past_life_d6_);
+        return ctx_.last_check_.strengthen + ctx_.past_life_d6_;
+    }
+    const int s = consumeStrengthenBonus(bm, idx);
+    if (!ctx_.check_replaying_ && ctx_.last_check_.idx == idx) ctx_.last_check_.strengthen = s;
+    return s;
+}
+
+void CombatEngine::endCheck(bool success) noexcept
+{
+    if (ctx_.check_replaying_) {
+        ctx_.last_check_.replayed = true;
+        ctx_.check_replaying_ = false;
+        ctx_.past_life_idx_   = -1;
+        ctx_.past_life_d6_    = 0;
+    }
+    ctx_.last_check_.failed = !success;
+}
+
+bool CombatEngine::canPastLife(const BattleMap& bm, int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    const auto& c = ctx_.last_check_;
+    return c.idx == idx && c.failed && !c.replayed && bm.getAgentStats(idx).pastLifeRemaining() > 0;
+}
+
+int CombatEngine::armPastLife(BattleMap& bm, int idx)
+{
+    if (!canPastLife(bm, idx)) return 0;
+    Agent::Stats st = bm.getAgentStats(idx);
+    ++st.past_life_used;
+    bm.setAgentStats(idx, st);
+    ctx_.past_life_idx_ = idx;
+    ctx_.past_life_d6_  = roll(6);
+    log_("{}: Knowledge from a Past Life (1d6 = {}; {} use{} left)", agentName(bm, idx),
+         ctx_.past_life_d6_, st.pastLifeRemaining(), st.pastLifeRemaining() == 1 ? "" : "s");
+    return ctx_.past_life_d6_;
+}
+
+bool CombatEngine::spendPastLife(BattleMap& bm, int idx)
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    Agent::Stats st = bm.getAgentStats(idx);
+    if (st.pastLifeRemaining() <= 0) return false;
+    ++st.past_life_used;
+    bm.setAgentStats(idx, st);
+    log_("{}: Knowledge from a Past Life spent on a check at the table ({} use{} left)",
+         agentName(bm, idx), st.pastLifeRemaining(), st.pastLifeRemaining() == 1 ? "" : "s");
+    return true;
+}
+
 int CombatEngine::consumeStrengthenBonus(BattleMap& bm, int idx) noexcept
 {
     if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return 0;

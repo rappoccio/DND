@@ -77,6 +77,15 @@ void bindCombatFeats(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx"),
              "Heroic Inspiration after a miss (conditions.heroic_reroll_available): spend the ★ and\n"
              "re-resolve the same attack; the new roll stands. Returns the new AttackResult.")
+        // MORE_SPECIES_PLAN.md MS3: Reborn Knowledge from a Past Life (D10)
+        .def("can_past_life", &CombatEngine::canPastLife, py::arg("battle_map"), py::arg("idx"),
+             "The last engine-rolled ability check was idx's, it failed, it has not been re-evaluated\n"
+             "and idx (a Reborn) has a Past Life use left: offer +1d6.")
+        .def("arm_past_life", &CombatEngine::armPastLife, py::arg("battle_map"), py::arg("idx"),
+             "Spend a Past Life use and roll the 1d6 (returned; 0 = refused). Then call the same check\n"
+             "again: it replays the recorded d20s (the defender's too) and adds the d6.")
+        .def("spend_past_life", &CombatEngine::spendPastLife, py::arg("battle_map"), py::arg("idx"),
+             "Tracker button: spend a Past Life use on a check the DM rolled at the table.")
         .def("luck_available",
              &CombatEngine::luckAvailable,
              py::arg("battle_map"), py::arg("idx"),

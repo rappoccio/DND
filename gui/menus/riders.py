@@ -474,6 +474,11 @@ def offer_punch_and_grab(app, atk_idx, target_idx, atk_name, tgt_name, result, a
                 app._combat_log_add(
                     f"{atk_name}→{tgt_name}: Punch-and-Grab — grapple failed "
                     f"(atk {grab.attacker_roll} vs def {grab.defender_roll})")
+                # Past Life (D10) re-evaluates the same contest through the shared grapple core.
+                ga = rpg.GrappleAction()
+                ga.attacker_idx, ga.target_idx = atk_idx, target_idx
+                app._offer_past_life(atk_idx, lambda: app._combat_log_add(
+                    app.combat.execute_grapple(app.bm, ga).log_message))
         app._flush_combat_log()
         app._sync_spell_effect_cache()
         app._update_attack_overlay()

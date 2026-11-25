@@ -2891,10 +2891,11 @@ class App:
         rnorm_cells:  set[tuple[int, int]] = set()
         rlongx_cells: set[tuple[int, int]] = set()  # long-range-only
 
+        long_limbed = app_attacks.long_limbed_ft(self, idx)   # Bugbear, own turn (D12)
         for w in weapons:
             if w.type == rpg.WeaponType.Melee:
                 for c in self.bm.attack_target_cells(
-                        pt.origin, pt.size, w.reach_ft):
+                        pt.origin, pt.size, w.reach_ft + long_limbed):
                     melee_cells.add((c.col, c.row))
                 # A Thrown melee weapon (javelin, handaxe, dagger) also reaches everything a
                 # ranged weapon would: targeting past its reach hurls it (see app_attacks.attack_is_a_throw),
@@ -4121,6 +4122,17 @@ class App:
         if self.combat_active:
             self.action_used = True
         self._after_door_change()
+        if not res.success and res.roll > 0:
+            self._offer_past_life(actor_idx, lambda: self._door_check_retry(
+                self.combat.attempt_pick_lock(self.bm, actor_idx, door_id)))
+
+    def _door_check_retry(self, res):
+        """A door check re-evaluated with Knowledge from a Past Life (D10): report it."""
+        self._combat_log_add(res.log_message)
+        self._after_door_change()
+
+    def _offer_past_life(self, idx: int, retry, decline=None) -> bool:
+        return app_attacks.offer_past_life(self, idx, retry, decline)
 
     def _door_break_down(self, actor_idx: int, door_id: int):
         """Force a door with a Strength (Athletics) check (an action). On a success the
@@ -4141,6 +4153,9 @@ class App:
         if self.combat_active and (res.success or res.roll > 0):
             self.action_used = True
         self._after_door_change()
+        if not res.success and res.roll > 0:
+            self._offer_past_life(actor_idx, lambda: self._door_check_retry(
+                self.combat.attempt_break_door(self.bm, actor_idx, door_id)))
 
     def _pending_spell_opens_doors(self) -> bool:
         return app_spells.pending_spell_opens_doors(self)
@@ -5451,12 +5466,19 @@ class App:
             return
 
         who = "itself" if target_idx == actor_idx else self.bm.placed_agents[target_idx].name
-        self._combat_log_add(
-            f"{self.bm.placed_agents[actor_idx].name}: STR check {res.total} vs DC {res.dc} to free "
-            f"{who} from {what} — {'FREED' if res.freed else 'still tangled'}.")
-        self._flush_combat_log()
+
+        def _report(r):
+            self._combat_log_add(
+                f"{self.bm.placed_agents[actor_idx].name}: STR check {r.total} vs DC {r.dc} to free "
+                f"{who} from {what} — {'FREED' if r.freed else 'still tangled'}.")
+            self._flush_combat_log()
+            self._update_attack_overlay()
+        _report(res)
         self.action_used = True
-        self._update_attack_overlay()
+        if not res.freed:
+            self._offer_past_life(actor_idx, lambda: _report(
+                self.combat.escape_net(self.bm, actor_idx, target_idx) if netted
+                else self.combat.escape_grasping_shot(self.bm, actor_idx, target_idx)))
 
     def _resolve_grant_inspiration(self, target_idx: int):
         """Bard Grant Inspiration (bonus action): spend a Bardic Inspiration use to give
