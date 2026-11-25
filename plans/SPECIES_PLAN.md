@@ -3,7 +3,7 @@
 Drafted 2026-11-24. Source: `character_origins.pdf` (SRD 5.2, pp. 83–86). Status: **Step 0
 FROZEN 2026-11-24** — D1 signed off and committed (9380611); D2–D14 signed off by the user the
 same day. SP0 audit done 2026-11-24 (results below). SP1 done 2026-11-24 (288/0). SP2 done 2026-11-24
-(289/0), committed 7cd4c1b. SP3 done 2026-11-25 (290/0). Next: SP4.
+(289/0), committed 7cd4c1b. SP3 done 2026-11-25 (290/0). SP4 done 2026-11-25 (292/0). Next: SP5.
 
 ## Scope
 
@@ -193,6 +193,24 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
   - Relentless Endurance: share the Relentless Rage 0-HP intercept, once per Long Rest.
   - Heroic Inspiration (D11).
   - Skillful (D12) and the second origin feat (D13).
+  **Done 2026-11-25 (292/0).** New species flags (Luck, Adrenaline, Relentless, Heroic,
+  Skillful, Versatile) and Stats fields `species_skill`, `adrenaline_rush_used`,
+  `relentless_endurance_used`, `heroic_inspiration` (agent JSON, snapshot, PC play state).
+  Luck: `CombatEngine::d20Test` / `d20TestFor` reroll each natural-1 die once; wired into the
+  weapon and spell attack rolls, spell saves (incl. condition and save-for-half), the weapon
+  rider save, the turn-start/end repeat saves, Aura-of-Dread style Frightened saves,
+  concentration, `rollFixedDcSave`, trap/item saves, shove/grapple contests, the grapple
+  escape, death saves and Initiative. The rarer per-feature d20s still roll flat (listed in
+  known_limitations). Adrenaline Rush is a Bonus-band button (`use_adrenaline_rush`: Dash +
+  PB temp HP, the larger kept; Short Rest refills). Relentless Endurance auto-fires in
+  `damageAgent` after Relentless Rage. Heroic Inspiration: a Human gets it on pick and each
+  Long Rest; a miss with it held sets `heroic_reroll_available` (GUI prompt →
+  `apply_heroic_reroll`); a failed spell save offers "HeroicInspiration" in the OnSaveFail
+  window. ★/☆ toggle on tracker rows (PCs or holders), ★ after the name in the engine-mode
+  initiative list. Skillful is read live by the skill helpers (no fold-in). Versatile: the
+  Stats dialog's Human rows are Size + Skill and a Versatile origin-feat picker;
+  `set_origin_feat` takes the second feat and strips/applies both. Suite
+  `test_species_sp4.py`.
 - **SP5 — Dragonborn.** Breath Weapon (D7) as an attack-list entry with the shape chosen per
   use. Draconic Flight (D8). Tests for the DC, scaling dice, half damage, the use count and the
   flight lapsing on Incapacitated.

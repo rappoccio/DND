@@ -614,6 +614,13 @@ public:
     // was actually decremented.
     bool spendSpellSlot(BattleMap& bm, int idx, int level) noexcept;
 
+    // Pay for a teleportation spell, which resolves outside executeSpell (the NPC mover above and
+    // the GUI's destination pick): an enspelled item pays itself; a granted spell's free cast when
+    // `use_grant`, or for a PC with no slot (slot_level 0); otherwise the slot at slot_level, the
+    // one-leveled-spell mark, N/day uses and the recharge. False when a PC had nothing to pay with.
+    bool payTeleportCast(BattleMap& bm, int idx, int spell_idx, int slot_level, bool use_grant);
+
+
     [[nodiscard]] std::vector<Item> getAgentItems(const BattleMap& bm, int idx) const noexcept;
     void setAgentItems(BattleMap& bm, int idx, std::vector<Item> items) noexcept;
     void addItemToAgent(BattleMap& bm, int idx, Item it) noexcept;
@@ -743,6 +750,12 @@ public:
     int roll(int sides, int modifier = 0);            // 1dN + modifier
     int rollAdvantage(int sides, int modifier = 0);   // max(2dN) + modifier
     int rollDisadvantage(int sides, int modifier = 0);// min(2dN) + modifier
+    // The kept d20 of a D20 Test: adv and dis cancel. Halfling Luck (SPECIES_PLAN.md D10): when
+    // `lucky`, each die that shows a natural 1 is rerolled once and the new roll stands (logged
+    // under `who`). With lucky false it rolls exactly as roll / rollAdvantage / rollDisadvantage.
+    int d20Test(bool lucky, bool adv = false, bool dis = false, std::string_view who = {});
+    // The same for the creature at idx, Luck read from its species.
+    int d20TestFor(const BattleMap& bm, int idx, bool adv = false, bool dis = false);
 
     // Grant one-shot advantage (adv=true) or disadvantage (adv=false) on the NEXT D20 Test,
     // via pending_advantage_. With no `owner` any d20 takes it (roll(20)/rollToHit). With an
@@ -2494,6 +2507,19 @@ public:
     // d20 Test (via grantPendingAdvantage, consumed by the next d20 roll). Returns true if a
     // point was spent, false if the agent has the Lucky feat exhausted / no points remaining.
     bool spendLuckForAdvantage(BattleMap& bm, int idx);
+
+    // ── Species features (SPECIES_PLAN.md SP4) ──
+    // Orc Adrenaline Rush: a Bonus Action Dash that also grants temp HP equal to the PB.
+    // PB uses per Short or Long Rest. The caller pays the Bonus Action (as for Cunning Action).
+    [[nodiscard]] bool canAdrenalineRush(const BattleMap& bm, int idx) const noexcept;
+    bool useAdrenalineRush(BattleMap& bm, int idx);
+    // Heroic Inspiration (D11): after a missed attack with the ★ held, the GUI offers a reroll
+    // (heroic_reroll_available). Spending it clears the ★ and re-resolves the same attack; the
+    // new roll stands. Returns the new AttackResult (default when the offer was not open).
+    AttackResult applyHeroicReroll(BattleMap& bm, int attacker_idx, int target_idx, int weapon_idx);
+    // The failed-save half: the saver itself, ★ held (OnSaveFail window, "HeroicInspiration").
+    [[nodiscard]] bool canHeroicSaveReroll(const BattleMap& bm, int reactor, int save_target) const;
+    bool applyHeroicRerollToSave(BattleMap& bm, int reactor, SpellSave& ss);
 
     // Merge with Shadows (Boon of the Night Spirit): a Bonus Action grants the Invisible condition
     // while the boon-holder stands in Dim Light or Darkness (ends when it next acts). Returns true if

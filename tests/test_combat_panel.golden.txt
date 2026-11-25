@@ -46,6 +46,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,628,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,628,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,628,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -196,6 +197,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,590,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,590,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,590,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_action | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -355,6 +357,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,556,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,556,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,556,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -505,6 +508,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,454,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,454,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_action | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
@@ -668,6 +672,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,624,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,624,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,624,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_action | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -830,6 +835,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,628,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,628,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,628,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -987,6 +993,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,662,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,662,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,662,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -1142,6 +1149,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,628,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,628,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,628,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -1294,6 +1302,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,556,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,556,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,556,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -1457,6 +1466,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,680,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,680,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -1617,6 +1627,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,714,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,714,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -1773,6 +1784,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,608,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,608,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -1934,6 +1946,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,642,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,642,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -2090,6 +2103,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,560,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,560,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -2248,6 +2262,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,628,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,628,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,628,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -2408,6 +2423,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,714,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,714,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -2559,6 +2575,7 @@ btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,526,156,3
 btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,560,316,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -2714,6 +2731,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,624,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,624,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,624,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_action | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -2880,6 +2898,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,682,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,682,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -3049,6 +3068,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,796,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,796,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -3204,6 +3224,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,646,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,646,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -3362,6 +3383,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,646,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,646,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -3521,6 +3543,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,658,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,658,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -3682,6 +3705,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,776,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,776,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -3839,6 +3863,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,776,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,776,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -3992,6 +4017,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,662,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,662,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -4148,6 +4174,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,662,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,662,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -4306,6 +4333,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,680,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,680,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -4464,6 +4492,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,680,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,680,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -4623,6 +4652,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,714,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,714,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -4786,6 +4816,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,728,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,728,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -4954,6 +4985,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,762,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,762,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -5115,6 +5147,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,782,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,782,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -5278,6 +5311,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,884,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,884,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -5443,6 +5477,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,830,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,830,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -5609,6 +5644,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,796,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,796,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -5764,6 +5800,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,662,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,662,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -5918,6 +5955,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,696,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,696,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,696,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -6074,6 +6112,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,696,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,696,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,696,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -6232,6 +6271,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,680,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,680,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -6397,6 +6437,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,728,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,728,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -6560,6 +6601,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,694,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,694,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -6725,6 +6767,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,728,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,728,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -6882,6 +6925,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,646,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,646,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -7042,6 +7086,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,680,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,680,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -7198,6 +7243,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,612,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,612,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -7362,6 +7408,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,714,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,714,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -7520,6 +7567,7 @@ btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,764,156,3
 btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,798,316,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -7678,6 +7726,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,810,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,810,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -7834,6 +7883,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,680,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,680,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -7996,6 +8046,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,748,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,748,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -8153,6 +8204,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,680,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,680,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -8321,6 +8373,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,796,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,796,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -8485,6 +8538,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,762,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,762,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -8643,6 +8697,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,730,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,730,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -8801,6 +8856,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,844,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,844,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -8957,6 +9013,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,810,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,810,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -9114,6 +9171,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,810,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,810,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -9270,6 +9328,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,748,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,748,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -9427,6 +9486,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,714,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,714,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -9583,6 +9643,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,662,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,662,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,662,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -9740,6 +9801,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,696,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,696,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,696,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -9895,6 +9957,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,662,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,662,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,662,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -10051,6 +10114,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,730,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,730,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,730,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -10208,6 +10272,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,662,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,662,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,662,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -10360,6 +10425,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,590,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,590,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,590,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no
@@ -10531,6 +10597,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,952,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,952,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -10692,6 +10759,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,952,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,952,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -10853,6 +10921,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,937,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,937,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -11006,6 +11075,7 @@ btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,631,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,631,102,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
@@ -11138,6 +11208,7 @@ btn  | Movement    | btn_show_terrain | Hide Terrain | 1052,324,156,30 | yes
 btn  | Movement    | btn_cbt_place_terrain | 🌍 Place Terrain | 1212,324,156,30 | yes
 text | CombatLog   | Combat Log:
 btn  | -           | btn_cbt_action_surge | - | - | no
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_atk_action | - | - | no
 btn  | -           | btn_cbt_atk_bonus | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
@@ -11312,6 +11383,7 @@ btn  | Movement    | btn_cbt_drop_weapon_main | Drop Main | 1052,684,102,30 | ye
 btn  | Movement    | btn_cbt_drop_weapon_off | Drop Off | 1158,684,102,30 | yes
 btn  | Movement    | btn_cbt_drop_weapon_rng | Drop Rng | 1264,684,102,30 | yes
 text | CombatLog   | Combat Log:
+btn  | -           | btn_cbt_adrenaline_rush | - | - | no
 btn  | -           | btn_cbt_avenging_angel | - | - | no
 btn  | -           | btn_cbt_bastion_of_law | - | - | no
 btn  | -           | btn_cbt_beasts_strike | - | - | no

@@ -64,6 +64,7 @@ PLAY_STATS = (
     "revelation_prior_swim", "revelation_prior_truesight", "luck_points",
     "boon_of_fate_used", "vampiric_bite_used", "vampiric_strengthen_bonus",
     "vampiric_strengthen_turns", "relentless_rage_dc",
+    "adrenaline_rush_used", "relentless_endurance_used", "heroic_inspiration",
 )
 # Any of these set ⇒ the PC's base numbers are not its own right now (held whole).
 UNSETTLED_STATS = ("hasted", "haste_speed_bonus", "aid_hp_bonus", "longstrider_bonus",

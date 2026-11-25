@@ -303,6 +303,8 @@ test_scripts = [
     "test_species.py",
     "test_species_traits.py",
     "test_species_spells.py",
+    "test_species_sp4.py",
+    "test_teleport_slot.py",
     "test_stats_initiative.py",
     "test_attack_bonuses.py",
     "test_xp_split.py",

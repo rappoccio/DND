@@ -327,19 +327,26 @@ namespace rpg {
       }
 
       // ── Skill bonuses (computed, read-only) ──────────────────────────
+      // Skillful (Human, SPECIES_PLAN.md D12) adds species_skill's proficiency, read live.
+      [[nodiscard]] bool skillfulIn(std::string_view skill) const noexcept {
+        return !species_skill.empty() && species_skill == skill && hasSpeciesFlag(kSpeciesSkillful);
+      }
+      [[nodiscard]] bool hasPerceptionProf() const noexcept {
+        return perception_prof || skillfulIn("Perception");
+      }
       [[nodiscard]] int stealthBonus() const noexcept {
-        return _mod(dex) + (stealth_prof ? prof_bonus : 0);
+        return _mod(dex) + ((stealth_prof || skillfulIn("Stealth")) ? prof_bonus : 0);
       }
       [[nodiscard]] int passivePerception() const noexcept {
-        return 10 + _mod(wis) + (perception_prof ? prof_bonus : 0);
+        return 10 + _mod(wis) + (hasPerceptionProf() ? prof_bonus : 0);
       }
       [[nodiscard]] int sleightOfHand() const noexcept {
-        int p = sleight_of_hand_prof ? prof_bonus : 0;
+        int p = (sleight_of_hand_prof || skillfulIn("Sleight of Hand")) ? prof_bonus : 0;
         if (sleight_of_hand_expertise) p += prof_bonus;  // expertise doubles the bonus
         return _mod(dex) + p;
       }
       [[nodiscard]] int athletics() const noexcept {
-        int p = athletics_prof ? prof_bonus : 0;
+        int p = (athletics_prof || skillfulIn("Athletics")) ? prof_bonus : 0;
         if (athletics_expertise) p += prof_bonus;        // expertise doubles the bonus
         return _mod(str) + p;
       }
@@ -1064,6 +1071,28 @@ namespace rpg {
       [[nodiscard]] bool hasPowerfulBuild() const noexcept { return hasSpeciesFlag(kSpeciesPowerfulBuild); }
       [[nodiscard]] bool isDhampir() const noexcept { return hasSpeciesFlag(kSpeciesVampiricBite); }
 
+      // ── SP4: Halfling, Orc, Human ──
+      // Skillful (D12): one of kSpeciesSkills ("" = none picked). Read live by the skill
+      // helpers above, so nothing is folded into the *_prof flags.
+      std::string species_skill{};
+      bool setSpeciesSkill(const std::string& skill) {
+          if (skill.empty()) { species_skill.clear(); return true; }
+          for (auto k : kSpeciesSkills)
+              if (k == skill) { species_skill = skill; return true; }
+          return false;
+      }
+      // Orc Adrenaline Rush: uses spent since the last Short or Long Rest (PB uses).
+      int adrenaline_rush_used{0};
+      [[nodiscard]] int adrenalineRushRemaining() const noexcept {
+          return hasSpeciesFlag(kSpeciesAdrenaline) ? std::max(0, prof_bonus - adrenaline_rush_used) : 0;
+      }
+      // Orc Relentless Endurance: spent since the last Long Rest.
+      bool relentless_endurance_used{false};
+      // Heroic Inspiration (D11): held or not; a PC holds at most one. A Human regains it
+      // on each Long Rest; the DM may award it to anyone.
+      bool heroic_inspiration{false};
+      [[nodiscard]] bool hasLuck() const noexcept { return hasSpeciesFlag(kSpeciesLuck); }
+
       // Dhampir Vampiric Bite: empowerments (Drain / Strengthen) spent since the last Long
       // Rest; the pool is the Proficiency Bonus.
       int vampiric_bite_used{0};
@@ -1130,6 +1159,7 @@ namespace rpg {
               n.perception_prof = true;
           }
           syncSpeciesHp();
+          if (tr.flags & kSpeciesHeroic) heroic_inspiration = true;   // a new Human starts with it
       }
 
       // Dwarven Toughness: keep the folded-in HP bonus equal to the character level. The
@@ -1267,6 +1297,9 @@ namespace rpg {
         luck_points = luck_points_max;   // Lucky feat: Luck Points regained on a Long Rest
         boon_of_fate_used = false;        // Boon of Fate: the once-per-rest use refreshes
         vampiric_bite_used = 0;           // Dhampir Vampiric Bite: all uses regained on a Long Rest
+        adrenaline_rush_used = 0;         // Orc Adrenaline Rush
+        relentless_endurance_used = false; // Orc Relentless Endurance
+        if (hasSpeciesFlag(kSpeciesHeroic)) heroic_inspiration = true;   // Human Resourceful
       }
 
       // Short rest: restore some resources (e.g., Focus Points for Monk)
@@ -1278,6 +1311,7 @@ namespace rpg {
           res.restore_short_rest();
         }
         boon_of_fate_used = false;        // Boon of Fate: recharges on a short rest too
+        adrenaline_rush_used = 0;         // Orc Adrenaline Rush: regained on a Short Rest too
       }
 
       // Called at end of turn to tick down duration-based resources
@@ -1363,6 +1397,7 @@ namespace rpg {
       int  retaliation_target_idx{-1};      // Berserker L10 Retaliation: index of the creature that damaged this barbarian (the legal Retaliation target).
       bool reckless_attack{false};          // Barbarian declared Reckless Attack this turn
       bool reckless_reroll_available{false}; // Barbarian missed; GUI may offer a post-hoc reckless reroll
+      bool heroic_reroll_available{false};   // missed with Heroic Inspiration held; GUI may offer the reroll (D11)
       bool riposte_available{false};        // Battle Master was missed by a melee attack; may Riposte (set on the DEFENDER)
       bool sentinel_guard_available{false}; // Sentinel feat (Guardian): an adjacent enemy attacked an ally; a nearby Sentinel may guard (set on the ATTACKER)
       bool soul_of_vengeance_available{false}; // Paladin Oath of Vengeance L15 Soul of Vengeance: a creature under a paladin's Vow of Enmity just attacked; that paladin may react-strike it (set on the ATTACKER)

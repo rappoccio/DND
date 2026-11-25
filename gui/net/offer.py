@@ -131,6 +131,7 @@ CLASS: dict[str, str] = {
     "elder_champion": I,
     "living_legend": I,
     "magical_cunning": I,
+    "adrenaline_rush": I,
     "healing_light": A,
     "turn_undead": I,
     "divine_intervention": S,

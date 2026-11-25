@@ -254,25 +254,34 @@ AttackResult CombatEngine::rollToHit(const Weapon& w,
     // Roll the d20, capturing the adv/dis dice so they fold into the single To-hit line
     // below (instead of a separate line) — the kept natural roll plus the dice it came from.
     std::string d20_detail;
+    // Halfling Luck (D10): each d20 that shows a natural 1 is rerolled once; the new roll stands.
+    auto die = [&] {
+        int d = roll(20);
+        if (d == 1 && attacker.hasLuck()) {
+            d = roll(20);
+            d20_detail += std::format(" (Luck: 1→{})", d);
+        }
+        return d;
+    };
     // d20_primary captures the FIRST die rolled (the "natural" d20 before the adv/dis die). It lets
     // Clockwork Restore Balance cancel advantage/disadvantage by reverting r.d20 to this value: with
     // advantage r.d20=max(d1,d2) so reverting to d1 lowers it (a lowering reaction); with disadvantage
     // r.d20=min(d1,d2) so reverting to d1 raises it. With no adv/dis it equals r.d20 (a no-op revert).
     if (advantage && disadvantage) {
         // Both advantage and disadvantage: they cancel out (roll normally)
-        int d1 = roll(20), d2 = roll(20);
+        int d1 = die(), d2 = die();
         r.d20 = d1; r.d20_primary = d1;
         d20_detail = std::format(" (adv+dis cancel: {},{})", d1, d2);
     } else if (advantage) {
-        int d1 = roll(20), d2 = roll(20);
+        int d1 = die(), d2 = die();
         r.d20 = std::max(d1, d2); r.d20_primary = d1;
         d20_detail = std::format(" (adv: {},{})", d1, d2);
     } else if (disadvantage) {
-        int d1 = roll(20), d2 = roll(20);
+        int d1 = die(), d2 = die();
         r.d20 = std::min(d1, d2); r.d20_primary = d1;
         d20_detail = std::format(" (dis: {},{})", d1, d2);
     } else {
-        r.d20 = roll(20); r.d20_primary = r.d20;
+        r.d20 = die(); r.d20_primary = r.d20;
     }
 
     // Apply portent die if one was pending (after advantage/disadvantage selection). Portent fixes the
@@ -611,6 +620,17 @@ int CombatEngine::damageAgent(BattleMap& bm, int idx, int amount) noexcept
                 return s.hp_cur;
             }
         }
+    }
+
+    // Orc Relentless Endurance (SPECIES_PLAN.md SP4): reduced to 0 HP but not killed outright, drop
+    // to 1 HP instead, once per Long Rest. Auto-fires (a life-save), after the Barbarian's own
+    // Relentless Rage save so a raging Orc keeps this for later.
+    if (s.hp_cur <= 0 && s.hasSpeciesFlag(kSpeciesRelentless) && !s.relentless_endurance_used) {
+        s.relentless_endurance_used = true;
+        s.hp_cur = 1;
+        bm.setAgentStats(idx, s);
+        log_("{} refuses to fall (Relentless Endurance): drops to 1 HP instead", agentName(bm, idx));
+        return s.hp_cur;
     }
 
     // Paladin Oath of the Ancients L15 Undying Sentinel: when reduced to 0 HP and not killed outright,
@@ -3354,6 +3374,13 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
+    // Heroic Inspiration (D11): a miss with the ★ held offers a reroll. Interactive only; the GUI
+    // prompts and calls applyHeroicReroll. Set alongside any other miss offer; the GUI picks one.
+    if (!r.hit && !decider_ && atk_stats.heroic_inspiration) {
+        updated_atk_cond.heroic_reroll_available = true;
+        bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+    }
+
     // Consume Rogue Steady Aim: it grants advantage on a single attack this turn.
     if (atk_cond.steady_aim) {
         updated_atk_cond.steady_aim = false;
@@ -4707,10 +4734,8 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                 const bool save_adv = saveAdvantageFor(bm, action.target_idx, weapon_cond.save_ability)
                     || conditionSaveAdvantage(bm, action.target_idx, weapon_cond.condition_name);
                 const bool save_dis = curseSaveDisadvantage(bm, action.target_idx, weapon_cond.save_ability);
-                int save_d20 = auto_fail           ? 1
-                             : save_adv == save_dis ? roll(20)
-                             : save_adv             ? rollAdvantage(20)
-                                                    : rollDisadvantage(20);
+                int save_d20 = auto_fail ? 1
+                             : d20TestFor(bm, action.target_idx, save_adv, save_dis);
                 int save_mod = saveModFor(bm, action.target_idx, weapon_cond.save_ability);
                 int save_total = save_d20 + save_mod;
                 save_total = applyIndomitableMight(bm, action.target_idx, weapon_cond.save_ability, save_total);

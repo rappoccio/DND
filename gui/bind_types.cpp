@@ -362,6 +362,19 @@ void bindTypes(py::module_& m) {
         const SpeciesDef* d = findSpecies(name);
         return d && (d->flags & kSpeciesSpellAbility);
     }, py::arg("name"), "True when the species picks INT/WIS/CHA for its granted spells (D2).");
+    m.def("species_skills", [] {
+        std::vector<std::string> out;
+        for (auto k : kSpeciesSkills) out.emplace_back(k);
+        return out;
+    }, "Skillful (D12): the skills a species may grant (the four the engine models).");
+    m.def("species_has_skillful", [](const std::string& name) {
+        const SpeciesDef* d = findSpecies(name);
+        return d && (d->flags & kSpeciesSkillful);
+    }, py::arg("name"), "True when the species picks a Skillful skill (Human).");
+    m.def("species_has_versatile", [](const std::string& name) {
+        const SpeciesDef* d = findSpecies(name);
+        return d && (d->flags & kSpeciesVersatile);
+    }, py::arg("name"), "True when the species takes a second origin feat (Human Versatile).");
 
     py::class_<Agent::Stats>(m, "Stats")
         .def(py::init<>())
@@ -930,6 +943,20 @@ void bindTypes(py::module_& m) {
         .def("species_magic_mult", &Agent::Stats::speciesMagicMult, py::arg("type"),
              "Multiplier the species alone grants for a magic damage type (0.5 = Resistance).")
         .def("is_dhampir", &Agent::Stats::isDhampir)
+        // SP4: Halfling, Orc, Human
+        .def("has_luck", &Agent::Stats::hasLuck, "Halfling Luck: a natural 1 on a d20 Test is rerolled.")
+        .def_readwrite("species_skill", &Agent::Stats::species_skill,
+             "Skillful (Human): one of species_skills() (\"\" = none), read live as a proficiency.")
+        .def("set_species_skill", &Agent::Stats::setSpeciesSkill, py::arg("skill"),
+             "Pick the Skillful skill (\"\" clears); False (unchanged) for an unmodelled skill.")
+        .def_readwrite("adrenaline_rush_used", &Agent::Stats::adrenaline_rush_used,
+             "Orc Adrenaline Rush: uses spent since the last Short or Long Rest (pool = PB).")
+        .def("adrenaline_rush_remaining", &Agent::Stats::adrenalineRushRemaining,
+             "Orc Adrenaline Rush: uses left (0 for a non-Orc).")
+        .def_readwrite("relentless_endurance_used", &Agent::Stats::relentless_endurance_used,
+             "Orc Relentless Endurance: spent since the last Long Rest.")
+        .def_readwrite("heroic_inspiration", &Agent::Stats::heroic_inspiration,
+             "Heroic Inspiration (★): held or not. A Human regains it on a Long Rest.")
         .def_readwrite("vampiric_bite_used", &Agent::Stats::vampiric_bite_used,
              "Dhampir Vampiric Bite: empowerments spent since the last Long Rest (pool = PB).")
         .def("vampiric_bite_remaining", &Agent::Stats::vampiricBiteRemaining,
@@ -1022,6 +1049,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("retaliation_target_idx", &Agent::Conditions::retaliation_target_idx)
         .def_readwrite("reckless_attack",   &Agent::Conditions::reckless_attack)
         .def_readwrite("reckless_reroll_available", &Agent::Conditions::reckless_reroll_available)
+        .def_readwrite("heroic_reroll_available", &Agent::Conditions::heroic_reroll_available,
+             "A miss with Heroic Inspiration held: the GUI may offer apply_heroic_reroll.")
         .def_readwrite("riposte_available", &Agent::Conditions::riposte_available)
         .def_readwrite("sentinel_guard_available", &Agent::Conditions::sentinel_guard_available)
         .def_readwrite("soul_of_vengeance_available", &Agent::Conditions::soul_of_vengeance_available)

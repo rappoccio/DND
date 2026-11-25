@@ -272,16 +272,7 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
 
     foldHeldAdvantage(bm, action.caster_idx, caster_adv, caster_dis);   // Tides of Chaos, Lucky
 
-    int d20_val;
-    if (caster_adv && caster_dis) {
-        d20_val = roll(20);  // Cancel out
-    } else if (caster_adv) {
-        d20_val = rollAdvantage(20);
-    } else if (caster_dis) {
-        d20_val = rollDisadvantage(20);
-    } else {
-        d20_val = roll(20);
-    }
+    int d20_val = d20TestFor(bm, action.caster_idx, caster_adv, caster_dis);   // adv+dis cancel; Luck
     int mod     = rules::spellAttackModFor(caster_pa, sp);   // an item's spell_attack (ENSPELLED D1)
     // Bless — a blessed caster adds 1d4 to spell attack rolls (folded into the mod so the
     // Seeking-reroll total below carries it too).
@@ -312,11 +303,7 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
 
     // Metamagic — Seeking Spell: reroll a missed spell attack once, keep the new roll.
     if (applied_metamagic == MetamagicSeeking && !th.hit) {
-        int reroll;
-        if (caster_adv && caster_dis)      reroll = roll(20);
-        else if (caster_adv)               reroll = rollAdvantage(20);
-        else if (caster_dis)               reroll = rollDisadvantage(20);
-        else                               reroll = roll(20);
+        int reroll = d20TestFor(bm, action.caster_idx, caster_adv, caster_dis);
         log_("Metamagic Seeking: reroll {} (was {})", reroll, d20_val);
         d20_val       = reroll;
         total         = d20_val + mod;
@@ -498,14 +485,8 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
             log_("Target is {}: automatically fails {} save",
                  reason, sp.save_ability == SaveStr ? "STR" : "DEX");
         }
-    } else if (target_adv && target_dis) {
-        save_d20 = roll(20);  // Cancel out
-    } else if (target_adv) {
-        save_d20 = rollAdvantage(20);
-    } else if (target_dis) {
-        save_d20 = rollDisadvantage(20);
     } else {
-        save_d20 = roll(20);
+        save_d20 = d20TestFor(bm, tgt_idx, target_adv, target_dis);   // adv+dis cancel; Luck
     }
     // Clockwork L14 Trance of Order: floor the saver's own d20 (9-or-lower → 10). Gated on !auto_fail
     // so a forced automatic failure (save_d20 == 1) is never floored.
@@ -2389,9 +2370,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
                         const bool cond_adv = (fey_twist || aberrant_defense) ||
                                               saveAdvantageFor(bm, tgt_idx, spell_cond.save_ability);
                         const bool cond_dis = curseSaveDisadvantage(bm, tgt_idx, spell_cond.save_ability);
-                        int save_d20 = (cond_adv == cond_dis) ? roll(20)
-                                     : cond_adv               ? rollAdvantage(20)
-                                                              : rollDisadvantage(20);
+                        int save_d20 = d20TestFor(bm, tgt_idx, cond_adv, cond_dis);
                         // Clockwork L14 Trance of Order: floor the saver's own d20 (9-or-lower → 10).
                         save_d20 = tgt_stats.applyTranceFloor(save_d20);
                         int cond_save_mod = saveModFor(bm, tgt_idx, spell_cond.save_ability);
@@ -3427,10 +3406,7 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
 
         int save_d20;
         if (auto_fail)       save_d20 = 1;
-        else if (adv && dis) save_d20 = roll(20);
-        else if (adv)        save_d20 = rollAdvantage(20);
-        else if (dis)        save_d20 = rollDisadvantage(20);
-        else                 save_d20 = roll(20);
+        else                 save_d20 = d20TestFor(bm, target_idx, adv, dis);
         // Clockwork L14 Trance of Order: floor the saver's own d20 (9-or-lower → 10), but never an
         // automatic failure.
         if (!auto_fail) save_d20 = target_stats.applyTranceFloor(save_d20);
@@ -3705,16 +3681,7 @@ ConcentrationSaveResult CombatEngine::concentrationSave(
     }
     bool has_dis = cond.has_disadvantage;
     foldHeldAdvantage(bm, agent_idx, has_adv, has_dis);   // Tides of Chaos, Lucky
-    int save_d20;
-    if (has_adv && has_dis) {
-        save_d20 = roll(20);  // Cancel out
-    } else if (has_adv) {
-        save_d20 = rollAdvantage(20);
-    } else if (has_dis) {
-        save_d20 = rollDisadvantage(20);
-    } else {
-        save_d20 = roll(20);
-    }
+    int save_d20 = d20TestFor(bm, agent_idx, has_adv, has_dis);   // adv+dis cancel; Luck
     // Clockwork L14 Trance of Order: floor the sorcerer's own d20 (9-or-lower → 10) on this
     // concentration save (a D20 Test). No auto-fail path here.
     save_d20 = bm.getAgentStats(agent_idx).applyTranceFloor(save_d20);
@@ -3771,10 +3738,7 @@ bool CombatEngine::checkConcentrationOnDamage(BattleMap& bm, int target_idx, int
     if (damager_idx >= 0 && static_cast<std::size_t>(damager_idx) < agents.size() &&
         bm.getAgentStats(damager_idx).hasFeat("Mage Slayer"))
         dis = true;
-    int save_roll = (adv && dis) ? roll(20)
-                  : adv          ? rollAdvantage(20)
-                  : dis          ? rollDisadvantage(20)
-                                 : roll(20);
+    int save_roll = d20TestFor(bm, target_idx, adv, dis);   // adv+dis cancel; Luck
     int save_total = save_roll + con_mod;
 
     if (save_total >= dc) {
@@ -4806,7 +4770,8 @@ std::vector<int> CombatEngine::saveFailReactors(const BattleMap& bm, const Spell
     for (int i = 0; i < n; ++i)
         if (canIndomitable(bm, i, ss.target_idx) || canLegendaryResist(bm, i, ss.target_idx) ||
             canCountercharm(bm, i, ss.target_idx, action) || canWarGodsBlessing(bm, i, ss.target_idx) ||
-            canDarkOnesOwnLuck(bm, i, ss.target_idx))
+            canDarkOnesOwnLuck(bm, i, ss.target_idx) ||
+            canHeroicSaveReroll(bm, i, ss.target_idx))
             out.push_back(i);
     return out;
 }
@@ -4835,6 +4800,9 @@ std::vector<ReactionOption> CombatEngine::saveFailOptions(const BattleMap& bm, i
     if (canLivingLegendReroll(bm, reactor, ss.target_idx))
         opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                       "Use Living Legend (reroll your failed save)", "LivingLegend"});
+    if (canHeroicSaveReroll(bm, reactor, ss.target_idx))
+        opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                      "Use Heroic Inspiration (reroll your failed save)", "HeroicInspiration"});
     if (!opts.empty())
         opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
     return opts;
@@ -4861,6 +4829,7 @@ void CombatEngine::applySaveFailReaction(BattleMap& bm, const ReactionCtx& ctx, 
     else if (opt.feature == "WarGodsBlessing")      applyWarGodsBlessingToSave(bm, ctx.reactor_idx, *ss);
     else if (opt.feature == "DarkOnesOwnLuck")       applyDarkOnesOwnLuckToSave(bm, ctx.reactor_idx, *ss);
     else if (opt.feature == "LivingLegend")          applyLivingLegendRerollToSave(bm, ctx.reactor_idx, *ss);
+    else if (opt.feature == "HeroicInspiration")     applyHeroicRerollToSave(bm, ctx.reactor_idx, *ss);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

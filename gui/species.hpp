@@ -42,6 +42,13 @@ inline constexpr std::uint32_t kSpeciesResilience    = 1u << 4;   // Dwarf: Adv.
 inline constexpr std::uint32_t kSpeciesToughness     = 1u << 5;   // Dwarf: +1 HP per level
 inline constexpr std::uint32_t kSpeciesKeenSenses    = 1u << 6;   // Elf: Perception proficiency
 inline constexpr std::uint32_t kSpeciesPowerfulBuild = 1u << 7;   // Goliath: Adv. to escape a grapple
+// SP4 (read live by the engine):
+inline constexpr std::uint32_t kSpeciesLuck          = 1u << 8;   // Halfling: reroll a natural 1 (D10)
+inline constexpr std::uint32_t kSpeciesAdrenaline    = 1u << 9;   // Orc: Adrenaline Rush
+inline constexpr std::uint32_t kSpeciesRelentless    = 1u << 10;  // Orc: Relentless Endurance
+inline constexpr std::uint32_t kSpeciesHeroic        = 1u << 11;  // Human: Heroic Inspiration on a Long Rest (D11)
+inline constexpr std::uint32_t kSpeciesSkillful      = 1u << 12;  // Human: one skill proficiency (D12)
+inline constexpr std::uint32_t kSpeciesVersatile     = 1u << 13;  // Human: a second origin feat (D13)
 
 // Condition-save Advantage (D5): the condition a flag covers, "" for a flag that covers none.
 [[nodiscard]] constexpr bool speciesFlagCoversCondition(std::uint32_t flags,
@@ -63,6 +70,9 @@ inline constexpr std::array<std::string_view, 2> kGnomishLineages{"Forest Gnome"
 inline constexpr std::array<std::string_view, 6> kGiantAncestries{
     "Cloud", "Fire", "Frost", "Hill", "Stone", "Storm"};
 inline constexpr std::array<std::string_view, 3> kFiendishLegacies{"Abyssal", "Chthonic", "Infernal"};
+// Skillful (D12): the four skills the engine models.
+inline constexpr std::array<std::string_view, 4> kSpeciesSkills{
+    "Athletics", "Perception", "Sleight of Hand", "Stealth"};
 
 // Gnomish Cunning: INT, WIS and CHA save bits (SaveAbility_t ordinals 3, 4, 5).
 inline constexpr int kGnomishCunningBits = (1 << 3) | (1 << 4) | (1 << 5);
@@ -115,9 +125,11 @@ inline constexpr std::array kSpeciesTable{
                .option_label = "Lineage", .options = kGnomishLineages},
     SpeciesDef{.name = "Goliath", .speed_walk = 35, .flags = kSpeciesPowerfulBuild,
                .option_label = "Ancestry", .options = kGiantAncestries},
-    SpeciesDef{.name = "Halfling", .size_options = kSpeciesSizeSmall, .flags = kSpeciesBrave},
-    SpeciesDef{.name = "Human", .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium},
-    SpeciesDef{.name = "Orc", .darkvision = 120},
+    SpeciesDef{.name = "Halfling", .size_options = kSpeciesSizeSmall,
+               .flags = kSpeciesBrave | kSpeciesLuck},
+    SpeciesDef{.name = "Human", .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
+               .flags = kSpeciesHeroic | kSpeciesSkillful | kSpeciesVersatile},
+    SpeciesDef{.name = "Orc", .darkvision = 120, .flags = kSpeciesAdrenaline | kSpeciesRelentless},
     SpeciesDef{.name = "Tiefling", .darkvision = 60,
                .size_options = kSpeciesSizeSmall | kSpeciesSizeMedium,
                .flags = kSpeciesSpellAbility, .option_label = "Legacy", .options = kFiendishLegacies},

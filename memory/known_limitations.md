@@ -1377,3 +1377,18 @@ Planned in `EPIC_BOONS_PLAN.md` (SRD 5.2 p.88, 7 boons). Locked scope decisions:
   Disruption as control spells (only against valid creature types), and Diamond Light as an area
   spell. They don't cast the self-buff riders (Fire Opal Flames, Crusader's Mantle), spend Luck,
   regain a slot from a Rod, or drink a Potion of Heroism on their own.
+
+## Species (SPECIES_PLAN.md)
+
+### Halfling Luck covers the main d20 Tests only [LIMITATION] (2026-11-25, SP4)
+`CombatEngine::d20Test` rerolls a natural 1 on attack rolls, spell saves, the weapon rider
+save, the turn-start/end repeat saves, concentration, fixed-DC / trap / item saves, the
+shove/grapple contests and escape, death saves and Initiative. Per-feature d20s that still
+call `roll(20)` directly (Stunning Strike, Cunning Strike, Telekinetic, Elemental Burst,
+stealth/perception checks, …) roll flat. Real-dice mode: the player rerolls at the table.
+
+### Heroic Inspiration rerolls attacks and spell saves only [LIMITATION] (2026-11-25, SP4)
+The GUI offers it on a missed weapon attack and in the OnSaveFail window of a single-target
+save spell. A failed non-spell save (weapon rider, repeat save) and ability checks are the
+DM's call: click the ★ on the tracker row to spend it. The ★ toggle lives on the tracker
+(tracker mode); the engine-mode initiative list only shows it.

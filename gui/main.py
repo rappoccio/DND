@@ -2823,8 +2823,8 @@ class App:
     _ORIGIN_FEATS = app_char_setup.ORIGIN_FEATS
 
     @staticmethod
-    def _set_origin_feat(stats, new_feat: str, char_level: int):
-        return app_char_setup.set_origin_feat(stats, new_feat, char_level)
+    def _set_origin_feat(stats, new_feat: str, char_level: int, second_feat: str = "NONE"):
+        return app_char_setup.set_origin_feat(stats, new_feat, char_level, second_feat)
 
     @staticmethod
     def _set_general_feats(stats, names):
@@ -2867,8 +2867,8 @@ class App:
         if not self.combat_active and self._mob_clearable(idx):
             self._delete_placed_agent(idx)
 
-    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str='None', char_level: int=1, npc_data: dict=None, subclass_name: str='NONE', eldritch_invocations: list=None, blessed_strike_name: str='NONE', origin_feat: str='NONE', general_feats: list=None, elemental_adept_types: list=None, hunter_prey_name: str='NONE', defensive_tactics_name: str='NONE', draconic_affinity_type: int=-1, metamagic_options: list=None, irresistible_offense_ability: int=0, class_levels: dict=None, subclasses: dict=None, species: str=None, arcane_shot_options: list=None, species_option: str=None, species_size: str=None, species_spell_ability: int=None):
-        return app_char_setup.on_stats_ok(self, agent_idx, steppers, prof_flags, class_name, char_level, npc_data, subclass_name, eldritch_invocations, blessed_strike_name, origin_feat, general_feats, elemental_adept_types, hunter_prey_name, defensive_tactics_name, draconic_affinity_type, metamagic_options, irresistible_offense_ability, class_levels, subclasses, species, arcane_shot_options, species_option, species_size, species_spell_ability)
+    def _on_stats_ok(self, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str='None', char_level: int=1, npc_data: dict=None, subclass_name: str='NONE', eldritch_invocations: list=None, blessed_strike_name: str='NONE', origin_feat: str='NONE', general_feats: list=None, elemental_adept_types: list=None, hunter_prey_name: str='NONE', defensive_tactics_name: str='NONE', draconic_affinity_type: int=-1, metamagic_options: list=None, irresistible_offense_ability: int=0, class_levels: dict=None, subclasses: dict=None, species: str=None, arcane_shot_options: list=None, species_option: str=None, species_size: str=None, species_spell_ability: int=None, species_skill: str=None, versatile_feat: str='NONE'):
+        return app_char_setup.on_stats_ok(self, agent_idx, steppers, prof_flags, class_name, char_level, npc_data, subclass_name, eldritch_invocations, blessed_strike_name, origin_feat, general_feats, elemental_adept_types, hunter_prey_name, defensive_tactics_name, draconic_affinity_type, metamagic_options, irresistible_offense_ability, class_levels, subclasses, species, arcane_shot_options, species_option, species_size, species_spell_ability, species_skill, versatile_feat)
 
     # ── Weapon callbacks & overlays ───────────────────────────────────────────
 
@@ -6081,7 +6081,8 @@ class App:
                          "LegendaryResistance": "Legendary Resistance",
                          "WarGodsBlessing": "War God's Blessing",
                          "DarkOnesOwnLuck": "Dark One's Own Luck",
-                         "LivingLegend": "Living Legend"}
+                         "LivingLegend": "Living Legend",
+                         "HeroicInspiration": "Heroic Inspiration"}
                 feats = [o.feature for o in ctx.options
                          if o.kind == rpg.ReactionOptionKind.Feature]
                 choices = " / ".join(names.get(f, f) for f in feats) or "react"
@@ -8351,6 +8352,15 @@ class App:
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):
                     self._use_living_legend(idx)
+            if action_id == "adrenaline_rush":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents):
+                    if self.combat.use_adrenaline_rush(self.bm, idx):
+                        self._flush_combat_log()
+                        self._update_reach()
+                        self.bonus_used = True
+                    else:
+                        self._combat_log_add("Adrenaline Rush unavailable.")
             if action_id == "magical_cunning":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):

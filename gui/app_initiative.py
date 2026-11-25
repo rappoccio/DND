@@ -254,6 +254,8 @@ def tracker_handle_event(app, event) -> bool:
             tracker_move(app, arg, -1 if kind == "up" else 1)
         elif kind == "row":
             tracker_select(app, arg)
+        elif kind == "heroic":
+            toggle_heroic_inspiration(app, arg)
         elif kind == "dm_view":
             app._set_dm_view(not app.dm_view)
         elif kind == "hp_close":
@@ -287,6 +289,18 @@ def tracker_handle_event(app, event) -> bool:
                 app.tracker.set_total(i, total)
         return True
     return False
+
+
+def toggle_heroic_inspiration(app, agent_idx: int):
+    """The DM awards or spends a creature's Heroic Inspiration (SPECIES_PLAN.md D11)."""
+    if not (0 <= agent_idx < len(app.bm.placed_agents)):
+        return
+    st = app.combat.get_agent_stats(app.bm, agent_idx)
+    st.heroic_inspiration = not st.heroic_inspiration
+    app.combat.set_agent_stats(app.bm, agent_idx, st)
+    name = app.bm.placed_agents[agent_idx].name
+    app._combat_log_add(f"★ {name} {'gains' if st.heroic_inspiration else 'spends'} "
+                        f"Heroic Inspiration.")
 
 
 def tracker_select(app, agent_idx: int):

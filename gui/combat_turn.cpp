@@ -78,8 +78,8 @@ int CombatEngine::rollInitiativeD20(const BattleMap& bm, int agent_idx, const Ag
         (s.hasClass(CharacterClass::Barbarian) && s.classLevel(CharacterClass::Barbarian) >= 7) ||
         (s.hasClass(CharacterClass::Rogue) &&
          s.rogue_subclass == AssassinPath && s.classLevel(CharacterClass::Rogue) >= 3))
-        return std::max(roll(20), roll(20));
-    return roll(20);
+        return d20Test(s.hasLuck(), true, false, agentName(bm, agent_idx));
+    return d20Test(s.hasLuck(), false, false, agentName(bm, agent_idx));   // Halfling Luck (D10)
 }
 
 std::vector<InitiativeEntry> CombatEngine::rollInitiative(const BattleMap& bm)
@@ -333,8 +333,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                 continue;
             const int save_dc  = rules::spellSaveDcFromAbility(ps, SaveCha);
             const int save_mod = saveModFor(bm, agent_idx, SaveWis);
-            const int save_d20 = conditionSaveAdvantage(bm, agent_idx, "Frightened") ? rollAdvantage(20)
-                                                                                       : roll(20);
+            const int save_d20 = d20TestFor(bm, agent_idx,
+                                            conditionSaveAdvantage(bm, agent_idx, "Frightened"));
             const int save_total = save_d20 + save_mod;
             log_("{} makes a WIS save vs Frightful Aura (DC {}): {} + {} = {} ({})",
                  agent_name, save_dc, save_d20, save_mod, save_total,
@@ -550,6 +550,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Reset per-turn Barbarian flags at start of each turn
     cond.reckless_attack = false;
     cond.reckless_reroll_available = false;
+    cond.heroic_reroll_available = false;   // Heroic Inspiration: a stale miss offer
     cond.retaliation_available = false;   // Berserker L10 Retaliation: stale reaction offer (resets with the reaction)
     cond.retaliation_target_idx = -1;
 
@@ -795,9 +796,9 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     else if (cond.unconscious && stats.hp_cur <= 0 && !cond.stabilized && !cond.dead) {
         int con_mod = (stats.con - 10) / 2;
         if (stats.con < 10 && (stats.con - 10) % 2 != 0) --con_mod;
-        int death_d20 = roll(20);
         // Durable (general feat) — Defy Death: Advantage on Death Saving Throws (take the higher d20).
-        if (stats.hasFeat("Durable")) death_d20 = std::max(death_d20, roll(20));
+        // Halfling Luck rerolls a natural 1 (D10).
+        int death_d20 = d20Test(stats.hasLuck(), stats.hasFeat("Durable"), false, agentName(bm, agent_idx));
         int death_total = death_d20 + con_mod;
 
         if (death_d20 == 20) {
@@ -940,9 +941,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability) ||
                         conditionSaveAdvantage(bm, agent_idx, active_cond.condition_name);
         bool save_dis = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability);
-        int save_d20 = (save_adv == save_dis) ? roll(20)
-                     : save_adv               ? rollAdvantage(20)
-                                              : rollDisadvantage(20);
+        int save_d20 = d20TestFor(bm, agent_idx, save_adv, save_dis);   // Halfling Luck
         int save_total = save_d20 + save_mod;
         save_total = applyIndomitableMight(bm, agent_idx, active_cond.save_ability, save_total);
         int save_dc = active_cond.save_dc;
@@ -1049,9 +1048,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability) ||
                         conditionSaveAdvantage(bm, agent_idx, active_cond.condition_name);
         bool save_dis = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability);
-        int save_d20 = (save_adv == save_dis) ? roll(20)
-                     : save_adv               ? rollAdvantage(20)
-                                              : rollDisadvantage(20);
+        int save_d20 = d20TestFor(bm, agent_idx, save_adv, save_dis);   // Halfling Luck
         int save_total = save_d20 + save_mod - (2 * agent_cond.exhaustion_level);
         save_total = applyIndomitableMight(bm, agent_idx, active_cond.save_ability, save_total);
         int save_dc = active_cond.save_dc;
@@ -1205,9 +1202,7 @@ void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
         bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability) ||
                         conditionSaveAdvantage(bm, agent_idx, active_cond.condition_name);
         bool save_dis = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability);
-        int  save_d20 = (save_adv == save_dis) ? roll(20)
-                      : save_adv               ? rollAdvantage(20)
-                                               : rollDisadvantage(20);
+        int  save_d20 = d20TestFor(bm, agent_idx, save_adv, save_dis);   // Halfling Luck
         int  save_total = save_d20 + save_mod;
         save_total = applyIndomitableMight(bm, agent_idx, active_cond.save_ability, save_total);
         const int save_dc = active_cond.save_dc;
@@ -1412,9 +1407,9 @@ void CombatEngine::rollDeathSave(BattleMap& bm, int idx) noexcept
 
     int con_mod = (stats.con - 10) / 2;
     if (stats.con < 10 && (stats.con - 10) % 2 != 0) --con_mod;
-    int death_d20 = roll(20);
     // Durable (general feat) — Defy Death: Advantage on Death Saving Throws (take the higher d20).
-    if (stats.hasFeat("Durable")) death_d20 = std::max(death_d20, roll(20));
+    // Halfling Luck rerolls a natural 1 (D10).
+    int death_d20 = d20Test(stats.hasLuck(), stats.hasFeat("Durable"), false, agentName(bm, idx));
     int death_total = death_d20 + con_mod;
 
     if (death_d20 == 20) {
@@ -3012,27 +3007,8 @@ bool CombatEngine::npcTeleportEscape(BattleMap& bm, int agent_idx) noexcept
     //    the mover path, not executeSpell, so charge the use here) and funnel through teleportAgent. For a
     //    Forcecaged/boxed NPC teleportAgent rolls the CHA save; on a failure the attempt is still spent
     //    (RAW) — we end the turn either way and never re-try other cells (mirrors placeTeleportedAgents).
-    {
-        const int slot = npcCastSlotLevel(bm, agent_idx, spellIdx);   // an automated PC pays a slot
-        PlacedAgent& pam = bm.placedAgentMut(agent_idx);
-        Spell& sm = pam.spells[static_cast<std::size_t>(spellIdx)];
-        Agent::Stats& stats = pam.agent->getStats();
-        if (sm.item_source != Spell::NoItem) {
-            // Enspelled item: the item pays, no slot, and D2 doesn't see it (mirrors executeSpell).
-            if (ItemSpells* is = rules::itemSpellsFor(pam, sm)) is->spend(sm.name, sm.item_charge_cost);
-        } else if (!stats.is_npc && sm.level > 0 && slot == 0 && stats.grantedFreeLeft(sm.name) > 0) {
-            // Granted spell with no slot to pay: a free cast (SPECIES D3; mirrors executeSpell).
-            stats.spendGrantedFree(sm.name);
-        } else {
-            if (slot > 0) {
-                int& left = stats.spell_slots_remaining[static_cast<std::size_t>(slot - 1)];
-                left = std::max(0, left - 1);
-            }
-            if (sm.level > 0) stats.markLeveledSpellCast(sm.level);
-            if (sm.uses_max > 0) sm.uses_remaining = std::max(0, sm.uses_remaining - 1);
-            if (sm.recharge_min > 0) sm.expended = true;
-        }
-    }
+    (void)payTeleportCast(bm, agent_idx, spellIdx,
+                          npcCastSlotLevel(bm, agent_idx, spellIdx), false);   // an automated PC pays a slot
     log_("NPC {} teleports with {} to close on {}", agentName(bm, agent_idx),
          spells[static_cast<std::size_t>(spellIdx)].name, agentName(bm, tgt));
     recordNpcAnnounce(agent_idx, -1, std::format("{} casts {}!", agentName(bm, agent_idx),
@@ -3040,6 +3016,37 @@ bool CombatEngine::npcTeleportEscape(BattleMap& bm, int agent_idx) noexcept
     renderAttack(agent_idx, tgt);
     (void)teleportAgent(bm, agent_idx, best.col, best.row);   // rolls the Forcecage CHA save internally
     return true;
+}
+
+bool CombatEngine::payTeleportCast(BattleMap& bm, int idx, int spell_idx, int slot_level, bool use_grant)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (idx < 0 || idx >= n) return false;
+    PlacedAgent& pam = bm.placedAgentMut(idx);
+    if (spell_idx < 0 || spell_idx >= static_cast<int>(pam.spells.size())) return false;
+    Spell& sm = pam.spells[static_cast<std::size_t>(spell_idx)];
+    Agent::Stats& stats = pam.agent->getStats();
+    if (sm.item_source != Spell::NoItem) {
+        // Enspelled item: the item pays, no slot, and D2 doesn't see it (mirrors executeSpell).
+        ItemSpells* is = rules::itemSpellsFor(pam, sm);
+        if (is) is->spend(sm.name, sm.item_charge_cost);
+        return is != nullptr;
+    }
+    if (!stats.is_npc && sm.level > 0 && (use_grant || slot_level == 0) &&
+        stats.grantedFreeLeft(sm.name) > 0) {
+        // Granted spell: the "free" pick, or no slot to pay (SPECIES D3; mirrors executeSpell).
+        return stats.spendGrantedFree(sm.name);
+    }
+    bool paid = sm.level == 0 || stats.is_npc;
+    if (slot_level > 0 && !stats.is_npc) {
+        int& left = stats.spell_slots_remaining[static_cast<std::size_t>(std::min(slot_level, 9) - 1)];
+        paid = left > 0;
+        left = std::max(0, left - 1);
+    }
+    if (sm.level > 0) stats.markLeveledSpellCast(sm.level);
+    if (sm.uses_max > 0) sm.uses_remaining = std::max(0, sm.uses_remaining - 1);
+    if (sm.recharge_min > 0) sm.expended = true;
+    return paid;
 }
 
 bool CombatEngine::npcFindApproachCell(const BattleMap& bm, int agent_idx, int approach_target,

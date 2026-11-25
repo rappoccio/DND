@@ -257,10 +257,7 @@ void CombatEngine::resolveThrownItem(BattleMap& bm, int user_idx, int target_idx
 
     int save_d20;
     if (auto_fail)       save_d20 = 1;
-    else if (adv && dis) save_d20 = roll(20);
-    else if (adv)        save_d20 = rollAdvantage(20);
-    else if (dis)        save_d20 = rollDisadvantage(20);
-    else                 save_d20 = roll(20);
+    else                 save_d20 = d20TestFor(bm, target_idx, adv, dis);   // Halfling Luck
 
     const int save_mod = saveModFor(bm, target_idx, item.save_ability);
     res.save_roll = save_d20 + save_mod;

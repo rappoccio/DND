@@ -171,6 +171,11 @@ def dict_to_stats(stats_dict):
         grants.append(g)
     stats.granted_spells = grants
     stats.vampiric_bite_used = int(stats_dict.get("vampiric_bite_used", 0))
+    # SP4: Skillful pick, Orc pools, Heroic Inspiration (absent in older saves → defaults)
+    stats.set_species_skill(str(stats_dict.get("species_skill", "")))
+    stats.adrenaline_rush_used = int(stats_dict.get("adrenaline_rush_used", 0))
+    stats.relentless_endurance_used = bool(stats_dict.get("relentless_endurance_used", False))
+    stats.heroic_inspiration = bool(stats_dict.get("heroic_inspiration", False))
     stats.vampiric_strengthen_bonus = int(stats_dict.get("vampiric_strengthen_bonus", 0))
     stats.vampiric_strengthen_turns = int(stats_dict.get("vampiric_strengthen_turns", 0))
     # Barbarian L20 Primal Champion and L11 Relentless Rage

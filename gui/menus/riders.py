@@ -940,6 +940,45 @@ def offer_reckless_reroll(app, action, atk_idx, target_idx, atk_name, tgt_name, 
     app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Reckless Attack", options)
 
 
+def offer_heroic_reroll(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
+    """Heroic Inspiration (SPECIES_PLAN.md D11): after a miss with the ★ held, spend it to
+    reroll the same attack; the new roll stands. Mirrors offer_reckless_reroll."""
+    def _apply():
+        new_result = app.combat.apply_heroic_reroll(app.bm, atk_idx, target_idx, action.weapon_idx)
+        app._combat_log_add(atk_msg)
+        if new_result.hit:
+            dmg_parts = app._get_damage_type_names(new_result.magic_damage_types, new_result.physical_damage_types)
+            dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+            app._combat_log_add(
+                f"{atk_name}→{tgt_name}: Heroic Inspiration reroll → HIT {new_result.total_damage}"
+                f"{app._damage_breakdown_str(new_result)} {dmg_type_str}"
+                f"{' CRIT!' if new_result.critical else ''}{' — DOWN' if new_result.target_down else ''}")
+            if new_result.target_down:
+                app._drop_concentration_for_agent(target_idx)
+        else:
+            app._combat_log_add(
+                f"{atk_name}→{tgt_name}: Heroic Inspiration reroll → still misses "
+                f"(roll {new_result.total_roll} vs AC {new_result.target_ac})")
+        app._flush_combat_log()
+        app._sync_spell_effect_cache()
+        app._update_attack_overlay()
+        app._continue_attack_sequence_after_rider(atk_idx)
+
+    def _skip():
+        c = app.combat.get_agent_conditions(app.bm, atk_idx)
+        c.heroic_reroll_available = False
+        app.combat.set_agent_conditions(app.bm, atk_idx, c)
+        app._combat_log_add(atk_msg)
+        app._flush_combat_log()
+        app._continue_attack_sequence_after_rider(atk_idx)
+
+    options = [
+        ("★ Heroic Inspiration — reroll the attack (the new roll stands)", _apply),
+        ("Skip (keep the ★)", _skip),
+    ]
+    app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Heroic Inspiration", options)
+
+
 def offer_curving_shot(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg):
     """Arcane Archer L7 Curving Shot: after a ranged weapon miss, spend the Bonus Action to reroll the
     attack against a different creature the archer can see, within range and within 60 ft of the

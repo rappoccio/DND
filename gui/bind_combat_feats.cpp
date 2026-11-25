@@ -35,6 +35,17 @@ void bindCombatFeats(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("idx"),
              "Lucky feat: spend one Luck Point to grant the agent Advantage on its next d20\n"
              "Test (consumed by the next d20 roll). Returns False if no points remain.")
+        .def("can_adrenaline_rush", &CombatEngine::canAdrenalineRush,
+             py::arg("battle_map"), py::arg("idx"),
+             "Orc Adrenaline Rush is usable now (a use left, conscious, not Incapacitated).")
+        .def("use_adrenaline_rush", &CombatEngine::useAdrenalineRush,
+             py::arg("battle_map"), py::arg("idx"),
+             "Orc Adrenaline Rush: Dash plus temp HP = PB, one use spent. The caller pays the\n"
+             "Bonus Action. Returns False when unavailable.")
+        .def("apply_heroic_reroll", &CombatEngine::applyHeroicReroll,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx"),
+             "Heroic Inspiration after a miss (conditions.heroic_reroll_available): spend the ★ and\n"
+             "re-resolve the same attack; the new roll stands. Returns the new AttackResult.")
         .def("luck_available",
              &CombatEngine::luckAvailable,
              py::arg("battle_map"), py::arg("idx"),

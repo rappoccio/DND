@@ -802,6 +802,7 @@ def resolve_teleport_spell(app, destination_cell):
                          if caster_idx < len(app.bm.placed_agents) else "?")
             app._combat_log_add(
                 f"{cast_name}'s {sp.name} fails to breach the Forcecage — the spell is wasted.")
+            _pay_teleport(app, caster_idx, ps)
             app._disarm(pending.Spell)
             app.spell_hover_cell          = None
             app._consume_cast_slot(slot, caster_idx)
@@ -814,13 +815,9 @@ def resolve_teleport_spell(app, destination_cell):
     cast_name = agents[caster_idx].name if caster_idx < len(agents) else "?"
     app._combat_log_add(f"{cast_name} casts {sp.name} and teleports to ({destination_cell.col}, {destination_cell.row}).")
 
-    # Granted spell (D3): the "free" row spends one free cast (this path takes no slot).
+    # Pay for it: the slot, a granted free cast (D3), an item charge or an N/day use.
     used_grant = app.cast_setup.use_grant
-    if used_grant:
-        cstats = app.combat.get_agent_stats(app.bm, caster_idx)
-        if cstats.spend_granted_free(sp.name):
-            app.combat.set_agent_stats(app.bm, caster_idx, cstats)
-        app.cast_setup.use_grant = False
+    _pay_teleport(app, caster_idx, ps)
 
     # Clean up pending spell state
     app._disarm(pending.Spell)
@@ -832,6 +829,23 @@ def resolve_teleport_spell(app, destination_cell):
     # `ps` was taken before the disarm above, so its slot level is still the cast's.
     if ps.slot_level >= 1 and not used_grant:
         features.maybe_wild_magic_surge(app, caster_idx)
+
+
+def _pay_teleport(app, caster_idx, ps):
+    """Charge a teleportation spell's cost: it resolves outside execute_spell, so the engine's
+    pay_teleport_cast does what execute_spell would (slot, free cast, item, uses). A Wish-
+    duplicated cast (free_cast) pays nothing of its own."""
+    if not app.cast_setup.free_cast:
+        sp = app.combat.get_agent_spells(app.bm, caster_idx)[ps.idx]
+        slot_level = ps.slot_level
+        if sp.level >= 1:
+            cs = app.combat.get_agent_stats(app.bm, caster_idx)
+            if cs.character_class == rpg.CharacterClass.Warlock and cs.pact_slot_level() > 0:
+                slot_level = cs.pact_slot_level()   # as apply_pact_slot_level
+        app.combat.pay_teleport_cast(app.bm, caster_idx, ps.idx, slot_level,
+                                     app.cast_setup.use_grant)
+    app.cast_setup.use_grant = False
+    app.cast_setup.free_cast = False
 
 
 def resolve_corpse_spell(app, cell):

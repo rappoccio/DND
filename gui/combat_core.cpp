@@ -64,6 +64,29 @@ int CombatEngine::rollDisadvantage(int sides, int modifier)
     return rules::rollDisadvantage(ctx_, sides, modifier);
 }
 
+int CombatEngine::d20Test(bool lucky, bool adv, bool dis, std::string_view who)
+{
+    auto die = [&] {
+        int d = roll(20);
+        if (lucky && d == 1) {
+            d = roll(20);
+            log_("{}Luck: a natural 1 is rerolled → {}", who.empty() ? "" : std::string(who) + " — ",
+                 d);
+        }
+        return d;
+    };
+    if (adv == dis) return die();
+    const int a = die(), b = die();
+    return adv ? std::max(a, b) : std::min(a, b);
+}
+
+int CombatEngine::d20TestFor(const BattleMap& bm, int idx, bool adv, bool dis)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (idx < 0 || idx >= n) return d20Test(false, adv, dis);
+    return d20Test(bm.getAgentStats(idx).hasLuck(), adv, dis, agentName(bm, idx));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Modifiers
 // ─────────────────────────────────────────────────────────────────────────────

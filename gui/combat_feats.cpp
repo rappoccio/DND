@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <fstream>
 #include <string>
 #include <string_view>
@@ -315,6 +316,74 @@ bool CombatEngine::spendLuckForAdvantage(BattleMap& bm, int idx)
         return true;
     }
     return false;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Species features (SPECIES_PLAN.md SP4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+bool CombatEngine::canAdrenalineRush(const BattleMap& bm, int idx) const noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    const Agent::Stats s = bm.getAgentStats(idx);
+    if (s.hp_cur <= 0 || s.adrenalineRushRemaining() <= 0) return false;
+    return !bm.getAgentConditions(idx).incapacitated;
+}
+
+bool CombatEngine::useAdrenalineRush(BattleMap& bm, int idx)
+{
+    if (!canAdrenalineRush(bm, idx)) return false;
+    Agent::Stats s = bm.getAgentStats(idx);
+    s.adrenaline_rush_used += 1;
+    const int pb = std::max(1, s.prof_bonus);
+    const bool gained = pb > s.temp_hp;            // temp HP don't stack: keep the larger
+    s.temp_hp = std::max(s.temp_hp, pb);
+    bm.setAgentStats(idx, s);
+    bm.applyDash(idx);
+    log_("{}: Adrenaline Rush — Dash (+{} ft){} ({} left)", agentName(bm, idx), s.speed_walk,
+         gained ? std::format(", {} temp HP", pb) : std::string(", temp HP unchanged"),
+         s.adrenalineRushRemaining());
+    return true;
+}
+
+AttackResult CombatEngine::applyHeroicReroll(BattleMap& bm, int attacker_idx, int target_idx,
+                                             int weapon_idx)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (attacker_idx < 0 || attacker_idx >= n || target_idx < 0 || target_idx >= n)
+        return AttackResult{};
+    Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+    Agent::Stats s = bm.getAgentStats(attacker_idx);
+    if (!ac.heroic_reroll_available || !s.heroic_inspiration) return AttackResult{};
+    ac.heroic_reroll_available = false;
+    s.heroic_inspiration = false;
+    bm.setAgentConditions(attacker_idx, ac);
+    bm.setAgentStats(attacker_idx, s);
+    log_("{} spends Heroic Inspiration — rerolling the attack", agentName(bm, attacker_idx));
+    // The ★ is gone, so this re-resolution cannot offer another Heroic reroll.
+    return executeAction(bm, Attack{attacker_idx, target_idx, weapon_idx});
+}
+
+bool CombatEngine::canHeroicSaveReroll(const BattleMap& bm, int reactor, int save_target) const
+{
+    if (reactor != save_target) return false;                     // your own save only
+    if (reactor < 0 || reactor >= static_cast<int>(bm.placedAgents().size())) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor);
+    return s.heroic_inspiration && s.hp_cur > 0;
+}
+
+bool CombatEngine::applyHeroicRerollToSave(BattleMap& bm, int reactor, SpellSave& ss)
+{
+    if (!canHeroicSaveReroll(bm, reactor, ss.target_idx)) return false;
+    Agent::Stats s = bm.getAgentStats(reactor);
+    s.heroic_inspiration = false;                                 // costs the ★, not the Reaction
+    bm.setAgentStats(reactor, s);
+    const int old_d20 = ss.d20;
+    ss.d20 = d20TestFor(bm, reactor);                             // the new roll stands
+    reevaluateSave(ss);
+    log_("{} spends Heroic Inspiration: rerolls the save {}→{} = {} vs DC {} → {}",
+         agentName(bm, reactor), old_d20, ss.d20, ss.total, ss.dc, ss.saved ? "SAVES" : "still fails");
+    return true;
 }
 
 // RAVENLOFT M6: the first carried, switched-on item with a Luck Point left; nullptr if none.

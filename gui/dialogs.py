@@ -2197,6 +2197,8 @@ class StatsDialog:
         self._species_option     = ""      # D2 sub-choices, kept valid for self._species
         self._species_size       = ""
         self._species_ability    = 3       # SaveAbility ordinal (INT)
+        self._species_skill      = ""      # Skillful (Human, D12): "" = none
+        self._versatile_feat     = "NONE"  # Versatile (Human, D13): the second origin feat
         self._species_sub_rects: dict = {} # attr -> {"left", "right", "available"}
         self._feat_dialog        = None    # General Feats multi-select picker (PCs)
         self._feat_btn_rect      = None    # "Feats..." launch button
@@ -2254,7 +2256,10 @@ class StatsDialog:
         self._arcane_shot_options = [int(o) for o in getattr(stats, 'arcane_shot_options', [])]
         # Origin feat: show the one currently on the agent (first that's an origin feat), else NONE.
         cur_feats = list(stats.feats) if hasattr(stats, 'feats') else []
-        self._origin_feat = next((f for f in cur_feats if f in self.ORIGIN_FEATS), "NONE")
+        _origins = [f for f in cur_feats if f in self.ORIGIN_FEATS]
+        self._origin_feat = _origins[0] if _origins else "NONE"
+        self._versatile_feat = _origins[1] if len(_origins) > 1 else "NONE"
+        self._species_skill = getattr(stats, "species_skill", "") or ""
         self._species = getattr(stats, "species", "") or "NONE"
         self._species_option = getattr(stats, "species_option", "") or ""
         self._species_size = getattr(stats, "species_size", "") or ""
@@ -2848,7 +2853,9 @@ class StatsDialog:
             self._cb(self._agent_idx, self.steppers, self.prof_flags, primary, total_level, npc_data, self._subclasses.get(primary, "NONE"), self._eldritch_invocations, self._blessed_strike_name, self._origin_feat, sorted(self._general_feats), sorted(self._elemental_adept_types), self._hunter_prey_name, self._defensive_tactics_name, self._draconic_affinity_type, list(self._metamagic_options), self._irresistible_offense_ability, dict(class_levels), dict(self._subclasses), species=self._species,
                      arcane_shot_options=list(self._arcane_shot_options),
                      species_option=self._species_option, species_size=self._species_size,
-                     species_spell_ability=self._species_ability)
+                     species_spell_ability=self._species_ability,
+                     species_skill=self._species_skill or "",
+                     versatile_feat=self._versatile_feat)
         self.active = False
 
     def _normalize_species_choices(self):
@@ -2867,6 +2874,12 @@ class StatsDialog:
             self._species_size = "Medium" if "Medium" in sizes else sizes[0]
         if self._species_ability not in (3, 4, 5):
             self._species_ability = 3
+        if not (name and rpg.species_has_skillful(name)):
+            self._species_skill = ""
+        elif self._species_skill not in rpg.species_skills():
+            self._species_skill = rpg.species_skills()[0]
+        if not (name and rpg.species_has_versatile(name)):
+            self._versatile_feat = "NONE"
 
     def _draw_species_sub_choices(self, screen, dlg, y):
         """The species' option row (Lineage / Ancestry / Legacy) and a Size + Spell Ability row,
@@ -2897,7 +2910,22 @@ class StatsDialog:
             y += 24
         sizes = list(rpg.species_sizes(name))
         has_ability = rpg.species_has_spell_ability(name)
-        if len(sizes) > 1 or has_ability:
+        # Skillful (D12) shares the Size row's right half; a species never has both it and
+        # a spell ability.
+        has_skill = rpg.species_has_skillful(name) and not has_ability
+        if has_skill:
+            mid = x_pick + (dlg.right - self.PAD - x_pick) // 2
+            if len(sizes) > 1:
+                screen.blit(self.font_sm.render("Size:", True, self.C_LABEL), (x_lbl, y))
+                picker("_species_size", x_pick, mid - 6, y, self._species_size, sizes)
+            lbl = self.font_sm.render("Skill:", True, self.C_LABEL)
+            x0 = mid + 6 if len(sizes) > 1 else x_lbl
+            screen.blit(lbl, (x0, y))
+            x_sk = x0 + lbl.get_width() + 8 if len(sizes) > 1 else x_pick
+            picker("_species_skill", x_sk, dlg.right - self.PAD, y, self._species_skill,
+                   list(rpg.species_skills()))
+            y += 24
+        elif len(sizes) > 1 or has_ability:
             mid = x_pick + (dlg.right - self.PAD - x_pick) // 2
             if len(sizes) > 1:
                 screen.blit(self.font_sm.render("Size:", True, self.C_LABEL), (x_lbl, y))
@@ -2911,6 +2939,15 @@ class StatsDialog:
                 # the picker cycles ordinals; its text shows the name
                 picker("_species_ability", x_ab, dlg.right - self.PAD, y,
                        names.get(self._species_ability, "INT"), [v for _k, v in self.SPECIES_ABILITIES])
+            y += 24
+        # Versatile (D13): a second origin feat, never the one in the first slot.
+        if rpg.species_has_versatile(name):
+            screen.blit(self.font_sm.render("Versatile:", True, self.C_LABEL), (x_lbl, y))
+            feats = [f for f in self.ORIGIN_FEATS if f == "NONE" or f != self._origin_feat]
+            if self._versatile_feat not in feats:
+                self._versatile_feat = "NONE"
+            picker("_versatile_feat", x_pick, dlg.right - self.PAD, y,
+                   "None" if self._versatile_feat == "NONE" else self._versatile_feat, feats)
             y += 24
         return y
 

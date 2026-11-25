@@ -22,7 +22,7 @@ from constants import (COL_BTN_ATK, COL_BTN_ATK_HOV, COL_BTN_DANGER, COL_BTN_DAS
                        COL_BTN_DASH_HOV, COL_BTN_DISENG, COL_BTN_DISENG_HOV, COL_BTN_DODGE,
                        COL_BTN_DODGE_HOV, COL_BTN_ENDTURN, COL_BTN_ENDTURN_HOV, COL_BTN_SPELL,
                        COL_BTN_SPELL_HOV, COL_INITIATIVE_CUR, COL_INPUT_ACTIVE, COL_INPUT_BG,
-                       COL_LABEL, COL_PANEL_BORDER, COL_TEXT, PANEL_W)
+                       COL_LABEL, COL_PANEL_BORDER, COL_TEXT, PANEL_W, PC_FACTION)
 from widgets import Button
 
 
@@ -193,6 +193,9 @@ def init_combat_panel(app):
     app.btn_cbt_rage = Button(pygame.Rect(px, dummy_y, W, B),
                                      "Rage (Bonus)",
                                      (180, 80, 60), (220, 110, 90), app.font_md)
+    app.btn_cbt_adrenaline_rush = Button(pygame.Rect(px, dummy_y, W, B),
+                                     "Adrenaline Rush",
+                                     (170, 70, 50), (210, 100, 80), app.font_md)
     app.btn_cbt_magical_cunning = Button(pygame.Rect(px, dummy_y, W, B),
                                      "Magical Cunning",
                                      (120, 80, 180), (150, 110, 210), app.font_md)
@@ -649,10 +652,17 @@ def draw_tracker_section(app, lx, W, y):
             name = lair.tracker_name(app, e.agent_idx)
             text(f"{'▶ ' if cur else '  '}{tot}  {name}{'  (next round)' if waiting else ''}",
                  lx, y + 2, col)
+            # Heroic Inspiration (SPECIES_PLAN.md D11): ★ held / ☆ not, on every PC row and on
+            # anyone holding it. A click awards or spends it (DM awards are allowed).
+            hero_x = lx + W - 2 * aw - 2
+            if e.agent_idx >= 0 and _shows_heroic(app, e.agent_idx):
+                held = app.combat.get_agent_stats(app.bm, e.agent_idx).heroic_inspiration
+                hero_x -= aw + 2
+                button("★" if held else "☆", pygame.Rect(hero_x, y, aw, 18), "heroic", e.agent_idx)
             hp = _hp_label(app, e.agent_idx) if e.agent_idx >= 0 else ""
             if hp:
                 s = font.render(hp, True, col)
-                app.screen.blit(s, (lx + W - 2 * aw - 8 - s.get_width(), y + 2))
+                app.screen.blit(s, (hero_x - 6 - s.get_width(), y + 2))
             button("↑", pygame.Rect(lx + W - 2 * aw - 2, y, aw, 18), "up", e.agent_idx)
             button("↓", pygame.Rect(lx + W - aw, y, aw, 18), "down", e.agent_idx)
             app._tracker_hits.append((pygame.Rect(lx, y, W - 2 * aw - 4, 18),
@@ -660,6 +670,15 @@ def draw_tracker_section(app, lx, W, y):
             y += 20
         y = _draw_hp_box(app, lx, W, y + 4, text, button)
     return y
+
+
+def _shows_heroic(app, idx) -> bool:
+    """A tracker row carries the Heroic Inspiration toggle: a PC, or anyone holding it."""
+    agents = app.bm.placed_agents
+    if not (0 <= idx < len(agents)):
+        return False
+    return (agents[idx].faction == PC_FACTION
+            or app.combat.get_agent_stats(app.bm, idx).heroic_inspiration)
 
 
 def _hp_label(app, idx) -> str:

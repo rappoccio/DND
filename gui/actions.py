@@ -731,6 +731,12 @@ class ActionMenu:
                     Action("disengage_bonus", "Disengage", GROUP_BONUS),
                     Action("hide_bonus",      "Hide",      GROUP_BONUS)]
 
+        # ── Orc Adrenaline Rush (SPECIES_PLAN.md SP4): Dash + PB temp HP, PB per Short Rest ──
+        if app.combat.can_adrenaline_rush(app.bm, agent_idx):
+            out.append(Action("adrenaline_rush",
+                              f"Adrenaline Rush ({stats.adrenaline_rush_remaining()}/{stats.prof_bonus})",
+                              GROUP_BONUS))
+
         # ── Monk ──
         if cls == CC.Monk:
             focus = _res(stats, "Focus Points")

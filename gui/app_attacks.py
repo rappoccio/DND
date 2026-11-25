@@ -673,6 +673,7 @@ def finish_attack(app):
     has_divine_smite = False
     has_eldritch_smite = False
     has_reckless_reroll = False
+    has_heroic_reroll = False
     has_riposte = False
     has_protective_field = False
     has_interception = False
@@ -732,6 +733,9 @@ def finish_attack(app):
             has_curving_shot = True
         elif (not result.hit) and atk_cond and atk_cond.reckless_reroll_available:
             has_reckless_reroll = True
+        # Heroic Inspiration (SPECIES_PLAN.md D11): spend the ★ to reroll a miss.
+        elif (not result.hit) and atk_cond and atk_cond.heroic_reroll_available:
+            has_heroic_reroll = True
         # Homing Strikes (Soulknife L9): on a miss with a Psychic Blade, spend a Psionic Energy
         # Die to add to the roll and (maybe) convert it to a hit.
         elif (not result.hit) and app._can_homing_strike(atk_idx, action):
@@ -882,6 +886,8 @@ def finish_attack(app):
             riders.offer_curving_shot(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_reckless_reroll:
             riders.offer_reckless_reroll(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
+        elif has_heroic_reroll:
+            riders.offer_heroic_reroll(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_homing_strike:
             riders.offer_homing_strike(app, action, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_riposte:
@@ -916,7 +922,7 @@ def finish_attack(app):
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_peerless_aim or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_curving_shot or has_protective_field or has_interception or has_dreadful_strike
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_peerless_aim or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_heroic_reroll or has_curving_shot or has_protective_field or has_interception or has_dreadful_strike
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:

@@ -283,7 +283,7 @@ HideResult VisibilityService::checkHide(BattleMap& bm, int agent_idx, bool in_co
         if (in_combat) {
             // Active Perception roll
             int perc_d20 = rules::roll(ctx_, 20);
-            int perc_mod = (observer_stats.wis - 10) / 2 + (observer_stats.perception_prof ? observer_stats.prof_bonus : 0);
+            int perc_mod = (observer_stats.wis - 10) / 2 + (observer_stats.hasPerceptionProf() ? observer_stats.prof_bonus : 0);
             observer_perception = perc_d20 + perc_mod;
             contest_log += std::format(
                 "\n  {}: Perception check d20={} + {} = {}",
@@ -370,13 +370,13 @@ std::string VisibilityService::checkHiddenAgentDetection(BattleMap& bm, int agen
         if (in_combat) {
             // Active Perception roll
             perc_d20 = rules::roll(ctx_, 20);
-            perc_mod = (observer_stats.wis - 10) / 2 + (observer_stats.perception_prof ? observer_stats.prof_bonus : 0);
+            perc_mod = (observer_stats.wis - 10) / 2 + (observer_stats.hasPerceptionProf() ? observer_stats.prof_bonus : 0);
             observer_perception = perc_d20 + perc_mod;
         } else {
             // Passive Perception
             is_passive = true;
             observer_perception = observer_stats.passivePerception();
-            perc_mod = (observer_stats.wis - 10) / 2 + (observer_stats.perception_prof ? observer_stats.prof_bonus : 0);
+            perc_mod = (observer_stats.wis - 10) / 2 + (observer_stats.hasPerceptionProf() ? observer_stats.prof_bonus : 0);
         }
 
         if (observer_perception >= hider_stealth) {

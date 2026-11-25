@@ -152,6 +152,7 @@ namespace {
     X(irresistible_offense_ability) X(luck_points) X(luck_points_max) \
     X(boon_of_fate_used) X(species) X(species_applied) X(condition_save_adv) X(species_option) X(species_size) X(species_spell_ability) X(granted_spells) \
     X(vampiric_bite_used) X(vampiric_strengthen_bonus) \
+    X(species_skill) X(adrenaline_rush_used) X(relentless_endurance_used) X(heroic_inspiration) \
     X(vampiric_strengthen_turns)
 
 // ── Agent::Conditions — every member, one X() each ───────────────────────────
@@ -168,7 +169,7 @@ namespace {
     X(grapple_escape_dc) X(grapple_range_ft) X(exhaustion_level) X(raging) \
     X(lion_aura_active) X(rage_of_gods_active) X(world_tree_long_teleport_used) \
     X(retaliation_available) X(retaliation_target_idx) X(reckless_attack) \
-    X(reckless_reroll_available) X(riposte_available) X(sentinel_guard_available) \
+    X(reckless_reroll_available) X(heroic_reroll_available) X(riposte_available) X(sentinel_guard_available) \
     X(soul_of_vengeance_available) X(inspiring_smite_used) X(unerring_strike_used) \
     X(peerless_aim_used) X(peerless_aim_available) X(blink_steps_available) \
     X(colossus_slayer_used) X(horde_breaker_available) X(horde_breaker_used) \

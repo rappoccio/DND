@@ -84,35 +84,44 @@ def load_npc_spells_from_record(app, agent_idx: int, mob_record: dict):
     app._sync_item_spells(agent_idx)
 
 
-def set_origin_feat(stats, new_feat: str, char_level: int):
-    """Set the agent's single origin feat idempotently.
+def set_origin_feat(stats, new_feat: str, char_level: int, second_feat: str = "NONE"):
+    """Set the agent's origin feats idempotently: `new_feat`, plus `second_feat` for a
+    Human's Versatile slot (SPECIES_PLAN.md D13; "NONE" = none, a duplicate is dropped).
 
     The dialog re-edits a live Stats whose hp_max/luck_points already include any prior
     feat's one-time bonus (the HP stepper round-trips the boosted value), so changing or
-    re-confirming a feat must STRIP the previous origin feat's effects before applying the
-    new one. add_feat() (the C++ source of truth) handles the apply; this only handles the
-    inverse for the swap. No-op when the feat is unchanged.
+    re-confirming a feat must STRIP each dropped origin feat's effects before applying the
+    new ones. add_feat() (the C++ source of truth) handles the apply; this only handles the
+    inverse for the swap. No-op when the feats are unchanged.
     """
-    new_feat = new_feat or "NONE"
-    prev = next((f for f in list(stats.feats) if f in ORIGIN_FEATS), None)
-    prev = prev or "NONE"
-    if prev == new_feat:
+    wanted = []
+    for f in (new_feat or "NONE", second_feat or "NONE"):
+        if f != "NONE" and f not in wanted:
+            wanted.append(f)
+    prev = [f for f in list(stats.feats) if f in ORIGIN_FEATS]
+    if prev == wanted:
         return  # already applied — leave hp_max/luck_points/initiative_prof as-is
 
-    # Strip the previous origin feat's one-time effects.
-    if prev == "Tough":
-        stats.hp_max = max(1, stats.hp_max - 2 * char_level)
-        stats.hp_cur = max(1, stats.hp_cur - 2 * char_level)
-    elif prev == "Alert":
-        stats.initiative_prof = False   # only this feat sets it
-    elif prev == "Lucky":
-        stats.luck_points = 0
-        stats.luck_points_max = 0
-    stats.feats = [f for f in list(stats.feats) if f not in ORIGIN_FEATS]
+    # Strip each dropped origin feat's one-time effects.
+    for f in prev:
+        if f in wanted:
+            continue
+        if f == "Tough":
+            stats.hp_max = max(1, stats.hp_max - 2 * char_level)
+            stats.hp_cur = max(1, stats.hp_cur - 2 * char_level)
+        elif f == "Alert":
+            stats.initiative_prof = False   # only this feat sets it
+        elif f == "Lucky":
+            stats.luck_points = 0
+            stats.luck_points_max = 0
+    others = [f for f in list(stats.feats) if f not in ORIGIN_FEATS]
+    stats.feats = others + [f for f in prev if f in wanted]
 
-    # Apply the newly chosen feat via the engine (applies Tough HP / Alert prof / Lucky points).
-    if new_feat != "NONE":
-        stats.add_feat(new_feat)
+    # Apply the newly chosen feats via the engine (Tough HP / Alert prof / Lucky points);
+    # add_feat is a no-op for one already held. Then put them in slot order.
+    for f in wanted:
+        stats.add_feat(f)
+    stats.feats = others + wanted
 
 
 def set_general_feats(stats, names):
@@ -132,7 +141,7 @@ def set_general_feats(stats, names):
         stats.add_feat(n)
 
 
-def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0, class_levels: dict = None, subclasses: dict = None, species: str = None, arcane_shot_options: list = None, species_option: str = None, species_size: str = None, species_spell_ability: int = None):
+def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_name: str = "None", char_level: int = 1, npc_data: dict = None, subclass_name: str = "NONE", eldritch_invocations: list = None, blessed_strike_name: str = "NONE", origin_feat: str = "NONE", general_feats: list = None, elemental_adept_types: list = None, hunter_prey_name: str = "NONE", defensive_tactics_name: str = "NONE", draconic_affinity_type: int = -1, metamagic_options: list = None, irresistible_offense_ability: int = 0, class_levels: dict = None, subclasses: dict = None, species: str = None, arcane_shot_options: list = None, species_option: str = None, species_size: str = None, species_spell_ability: int = None, species_skill: str = None, versatile_feat: str = "NONE"):
     """Called by StatsDialog when the user clicks OK.
 
     Multiclassing (MULTICLASSING_PLAN.md Phase 5): `class_levels` ({class:level})
@@ -260,7 +269,13 @@ def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_nam
 
     # Origin feat (one per PC). Applied after stats/level/prof_bonus are set so Tough HP,
     # Alert initiative proficiency, and Lucky points compute from the final values.
-    app._set_origin_feat(stats, origin_feat, char_level)
+    # A Human's Versatile slot (D13) is the second; any other species gets only the first.
+    second = versatile_feat if (species not in (None, "NONE")
+                                and rpg.species_has_versatile(species)) else "NONE"
+    if species is None:   # a legacy caller: keep a second origin feat it already holds
+        held = [f for f in list(stats.feats) if f in ORIGIN_FEATS]
+        second = held[1] if len(held) > 1 else "NONE"
+    app._set_origin_feat(stats, origin_feat, char_level, second)
     # General feats (multi-select). Disjoint from origin feats; no ASI auto-apply.
     app._set_general_feats(stats, general_feats)
     # Species (None = a legacy caller that doesn't pass one: leave it as it is). set_species
@@ -273,6 +288,10 @@ def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_nam
             stats.set_species_size(species_size)
         if species_spell_ability is not None:
             stats.set_species_spell_ability(int(species_spell_ability))
+        # Skillful (D12): one modelled skill for a Human; cleared for any other species.
+        if species_skill is not None or not rpg.species_has_skillful(stats.species):
+            pick = species_skill if rpg.species_has_skillful(stats.species) else ""
+            stats.set_species_skill(pick or "")
     # Dwarven Toughness tracks the level: a level change since the species was set moves the
     # folded-in HP bonus (no-op otherwise, and for every other species).
     stats.sync_species_hp()

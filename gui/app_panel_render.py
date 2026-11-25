@@ -71,6 +71,8 @@ _BON_FEY_TRIO = ("fey_effect", "steps_of_fey", "misty_escape")
 # no still-fused button left to cut the column. M2c needed six of these tuples and M2d
 # thirteen, for exactly that reason. The feature groups survive as the comments.
 _BON_RUN_BAND      = (
+    # Orc Adrenaline Rush (species)
+    "adrenaline_rush",
     # Monk, Barbarian, Warlock — the class band
     "patient_defense", "step_of_wind", "hand_of_healing", "wholeness_of_body",
     "rage", "intimidating_presence", "zealous_presence",
@@ -371,15 +373,17 @@ def draw_combat_panel(app):
         alive  = True
         dismissed = (aidx < len(agents) and agents[aidx].removed_from_play)
         hp_s = ""
+        star = ""
         if aidx < len(agents):
             s = app.combat.get_agent_stats(app.bm, aidx)
             alive = s.hp_cur > 0
             hp_s = hp_status(s)
+            star = " ★" if s.heroic_inspiration else ""   # Heroic Inspiration held (D11)
         if not alive or dismissed:
             col = (90, 90, 90)
         prefix = "▶ " if is_cur else "  "
         suffix = "  (dismissed)" if dismissed else ""
-        row_s  = f"{prefix}{entry.total:2d}  {name}{suffix}"
+        row_s  = f"{prefix}{entry.total:2d}  {name}{star}{suffix}"
         txt(row_s, lx, y, col)
         if hp_s and not dismissed:
             hs = app.font_sm.render(hp_s, True, col)

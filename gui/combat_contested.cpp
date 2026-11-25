@@ -84,14 +84,14 @@ ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
     int attacker_str_mod = (attacker.agent->getStats().str - 10) / 2;
     auto attacker_stats = getAgentStats(bm, action.attacker_idx);
     int attacker_prof = attacker_stats.prof_bonus;
-    int attacker_d20 = roll(20);
+    int attacker_d20 = d20TestFor(bm, action.attacker_idx);   // Halfling Luck
     int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof
                        + consumeStrengthenBonus(bm, action.attacker_idx);
 
     // Roll defender: max(Athletics, Acrobatics) = max(STR, DEX) + d20
     int target_str_mod = (target.agent->getStats().str - 10) / 2;
     int target_dex_mod = (target.agent->getStats().dex - 10) / 2;
-    int target_d20 = roll(20);
+    int target_d20 = d20TestFor(bm, action.target_idx);
     int target_athletic = target_d20 + target_str_mod;
     int target_acrobatic = target_d20 + target_dex_mod;
     int defender_total = std::max(target_athletic, target_acrobatic);
@@ -291,11 +291,7 @@ bool CombatEngine::rollFixedDcSave(BattleMap& bm, int saver_idx, SaveAbility_t a
     const bool adv = saveAdvantageFor(bm, saver_idx, ab)
                   || conditionSaveAdvantage(bm, saver_idx, condition_name);
     const bool dis = curseSaveDisadvantage(bm, saver_idx, ab);
-    int d20 = roll(20);
-    if (adv != dis) {
-        const int second = roll(20);
-        d20 = adv ? std::max(d20, second) : std::min(d20, second);
-    }
+    int d20 = d20TestFor(bm, saver_idx, adv, dis);   // adv+dis cancel; Halfling Luck
     int total = d20 + saveModFor(bm, saver_idx, ab);
     total = applyIndomitableMight(bm, saver_idx, ab, total);
     bool saved = total >= dc;
@@ -347,10 +343,7 @@ ChestTrapResult CombatEngine::triggerChestTrap(BattleMap& bm, int agent_idx, int
     if (trap.save_ability == SaveDex && tc.restrained) dis = true;
     int d20;
     if (auto_fail)       d20 = 1;
-    else if (adv && dis) d20 = roll(20);
-    else if (adv)        d20 = rollAdvantage(20);
-    else if (dis)        d20 = rollDisadvantage(20);
-    else                 d20 = roll(20);
+    else                 d20 = d20TestFor(bm, agent_idx, adv, dis);
     const int mod = saveModFor(bm, agent_idx, trap.save_ability);
     res.save_roll = d20 + mod;
     res.saved     = !auto_fail && res.save_roll >= res.save_dc;
@@ -579,13 +572,13 @@ GrappleResult CombatEngine::resolveGrapple(BattleMap& bm, int attacker_idx, int 
 
     result.valid = true;
     if (contested) {
-        int attacker_d20 = roll(20);
+        int attacker_d20 = d20TestFor(bm, attacker_idx);   // Halfling Luck
         int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof
                            + consumeStrengthenBonus(bm, attacker_idx);
         // Defender: max(Athletics, Acrobatics) = max(STR, DEX) + the same d20.
         int target_str_mod = (target.agent->getStats().str - 10) / 2;
         int target_dex_mod = (target.agent->getStats().dex - 10) / 2;
-        int target_d20 = roll(20);
+        int target_d20 = d20TestFor(bm, target_idx);
         int defender_total = std::max(target_d20 + target_str_mod, target_d20 + target_dex_mod);
         result.attacker_roll = attacker_total;
         result.defender_roll = defender_total;
@@ -682,8 +675,8 @@ GrappleEscapeResult CombatEngine::executeGrappleEscape(BattleMap& bm, int agent_
 
     // Roll best of STR (Athletics) or DEX (Acrobatics). Goliath Powerful Build: Advantage.
     const bool powerful = stats.hasPowerfulBuild();
-    int str_d20 = powerful ? rollAdvantage(20) : roll(20);
-    int dex_d20 = powerful ? rollAdvantage(20) : roll(20);
+    int str_d20 = d20TestFor(bm, agent_idx, powerful);   // Halfling Luck
+    int dex_d20 = d20TestFor(bm, agent_idx, powerful);
     int str_roll = str_d20 + str_mod;
     int dex_roll = dex_d20 + dex_mod;
     result.escape_roll = std::max(str_roll, dex_roll) + consumeStrengthenBonus(bm, agent_idx);

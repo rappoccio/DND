@@ -604,6 +604,13 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              "Erase agent[idx]'s spent spell scrolls (SPELL_SCROLLS_PLAN.md S3), keeping any whose\n"
              "spell is still live (concentration, a condition or effect it made). Later item\n"
              "spell tags are shifted; the scroll's own entries are untagged. Returns the count.")
+        .def("pay_teleport_cast",
+             &CombatEngine::payTeleportCast,
+             py::arg("battle_map"), py::arg("idx"), py::arg("spell_idx"), py::arg("slot_level"),
+             py::arg("use_grant") = false,
+             "Pay for a teleportation spell (resolved outside execute_spell): the item's charge, a\n"
+             "granted free cast (use_grant, or a PC with slot_level 0), else the slot at slot_level\n"
+             "plus the one-leveled-spell mark, N/day uses and recharge. False when a PC could not pay.")
         .def("spend_spell_slot",
              &CombatEngine::spendSpellSlot,
              py::arg("battle_map"), py::arg("idx"), py::arg("level"),
