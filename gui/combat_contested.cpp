@@ -266,8 +266,18 @@ BreakDoorResult CombatEngine::attemptBreakDoor(BattleMap& bm, int agent_idx, int
     return result;
 }
 
+bool CombatEngine::conditionSaveAdvantage(const BattleMap& bm, int saver,
+                                          std::string_view condition_name) const
+{
+    if (condition_name.empty()) return false;
+    if (saver < 0 || saver >= static_cast<int>(bm.placedAgents().size())) return false;
+    if (beguilingTwistAdvantage(bm, saver, condition_name)) return true;
+    return bm.placedAgents()[static_cast<std::size_t>(saver)].agent->getStats()
+               .hasConditionSaveAdv(condition_name);
+}
+
 bool CombatEngine::rollFixedDcSave(BattleMap& bm, int saver_idx, SaveAbility_t ab, int dc,
-                                   const std::string& source)
+                                   const std::string& source, const std::string& condition_name)
 {
     if (saver_idx < 0 || saver_idx >= static_cast<int>(bm.placedAgents().size())) return false;
     static constexpr const char* kNames[] = {"Str", "Dex", "Con", "Int", "Wis", "Cha"};
@@ -278,7 +288,8 @@ bool CombatEngine::rollFixedDcSave(BattleMap& bm, int saver_idx, SaveAbility_t a
              agentName(bm, saver_idx), ab_name, dc);
         return false;
     }
-    const bool adv = saveAdvantageFor(bm, saver_idx, ab);
+    const bool adv = saveAdvantageFor(bm, saver_idx, ab)
+                  || conditionSaveAdvantage(bm, saver_idx, condition_name);
     const bool dis = curseSaveDisadvantage(bm, saver_idx, ab);
     int d20 = roll(20);
     if (adv != dis) {
@@ -669,9 +680,10 @@ GrappleEscapeResult CombatEngine::executeGrappleEscape(BattleMap& bm, int agent_
     int str_mod = (stats.str - 10) / 2;
     int dex_mod = (stats.dex - 10) / 2;
 
-    // Roll best of STR (Athletics) or DEX (Acrobatics)
-    int str_d20 = roll(20);
-    int dex_d20 = roll(20);
+    // Roll best of STR (Athletics) or DEX (Acrobatics). Goliath Powerful Build: Advantage.
+    const bool powerful = stats.hasPowerfulBuild();
+    int str_d20 = powerful ? rollAdvantage(20) : roll(20);
+    int dex_d20 = powerful ? rollAdvantage(20) : roll(20);
     int str_roll = str_d20 + str_mod;
     int dex_roll = dex_d20 + dex_mod;
     result.escape_roll = std::max(str_roll, dex_roll) + consumeStrengthenBonus(bm, agent_idx);

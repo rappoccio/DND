@@ -189,7 +189,7 @@ ManeuverResult CombatEngine::applyManeuverEffect(BattleMap& bm, int attacker_idx
         }
     } else if (maneuver_type == 1) {
         // Menacing: WIS save or Frightened for 1 turn
-        res.save_roll = (beguilingTwistAdvantage(bm, target_idx, "Frightened") ? rollAdvantage(20)
+        res.save_roll = (conditionSaveAdvantage(bm, target_idx, "Frightened") ? rollAdvantage(20)
                                                                                : roll(20)) +
                         saveModFor(bm, target_idx, SaveWis);
         if (res.save_roll < dc && hasAuraOfCourage(bm, target_idx)) {
@@ -661,7 +661,7 @@ ArcaneShotResult CombatEngine::applyArcaneShot(BattleMap& bm, int archer_idx, in
     // The Beguiling save is itself a forced save from the archer, which would break a standing charm.
     endBeguilingCharm(bm, archer_idx, target_idx);
 
-    if (opt == ArcaneShotBeguiling && beguilingTwistAdvantage(bm, target_idx, "Charmed"))
+    if (opt == ArcaneShotBeguiling && conditionSaveAdvantage(bm, target_idx, "Charmed"))
         res.save_roll = rollAdvantage(20, saveModFor(bm, target_idx, ab));
     else
         res.save_roll = roll(20, saveModFor(bm, target_idx, ab));

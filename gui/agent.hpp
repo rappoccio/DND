@@ -982,10 +982,29 @@ namespace rpg {
       std::string species_size{};
       int species_spell_ability{kSpeciesAbilityInt};
       [[nodiscard]] const SpeciesDef* speciesDef() const noexcept { return findSpecies(species); }
-      [[nodiscard]] bool isDhampir() const noexcept {
+      // The species' traits with its option folded in (all zero with no species).
+      [[nodiscard]] SpeciesTraits speciesTraitsNow() const noexcept {
           const SpeciesDef* d = speciesDef();
-          return d && (d->flags & kSpeciesVampiricBite);
+          return d ? speciesTraits(*d, species_option) : SpeciesTraits{};
       }
+      [[nodiscard]] bool hasSpeciesFlag(std::uint32_t f) const noexcept {
+          const SpeciesDef* d = speciesDef();
+          return d && (d->flags & f);
+      }
+      // Condition-save Advantage (D5): condition names this creature has Advantage on saves
+      // to avoid or end. Any source may add to the list; the species' own (Brave, Fey
+      // Ancestry, Dwarven Resilience) are read from its flags and never stored here.
+      std::vector<std::string> condition_save_adv{};
+      [[nodiscard]] bool hasConditionSaveAdv(std::string_view cond) const noexcept {
+          if (cond.empty()) return false;
+          const SpeciesDef* d = speciesDef();
+          if (d && speciesFlagCoversCondition(d->flags, cond)) return true;
+          return std::find(condition_save_adv.begin(), condition_save_adv.end(), cond)
+                 != condition_save_adv.end();
+      }
+      // Goliath Powerful Build: Advantage on the check to end the Grappled condition.
+      [[nodiscard]] bool hasPowerfulBuild() const noexcept { return hasSpeciesFlag(kSpeciesPowerfulBuild); }
+      [[nodiscard]] bool isDhampir() const noexcept { return hasSpeciesFlag(kSpeciesVampiricBite); }
 
       // Dhampir Vampiric Bite: empowerments (Drain / Strengthen) spent since the last Long
       // Rest; the pool is the Proficiency Bonus.
@@ -1000,8 +1019,7 @@ namespace rpg {
       // Multiplier the species grants for `type` with nothing else in play (Trace of Undeath:
       // Necrotic 0.5). Effects that grant and later drop a resistance restore to this, not 1.0.
       [[nodiscard]] float speciesMagicMult(MagicDamage_t type) const noexcept {
-          const SpeciesDef* d = speciesDef();
-          return d && d->resists(type) ? 0.5f : 1.0f;
+          return speciesTraitsNow().resists(type) ? 0.5f : 1.0f;
       }
 
       // Swap species and/or option. `option` "" keeps the current option when it is valid
@@ -1019,6 +1037,11 @@ namespace rpg {
               if (((a.magic_resist_mask >> t) & 1u) && magic_damage_multipliers[t] == 0.5f)
                   magic_damage_multipliers[t] = 1.0f;
           save_advantage_mask &= ~a.save_advantage_bits;
+          if (a.hp_bonus != 0) {
+              hp_max = std::max(1, hp_max - a.hp_bonus);
+              hp_cur = std::max(1, std::min(hp_max, hp_cur - a.hp_bonus));
+          }
+          if (a.perception_prof) perception_prof = false;
           species_applied = {};
           vampiric_bite_used = 0;
           vampiric_strengthen_bonus = 0;
@@ -1028,20 +1051,38 @@ namespace rpg {
           const SpeciesDef* d = speciesDef();
           normalizeSpeciesChoices(next_option);
           if (!d) return;
+          const SpeciesTraits tr = speciesTraits(*d, species_option);
           SpeciesApplied& n = species_applied;
           n.speed_from = speed_walk;
-          speed_walk = std::max(speed_walk, d->speed_walk);
+          speed_walk = std::max(speed_walk, tr.speed_walk);
           n.speed_to = speed_walk;
           n.darkvision_from = darkvision_range;
-          darkvision_range = std::max(darkvision_range, d->darkvision);
+          darkvision_range = std::max(darkvision_range, tr.darkvision);
           n.darkvision_to = darkvision_range;
           for (std::size_t t = 0; t < magic_damage_multipliers.size(); ++t)
-              if (d->resists(static_cast<MagicDamage_t>(t)) && magic_damage_multipliers[t] > 0.5f) {
+              if (tr.resists(static_cast<MagicDamage_t>(t)) && magic_damage_multipliers[t] > 0.5f) {
                   magic_damage_multipliers[t] = 0.5f;
                   n.magic_resist_mask |= 1u << t;
               }
-          n.save_advantage_bits = d->save_advantage_bits & ~save_advantage_mask;
-          save_advantage_mask |= d->save_advantage_bits;
+          n.save_advantage_bits = tr.save_advantage_bits & ~save_advantage_mask;
+          save_advantage_mask |= tr.save_advantage_bits;
+          if ((tr.flags & kSpeciesKeenSenses) && !perception_prof) {
+              perception_prof = true;
+              n.perception_prof = true;
+          }
+          syncSpeciesHp();
+      }
+
+      // Dwarven Toughness: keep the folded-in HP bonus equal to the character level. The
+      // Stats dialog calls this after a level change; setSpecies() calls it on apply.
+      // hp_max (and hp_cur) move by the difference, so re-running it is a no-op.
+      void syncSpeciesHp() {
+          const int want = hasSpeciesFlag(kSpeciesToughness) ? std::max(0, char_level) : 0;
+          const int delta = want - species_applied.hp_bonus;
+          if (delta == 0) return;
+          hp_max = std::max(1, hp_max + delta);
+          hp_cur = std::max(1, std::min(hp_max, hp_cur + delta));
+          species_applied.hp_bonus = want;
       }
 
       // Bring option, size and spell ability in line with the species (D2): keep each that is
@@ -1078,24 +1119,34 @@ namespace rpg {
       // The traits are already folded in, except Darkvision, which the agent JSON does not
       // save; re-derive it, and rebuild the record as the species applied to a plain stat
       // block (Speed 30, no Darkvision, no resistance) so a later swap can strip it.
-      void restoreSpecies(const std::string& name) {
+      // `option` is the saved pick (it decides Drow Darkvision and the Draconic / Fiendish
+      // resistance). Dwarven Toughness HP is in the saved hp_max; a save without the record
+      // predates Dwarves, so none is recorded. Keen Senses' perception_prof is not in the
+      // agent JSON either and is re-derived here, like Darkvision.
+      void restoreSpecies(const std::string& name, const std::string& option = "") {
           species = name;
           species_applied = {};
           const SpeciesDef* d = speciesDef();
+          normalizeSpeciesChoices(option);
           if (!d) return;
+          const SpeciesTraits tr = speciesTraits(*d, species_option);
           SpeciesApplied& n = species_applied;
-          darkvision_range = std::max(darkvision_range, d->darkvision);
+          darkvision_range = std::max(darkvision_range, tr.darkvision);
           n.speed_from = n.speed_to = speed_walk;
-          if (d->speed_walk > 30 && speed_walk == d->speed_walk) n.speed_from = 30;
+          if (tr.speed_walk > 30 && speed_walk == tr.speed_walk) n.speed_from = 30;
           n.darkvision_from = n.darkvision_to = darkvision_range;
-          if (darkvision_range == d->darkvision) n.darkvision_from = 0;
+          if (darkvision_range == tr.darkvision) n.darkvision_from = 0;
           for (std::size_t t = 0; t < magic_damage_multipliers.size(); ++t)
-              if (d->resists(static_cast<MagicDamage_t>(t))) {
+              if (tr.resists(static_cast<MagicDamage_t>(t))) {
                   if (magic_damage_multipliers[t] > 0.5f) magic_damage_multipliers[t] = 0.5f;
                   if (magic_damage_multipliers[t] == 0.5f) n.magic_resist_mask |= 1u << t;
               }
-          n.save_advantage_bits = d->save_advantage_bits & ~save_advantage_mask;
-          save_advantage_mask |= d->save_advantage_bits;
+          n.save_advantage_bits = tr.save_advantage_bits & ~save_advantage_mask;
+          save_advantage_mask |= tr.save_advantage_bits;
+          if ((tr.flags & kSpeciesKeenSenses) && !perception_prof) {
+              perception_prof = true;
+              n.perception_prof = true;
+          }
       }
 
       // Grant a feat and apply its one-time stat-derived effects. Call AFTER ability

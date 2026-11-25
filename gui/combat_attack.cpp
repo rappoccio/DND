@@ -4702,7 +4702,15 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
                 bool auto_fail = (tgt_cond.paralyzed || tgt_cond.stunned) &&
                                 (weapon_cond.save_ability == SaveStr || weapon_cond.save_ability == SaveDex);
 
-                int save_d20 = auto_fail ? 1 : roll(20);
+                // Advantage (scoped save buff, condition-save Advantage: Dwarven Resilience vs a
+                // Poisoned rider) / curse Disadvantage; they cancel when both apply.
+                const bool save_adv = saveAdvantageFor(bm, action.target_idx, weapon_cond.save_ability)
+                    || conditionSaveAdvantage(bm, action.target_idx, weapon_cond.condition_name);
+                const bool save_dis = curseSaveDisadvantage(bm, action.target_idx, weapon_cond.save_ability);
+                int save_d20 = auto_fail           ? 1
+                             : save_adv == save_dis ? roll(20)
+                             : save_adv             ? rollAdvantage(20)
+                                                    : rollDisadvantage(20);
                 int save_mod = saveModFor(bm, action.target_idx, weapon_cond.save_ability);
                 int save_total = save_d20 + save_mod;
                 save_total = applyIndomitableMight(bm, action.target_idx, weapon_cond.save_ability, save_total);

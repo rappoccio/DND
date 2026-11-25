@@ -2,7 +2,8 @@
 
 Drafted 2026-11-24. Source: `character_origins.pdf` (SRD 5.2, pp. 83–86). Status: **Step 0
 FROZEN 2026-11-24** — D1 signed off and committed (9380611); D2–D14 signed off by the user the
-same day. SP0 audit done 2026-11-24 (results below). SP1 done 2026-11-24 (288/0). Next: SP2.
+same day. SP0 audit done 2026-11-24 (results below). SP1 done 2026-11-24 (288/0). SP2 done 2026-11-24
+(289/0). Next: SP3.
 
 ## Scope
 
@@ -150,6 +151,20 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
   - Powerful Build: advantage on checks to escape a grapple.
 
   The whole of Dwarf, Gnome (minus spells) and most of Elf are done at this step.
+  **Done 2026-11-24 (289/0).** `kSpeciesTable` carries each species' Speed, Darkvision,
+  resistance and save bits; `kSpeciesOptionTable` adds the option's (Drow Darkvision 120, Wood
+  Elf Speed 35, Draconic and Fiendish resistance), merged by `speciesTraits(def, option)`.
+  `SpeciesApplied` gains `hp_bonus` (Dwarven Toughness, kept equal to `char_level` by
+  `syncSpeciesHp()`, which the Stats dialog calls after a level change) and `perception_prof`
+  (Keen Senses; cleared on a swap only if it set it). D5: `Stats::condition_save_adv` is a list
+  for other sources; the species' own (Brave, Fey Ancestry, Dwarven Resilience) are flags read
+  live by `hasConditionSaveAdv`, never stored. `CombatEngine::conditionSaveAdvantage` replaces
+  every `beguilingTwistAdvantage` call site and fills the three SP0 gaps: the weapon on-hit
+  rider save (which now also reads `saveAdvantageFor` and curse Disadvantage), the skip-turn
+  save loop, and `rollFixedDcSave` (new optional `condition_name`). Powerful Build: Advantage on
+  both grapple-escape checks. `restoreSpecies(name, option)` re-derives Darkvision and Keen
+  Senses with the option. New suite `test_species_traits.py`. A species picked in an SP1-era
+  save got no traits; re-pick it to apply them.
 - **SP3 — Granted spells (D3).** The `GrantedSpell` vector, Long Rest recharge and the
   free-cast path. Elf lineage cantrips plus level 3 and 5 spells, Forest Gnome, Rock Gnome
   cantrips, Tiefling legacy plus Thaumaturgy. The spell dialog shows them with "free ×N" or a slot

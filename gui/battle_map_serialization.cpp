@@ -48,7 +48,8 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     SpeciesApplied,
-    speed_from, speed_to, darkvision_from, darkvision_to, magic_resist_mask, save_advantage_bits)
+    speed_from, speed_to, darkvision_from, darkvision_to, magic_resist_mask, save_advantage_bits,
+    hp_bonus, perception_prof)
 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     Item,
@@ -145,7 +146,7 @@ namespace {
     X(fiendish_resilience_type) X(portent_dice) X(eldritch_invocations) \
     X(fiendish_vigor_applied) X(feats) X(stolen_spell_names) X(elemental_adept_types) \
     X(irresistible_offense_ability) X(luck_points) X(luck_points_max) \
-    X(boon_of_fate_used) X(species) X(species_applied) X(species_option) X(species_size) X(species_spell_ability) \
+    X(boon_of_fate_used) X(species) X(species_applied) X(condition_save_adv) X(species_option) X(species_size) X(species_spell_ability) \
     X(vampiric_bite_used) X(vampiric_strengthen_bonus) \
     X(vampiric_strengthen_turns)
 

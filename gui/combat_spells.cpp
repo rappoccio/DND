@@ -441,7 +441,7 @@ SpellSave CombatEngine::rollSpellSave(BattleMap& bm, const SpellAction& action, 
 
     // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs a spell that applies Charmed/Frightened.
     for (const auto& c : sp.conditions)
-        if (beguilingTwistAdvantage(bm, tgt_idx, c.condition_name)) {
+        if (conditionSaveAdvantage(bm, tgt_idx, c.condition_name)) {
             target_adv = true;
             log_("Beguiling Twist: {} has Advantage on the save vs charm/fear", agentName(bm, tgt_idx));
             break;
@@ -2334,7 +2334,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
 
                         // Fey Wanderer Beguiling Twist (L7): Advantage on a save vs Charmed/Frightened.
                         const bool fey_twist =
-                            beguilingTwistAdvantage(bm, tgt_idx, spell_cond.condition_name);
+                            conditionSaveAdvantage(bm, tgt_idx, spell_cond.condition_name);
                         // Aberrant Mind Psychic Defenses (L6): same advantage vs Charmed/Frightened.
                         const bool aberrant_defense =
                             tgt_stats.hasClass(CharacterClass::Sorcerer) &&
@@ -3366,7 +3366,7 @@ void CombatEngine::applySpellEffect(BattleMap& bm, const ActiveSpellEffect& effe
         for (const auto& c : sp.conditions)
             if (c.condition_name == "Charmed" || c.condition_name == "Frightened") {
                 charm_fear = true;
-                if (beguilingTwistAdvantage(bm, target_idx, c.condition_name)) adv = true;
+                if (conditionSaveAdvantage(bm, target_idx, c.condition_name)) adv = true;
             }
         // Vistani Curse of Weakness: Disadvantage on saves tied to the cursed ability.
         if (curseSaveDisadvantage(bm, target_idx, sp.save_ability)) dis = true;

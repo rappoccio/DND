@@ -304,7 +304,7 @@ bool CombatEngine::bardBeguilingMagic(BattleMap& bm, int bard_idx, int target_id
     const char* cond_name = use_frightened ? "Frightened" : "Charmed";
     const int   dc        = rules::spellSaveDc(bs);
     const int   save_mod  = saveModFor(bm, target_idx, SaveWis);
-    const int   save_roll = (beguilingTwistAdvantage(bm, target_idx, cond_name) ? rollAdvantage(20)
+    const int   save_roll = (conditionSaveAdvantage(bm, target_idx, cond_name) ? rollAdvantage(20)
                                                                                 : roll(20)) + save_mod;
 
     if (save_roll >= dc) {

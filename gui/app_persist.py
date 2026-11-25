@@ -439,7 +439,9 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
                 "species_applied": {k: getattr(s.species_applied, k) for k in
                                     ("speed_from", "speed_to", "darkvision_from",
                                      "darkvision_to", "magic_resist_mask",
-                                     "save_advantage_bits")},
+                                     "save_advantage_bits", "hp_bonus",
+                                     "perception_prof")},
+                "condition_save_adv": list(s.condition_save_adv),
                 "vampiric_bite_used": s.vampiric_bite_used,
                 "vampiric_strengthen_bonus": s.vampiric_strengthen_bonus,
                 "vampiric_strengthen_turns": s.vampiric_strengthen_turns,

@@ -7,7 +7,7 @@ replaces an invalid one, and clears them for "no species"; the size and spell-ab
 setters refuse what the species doesn't allow; the choices survive the agent-JSON save
 and load, and an older save with none gets the defaults; the Stats dialog shows the
 pickers only for species that have them, cycles them, and hands the picks to OK.
-The traits of the nine species (Speed, Darkvision, resistances) are SP2.
+The traits of the nine species (Speed, Darkvision, resistances) are in test_species_traits.py.
 """
 
 import json
@@ -75,8 +75,8 @@ def test_set_species_defaults_and_keeps_choices():
 
 
 def test_option_swap_keeps_dhampir_strip_intact():
-    """An option change re-applies the species; with no option-driven traits yet the
-    stat block is unchanged, and the Dhampir strip still restores what it set."""
+    """An option change re-applies the species; Speed is untouched by the Dragonborn
+    colours and Drow, and the Dhampir strip still restores what it set."""
     s = rpg.Stats()
     s.speed_walk = 30
     s.set_species("Dragonborn", "Red")

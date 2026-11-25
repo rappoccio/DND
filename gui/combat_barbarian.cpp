@@ -548,7 +548,7 @@ bool CombatEngine::useIntimidatingPresence(BattleMap& bm, int idx) noexcept
         // Roll WIS save for the target
         const int wis_save_mod = saveModFor(bm, target_idx, SaveWis);
 
-        const int save_d20 = beguilingTwistAdvantage(bm, target_idx, "Frightened") ? rollAdvantage(20) : roll(20);
+        const int save_d20 = conditionSaveAdvantage(bm, target_idx, "Frightened") ? rollAdvantage(20) : roll(20);
         const int save_total = save_d20 + wis_save_mod;
         const bool failed = save_total < save_dc;
 

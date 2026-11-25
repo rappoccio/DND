@@ -1329,8 +1329,11 @@ public:
     // DC 17 Cha): d20 (Advantage / curse Disadvantage) + saveModFor (Bless, auras) + Indomitable
     // Might; Paralyzed/Stunned auto-fail Str/Dex. A failed save is turned into a success with
     // Legendary Resistance when the saver has a use left. Logs the roll; returns true on a success.
+    // `condition_name` names the condition a failed save brings ("" = none), so a save against
+    // it gets condition-save Advantage (D5).
     [[nodiscard]] bool rollFixedDcSave(BattleMap& bm, int saver_idx, SaveAbility_t ab, int dc,
-                                       const std::string& source);
+                                       const std::string& source,
+                                       const std::string& condition_name = "");
 
     // ── Chests (plans/ITEMS_AND_CHESTS_PLAN.md) ─────────────────────────────
     // Pick a chest's lock: Sleight of Hand vs lock_dc, as attemptPickLock. An Arcane Lock
@@ -2158,6 +2161,11 @@ public:
     // on a save against `condition_name` ("Charmed" / "Frightened"). Every Charm/Fear save site asks.
     [[nodiscard]] bool beguilingTwistAdvantage(const BattleMap& bm, int saver,
                                                std::string_view condition_name) const;
+    // Every save to avoid or end a condition asks this (SPECIES_PLAN.md D5): Fey Wanderer's
+    // Beguiling Twist half, plus Stats::hasConditionSaveAdv (Brave, Fey Ancestry, Dwarven
+    // Resilience, condition_save_adv). "" never has Advantage.
+    [[nodiscard]] bool conditionSaveAdvantage(const BattleMap& bm, int saver,
+                                              std::string_view condition_name) const;
 
     // Reaction half. Every site where a save to AVOID or END Charmed/Frightened succeeds calls
     // charmFearSaveSucceeded(saver). Each Fey Wanderer L7+ with its Reaction — the saver itself, or

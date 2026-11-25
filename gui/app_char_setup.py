@@ -273,6 +273,9 @@ def on_stats_ok(app, agent_idx: int, steppers: dict, prof_flags: dict, class_nam
             stats.set_species_size(species_size)
         if species_spell_ability is not None:
             stats.set_species_spell_ability(int(species_spell_ability))
+    # Dwarven Toughness tracks the level: a level change since the species was set moves the
+    # folded-in HP bonus (no-op otherwise, and for every other species).
+    stats.sync_species_hp()
     # Elemental Adept's chosen element(s) (set via the element picker). Kept only while the feat
     # is selected; cleared otherwise so a deselect doesn't leave stale types.
     stats.elemental_adept_types = list(elemental_adept_types or []) if stats.has_feat("Elemental Adept") else []

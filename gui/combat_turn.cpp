@@ -333,7 +333,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
                 continue;
             const int save_dc  = rules::spellSaveDcFromAbility(ps, SaveCha);
             const int save_mod = saveModFor(bm, agent_idx, SaveWis);
-            const int save_d20 = beguilingTwistAdvantage(bm, agent_idx, "Frightened") ? rollAdvantage(20)
+            const int save_d20 = conditionSaveAdvantage(bm, agent_idx, "Frightened") ? rollAdvantage(20)
                                                                                        : roll(20);
             const int save_total = save_d20 + save_mod;
             log_("{} makes a WIS save vs Frightful Aura (DC {}): {} + {} = {} ({})",
@@ -937,7 +937,8 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         int save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
         // Advantage (scoped save buff, Phase 0.3) / Disadvantage (Vistani Curse of Weakness) on
         // saves tied to this ability; they cancel when both apply.
-        bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability);
+        bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability) ||
+                        conditionSaveAdvantage(bm, agent_idx, active_cond.condition_name);
         bool save_dis = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability);
         int save_d20 = (save_adv == save_dis) ? roll(20)
                      : save_adv               ? rollAdvantage(20)
@@ -1046,7 +1047,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         // Advantage (scoped save buff, Phase 0.3; Beguiling Twist vs Charmed/Frightened) /
         // Disadvantage (Vistani Curse of Weakness) on saves tied to this ability; they cancel.
         bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability) ||
-                        beguilingTwistAdvantage(bm, agent_idx, active_cond.condition_name);
+                        conditionSaveAdvantage(bm, agent_idx, active_cond.condition_name);
         bool save_dis = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability);
         int save_d20 = (save_adv == save_dis) ? roll(20)
                      : save_adv               ? rollAdvantage(20)
@@ -1202,7 +1203,7 @@ void CombatEngine::endTurn(BattleMap& bm, int agent_idx) noexcept
         // Save modifier + advantage/disadvantage, mirroring the beginTurn save loops.
         int  save_mod = saveModFor(bm, agent_idx, active_cond.save_ability);
         bool save_adv = saveAdvantageFor(bm, agent_idx, active_cond.save_ability) ||
-                        beguilingTwistAdvantage(bm, agent_idx, active_cond.condition_name);
+                        conditionSaveAdvantage(bm, agent_idx, active_cond.condition_name);
         bool save_dis = curseSaveDisadvantage(bm, agent_idx, active_cond.save_ability);
         int  save_d20 = (save_adv == save_dis) ? roll(20)
                       : save_adv               ? rollAdvantage(20)

@@ -136,14 +136,17 @@ def dict_to_stats(stats_dict):
     # Species: NOT set_species — speed/resistance are already saved with the species' traits
     # folded in, like the feats above. restore_species re-derives Darkvision (not in the saved
     # dict) and rebuilds species_applied; a save that carries the record then overrides it.
-    stats.restore_species(str(stats_dict.get("species", "")))
+    # The option goes in too: it decides Drow Darkvision and the Draconic/Fiendish resistance.
+    stats.restore_species(str(stats_dict.get("species", "")), str(stats_dict.get("species_option", "")))
     applied = stats_dict.get("species_applied")
     if isinstance(applied, dict) and stats.species:
         a = rpg.SpeciesApplied()
         for key in ("speed_from", "speed_to", "darkvision_from", "darkvision_to",
-                    "magic_resist_mask", "save_advantage_bits"):
+                    "magic_resist_mask", "save_advantage_bits", "hp_bonus"):
             setattr(a, key, int(applied.get(key, getattr(a, key))))
+        a.perception_prof = bool(applied.get("perception_prof", a.perception_prof))
         stats.species_applied = a
+    stats.condition_save_adv = [str(c) for c in stats_dict.get("condition_save_adv", [])]
     # Sub-choices (D2); a save from before SP1 carries none and gets the species' defaults.
     stats.species_size = str(stats_dict.get("species_size", ""))
     stats.species_spell_ability = int(stats_dict.get("species_spell_ability", 3))

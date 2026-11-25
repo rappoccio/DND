@@ -71,6 +71,13 @@ void bindCombatRanger(py::class_<CombatEngine>& engine) {
         .def("vanish_orphaned_companions", &CombatEngine::vanishOrphanedCompanions,
              py::arg("battle_map"),
              "Tombstone every Primal Companion whose Ranger has died or left play.")
+        .def("condition_save_advantage",
+             [](const CombatEngine& e, const BattleMap& bm, int saver, const std::string& cond) {
+                 return e.conditionSaveAdvantage(bm, saver, cond);
+             },
+             py::arg("battle_map"), py::arg("saver"), py::arg("condition_name"),
+             "True iff saver has Advantage on a save to avoid or end this condition (Beguiling\n"
+             "Twist half, species Brave / Fey Ancestry / Dwarven Resilience, condition_save_adv).")
         .def("beguiling_twist_advantage",
              [](const CombatEngine& e, const BattleMap& bm, int saver, const std::string& cond) {
                  return e.beguilingTwistAdvantage(bm, saver, cond);

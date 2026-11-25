@@ -108,7 +108,7 @@ int CombatEngine::applyMassFear(BattleMap& bm, int ranger_idx, int target_idx)
         if (pt.agent->getConditions().dead || pt.agent->getStats().hp_cur <= 0) continue;
         if (j != target_idx &&
             footprintDistance(tg.origin, tg.agent->getSize(), pt.origin, pt.agent->getSize()) > 2) continue;
-        const int save = (beguilingTwistAdvantage(bm, j, "Frightened") ? rollAdvantage(20) : roll(20)) +
+        const int save = (conditionSaveAdvantage(bm, j, "Frightened") ? rollAdvantage(20) : roll(20)) +
                          saveModFor(bm, j, SaveWis);
         if (save >= dc) {
             log_("{} resists Mass Fear (WIS save {} vs DC {})", agentName(bm, j), save, dc);
@@ -197,7 +197,7 @@ bool CombatEngine::applyBeguilingTwist(BattleMap& bm, int reactor, int saver, in
     log_("{}: Beguiling Twist — {} must make a WIS save (DC {}) or be {}", agentName(bm, reactor),
          agentName(bm, target), dc, cond_name);
     recordNpcAnnounce(reactor, target, std::format("{} uses Beguiling Twist!", agentName(bm, reactor)));
-    const bool adv = beguilingTwistAdvantage(bm, target, cond_name);
+    const bool adv = conditionSaveAdvantage(bm, target, cond_name);
     const int  d20 = adv ? rollAdvantage(20) : roll(20);
     const int  save = d20 + saveModFor(bm, target, SaveWis);
     if (save >= dc) {

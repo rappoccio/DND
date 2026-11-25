@@ -317,7 +317,11 @@ void bindTypes(py::module_& m) {
         .def_readwrite("magic_resist_mask", &SpeciesApplied::magic_resist_mask,
              "Bit (1 << MagicDamage): Resistance the species set")
         .def_readwrite("save_advantage_bits", &SpeciesApplied::save_advantage_bits,
-             "save_advantage_mask bits the species added");
+             "save_advantage_mask bits the species added")
+        .def_readwrite("hp_bonus", &SpeciesApplied::hp_bonus,
+             "Dwarven Toughness HP folded into hp_max / hp_cur")
+        .def_readwrite("perception_prof", &SpeciesApplied::perception_prof,
+             "Keen Senses turned perception_prof on");
     m.def("species_names", [] {
         std::vector<std::string> out;
         for (const auto& d : kSpeciesTable) out.emplace_back(d.name);
@@ -877,9 +881,18 @@ void bindTypes(py::module_& m) {
              "Pick INT/WIS/CHA (3/4/5) for a species with the choice; False (unchanged) otherwise.")
         .def("set_species", &Agent::Stats::setSpecies, py::arg("name"), py::arg("option") = "",
              "Swap species: strip what the old one applied (species_applied), apply the new "
-             "one's table traits (Dhampir: Speed 35, Darkvision 60, Necrotic Resistance). "
+             "one's table traits (Speed, Darkvision, resistances, save bits, Keen Senses, "
+             "Dwarven Toughness HP; the option's traits too). "
              "No-op when unchanged.")
-        .def("restore_species", &Agent::Stats::restoreSpecies, py::arg("name"),
+        .def("sync_species_hp", &Agent::Stats::syncSpeciesHp,
+             "Dwarven Toughness: move hp_max/hp_cur so the species HP bonus equals char_level.")
+        .def_readwrite("condition_save_adv", &Agent::Stats::condition_save_adv,
+             "Condition names with save Advantage from sources other than the species (D5).")
+        .def("has_condition_save_adv", [](const Agent::Stats& s, const std::string& c) {
+                 return s.hasConditionSaveAdv(c); }, py::arg("condition"),
+             "Advantage on saves to avoid or end `condition` (species flags or condition_save_adv).")
+        .def("has_powerful_build", &Agent::Stats::hasPowerfulBuild)
+        .def("restore_species", &Agent::Stats::restoreSpecies, py::arg("name"), py::arg("option") = "",
              "Load a save that predates species_applied: set the species, re-derive Darkvision "
              "and rebuild species_applied from the table (traits assumed already folded in).")
         .def("species_magic_mult", &Agent::Stats::speciesMagicMult, py::arg("type"),
