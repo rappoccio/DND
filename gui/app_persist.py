@@ -459,6 +459,11 @@ def save_agents(app, path: str | None = None, exclude_indices=None, raw: bool = 
                 "draconic_flight_used": s.draconic_flight_used,
                 "draconic_flight_rounds": s.draconic_flight_rounds,
                 "draconic_flight_fly_from": s.draconic_flight_fly_from,
+                # SP6: Goliath pools and a Large Form in progress
+                "giant_ancestry_used": s.giant_ancestry_used,
+                "large_form_used": s.large_form_used,
+                "large_form_rounds": s.large_form_rounds,
+                "large_form_speed_added": s.large_form_speed_added,
                 "vampiric_strengthen_bonus": s.vampiric_strengthen_bonus,
                 "vampiric_strengthen_turns": s.vampiric_strengthen_turns,
                 "primal_champion_applied": s.primal_champion_applied,

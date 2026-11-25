@@ -62,7 +62,8 @@ bool VisibilityService::canPerceiveTarget(const BattleMap& bm, int viewer_idx, i
         return false;
     if (darknessConceals(bm, viewer_idx, viewer.origin, target_idx))
         return false;
-    if (!target.agent->getConditions().invisible)
+    // Faerie Fire: an Outlined creature can't benefit from the Invisible condition.
+    if (!target.agent->getConditions().invisible || target.agent->getConditions().outlined)
         return true;  // not invisible → perceivable (geometric LoS handled elsewhere)
     if (areAllies(bm, viewer_idx, target_idx))
         return true;  // allies always know where their invisible friend is (RAW: you hide from enemies)
@@ -159,6 +160,7 @@ void VisibilityService::computeVisibility(BattleMap& bm, int agent_idx) noexcept
 
         // Invisible condition: blocked unless the viewer has Truesight/Blindsight in range.
         if (!ally && target.agent->getConditions().invisible &&
+            !target.agent->getConditions().outlined &&   // Faerie Fire cancels Invisible
             !piercesInvisibility(viewer_stats, chebyshevFeet(viewer, target))) {
             int64_t key = (static_cast<int64_t>(agent_idx) << 32) | static_cast<uint32_t>(target_idx);
             visibilityMap_[key] = VisibilityLevel::Blocked;

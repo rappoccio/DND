@@ -52,6 +52,9 @@ inline constexpr std::uint32_t kSpeciesVersatile     = 1u << 13;  // Human: a se
 // SP5:
 inline constexpr std::uint32_t kSpeciesBreathWeapon  = 1u << 14;  // Dragonborn: Breath Weapon (D7)
 inline constexpr std::uint32_t kSpeciesDraconicFlight = 1u << 15; // Dragonborn: Draconic Flight (D8)
+// SP6:
+inline constexpr std::uint32_t kSpeciesGiantAncestry = 1u << 16;  // Goliath: Giant Ancestry (D9)
+inline constexpr std::uint32_t kSpeciesLargeForm     = 1u << 17;  // Goliath: Large Form (D6)
 
 // Condition-save Advantage (D5): the condition a flag covers, "" for a flag that covers none.
 [[nodiscard]] constexpr bool speciesFlagCoversCondition(std::uint32_t flags,
@@ -128,7 +131,8 @@ inline constexpr std::array kSpeciesTable{
     SpeciesDef{.name = "Gnome", .darkvision = 60, .size_options = kSpeciesSizeSmall,
                .save_advantage_bits = kGnomishCunningBits, .flags = kSpeciesSpellAbility,
                .option_label = "Lineage", .options = kGnomishLineages},
-    SpeciesDef{.name = "Goliath", .speed_walk = 35, .flags = kSpeciesPowerfulBuild,
+    SpeciesDef{.name = "Goliath", .speed_walk = 35,
+               .flags = kSpeciesPowerfulBuild | kSpeciesGiantAncestry | kSpeciesLargeForm,
                .option_label = "Ancestry", .options = kGiantAncestries},
     SpeciesDef{.name = "Halfling", .size_options = kSpeciesSizeSmall,
                .flags = kSpeciesBrave | kSpeciesLuck},
@@ -211,6 +215,25 @@ struct SpeciesTraits {
 inline constexpr std::string_view kBreathWeaponPool = "Breath Weapon";
 inline constexpr int kDraconicFlightRounds = 100;   // 10 minutes (D8)
 inline constexpr int kDraconicFlightLevel  = 5;
+
+// Goliath (SP6). Giant Ancestry (D9): one benefit by ancestry, PB uses per Long Rest shared
+// by every use. Fire / Frost / Hill ride a hit (offered like a maneuver); Cloud is a Bonus
+// Action teleport; Stone and Storm are reactions to taking damage.
+enum class GiantAncestry { None, Cloud, Fire, Frost, Hill, Stone, Storm };
+[[nodiscard]] constexpr GiantAncestry giantAncestryOf(std::string_view option) noexcept {
+    return option == "Cloud" ? GiantAncestry::Cloud : option == "Fire" ? GiantAncestry::Fire
+         : option == "Frost" ? GiantAncestry::Frost : option == "Hill" ? GiantAncestry::Hill
+         : option == "Stone" ? GiantAncestry::Stone : option == "Storm" ? GiantAncestry::Storm
+         : GiantAncestry::None;
+}
+inline constexpr int kCloudsJauntCells   = 6;    // 30 ft
+inline constexpr int kStormsThunderCells = 12;   // 60 ft
+inline constexpr int kFrostsChillSpeed   = 10;   // ft of Speed lost
+// Large Form (D6, level 5): a Bonus Action, 10 minutes, once per Long Rest. Large is a 2×2
+// footprint; +10 ft Speed; Advantage on Strength checks.
+inline constexpr int kLargeFormLevel  = 5;
+inline constexpr int kLargeFormRounds = 100;
+inline constexpr int kLargeFormSpeed  = 10;
 
 // Size bit <-> the name saved and shown ("Small", "Medium"; "" for an unknown bit).
 [[nodiscard]] constexpr std::string_view speciesSizeName(std::uint8_t bit) noexcept {

@@ -701,6 +701,7 @@ def finish_attack(app):
     has_sentinel_guard = False
     has_soul_of_vengeance = False
     has_dreadful_strike = False
+    has_giant_ancestry = False
     has_homing_strike = False
     if result.valid:
         atk_cond = app.combat.get_agent_conditions(app.bm, atk_idx)
@@ -741,6 +742,10 @@ def finish_attack(app):
             has_eldritch_smite = True
         elif result.hit and atk_cond and atk_cond.maneuver_available:
             has_maneuver = True
+        # Goliath Giant Ancestry (SPECIES_PLAN.md D9): Fire's Burn / Frost's Chill / Hill's Tumble.
+        # Last of the attacker's on-hit riders, so it shadows no class rider (one rider a swing).
+        elif result.hit and atk_cond and atk_cond.giant_ancestry_available:
+            has_giant_ancestry = True
         elif (not result.hit) and atk_cond and atk_cond.peerless_aim_available:
             has_peerless_aim = True
         elif (not result.hit) and atk_cond and atk_cond.guided_strike_available:
@@ -883,6 +888,8 @@ def finish_attack(app):
             riders.offer_divine_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_dreadful_strike:
             riders.offer_dreadful_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
+        elif has_giant_ancestry:
+            riders.offer_giant_ancestry(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_psionic_strike:
             riders.offer_psionic_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_arcane_shot:
@@ -943,7 +950,7 @@ def finish_attack(app):
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_peerless_aim or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_heroic_reroll or has_curving_shot or has_protective_field or has_interception or has_dreadful_strike
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_peerless_aim or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_heroic_reroll or has_curving_shot or has_protective_field or has_interception or has_dreadful_strike or has_giant_ancestry
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:

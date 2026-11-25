@@ -645,6 +645,7 @@ PreserveLifeResult CombatEngine::usePreserveLife(BattleMap& bm, int caster_idx,
 
         const int cap = tgt.hp_max / 2;          // can restore up to half its HP max
         if (tgt.hp_cur >= cap) continue;          // already at/above the cap → no healing
+        if (tgt.cant_heal) continue;              // can't regain HP (Chill Touch, Pit Fiend poison)
         const int give = std::min(pool, cap - tgt.hp_cur);
         if (give <= 0) continue;
 

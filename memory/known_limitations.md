@@ -1392,3 +1392,22 @@ The GUI offers it on a missed weapon attack and in the OnSaveFail window of a si
 save spell. A failed non-spell save (weapon rider, repeat save) and ability checks are the
 DM's call: click the ★ on the tracker row to spend it. The ★ toggle lives on the tracker
 (tracker mode); the engine-mode initiative list only shows it.
+
+### Goliath and the SP6 spells: trigger scope [LIMITATION] (2026-11-25, SP6)
+- **Damage reactions fire on weapon attacks only.** Stone's Endurance, Storm's Thunder and
+  Hellish Rebuke sit in the defender OnHit window, which weapon attacks open. Damage from a
+  spell (attack or save), an AoE or a rider does not offer them. They are offered before the
+  damage lands, like Parry, so a creature the hit would drop still gets to answer.
+- **Hellish Rebuke** spends a free granted cast first, then the lowest slot; there is no
+  upcast choice.
+- **Fire's Burn / Frost's Chill / Hill's Tumble** ride weapon hits, not spell attack rolls.
+  The GUI offers one rider per swing, and Giant Ancestry is last among the attacker's on-hit
+  riders, so a class rider (Divine Smite, a maneuver, …) offered on the same swing shadows it.
+- **Frost's Chill** reuses the Slow mastery's `slowed` flag: −10 ft on the target's next turn.
+- **Large Form** has no early end other than the free dismissal (none on Incapacitated, RAW).
+  A rebuild of the agents from their configs (`apply_agent_configs`) keeps the 2×2 config size
+  only if the PC was saved while Large.
+- **Chill Touch**'s "can't regain HP until the end of your next turn" ends at the start of the
+  caster's turn after that (conditions tick at the caster's turn start), a few initiative
+  places late. Heal paths written directly in Python (some GUI-side heals) don't check it.
+- **Faerie Fire**: the Dim Light the outline sheds and outlined objects aren't modelled.

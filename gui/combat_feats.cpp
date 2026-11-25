@@ -371,6 +371,337 @@ bool CombatEngine::toggleDraconicFlight(BattleMap& bm, int idx)
     return true;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Goliath (SPECIES_PLAN.md SP6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+// The usual gate for a creature using a feature on its own turn or as a reaction.
+bool featureReady(const BattleMap& bm, int idx) noexcept
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    if (bm.isAgentOnDeck(idx)) return false;
+    return bm.getAgentStats(idx).hp_cur > 0 && !bm.getAgentConditions(idx).incapacitated;
+}
+
+// Spend one Giant Ancestry use (false, nothing spent, when none is left).
+bool spendGiantAncestry(BattleMap& bm, int idx) noexcept
+{
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (s.giantAncestryRemaining() <= 0) return false;
+    s.giant_ancestry_used += 1;
+    bm.setAgentStats(idx, s);
+    return true;
+}
+
+// Damage of one type, the target's multiplier applied (the same rounding as the riders).
+int typedDamage(const Agent::Stats& tgt, MagicDamage_t t, int raw) noexcept
+{
+    return static_cast<int>(static_cast<float>(raw) * tgt.magic_damage_multipliers[static_cast<std::size_t>(t)]);
+}
+} // namespace
+
+Cell CombatEngine::largeFormOrigin(const BattleMap& bm, int idx) const
+{
+    const auto& agents = bm.placedAgents();
+    if (idx < 0 || idx >= static_cast<int>(agents.size())) return {-1, -1};
+    const Cell o = agents[static_cast<std::size_t>(idx)].origin;
+    // The 2×2 must keep the token's own cell, so the anchor is it or a step up and/or left.
+    for (const auto& [dc, dr] : {std::pair{0, 0}, {-1, 0}, {0, -1}, {-1, -1}}) {
+        const Cell a{o.col + dc, o.row + dr, o.z};
+        bool ok = true;
+        for (int c = 0; c < 2 && ok; ++c)
+            for (int r = 0; r < 2 && ok; ++r)
+                ok = isValidTeleportDestination(bm, a.col + c, a.row + r);
+        if (!ok || bm.footprintSplit(a, 2) || bm.agentOccupancy(a, 2, idx) != 0) continue;
+        return a;
+    }
+    return {-1, -1};
+}
+
+bool CombatEngine::canLargeForm(const BattleMap& bm, int idx) const
+{
+    if (!featureReady(bm, idx)) return false;
+    if (!bm.getAgentStats(idx).canStartLargeForm()) return false;
+    return bm.placedAgents()[static_cast<std::size_t>(idx)].agent->getSize() == 1;
+}
+
+void CombatEngine::endLargeForm(BattleMap& bm, int idx, std::string_view why)
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return;
+    Agent::Stats s = bm.getAgentStats(idx);
+    if (!s.inLargeForm()) return;
+    s.large_form_rounds = 0;
+    const int added = s.large_form_speed_added;
+    if (s.speed_walk >= added) s.speed_walk -= added;
+    s.large_form_speed_added = 0;
+    bm.setAgentStats(idx, s);
+    const PlacedAgent& pa = bm.placedAgents()[static_cast<std::size_t>(idx)];
+    pa.agent->setSize(1);                      // back to its top-left cell (D6)
+    auto mv = pa.agent->rawMovement();
+    pa.agent->initMovement(std::max(0, mv[0] - added), mv[1], mv[2], mv[3]);
+    log_("{} shrinks back to their usual size (Large Form ends{})", agentName(bm, idx), why);
+}
+
+bool CombatEngine::toggleLargeForm(BattleMap& bm, int idx)
+{
+    if (idx < 0 || idx >= static_cast<int>(bm.placedAgents().size())) return false;
+    if (bm.getAgentStats(idx).inLargeForm()) {
+        endLargeForm(bm, idx, "");
+        return true;
+    }
+    if (!canLargeForm(bm, idx)) return false;
+    const Cell at = largeFormOrigin(bm, idx);
+    if (at.col < 0) {
+        log_("{}: no room to grow — Large Form needs a free 2×2 space", agentName(bm, idx));
+        return false;
+    }
+    Agent::Stats s = bm.getAgentStats(idx);
+    s.large_form_used        = true;
+    s.large_form_rounds      = kLargeFormRounds;
+    s.large_form_speed_added = kLargeFormSpeed;
+    s.speed_walk            += kLargeFormSpeed;
+    bm.setAgentStats(idx, s);
+    const PlacedAgent& pa = bm.placedAgents()[static_cast<std::size_t>(idx)];
+    const int z = pa.agent->getZ();
+    pa.agent->setSize(2);
+    (void)bm.setAgentPosition(idx, at);
+    pa.agent->setPosition(at.col, at.row, z);
+    auto mv = pa.agent->rawMovement();
+    pa.agent->initMovement(mv[0] + kLargeFormSpeed, mv[1], mv[2], mv[3]);
+    log_("{}: Large Form — Large for 10 minutes, Speed {} ft, Advantage on Strength checks",
+         agentName(bm, idx), s.speed_walk);
+    return true;
+}
+
+bool CombatEngine::applyGiantAncestryOnHit(BattleMap& bm, int attacker_idx, AttackResult& result)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (attacker_idx < 0 || attacker_idx >= n) return false;
+    Agent::Conditions ac = bm.getAgentConditions(attacker_idx);
+    if (!ac.giant_ancestry_available) return false;
+    const int t = ac.giant_ancestry_target;
+    ac.giant_ancestry_available = false;
+    ac.giant_ancestry_target    = -1;
+    bm.setAgentConditions(attacker_idx, ac);
+    if (t < 0 || t >= n || bm.getAgentStats(t).hp_cur <= 0) return false;
+    const GiantAncestry ga = bm.getAgentStats(attacker_idx).giantAncestry();
+    if (ga == GiantAncestry::Hill && bm.placedAgents()[static_cast<std::size_t>(t)].agent->getSize() > 2)
+        return false;
+    if (!spendGiantAncestry(bm, attacker_idx)) return false;
+    const int left = bm.getAgentStats(attacker_idx).giantAncestryRemaining();
+
+    if (ga == GiantAncestry::Hill) {
+        applyProne(bm, t);
+        log_("{}: Hill's Tumble — {} is knocked Prone ({} left)", agentName(bm, attacker_idx),
+             agentName(bm, t), left);
+        return true;
+    }
+    const bool fire = (ga == GiantAncestry::Fire);
+    if (!fire && ga != GiantAncestry::Frost) return false;
+    const MagicDamage_t type = fire ? MagicDamage_t::Fire : MagicDamage_t::Cold;
+    Agent::Stats ts = bm.getAgentStats(t);
+    const int raw = roll(fire ? 10 : 6);
+    const int dmg = typedDamage(ts, type, raw);
+    result.damage_breakdown.push_back({fire ? "fire's burn" : "frost's chill", dmg});
+    result.total_damage += dmg;
+    result.magic_damage_types.push_back(type);
+    if (dmg > 0) damageAgent(bm, t, dmg);
+    ts = bm.getAgentStats(t);
+    result.hp_after    = ts.hp_cur;
+    result.target_down = ts.hp_cur <= 0;
+    if (!fire) {
+        Agent::Conditions tc = bm.getAgentConditions(t);
+        tc.slowed = true;                       // Speed −10 ft (until its next turn ends)
+        bm.setAgentConditions(t, tc);
+    }
+    log_("{}: {} — +{} {} ({}){} ({} left)", agentName(bm, attacker_idx),
+         fire ? "Fire's Burn" : "Frost's Chill", dmg, fire ? "Fire" : "Cold",
+         fire ? "1d10" : "1d6", fire ? "" : std::format(", {}'s Speed −10 ft", agentName(bm, t)), left);
+    if (dmg > 0) {
+        checkConcentrationOnDamage(bm, t, dmg, attacker_idx);
+        processDamageTaken(bm, t, dmg);
+    }
+    return true;
+}
+
+void CombatEngine::autoGiantAncestry(BattleMap& bm, int attacker_idx)
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (attacker_idx < 0 || attacker_idx >= n) return;
+    const Agent::Conditions c = bm.getAgentConditions(attacker_idx);
+    if (!c.giant_ancestry_available) return;
+    const int t = c.giant_ancestry_target;
+    // A Prone target gains nothing from Hill's Tumble: keep the use for a later hit.
+    const bool wasted = t < 0 || t >= n || bm.getAgentStats(t).hp_cur <= 0
+        || (bm.getAgentStats(attacker_idx).giantAncestry() == GiantAncestry::Hill
+            && bm.getAgentConditions(t).prone);
+    if (wasted) {
+        Agent::Conditions keep = c;
+        keep.giant_ancestry_available = false;
+        keep.giant_ancestry_target    = -1;
+        bm.setAgentConditions(attacker_idx, keep);
+        return;
+    }
+    AttackResult scratch;
+    (void)applyGiantAncestryOnHit(bm, attacker_idx, scratch);
+}
+
+bool CombatEngine::canCloudsJaunt(const BattleMap& bm, int idx) const
+{
+    if (!featureReady(bm, idx)) return false;
+    const Agent::Stats s = bm.getAgentStats(idx);
+    return s.giantAncestry() == GiantAncestry::Cloud && s.giantAncestryRemaining() > 0;
+}
+
+bool CombatEngine::cloudsJaunt(BattleMap& bm, int idx, int col, int row)
+{
+    if (!canCloudsJaunt(bm, idx)) return false;
+    const PlacedAgent& pa = bm.placedAgents()[static_cast<std::size_t>(idx)];
+    const Cell dest{col, row, pa.origin.z};
+    if (!isSeenTeleportSpace(bm, idx, dest, kCloudsJauntCells)) return false;
+    if (!teleportAgent(bm, idx, col, row)) return false;
+    (void)spendGiantAncestry(bm, idx);
+    log_("{}: Cloud's Jaunt — teleports to ({}, {}) ({} left)", agentName(bm, idx), col, row,
+         bm.getAgentStats(idx).giantAncestryRemaining());
+    return true;
+}
+
+bool CombatEngine::canStonesEndurance(const BattleMap& bm, int reactor_idx) const
+{
+    if (!featureReady(bm, reactor_idx)) return false;
+    if (!canTakeReaction(bm.getAgentConditions(reactor_idx))) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor_idx);
+    return s.giantAncestry() == GiantAncestry::Stone && s.giantAncestryRemaining() > 0;
+}
+
+bool CombatEngine::applyStonesEndurance(BattleMap& bm, int reactor_idx, AttackResult& r)
+{
+    if (!canStonesEndurance(bm, reactor_idx) || !r.hit || r.total_damage <= 0) return false;
+    (void)spendGiantAncestry(bm, reactor_idx);
+    Agent::Conditions c = bm.getAgentConditions(reactor_idx);
+    c.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, c);
+    const Agent::Stats s = bm.getAgentStats(reactor_idx);
+    const int d = roll(12);
+    const int cut = std::max(0, d + dndMod(s.con));
+    const int before = r.total_damage;
+    r.total_damage = std::max(0, before - cut);
+    r.damage_breakdown.push_back({"stone's endurance", r.total_damage - before});
+    log_("{}: Stone's Endurance — reduces the damage by {} (1d12 {} + CON) ({} -> {}, {} left)",
+         agentName(bm, reactor_idx), cut, d, before, r.total_damage, s.giantAncestryRemaining());
+    return true;
+}
+
+bool CombatEngine::canStormsThunder(const BattleMap& bm, int reactor_idx, int attacker_idx) const
+{
+    if (!featureReady(bm, reactor_idx)) return false;
+    const auto& agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size()) || attacker_idx == reactor_idx)
+        return false;
+    if (!canTakeReaction(bm.getAgentConditions(reactor_idx))) return false;
+    const Agent::Stats s = bm.getAgentStats(reactor_idx);
+    if (s.giantAncestry() != GiantAncestry::Storm || s.giantAncestryRemaining() <= 0) return false;
+    if (bm.getAgentStats(attacker_idx).hp_cur <= 0) return false;
+    const PlacedAgent& me = agents[static_cast<std::size_t>(reactor_idx)];
+    const PlacedAgent& them = agents[static_cast<std::size_t>(attacker_idx)];
+    return footprintDistance(me.origin, me.agent->getSize(), them.origin, them.agent->getSize())
+           <= kStormsThunderCells;
+}
+
+bool CombatEngine::applyStormsThunder(BattleMap& bm, int reactor_idx, int attacker_idx)
+{
+    if (!canStormsThunder(bm, reactor_idx, attacker_idx)) return false;
+    (void)spendGiantAncestry(bm, reactor_idx);
+    Agent::Conditions c = bm.getAgentConditions(reactor_idx);
+    c.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, c);
+    const int raw = roll(8);
+    const int dmg = typedDamage(bm.getAgentStats(attacker_idx), MagicDamage_t::Thunder, raw);
+    log_("{}: Storm's Thunder — {} takes {} Thunder ({} left)", agentName(bm, reactor_idx),
+         agentName(bm, attacker_idx), dmg, bm.getAgentStats(reactor_idx).giantAncestryRemaining());
+    if (dmg > 0) {
+        damageAgent(bm, attacker_idx, dmg);
+        checkConcentrationOnDamage(bm, attacker_idx, dmg, reactor_idx);
+        processDamageTaken(bm, attacker_idx, dmg);
+    }
+    return true;
+}
+
+// ── Hellish Rebuke (SP6) ──────────────────────────────────────────────────────
+
+namespace {
+constexpr std::string_view kHellishRebuke = "Hellish Rebuke";
+
+bool knowsHellishRebuke(const PlacedAgent& pa) noexcept
+{
+    if (pa.agent->getStats().grantedSpell(kHellishRebuke)) return true;
+    for (const auto& sp : pa.spells)
+        if (sp.name == kHellishRebuke) return true;
+    return false;
+}
+
+// The lowest slot of level 1 or more with a cast left (1-based), 0 for none.
+int lowestSlot(const Agent::Stats& s) noexcept
+{
+    for (int i = 0; i < static_cast<int>(s.spell_slots_remaining.size()); ++i)
+        if (s.spell_slots_remaining[static_cast<std::size_t>(i)] > 0) return i + 1;
+    return 0;
+}
+} // namespace
+
+bool CombatEngine::canHellishRebuke(const BattleMap& bm, int reactor_idx, int attacker_idx) const
+{
+    if (!featureReady(bm, reactor_idx)) return false;
+    const auto& agents = bm.placedAgents();
+    if (attacker_idx < 0 || attacker_idx >= static_cast<int>(agents.size()) || attacker_idx == reactor_idx)
+        return false;
+    if (!canTakeReaction(bm.getAgentConditions(reactor_idx))) return false;
+    const PlacedAgent& me = agents[static_cast<std::size_t>(reactor_idx)];
+    if (!knowsHellishRebuke(me)) return false;
+    const Agent::Stats s = me.agent->getStats();
+    if (s.grantedFreeLeft(kHellishRebuke) <= 0 && lowestSlot(s) == 0) return false;
+    if (bm.getAgentStats(attacker_idx).hp_cur <= 0) return false;
+    const PlacedAgent& them = agents[static_cast<std::size_t>(attacker_idx)];
+    if (footprintDistance(me.origin, me.agent->getSize(), them.origin, them.agent->getSize()) > 12)
+        return false;
+    return canPerceiveTarget(bm, reactor_idx, attacker_idx);
+}
+
+bool CombatEngine::applyHellishRebuke(BattleMap& bm, int reactor_idx, int attacker_idx)
+{
+    if (!canHellishRebuke(bm, reactor_idx, attacker_idx)) return false;
+    Agent::Stats s = bm.getAgentStats(reactor_idx);
+    int level = 1;
+    const char* paid = "a free cast";
+    if (!s.spendGrantedFree(kHellishRebuke)) {
+        level = lowestSlot(s);
+        s.spell_slots_remaining[static_cast<std::size_t>(level - 1)] -= 1;
+        paid = "a slot";
+    }
+    bm.setAgentStats(reactor_idx, s);
+    Agent::Conditions c = bm.getAgentConditions(reactor_idx);
+    c.reaction_used = true;
+    bm.setAgentConditions(reactor_idx, c);
+
+    const GrantedSpell* g = s.grantedSpell(kHellishRebuke);
+    const int ability = (g && g->ability >= 0) ? g->ability : s.spellcasting_ability;
+    const int dc = rules::spellSaveDcFromAbility(s, static_cast<SaveAbility_t>(ability)) + s.spell_dc_bonus;
+    int raw = 0;
+    for (int i = 0; i < 1 + level; ++i) raw += roll(10);   // 2d10, +1d10 per level above 1
+    log_("{} casts Hellish Rebuke at level {} ({}) — {} makes a DEX save (DC {})",
+         agentName(bm, reactor_idx), level, paid, agentName(bm, attacker_idx), dc);
+    const bool saved = rollFixedDcSave(bm, attacker_idx, SaveDex, dc, "Hellish Rebuke");
+    const int dealt = typedDamage(bm.getAgentStats(attacker_idx), MagicDamage_t::Fire, saved ? raw / 2 : raw);
+    log_("Hellish Rebuke: {} takes {} Fire{}", agentName(bm, attacker_idx), dealt, saved ? " (half)" : "");
+    if (dealt > 0) {
+        damageAgent(bm, attacker_idx, dealt);
+        checkConcentrationOnDamage(bm, attacker_idx, dealt, reactor_idx);
+        processDamageTaken(bm, attacker_idx, dealt);
+    }
+    return true;
+}
+
 AttackResult CombatEngine::applyHeroicReroll(BattleMap& bm, int attacker_idx, int target_idx,
                                              int weapon_idx)
 {

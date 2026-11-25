@@ -221,6 +221,17 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
         bm.setAgentStats(agent_idx, fs);
     }
 
+    // Goliath Large Form (SP6, D6): counts down one per round at its owner's turn start.
+    if (const Agent::Stats ls = bm.getAgentStats(agent_idx); ls.large_form_rounds > 0) {
+        if (ls.large_form_rounds == 1) {
+            endLargeForm(bm, agent_idx, ": 10 minutes are up");
+        } else {
+            Agent::Stats dec = ls;
+            --dec.large_form_rounds;
+            bm.setAgentStats(agent_idx, dec);
+        }
+    }
+
     // Self-heal any grapple whose grappler can no longer maintain it (died/downed/incapacitated,
     // possibly on another creature's turn, or via a kill path that missed the down chokepoint, or
     // a stale grappler_idx). This frees a creature grappled by a now-dead captor at the start of its
@@ -399,7 +410,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
     // Paladin Oath of the Ancients — Elder Champion: regain 10 HP at the start of each of your turns,
     // then tick down its 1-minute (10-round) duration.
     if (stats.elder_champion_turns > 0) {
-        stats.hp_cur = std::min(stats.hp_max, stats.hp_cur + 10);
+        if (!stats.cant_heal) stats.hp_cur = std::min(stats.hp_max, stats.hp_cur + 10);
         --stats.elder_champion_turns;
         bm.setAgentStats(agent_idx, stats);
         log_("{} regains 10 HP (Elder Champion) — now at {} HP", agent_name, stats.hp_cur);
@@ -507,7 +518,7 @@ TurnStartResult CombatEngine::beginTurn(BattleMap& bm, int agent_idx) noexcept
 
     // Wild Magic Surge — vitality (band 3): regain 5 HP at the start of each of your turns.
     if (stats.wild_magic_regen_turns > 0 && stats.hp_cur > 0) {
-        stats.hp_cur = std::min(stats.hp_max, stats.hp_cur + 5);
+        if (!stats.cant_heal) stats.hp_cur = std::min(stats.hp_max, stats.hp_cur + 5);
         --stats.wild_magic_regen_turns;
         bm.setAgentStats(agent_idx, stats);
         log_("{} regains 5 HP (Wild Magic vitality) → {}/{}", agent_name, stats.hp_cur, stats.hp_max);
@@ -2502,6 +2513,7 @@ FlowStatus CombatEngine::runWeaponTurn(BattleMap& bm, int agent_idx, const NpcSt
     // Sudden Strike it may have armed — between swings, so "immediately after" holds and a park→resume
     // re-enters here. Returns true iff the Sudden Strike parked.
     const auto gloomAfterHit = [&]() -> bool {
+        autoGiantAncestry(bm, agent_idx);    // Goliath Fire / Frost / Hill on the hit (SP6)
         autoDreadfulStrike(bm, agent_idx);
         if (st.sudden_strike_launched) return false;
         const std::vector<int> ss = suddenStrikeTargets(bm, agent_idx);
@@ -3878,7 +3890,7 @@ NpcAttackAnalysis CombatEngine::npcAnalyzeAttack(const BattleMap& bm, int attack
     if (ac.invisible && !canPerceiveTarget(bm, target_idx, attacker_idx)) adv = true;
     if (ac.reckless_attack && w.type == WeaponType::Melee) adv = true;
     if (tc.paralyzed || tc.blinded || tc.stunned || tc.unconscious ||
-        tc.restrained || tc.reckless_attack) adv = true;
+        tc.restrained || tc.reckless_attack || tc.outlined) adv = true;
     const int dist = footprintDistance(ap.origin, atk_sz, tp.origin, tgt_sz);
     if (tc.prone) {
         if (dist <= 1) adv = true;

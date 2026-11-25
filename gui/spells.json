@@ -1235,6 +1235,15 @@
     "level": 0,
     "upcast_dice_bonus": 0,
     "cantrip_dice_per_tier": 1,
+    "conditions": [
+      {
+        "condition_name": "NoHeal",
+        "condition_duration": 2,
+        "requires_save": false,
+        "save_repeat_turns": -1,
+        "prevents_healing": true
+      }
+    ],
     "requires_concentration": false,
     "requires_los": false,
     "check_los_on_center": true,
@@ -3031,18 +3040,27 @@
     "name": "Faerie Fire",
     "description": "Objects in a 20-foot Cube within range are outlined in blue, green, or violet light (your choice). Each creature in the Cube is also outlined if it fails a Dexterity saving throw. For the duration, objects and affected creatures shed Dim Light in a 10-foot radius and can't benefit from the Invisible condition. Attack rolls against an affected creature or object have Advantage if the attacker can see it.",
     "type": "Harm",
-    "geometry": "Sphere",
-    "attack_type": "AttackRoll",
+    "geometry": "Square",
+    "attack_type": "Save",
     "save_ability": "SaveDex",
     "range": 60,
-    "radius": 15,
-    "width": 0,
-    "length": 0,
-    "duration": 1,
+    "radius": 0,
+    "width": 20,
+    "length": 20,
+    "duration": 10,
     "magic_damage_types": [],
     "physical_damage_types": [],
     "level": 1,
     "upcast_dice_bonus": 0,
+    "conditions": [
+      {
+        "condition_name": "Outlined",
+        "condition_duration": 0,
+        "requires_save": true,
+        "save_repeat_turns": -1,
+        "save_dc_ability": "SaveSpellcasterMod"
+      }
+    ],
     "requires_concentration": true,
     "requires_los": false,
     "check_los_on_center": true,
@@ -4299,6 +4317,7 @@
     "name": "Hellish Rebuke",
     "description": "The creature that damaged you is momentarily surrounded by green flames. It makes a Dexterity saving throw, taking 2d10 Fire damage on a failed save or half as much damage on a successful one.",
     "type": "Harm",
+    "casting_time": "Reaction",
     "geometry": "Single",
     "attack_type": "Save",
     "save_ability": "SaveDex",

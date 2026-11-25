@@ -1126,6 +1126,27 @@ namespace rpg {
           if (speed_fly == std::max(draconic_flight_fly_from, speed_walk))
               speed_fly = draconic_flight_fly_from;
       }
+      // Goliath Giant Ancestry (D9): uses spent since the last Long Rest (PB uses), shared
+      // by every benefit of the one ancestry.
+      int giant_ancestry_used{0};
+      [[nodiscard]] GiantAncestry giantAncestry() const noexcept {
+          return hasSpeciesFlag(kSpeciesGiantAncestry) ? giantAncestryOf(species_option)
+                                                       : GiantAncestry::None;
+      }
+      [[nodiscard]] int giantAncestryRemaining() const noexcept {
+          return giantAncestry() != GiantAncestry::None ? std::max(0, prof_bonus - giant_ancestry_used) : 0;
+      }
+      // Goliath Large Form (D6, level 5): once per Long Rest; while rounds > 0 the creature is
+      // Large (a 2×2 footprint, set by CombatEngine) with +10 ft Speed and Advantage on Strength
+      // checks. speed_added is the Speed it added, taken back when it ends.
+      bool large_form_used{false};
+      int large_form_rounds{0};
+      int large_form_speed_added{0};
+      [[nodiscard]] bool canStartLargeForm() const noexcept {
+          return hasSpeciesFlag(kSpeciesLargeForm) && char_level >= kLargeFormLevel
+              && !large_form_used && large_form_rounds <= 0;
+      }
+      [[nodiscard]] bool inLargeForm() const noexcept { return large_form_rounds > 0; }
       // Orc Relentless Endurance: spent since the last Long Rest.
       bool relentless_endurance_used{false};
       // Heroic Inspiration (D11): held or not; a PC holds at most one. A Human regains it
@@ -1341,6 +1362,8 @@ namespace rpg {
         relentless_endurance_used = false; // Orc Relentless Endurance
         breath_weapon_used = 0;           // Dragonborn Breath Weapon
         draconic_flight_used = false;     // Dragonborn Draconic Flight
+        giant_ancestry_used = 0;          // Goliath Giant Ancestry
+        large_form_used = false;          // Goliath Large Form
         if (hasSpeciesFlag(kSpeciesHeroic)) heroic_inspiration = true;   // Human Resourceful
       }
 
@@ -1530,6 +1553,9 @@ namespace rpg {
       // ── Weapon Mastery (2024) ──────────────────────────────────────────────
       bool sapped{false};                   // Sap: disadvantage on this creature's next attack roll
       bool sap_used_this_turn{false};       // Sap: once per turn
+      bool outlined{false};                 // Faerie Fire: attacks against it have Advantage; it can't benefit from Invisible
+      bool giant_ancestry_available{false}; // Goliath Fire/Frost/Hill: this hit may take the Giant Ancestry rider (GUI prompt / auto)
+      int  giant_ancestry_target{-1};       // the creature that hit struck
       bool slowed{false};                   // Slow: speed -10 ft (consumed at this creature's next turn)
       bool slow_used_this_turn{false};      // Slow: once per turn
       int  vex_target_idx{-1};              // Vex: advantage on this attacker's next attack vs this target
@@ -1605,6 +1631,12 @@ namespace rpg {
 
     // ── Size (grid cells: 1–6) ─────────────────────────────────────────────
     [[nodiscard]] int  getSize()   const noexcept { return size_; }
+    // Goliath Large Form grows and shrinks a token in play; the caller checks for room.
+    void setSize(int size) {
+      if (size < 1 || size > 6)
+        throw std::out_of_range{"Agent size must be between 1 and 6"};
+      size_ = size;
+    }
 
     // ── Sprite ─────────────────────────────────────────────────────────────
     [[nodiscard]] const std::filesystem::path& getSprite() const noexcept {
@@ -1703,6 +1735,8 @@ namespace rpg {
       // hamstrung are read by CombatEngine::beginTurn's movement seeding (which runs
       // before this) and cleared here so they apply for exactly one turn.
       conditions_.slowed                       = false;
+      conditions_.giant_ancestry_available     = false;
+      conditions_.giant_ancestry_target        = -1;
       conditions_.hamstrung                    = false;
       conditions_.push_available               = false;
       conditions_.topple_available             = false;

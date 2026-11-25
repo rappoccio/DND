@@ -65,7 +65,7 @@ WIRED = frozenset({
     "inspiring_smite", "healing_light", "lay_on_hands", "grant_inspiration",
     "telekinetic_psi", "use_item", "bastion_of_law",
     # M5d.3 — place picks
-    "long_jump", "blink_steps", "psychic_teleport", "shadow_step", "shadow_arts_darkness",
+    "long_jump", "blink_steps", "clouds_jaunt", "psychic_teleport", "shadow_step", "shadow_arts_darkness",
     "steps_of_fey", "misty_escape", "warping_implosion", "wild_magic_teleport",
     "elemental_burst", "misty_wanderer",
     # M5d.4 — multi-picks
@@ -134,6 +134,8 @@ CLASS: dict[str, str] = {
     "adrenaline_rush": I,
     "draconic_flight": I,
     "draconic_flight_end": I,
+    "large_form": I,
+    "large_form_end": I,
     "healing_light": A,
     "turn_undead": I,
     "divine_intervention": S,
@@ -150,6 +152,7 @@ CLASS: dict[str, str] = {
     "sudden_strike": A,
     "beasts_strike": A,
     "blink_steps": X,
+    "clouds_jaunt": X,
     "martial_arts": A,
     "flurry_of_blows": C_A,
     "second_wind": I,

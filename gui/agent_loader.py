@@ -181,6 +181,11 @@ def dict_to_stats(stats_dict):
     stats.draconic_flight_used = bool(stats_dict.get("draconic_flight_used", False))
     stats.draconic_flight_rounds = int(stats_dict.get("draconic_flight_rounds", 0))
     stats.draconic_flight_fly_from = int(stats_dict.get("draconic_flight_fly_from", 0))
+    # SP6: Goliath Giant Ancestry uses, Large Form (absent in older saves → defaults)
+    stats.giant_ancestry_used = int(stats_dict.get("giant_ancestry_used", 0))
+    stats.large_form_used = bool(stats_dict.get("large_form_used", False))
+    stats.large_form_rounds = int(stats_dict.get("large_form_rounds", 0))
+    stats.large_form_speed_added = int(stats_dict.get("large_form_speed_added", 0))
     stats.vampiric_strengthen_bonus = int(stats_dict.get("vampiric_strengthen_bonus", 0))
     stats.vampiric_strengthen_turns = int(stats_dict.get("vampiric_strengthen_turns", 0))
     # Barbarian L20 Primal Champion and L11 Relentless Rage

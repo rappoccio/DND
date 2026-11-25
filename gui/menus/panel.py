@@ -203,6 +203,16 @@ def init_combat_panel(app):
     app.btn_cbt_draconic_flight_end = Button(pygame.Rect(px, dummy_y, W, B),
                                      "End Draconic Flight",
                                      (150, 60, 50), (195, 90, 75), app.font_md)
+    # Goliath (SPECIES_PLAN.md SP6): Large Form start (Bonus Action) / free end, Cloud's Jaunt.
+    app.btn_cbt_large_form = Button(pygame.Rect(px, dummy_y, W, B),
+                                     "Large Form",
+                                     (120, 100, 80), (160, 135, 110), app.font_md)
+    app.btn_cbt_large_form_end = Button(pygame.Rect(px, dummy_y, W, B),
+                                     "End Large Form",
+                                     (120, 100, 80), (160, 135, 110), app.font_md)
+    app.btn_cbt_clouds_jaunt = Button(pygame.Rect(px, dummy_y, W, B),
+                                     "Cloud's Jaunt",
+                                     (90, 60, 170), (125, 90, 210), app.font_md)
     app.btn_cbt_magical_cunning = Button(pygame.Rect(px, dummy_y, W, B),
                                      "Magical Cunning",
                                      (120, 80, 180), (150, 110, 210), app.font_md)

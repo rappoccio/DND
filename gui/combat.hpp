@@ -2520,6 +2520,43 @@ public:
     // false when it did neither.
     [[nodiscard]] bool canDraconicFlight(const BattleMap& bm, int idx) const noexcept;
     bool toggleDraconicFlight(BattleMap& bm, int idx);
+    // ── Goliath (SP6) ────────────────────────────────────────────────────────────────────────
+    // Large Form (D6): from level 5, a Bonus Action makes the Goliath Large (a 2×2 footprint) for
+    // 100 rounds, with +10 ft Speed and Advantage on Strength checks; once per Long Rest. It needs
+    // room: largeFormOrigin is the top-left of a free 2×2 that keeps the token's cell, {-1,-1}
+    // when there is none (then it is refused). Ending it (free dismissal, the 100 rounds, a Long
+    // Rest) shrinks the token back to its top-left cell. toggleLargeForm starts it (the caller
+    // pays the Bonus Action) or dismisses it; false when it did neither.
+    [[nodiscard]] Cell largeFormOrigin(const BattleMap& bm, int idx) const;
+    [[nodiscard]] bool canLargeForm(const BattleMap& bm, int idx) const;
+    bool toggleLargeForm(BattleMap& bm, int idx);
+    void endLargeForm(BattleMap& bm, int idx, std::string_view why);
+    // Giant Ancestry (D9), PB uses per Long Rest shared across the benefit:
+    //  · Fire's Burn / Frost's Chill / Hill's Tumble ride a hit that dealt damage. The hit only
+    //    offers it (conditions.giant_ancestry_available, set in applyAttackResult); the GUI
+    //    prompts and calls applyGiantAncestryOnHit, the auto path calls autoGiantAncestry.
+    //    Fire: +1d10 Fire. Frost: +1d6 Cold and the target's Speed −10 ft (the `slowed` flag).
+    //    Hill: the target, Large or smaller, has the Prone condition.
+    //  · Cloud's Jaunt: a Bonus Action teleport of up to 30 ft to an unoccupied space it can see.
+    //    The caller pays the Bonus Action.
+    //  · Stone's Endurance (reduce the damage by 1d12 + CON mod) and Storm's Thunder (1d8 Thunder
+    //    to the attacker, within 60 ft) are reactions in the defender OnHit window.
+    bool applyGiantAncestryOnHit(BattleMap& bm, int attacker_idx, AttackResult& result);
+    void autoGiantAncestry(BattleMap& bm, int attacker_idx);
+    [[nodiscard]] bool canCloudsJaunt(const BattleMap& bm, int idx) const;
+    bool cloudsJaunt(BattleMap& bm, int idx, int col, int row);
+    [[nodiscard]] bool canStonesEndurance(const BattleMap& bm, int reactor_idx) const;
+    bool applyStonesEndurance(BattleMap& bm, int reactor_idx, AttackResult& r);
+    [[nodiscard]] bool canStormsThunder(const BattleMap& bm, int reactor_idx, int attacker_idx) const;
+    bool applyStormsThunder(BattleMap& bm, int reactor_idx, int attacker_idx);
+    // Hellish Rebuke (SP6): the reaction spell, cast when the reactor is damaged by a creature it
+    // can see within 60 ft. Offered in the defender OnHit window to a creature that knows it (its
+    // spell list or a granted spell) with a free cast or a slot left. The attacker makes a DEX
+    // save against the caster's spell save DC (the grant's ability when it has one) and takes
+    // 2d10 Fire, +1d10 per slot level above 1, half on a success. A free granted cast is spent
+    // first, else the lowest slot.
+    [[nodiscard]] bool canHellishRebuke(const BattleMap& bm, int reactor_idx, int attacker_idx) const;
+    bool applyHellishRebuke(BattleMap& bm, int reactor_idx, int attacker_idx);
     // Heroic Inspiration (D11): after a missed attack with the ★ held, the GUI offers a reroll
     // (heroic_reroll_available). Spending it clears the ★ and re-resolves the same attack; the
     // new roll stands. Returns the new AttackResult (default when the offer was not open).

@@ -323,7 +323,7 @@ def test_refusals_change_nothing():
             d["agents"][1]["name"] = "Someone Else"
 
         def resize(d):
-            d["agents"][0]["size"] = 2
+            d["agents"][0]["size"] = 9   # off the 1–6 scale (a legal size restores: Large Form)
 
         def bad_stats(d):
             d["agents"][0]["stats"]["hp_cur"] = "lots"   # the wrong shape, mid-payload
@@ -335,7 +335,7 @@ def test_refusals_change_nothing():
             "other grid":    edited(lambda d: d.update(cols=d["cols"] + 1)),
             "fewer agents":  edited(lambda d: d["agents"].pop()),
             "renamed agent": edited(rename),
-            "resized agent": edited(resize),
+            "bad size":      edited(resize),
             "short terrain": edited(lambda d: d["terrain_mult"].pop()),
             "stats shape":   edited(bad_stats),
             "stats a list":  edited(lambda d: d["agents"][0].update(stats=[1])),

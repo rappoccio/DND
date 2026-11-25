@@ -304,6 +304,7 @@ test_scripts = [
     "test_species_traits.py",
     "test_species_spells.py",
     "test_species_dragonborn.py",
+    "test_species_goliath.py",
     "test_species_sp4.py",
     "test_teleport_slot.py",
     "test_stats_initiative.py",

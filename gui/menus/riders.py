@@ -205,6 +205,51 @@ def offer_dreadful_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, 
                    on_cancel=lambda: _apply(False))
 
 
+_GIANT_RIDERS = {
+    "Fire":  ("Fire's Burn", "+1d10 Fire"),
+    "Frost": ("Frost's Chill", "+1d6 Cold, Speed −10 ft"),
+    "Hill":  ("Hill's Tumble", "knock Prone"),
+}
+
+
+def offer_giant_ancestry(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
+    """Goliath Giant Ancestry (SPECIES_PLAN.md D9): after a hit that dealt damage, optionally spend
+    one of the PB uses on the ancestry's rider — Fire's Burn, Frost's Chill or Hill's Tumble.
+    Applied in C++ (apply_giant_ancestry_on_hit); on_done runs a pending weapon-Mastery prompt."""
+    def _then():
+        if on_done:
+            on_done()
+        else:
+            app._update_attack_overlay()
+
+    def _apply(use_it):
+        if use_it and app.combat.apply_giant_ancestry_on_hit(app.bm, atk_idx, result):
+            dmg_parts = app._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+            dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+            app._combat_log_add(
+                f"{atk_name}→{tgt_name}: HIT {result.total_damage}{app._damage_breakdown_str(result)} "
+                f"{dmg_type_str}{' CRIT!' if result.critical else ''}{' — DOWN' if result.target_down else ''}")
+            app._flush_combat_log()
+            if result.target_down:
+                app._drop_concentration_for_agent(target_idx)
+        else:
+            c = app.combat.get_agent_conditions(app.bm, atk_idx)
+            c.giant_ancestry_available = False    # declined: this hit's offer is gone
+            c.giant_ancestry_target = -1
+            app.combat.set_agent_conditions(app.bm, atk_idx, c)
+            app._combat_log_add(atk_msg)
+            app._flush_combat_log()
+        _then()
+    stats = app.combat.get_agent_stats(app.bm, atk_idx)
+    name, what = _GIANT_RIDERS.get(stats.species_option, ("Giant Ancestry", ""))
+    options = [
+        (f"{name}: {what} ({stats.giant_ancestry_remaining()} left)", lambda: _apply(True)),
+        (f"Skip {name}", lambda: _apply(False)),
+    ]
+    app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: {name}", options,
+                   on_cancel=lambda: _apply(False))
+
+
 def offer_stalkers_flurry(app, atk_idx, atk_name, tgt_name, then):
     """Stalker's Flurry (Gloom Stalker L11), right after Dreadful Strike: Sudden Strike (arms one free
     attack with the same weapon vs a different creature within 5 ft — taken from the "Sudden Strike"

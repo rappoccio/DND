@@ -104,6 +104,7 @@ _BONUS_ECONOMY = {
     "beasts_strike":         ECONOMY_ATTACK,   # Beast Master: replaces one attack of the Attack action
     "action_surge":          ECONOMY_FREE,     # Fighter: grants an extra Action, costs none
     "draconic_flight_end":   ECONOMY_FREE,     # Dragonborn: dismissing Draconic Flight is free
+    "large_form_end":        ECONOMY_FREE,     # Goliath: ending Large Form is free
 
     # ── inside the band, and Action-costing with it ──
     "turn_undead":           ECONOMY_ACTION,
@@ -686,6 +687,10 @@ class ActionMenu:
             out.append(Action("draconic_flight_end",
                               f"🐉 End Draconic Flight ({stats.draconic_flight_rounds} rds)",
                               GROUP_BONUS))
+        # Goliath Large Form (SP6, D6): ending it is free too.
+        if stats.large_form_rounds > 0:
+            out.append(Action("large_form_end",
+                              f"⛰ End Large Form ({stats.large_form_rounds} rds)", GROUP_BONUS))
 
         # ── F11, closed: Open Hand L11 Fleet Step ──
         # The one option in §7 whose gate is the OPPOSITE of the band's. Step of the
@@ -745,6 +750,13 @@ class ActionMenu:
         # ── Dragonborn Draconic Flight (SP5, D8): fly Speed = Speed, 10 min, once per Long Rest ──
         if app.combat.can_draconic_flight(app.bm, agent_idx):
             out.append(Action("draconic_flight", "🐉 Draconic Flight", GROUP_BONUS))
+        # ── Goliath (SP6): Large Form (D6) and Cloud's Jaunt (D9) ──
+        if app.combat.can_large_form(app.bm, agent_idx):
+            out.append(Action("large_form", "⛰ Large Form", GROUP_BONUS))
+        if app.combat.can_clouds_jaunt(app.bm, agent_idx):
+            out.append(Action("clouds_jaunt",
+                              f"⛰ Cloud's Jaunt (30 ft, {stats.giant_ancestry_remaining()} left)",
+                              GROUP_BONUS))
 
         # ── Monk ──
         if cls == CC.Monk:

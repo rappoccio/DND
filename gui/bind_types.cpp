@@ -966,6 +966,18 @@ void bindTypes(py::module_& m) {
              "Dragonborn Draconic Flight: rounds left (0 = not flying by it).")
         .def_readwrite("draconic_flight_fly_from", &Agent::Stats::draconic_flight_fly_from,
              "Dragonborn Draconic Flight: the fly Speed to put back when it ends.")
+        // SP6: Goliath
+        .def_readwrite("giant_ancestry_used", &Agent::Stats::giant_ancestry_used,
+             "Goliath Giant Ancestry: uses spent since the last Long Rest (pool = PB).")
+        .def("giant_ancestry_remaining", &Agent::Stats::giantAncestryRemaining,
+             "Goliath Giant Ancestry: uses left (0 for a non-Goliath).")
+        .def_readwrite("large_form_used", &Agent::Stats::large_form_used,
+             "Goliath Large Form: spent since the last Long Rest.")
+        .def_readwrite("large_form_rounds", &Agent::Stats::large_form_rounds,
+             "Goliath Large Form: rounds left (0 = not in it).")
+        .def_readwrite("large_form_speed_added", &Agent::Stats::large_form_speed_added,
+             "Goliath Large Form: the Speed it added, taken back when it ends.")
+        .def("in_large_form", &Agent::Stats::inLargeForm)
         .def_readwrite("heroic_inspiration", &Agent::Stats::heroic_inspiration,
              "Heroic Inspiration (★): held or not. A Human regains it on a Long Rest.")
         .def_readwrite("vampiric_bite_used", &Agent::Stats::vampiric_bite_used,
@@ -1154,6 +1166,9 @@ void bindTypes(py::module_& m) {
         .def_readwrite("staggered_next_save", &Agent::Conditions::staggered_next_save)
         .def_readwrite("sapped", &Agent::Conditions::sapped)
         .def_readwrite("slowed", &Agent::Conditions::slowed)
+        .def_readwrite("outlined", &Agent::Conditions::outlined)
+        .def_readwrite("giant_ancestry_available", &Agent::Conditions::giant_ancestry_available)
+        .def_readwrite("giant_ancestry_target", &Agent::Conditions::giant_ancestry_target)
         .def_readwrite("vex_target_idx", &Agent::Conditions::vex_target_idx)
         .def_readwrite("push_available", &Agent::Conditions::push_available)
         .def_readwrite("topple_available", &Agent::Conditions::topple_available)

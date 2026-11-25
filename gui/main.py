@@ -3152,6 +3152,8 @@ class App:
         # Blink Steps (Boon of Dimensional Travel): teleport up to 30 ft after the action.
         elif self._picking("blink_steps"):
             self._resolve_blink_steps(cell)
+        elif self._picking("clouds_jaunt"):
+            self._resolve_clouds_jaunt(cell)
         # Psychic Teleportation (Soulknife L9): teleport up to 10×die ft.
         elif self._picking("psychic_teleport"):
             self._resolve_psychic_teleport(cell)
@@ -6043,6 +6045,8 @@ class App:
                          "SuperiorHuntersDefense": "Superior Hunter's Defense",
                          "DeflectAttacks": "Deflect Attacks",
                          "DefensiveDuelist": "Defensive Duelist", "Parry": "Parry",
+                         "StonesEndurance": "Stone's Endurance",
+                         "StormsThunder": "Storm's Thunder", "HellishRebuke": "Hellish Rebuke",
                          "GloriousDefense": "Glorious Defense",
                          "SentinelAtDeathsDoor": "Sentinel at Death's Door"}
                 choices = " / ".join(names.get(f, f) for f in feats) or "Shield"
@@ -8145,6 +8149,46 @@ class App:
         if starting:
             self.bonus_used = True
 
+    def _toggle_large_form(self):
+        """Goliath Large Form: start it (pays the Bonus Action; the engine grows the token to
+        2×2 and adds the +10 ft to this turn's walk) or end it (free)."""
+        idx = self._current_agent_idx()
+        if not (0 <= idx < len(self.bm.placed_agents)):
+            return
+        starting = self.combat.get_agent_stats(self.bm, idx).large_form_rounds == 0
+        ok = self.combat.toggle_large_form(self.bm, idx)
+        self._flush_combat_log()
+        if not ok:
+            if not starting:
+                self._combat_log_add("Large Form unavailable.")
+            return
+        self._mark_fog_dirty()
+        self._update_reach()
+        if starting:
+            self.bonus_used = True
+
+    def _resolve_clouds_jaunt(self, cell):
+        """Goliath Cloud's Jaunt: teleport up to 30 ft to an unoccupied space the Goliath can see.
+        The engine validates the cell and spends the Giant Ancestry use; this pays the Bonus Action.
+        Click yourself to cancel (nothing spent)."""
+        idx = self._current_agent_idx()
+        if idx < 0:
+            self._drop_pick("clouds_jaunt")
+            return
+        pt = self.bm.placed_agents[idx]
+        if cell.col == pt.origin.col and cell.row == pt.origin.row:
+            self._drop_pick("clouds_jaunt")
+            self._combat_log_add("Cloud's Jaunt cancelled.")
+            return
+        if self.combat.clouds_jaunt(self.bm, idx, cell.col, cell.row):
+            self._drop_pick("clouds_jaunt")
+            self.bonus_used = True
+            self._mark_fog_dirty()
+            self._flush_combat_log()
+            self._update_reach()
+        else:
+            self._combat_log_add("Cloud's Jaunt: pick an unoccupied cell within 30 ft you can see.")
+
     def _perform_action(self, action_id: str, anchor):
         """`perform`'s dispatch: the bodies that stood under `_action_clicked` in
         `_handle_events` until D-M5-1, moved verbatim with their guards. Only one id
@@ -8257,6 +8301,8 @@ class App:
         # Ending Draconic Flight is free (SPECIES_PLAN.md D8), so it is outside the gate too.
         if action_id == "draconic_flight_end":
             self._toggle_draconic_flight()
+        if action_id == "large_form_end":
+            self._toggle_large_form()
         if not self.bonus_used:
             # `spell_bonus` stays behind the gate, and that is D-M2-4 rather
             # than F14: it is `spell_action`'s mirror, drawn mid-sequence with
@@ -8385,6 +8431,15 @@ class App:
                         self._combat_log_add("Adrenaline Rush unavailable.")
             if action_id == "draconic_flight":
                 self._toggle_draconic_flight()
+            if action_id == "large_form":
+                self._toggle_large_form()
+            if action_id == "clouds_jaunt":
+                idx = self._current_agent_idx()
+                if 0 <= idx < len(self.bm.placed_agents) and self.combat.can_clouds_jaunt(self.bm, idx):
+                    self._arm_pick("clouds_jaunt")
+                    self._combat_log_add(
+                        "Cloud's Jaunt: click a destination within 30 ft you can see "
+                        "(or click yourself to cancel).")
             if action_id == "magical_cunning":
                 idx = self._current_agent_idx()
                 if 0 <= idx < len(self.bm.placed_agents):

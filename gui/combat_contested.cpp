@@ -84,7 +84,8 @@ ShoveResult CombatEngine::executeShove(BattleMap& bm, const ShoveAction& action)
     int attacker_str_mod = (attacker.agent->getStats().str - 10) / 2;
     auto attacker_stats = getAgentStats(bm, action.attacker_idx);
     int attacker_prof = attacker_stats.prof_bonus;
-    int attacker_d20 = d20TestFor(bm, action.attacker_idx);   // Halfling Luck
+    // Halfling Luck; Goliath Large Form: Advantage on Strength checks.
+    int attacker_d20 = d20TestFor(bm, action.attacker_idx, attacker_stats.inLargeForm());
     int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof
                        + consumeStrengthenBonus(bm, action.attacker_idx);
 
@@ -237,7 +238,7 @@ BreakDoorResult CombatEngine::attemptBreakDoor(BattleMap& bm, int agent_idx, int
 
     const Agent::Stats st = getAgentStats(bm, agent_idx);
     int bonus = st.athletics();
-    int d20 = roll(20);
+    int d20 = st.inLargeForm() ? d20TestFor(bm, agent_idx, true) : roll(20);   // Large Form: Advantage
 
     result.valid   = true;
     result.roll    = d20;
@@ -461,7 +462,7 @@ ChestCheckResult CombatEngine::attemptBreakChest(BattleMap& bm, int agent_idx, i
     r.dc = c->break_dc + ((c->arcane_lock && c->arcane_suppressed_turns <= 0) ? 10 : 0);
     const Agent::Stats st = getAgentStats(bm, agent_idx);
     r.valid   = true;
-    r.roll    = roll(20);
+    r.roll    = st.inLargeForm() ? d20TestFor(bm, agent_idx, true) : roll(20);   // Large Form: Advantage
     r.total   = r.roll + st.athletics() + consumeStrengthenBonus(bm, agent_idx);
     r.success = r.total >= r.dc;
     if (r.success) {
@@ -572,7 +573,8 @@ GrappleResult CombatEngine::resolveGrapple(BattleMap& bm, int attacker_idx, int 
 
     result.valid = true;
     if (contested) {
-        int attacker_d20 = d20TestFor(bm, attacker_idx);   // Halfling Luck
+        // Halfling Luck; Goliath Large Form: Advantage on Strength checks.
+        int attacker_d20 = d20TestFor(bm, attacker_idx, attacker_stats.inLargeForm());
         int attacker_total = attacker_d20 + attacker_str_mod + attacker_prof
                            + consumeStrengthenBonus(bm, attacker_idx);
         // Defender: max(Athletics, Acrobatics) = max(STR, DEX) + the same d20.
@@ -673,9 +675,10 @@ GrappleEscapeResult CombatEngine::executeGrappleEscape(BattleMap& bm, int agent_
     int str_mod = (stats.str - 10) / 2;
     int dex_mod = (stats.dex - 10) / 2;
 
-    // Roll best of STR (Athletics) or DEX (Acrobatics). Goliath Powerful Build: Advantage.
+    // Roll best of STR (Athletics) or DEX (Acrobatics). Goliath Powerful Build: Advantage
+    // (Large Form's Advantage on Strength checks adds nothing more).
     const bool powerful = stats.hasPowerfulBuild();
-    int str_d20 = d20TestFor(bm, agent_idx, powerful);   // Halfling Luck
+    int str_d20 = d20TestFor(bm, agent_idx, powerful || stats.inLargeForm());   // Halfling Luck
     int dex_d20 = d20TestFor(bm, agent_idx, powerful);
     int str_roll = str_d20 + str_mod;
     int dex_roll = dex_d20 + dex_mod;

@@ -194,6 +194,8 @@ def start_cast_spell(app, slot: str):
 
         # Filter by casting_time based on which action button was clicked. (War Magic's list is
         # already filtered engine-side by available_war_magic_spells, so no extra filter here.)
+        if sp.casting_time == rpg.CastingTime.Reaction:
+            continue  # a Reaction spell (Hellish Rebuke) is offered in its reaction window
         if slot == "action" and sp.casting_time == rpg.CastingTime.BonusAction:
             continue  # Skip bonus-action spells from the action menu
         elif slot == "bonus" and sp.casting_time != rpg.CastingTime.BonusAction:

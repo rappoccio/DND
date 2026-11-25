@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 # The kinds, with the field each replaces and what it awaits:
 #   arcane_charge        arcane_charge_pending          Eldritch Knight L15: teleport after Action Surge
 #   blink_steps          blink_steps_pending            Boon of Dimensional Travel: teleport (≤30 ft)
+#   clouds_jaunt         (new, SP6)                     Goliath Cloud's Jaunt: teleport (≤30 ft)
 #   psychic_teleport     pending_psychic_teleport       Soulknife L9: destination
 #   shadow_step          pending_shadow_step            Warrior of Shadow L6+: destination
 #   wild_magic_teleport  pending_wild_magic_teleport    Wild Magic Sorcerer: destination (20 ft)

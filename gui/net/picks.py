@@ -405,6 +405,8 @@ ARMS: tuple[Arm, ...] = (
         actor=_reactor, in_window=True),
     Arm("blink_steps", PICK, CELL, _t("Blink Steps: choose where to teleport"),
         _drop("blink_steps", "Blink Steps")),
+    Arm("clouds_jaunt", PICK, CELL, _t("Cloud's Jaunt: choose where to teleport (30 ft)"),
+        _drop("clouds_jaunt", "Cloud's Jaunt")),
     Arm("psychic_teleport", PICK, CELL, _t("Psychic Teleportation: choose a destination"),
         _drop("psychic_teleport", "Psychic Teleportation")),
     Arm("shadow_step", PICK, CELL, _t("Shadow Step: choose a destination"),
@@ -531,7 +533,7 @@ WIRED = frozenset({
     "vow_of_enmity", "inspiring_smite", "vitality_target",
     "path_to_the_grave", "move_hunters_mark",
     # M5d.3 — place picks
-    "arcane_charge", "blink_steps", "psychic_teleport",
+    "arcane_charge", "blink_steps", "clouds_jaunt", "psychic_teleport",
     "shadow_step", "steps_of_fey", "misty_escape",
     "wild_magic_teleport", "warping_implosion", "shadow_darkness",
     "elemental_burst", "jump_overlay_active",

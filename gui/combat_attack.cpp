@@ -1447,6 +1447,19 @@ std::vector<ReactionOption> CombatEngine::defenderOnHitOptions(const BattleMap& 
             opts.push_back(ReactionOption{ReactionOption::Feature, -1,
                                           "Parry (reduce the damage by 1 die + DEX)", "Parry"});
     }
+    // Goliath Stone's Endurance / Storm's Thunder and Hellish Rebuke (SP6): reactions to taking
+    // the damage. Offered before it lands, like Parry; a creature that would drop still gets them.
+    if (r.hit && r.total_damage > 0) {
+        if (canStonesEndurance(bm, action.target_idx))
+            opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                          "Stone's Endurance (reduce the damage by 1d12 + CON)", "StonesEndurance"});
+        if (canStormsThunder(bm, action.target_idx, action.attacker_idx))
+            opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                          "Storm's Thunder (1d8 Thunder to the attacker)", "StormsThunder"});
+        if (canHellishRebuke(bm, action.target_idx, action.attacker_idx))
+            opts.push_back(ReactionOption{ReactionOption::Feature, -1,
+                                          "Hellish Rebuke (2d10 Fire, DEX save for half)", "HellishRebuke"});
+    }
     if (!opts.empty())
         opts.push_back(ReactionOption{ReactionOption::Skip, -1, "Skip", ""});
     return opts;
@@ -1488,6 +1501,12 @@ bool CombatEngine::maybeDefenderOnHitInline(BattleMap& bm, const Attack& action,
         return applyDeflectAttacks(bm, action.target_idx, r);
     if (opt.feature == "Parry")
         return applyParry(bm, action.target_idx, r);
+    if (opt.feature == "StonesEndurance")
+        return applyStonesEndurance(bm, action.target_idx, r);
+    if (opt.feature == "StormsThunder")
+        return applyStormsThunder(bm, action.target_idx, action.attacker_idx);
+    if (opt.feature == "HellishRebuke")
+        return applyHellishRebuke(bm, action.target_idx, action.attacker_idx);
     if (opt.feature == "DefensiveDuelist") {
         if (applyDefensiveDuelist(bm, action.target_idx)) {
             r.hit = false;                  // DM ruling: a Defensive-Duelist-negated hit is a genuine miss.
@@ -2406,6 +2425,12 @@ void CombatEngine::applyAttackReaction(BattleMap& bm, const ReactionCtx& ctx, co
         applyDeflectAttacks(bm, ctx.reactor_idx, rx_.attack().r);
     } else if (opt.feature == "Parry") {
         applyParry(bm, ctx.reactor_idx, rx_.attack().r);
+    } else if (opt.feature == "StonesEndurance") {
+        applyStonesEndurance(bm, ctx.reactor_idx, rx_.attack().r);
+    } else if (opt.feature == "StormsThunder") {
+        applyStormsThunder(bm, ctx.reactor_idx, rx_.attack().action.attacker_idx);
+    } else if (opt.feature == "HellishRebuke") {
+        applyHellishRebuke(bm, ctx.reactor_idx, rx_.attack().action.attacker_idx);
     } else if (opt.feature == "DefensiveDuelist") {
         if (applyDefensiveDuelist(bm, ctx.reactor_idx))
             rx_.attack().r.hit = false;
@@ -2926,6 +2951,12 @@ bool CombatEngine::determineAdvantage(BattleMap& bm, InFlightAttack& s)
     if (tgt_cond.paralyzed) {
         adv = true;
         log_("Advantage: target is paralyzed");
+    }
+
+    // Faerie Fire: attacks against an Outlined creature have Advantage if the attacker can see it.
+    if (tgt_cond.outlined && canPerceiveTarget(bm, action.attacker_idx, action.target_idx)) {
+        adv = true;
+        log_("Advantage: target is outlined (Faerie Fire)");
     }
 
     // Target is blinded: attacker gets advantage
@@ -4294,6 +4325,24 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
             updated_atk_cond.dreadful_strike_available = true;
             updated_atk_cond.dreadful_strike_target    = action.target_idx;
             updated_atk_cond.dreadful_strike_weapon    = action.weapon_idx;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
+    }
+
+    // ── Goliath Giant Ancestry (SPECIES_PLAN.md D9) — OFFERED on a hit that deals damage ─
+    // Fire's Burn, Frost's Chill and Hill's Tumble (Large or smaller targets) spend one of the
+    // PB uses. The GUI prompts (riders.offer_giant_ancestry → applyGiantAncestryOnHit); the
+    // automated path spends it (autoGiantAncestry). The latest hit is the one on offer.
+    // Each attack replaces the offer, so an unanswered one never rides a later swing.
+    if (atk_stats.giantAncestry() != GiantAncestry::None) {
+        const GiantAncestry ga = atk_stats.giantAncestry();
+        const bool kind_ok = ga == GiantAncestry::Fire || ga == GiantAncestry::Frost
+                          || (ga == GiantAncestry::Hill && tgt_pt.agent->getSize() <= 2);
+        const bool offer = kind_ok && r.hit && r.total_damage > 0 && !r.target_down
+                        && atk_stats.giantAncestryRemaining() > 0;
+        if (offer || updated_atk_cond.giant_ancestry_available) {
+            updated_atk_cond.giant_ancestry_available = offer;
+            updated_atk_cond.giant_ancestry_target    = offer ? action.target_idx : -1;
             bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
         }
     }

@@ -519,6 +519,7 @@ int CombatEngine::useHealingLight(BattleMap& bm, int healer_idx, int target_idx,
 
     Agent::Stats target_stats = bm.getAgentStats(target_idx);
     int healed = std::min(total_healing, target_stats.effectiveMaxHp() - target_stats.hp_cur);
+    if (target_stats.cant_heal) { total_healing = 0; healed = 0; }   // Chill Touch, Pit Fiend poison
     target_stats.hp_cur = std::min(target_stats.effectiveMaxHp(), target_stats.hp_cur + total_healing);
     bm.setAgentStats(target_idx, target_stats);
     reviveOnHeal(bm, target_idx);   // a healed downed ally rejoins initiative

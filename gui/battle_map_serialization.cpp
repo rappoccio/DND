@@ -154,7 +154,8 @@ namespace {
     X(vampiric_bite_used) X(vampiric_strengthen_bonus) \
     X(species_skill) X(adrenaline_rush_used) X(relentless_endurance_used) X(heroic_inspiration) \
     X(vampiric_strengthen_turns) X(breath_weapon_used) X(draconic_flight_used) \
-    X(draconic_flight_rounds) X(draconic_flight_fly_from)
+    X(draconic_flight_rounds) X(draconic_flight_fly_from) X(giant_ancestry_used) \
+    X(large_form_used) X(large_form_rounds) X(large_form_speed_added)
 
 // ── Agent::Conditions — every member, one X() each ───────────────────────────
 #define RPG_CONDITIONS_FIELDS(X) \
@@ -197,7 +198,7 @@ namespace {
     X(restore_balance_miss_available) X(maneuver_available) \
     X(maneuver_precision_available) X(goaded_by) X(distracted_by) X(disarmed) \
     X(disarmed_by) X(feint_target_idx) X(quick_toss_die_pending) X(sapped) \
-    X(sap_used_this_turn) X(slowed) X(slow_used_this_turn) X(vex_target_idx) \
+    X(sap_used_this_turn) X(outlined) X(giant_ancestry_available) X(giant_ancestry_target) X(slowed) X(slow_used_this_turn) X(vex_target_idx) \
     X(vex_used_this_turn) X(push_available) X(push_used_this_turn) \
     X(poison_used_this_turn) X(topple_available) X(topple_used_this_turn) \
     X(savage_attacker_used_this_turn) X(tavern_brawler_push_used_this_turn) \
@@ -276,6 +277,7 @@ struct StagedAgent {
     Agent::Stats        stats;
     Agent::Conditions   conditions;
     std::array<int, 4>  movement{};
+    int                 size{1};  // footprint side (Large Form changes it in play)
 };
 
 } // namespace
@@ -346,10 +348,12 @@ bool BattleMap::restore(const nlohmann::json& j)
             if (!a.is_object()) return false;
             // The basis: the same creature at the same raw index, or nothing is restored.
             if (a.value("name", std::string{}) != pa.agent->name()) return false;
-            if (a.value("size", -1) != pa.agent->getSize()) return false;
+            // Size may differ from the live token (Goliath Large Form grew or shrank it since).
+            const int snap_size = a.value("size", pa.agent->getSize());
+            if (snap_size < 1 || snap_size > 6) return false;
 
             StagedAgent s{pa, pa.agent->getZ(), pa.agent->getStats(),
-                          pa.agent->getConditions(), pa.agent->rawMovement()};
+                          pa.agent->getConditions(), pa.agent->rawMovement(), snap_size};
 #define X(f) readMember(a, #f, s.pa.f);
             RPG_PLACED_AGENT_FIELDS(X)
 #undef X
@@ -388,6 +392,7 @@ bool BattleMap::restore(const nlohmann::json& j)
         ag.setStats(s.stats);
         ag.setConditions(s.conditions);
         ag.setPosition(s.pa.origin.col, s.pa.origin.row, s.z);
+        ag.setSize(s.size);
         ag.initMovement(s.movement[0], s.movement[1], s.movement[2], s.movement[3]);
         placedAgents_[i] = std::move(s.pa);
     }

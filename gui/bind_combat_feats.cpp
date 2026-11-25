@@ -50,6 +50,29 @@ void bindCombatFeats(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("idx"),
              "Dragonborn Draconic Flight: start it (fly Speed = Speed for 100 rounds; the caller\n"
              "pays the Bonus Action) or, while it runs, dismiss it for free. False if neither.")
+        // SP6: Goliath
+        .def("large_form_origin", &CombatEngine::largeFormOrigin, py::arg("battle_map"), py::arg("idx"),
+             "Goliath Large Form: the top-left of a free 2x2 that keeps the token's cell, or\n"
+             "Cell(-1, -1) when there is no room.")
+        .def("can_large_form", &CombatEngine::canLargeForm, py::arg("battle_map"), py::arg("idx"),
+             "Goliath Large Form can start now (level 5+, unused since the Long Rest, Medium or\n"
+             "Small, conscious, not Incapacitated). Room is checked when it starts.")
+        .def("toggle_large_form", &CombatEngine::toggleLargeForm, py::arg("battle_map"), py::arg("idx"),
+             "Goliath Large Form: start it (2x2, +10 ft Speed, 100 rounds; the caller pays the Bonus\n"
+             "Action) or, while it runs, end it for free. False if neither (or no room).")
+        .def("apply_giant_ancestry_on_hit", &CombatEngine::applyGiantAncestryOnHit,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("result"),
+             "Goliath Fire's Burn / Frost's Chill / Hill's Tumble on the offered hit\n"
+             "(conditions.giant_ancestry_available): spends a use and adds the rider to result.")
+        .def("can_clouds_jaunt", &CombatEngine::canCloudsJaunt, py::arg("battle_map"), py::arg("idx"),
+             "Goliath Cloud's Jaunt is available (Cloud ancestry, a use left, able to act).")
+        .def("clouds_jaunt", &CombatEngine::cloudsJaunt,
+             py::arg("battle_map"), py::arg("idx"), py::arg("col"), py::arg("row"),
+             "Goliath Cloud's Jaunt: teleport up to 30 ft to an unoccupied space it can see and\n"
+             "spend a use. The caller pays the Bonus Action. False (nothing spent) if refused.")
+        .def("can_hellish_rebuke", &CombatEngine::canHellishRebuke,
+             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("attacker_idx"),
+             "Hellish Rebuke can be cast now as a reaction against attacker_idx.")
         .def("apply_heroic_reroll", &CombatEngine::applyHeroicReroll,
              py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("weapon_idx"),
              "Heroic Inspiration after a miss (conditions.heroic_reroll_available): spend the ★ and\n"

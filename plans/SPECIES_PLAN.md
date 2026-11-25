@@ -3,7 +3,7 @@
 Drafted 2026-11-24. Source: `character_origins.pdf` (SRD 5.2, pp. 83–86). Status: **Step 0
 FROZEN 2026-11-24** — D1 signed off and committed (9380611); D2–D14 signed off by the user the
 same day. SP0 audit done 2026-11-24 (results below). SP1 done 2026-11-24 (288/0). SP2 done 2026-11-24
-(289/0), committed 7cd4c1b. SP3 done 2026-11-25 (290/0). SP4 done 2026-11-25 (292/0). SP5 done 2026-11-25 (293/0). Next: SP6.
+(289/0), committed 7cd4c1b. SP3 done 2026-11-25 (290/0). SP4 done 2026-11-25 (292/0). SP5 done 2026-11-25 (293/0). SP6 done 2026-11-25 (294/0). Next: SP7.
 
 ## Scope
 
@@ -231,6 +231,24 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
   engine effects, if SP0 shows they are missing. SP0 showed both are missing; fix the
   Faerie Fire record too. **Chill Touch's no-heal rider is built here as well** (user,
   2026-11-24: it should have existed already).
+  *Done 2026-11-25 (294/0).* Species flags `kSpeciesGiantAncestry` / `kSpeciesLargeForm`,
+  `giantAncestryOf(option)`. Stats: `giant_ancestry_used` (PB per Long Rest),
+  `large_form_used` / `_rounds` / `_speed_added`; Conditions: `giant_ancestry_available` /
+  `_target`, `outlined`. **Large Form**: `Agent::setSize`; `largeFormOrigin` picks a free 2×2
+  that keeps the token's cell (else refused); +10 ft Speed and this turn's walk; Advantage on the
+  STR side of shove / grapple / escape and on door / chest Athletics; ticked in `beginTurn`,
+  ends free (`⛰ End Large Form`) back to the top-left cell. Board snapshots now restore a size
+  change (a size off 1–6 is still refused). **Giant Ancestry**: `applyAttackResult` offers the
+  rider on each damaging weapon hit (each attack replaces the offer); GUI
+  `riders.offer_giant_ancestry`, auto `autoGiantAncestry` from `runWeaponTurn`. Cloud's Jaunt
+  is a Bonus-band pick (`clouds_jaunt`, wired for remote players). Stone's Endurance, Storm's
+  Thunder and **Hellish Rebuke** are options in `defenderOnHitOptions` (both dispatch paths);
+  Hellish Rebuke's record is now a Reaction, hidden from the cast menus. **Faerie Fire**: a DEX
+  save in a 20-ft Square applying `Outlined` (Advantage to attackers who can see it, weapon and
+  spell; cancels Invisible in `VisibilityService`). **Chill Touch**: a `NoHeal` condition with
+  `prevents_healing`, 2 caster turns; the spell, lingering, Blessed Healer, Healing Light,
+  Preserve Life, Elder Champion and Wild Magic heals now honour `cant_heal`. Suite
+  `test_species_goliath.py`; panel golden regenerated (three hidden buttons); offer counts 139.
 - **SP7 — Import, NPC and docs.** `tools/import_character.py` maps the D&D Beyond race and
   subrace to species and option. Random party generation (`party_gen.py`) can roll species.
   `known_limitations.md` gets the D14 list. Update `memory/` architecture notes.

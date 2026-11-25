@@ -270,6 +270,13 @@ SpellToHit CombatEngine::rollSpellAttack(BattleMap& bm, const SpellAction& actio
         log_("Advantage: target is stunned");
     }
 
+    // Faerie Fire: an Outlined target the caster can see grants Advantage.
+    if (agents[static_cast<std::size_t>(tgt_idx)].agent->getConditions().outlined &&
+        canPerceiveTarget(bm, action.caster_idx, tgt_idx)) {
+        caster_adv = true;
+        log_("Advantage: target is outlined (Faerie Fire)");
+    }
+
     foldHeldAdvantage(bm, action.caster_idx, caster_adv, caster_dis);   // Tides of Chaos, Lucky
 
     int d20_val = d20TestFor(bm, action.caster_idx, caster_adv, caster_dis);   // adv+dis cancel; Luck
@@ -1588,7 +1595,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
                 tr.dice_results = dice;
 
                 if (sp.type == Spell::Heal) {
-                    tr.total_healing = std::max(0, dmg);
+                    tr.total_healing = tgt_stats.cant_heal ? 0 : std::max(0, dmg);   // Chill Touch, …
                     tgt_stats.hp_cur = std::min(tgt_stats.hp_max,
                                                 tgt_stats.hp_cur + tr.total_healing);
                 } else if  (sp.type == Spell::Harm) {
@@ -1867,7 +1874,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
             tr.dice_results = dice;
 
             if (sp.type == Spell::Heal) {
-                tr.total_healing = std::max(0, dmg);
+                tr.total_healing = tgt_stats.cant_heal ? 0 : std::max(0, dmg);   // Chill Touch, …
                 tgt_stats.hp_cur = std::min(tgt_stats.hp_max,
                                             tgt_stats.hp_cur + tr.total_healing);
             } else {
@@ -2172,7 +2179,10 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
             tr.hit = true;
 
             if (sp.type == Spell::Heal) {
-                tr.total_healing = std::max(0, total);
+                // A creature that can't regain HP (Chill Touch, Pit Fiend poison) gains none.
+                tr.total_healing = tgt_stats.cant_heal ? 0 : std::max(0, total);
+                if (tgt_stats.cant_heal)
+                    log_("{} can't regain Hit Points — the healing has no effect", agentName(bm, tgt_idx));
                 tgt_stats.hp_cur = std::min(tgt_stats.hp_max,
                                             tgt_stats.hp_cur + tr.total_healing);
             } else {
@@ -2734,7 +2744,7 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         caster_stats.hasClass(CharacterClass::Cleric) &&
         caster_stats.cleric_subclass == LifeDomain && caster_stats.classLevel(CharacterClass::Cleric) >= 6) {
         Agent::Stats cs = bm.getAgentStats(action.caster_idx);
-        if (cs.hp_cur > 0) {
+        if (cs.hp_cur > 0 && !cs.cant_heal) {
             const int self_heal = 2 + heal_slot;
             cs.hp_cur = std::min(cs.hp_max, cs.hp_cur + self_heal);
             bm.setAgentStats(action.caster_idx, cs);
@@ -3650,8 +3660,9 @@ void CombatEngine::tickEffects(BattleMap& bm)
             total += modified_damage;
         }
 
-        if (fx.spell.type == Spell::Heal)
-            s.hp_cur = std::min(s.hp_max, s.hp_cur + std::max(0, total));
+        if (fx.spell.type == Spell::Heal) {
+            if (!s.cant_heal) s.hp_cur = std::min(s.hp_max, s.hp_cur + std::max(0, total));
+        }
         else {
             int damage = std::max(0, total);
             // Temporary HP absorbs damage first, then overflow damages hp_cur
@@ -4413,6 +4424,7 @@ void CombatEngine::clearSpellConditionEffect(BattleMap& bm, const ActiveAgentCon
     else if (n == "Poisoned")      { ac.poisoned = false; }
     else if (n == "Unconscious")   { ac.unconscious = false; ac.incapacitated = false; }  // remain Prone per RAW
     else if (n == "Prone")         { ac.prone = false; }
+    else if (n == "Outlined")      { ac.outlined = false; }   // Faerie Fire
     else if (n == "Invisible" || n == "GreaterInvisible") { ac.invisible = false; ac.invisible_persists_on_action = false; }
     else if (n == "Sanctuary")     { ac.sanctuary_active = false; ac.sanctuary_dc = 0; }
     else if (n == "Gaseous")       { endGaseousForm(bm, cond.agent_idx); return; }  // restores speeds/multipliers + clears the flag

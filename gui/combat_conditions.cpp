@@ -1244,6 +1244,12 @@ int CombatEngine::addAgentCondition(BattleMap& bm, ActiveAgentCondition cond) no
                 // Greater Invisibility does not end when the creature attacks or casts.
                 ac.invisible_persists_on_action = (cond.condition_name == "GreaterInvisible");
                 bm.setAgentConditions(cond.agent_idx, ac);
+            } else if (cond.condition_name == "Outlined") {
+                // Faerie Fire: attacks against it have Advantage (determineAdvantage,
+                // rollSpellAttack) and it can't benefit from Invisible (VisibilityService).
+                auto ac = bm.getAgentConditions(cond.agent_idx);
+                ac.outlined = true;
+                bm.setAgentConditions(cond.agent_idx, ac);
             } else if (cond.condition_name == "Sanctuary") {
                 // Sanctuary ward: store the WIS save DC attackers must beat (the caster's spell save DC).
                 auto ac = bm.getAgentConditions(cond.agent_idx);
