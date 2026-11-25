@@ -160,4 +160,5 @@ class CastSetup:
     command_word: int = -1                      # Command word (0=Drop..4=Approach); -1 = n/a
     curse_choice: int = -1                      # Vistani Curse sub-choice; -1 = n/a
     forcecage_sealed: bool = False              # Forcecage: False = Cage, True = Box
+    enlarge: bool = False                       # Enlarge/Reduce: False = Reduce, True = Enlarge
     fey_reinforcements: bool = False            # the slotless Summon Fey spends "Fey Reinforcements"

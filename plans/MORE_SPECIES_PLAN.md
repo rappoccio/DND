@@ -167,7 +167,8 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
   - Reborn Advantage on death saves.
   - Fairy Flight with the armor gate (D11).
   - Tests: apply, strip and swap for each species.
-- **MS2 — Granted spells (D4).**
+- **MS2 — Granted spells (D4).** Done 2026-11-25 (297/0): `SpellAction.enlarge` carries the
+  mode; Enlarge on the caster or an ally is an Automatic cast with no save (and no save preroll).
   - Rows for Aasimar, Hexblood and Fairy, including the unlock levels.
   - Enlarge/Reduce mode picker at cast time (MS0 decision (a)), for every caster, not only
     Fairies.

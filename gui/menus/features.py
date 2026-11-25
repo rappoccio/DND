@@ -366,6 +366,7 @@ def start_mantle_majesty(app, bard_idx: int):
         app.cast_setup.command_word = word
         app.cast_setup.curse_choice = -1
         app.cast_setup.forcecage_sealed   = False   # an earlier Forcecage's Box must not seal this
+        app.cast_setup.enlarge            = False
         app._drop_pick("chromatic")
         app.pending_chromatic_chain    = []
         word_name = next((lbl for lbl, val in COMMAND_WORD_OPTIONS if val == word), "?")

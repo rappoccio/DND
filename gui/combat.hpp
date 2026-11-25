@@ -699,6 +699,10 @@ public:
     // (so neutral-vs-neutral is NOT allied). Drives hide-from-enemies, sparing
     // allies from selective AoEs, and restricting heals to allies.
     [[nodiscard]] bool areAllies(const BattleMap& bm, int a_idx, int b_idx) const noexcept;
+    // Enlarge/Reduce in Enlarge mode on a willing target (the caster or an ally): no save (MS2).
+    [[nodiscard]] bool enlargeIsWilling(const BattleMap& bm, const SpellAction& a) const noexcept {
+        return !a.target_indices.empty() && areAllies(bm, a.caster_idx, a.target_indices.front());
+    }
 
     // Stat-block Condition Immunity: true (and logged) if agent_idx is immune to the named
     // condition, in which case the caller must not apply it.

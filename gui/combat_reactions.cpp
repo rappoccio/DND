@@ -695,7 +695,10 @@ CombatEngine::CastStep CombatEngine::stepTopCast(BattleMap& bm)
             if (c.action.spell_idx >= 0 && c.action.spell_idx < static_cast<int>(spells.size())) {
                 const Spell& sp = spells[static_cast<std::size_t>(c.action.spell_idx)];
                 is_save_spell = (sp.attack_type == Spell::Save) &&
-                                (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple);
+                                (sp.geometry == Spell::Single || sp.geometry == Spell::Multiple) &&
+                                // Enlarge on a willing target rolls no save (MS2).
+                                !(sp.name == "Enlarge/Reduce" && c.action.enlarge &&
+                                  enlargeIsWilling(bm, c.action));
             }
         }
         if (is_save_spell) {

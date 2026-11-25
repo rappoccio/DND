@@ -207,6 +207,9 @@ struct SpellAction {
     // (only a CHA-saved teleport escapes), and nothing outside can attack, target, or reach into the
     // box either. Rides onto the applied Forcecaged condition's forcecage_sealed flag.
     bool     forcecage_sealed = false;
+    // Enlarge/Reduce mode (MORE_SPECIES_PLAN.md MS2): false = Reduce (the stored spell, CON save),
+    // true = Enlarge (applies Enlarged; no save when the target is the caster or an ally).
+    bool     enlarge = false;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

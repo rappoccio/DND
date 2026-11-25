@@ -366,6 +366,15 @@ inline constexpr std::array kSpeciesSpellTable{
     SpeciesSpellDef{"Tiefling", "Infernal", "Fire Bolt",           1, 0},
     SpeciesSpellDef{"Tiefling", "Infernal", "Hellish Rebuke",      3, 1},
     SpeciesSpellDef{"Tiefling", "Infernal", "Darkness",            5, 1},
+    // MORE_SPECIES_PLAN.md MS2 (D4). Aasimar Light Bearer: Light, cast with CHA.
+    SpeciesSpellDef{"Aasimar", "", "Light", 1, 0, kSpeciesAbilityCha},
+    // Hexblood Hex Magic: Disguise Self and Hex, each once per Long Rest, picked ability.
+    SpeciesSpellDef{"Hexblood", "", "Disguise Self", 1, 1},
+    SpeciesSpellDef{"Hexblood", "", "Hex",           1, 1},
+    // Fairy Magic: Druidcraft; Faerie Fire at 3 and Enlarge/Reduce at 5, once per Long Rest each.
+    SpeciesSpellDef{"Fairy", "", "Druidcraft",     1, 0},
+    SpeciesSpellDef{"Fairy", "", "Faerie Fire",    3, 1},
+    SpeciesSpellDef{"Fairy", "", "Enlarge/Reduce", 5, 1},
 };
 
 // Out of the struct so tests/test_board_snapshot.py's member parser sees only fields.

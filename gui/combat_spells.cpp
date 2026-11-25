@@ -703,6 +703,16 @@ SpellResult CombatEngine::executeSpell(BattleMap& bm, const SpellAction& action_
         auto chosen = static_cast<MagicDamage_t>(action.damage_type_override);
         for (auto& r : sp.magic_damage_rolls) r.type = chosen;
     }
+    // Enlarge/Reduce mode (MORE_SPECIES_PLAN.md MS2): the stored spell is Reduce. Enlarge swaps
+    // the condition to Enlarged; on the caster or an ally (a willing target) it needs no save.
+    if (sp.name == "Enlarge/Reduce" && action.enlarge) {
+        for (auto& c : sp.conditions)
+            if (c.condition_name == "Reduced") c.condition_name = "Enlarged";
+        if (enlargeIsWilling(bm, action)) {
+            sp.attack_type = Spell::Automatic;
+            for (auto& c : sp.conditions) c.requires_save = false;
+        }
+    }
     // Breath Weapon (SPECIES_PLAN.md D7): the type is the caster's Draconic Ancestry's.
     if (sp.resource_name == kBreathWeaponPool) {
         const int t = draconicDamageType(caster_pa.agent->getStats().species_option);

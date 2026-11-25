@@ -77,7 +77,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(
     damage_type_override, chromatic_leap_targets, free_cast, use_grant,
     command_word, curse_choice, overchannel, enhanced_necromancy,
     dispel_condition_ids, dispel_spell_effect_ids, dispel_terrain_ids,
-    ward_creature_mask, ward_traps, forcecage_sealed)
+    ward_creature_mask, ward_traps, forcecage_sealed, enlarge)
 
 // ── Results ──────────────────────────────────────────────────────────────────
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(

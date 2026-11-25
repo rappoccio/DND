@@ -317,6 +317,7 @@ def activate_spell(app, s, si_, slot_level_, idx, spells, stats, free_cast=False
     app.cast_setup.command_word = -1
     app.cast_setup.curse_choice = -1
     app.cast_setup.forcecage_sealed   = False   # Forcecage form: False = Cage (20 ft), True = Box (10 ft)
+    app.cast_setup.enlarge            = False   # Enlarge/Reduce mode: False = Reduce
     # A new cast always starts with no leftover Chromatic Orb leap chain (e.g. if a prior
     # chain was abandoned by a turn change), so stale hops can't hijack this cast's clicks.
     app._drop_pick("chromatic")
@@ -393,6 +394,23 @@ def activate_spell(app, s, si_, slot_level_, idx, spells, stats, free_cast=False
         app._ask_actor(idx, "action", "Command: choose a word",
                         [(lbl, (lambda v=val: _on_word([v]))) for lbl, val in features.COMMAND_WORD_OPTIONS],
                         render="picker", on_cancel=lambda: _on_word([]),
+                        cancellable=False)
+        return
+
+    # Cast-time mode choice (Enlarge/Reduce, MORE_SPECIES_PLAN.md MS2): Enlarge applies Enlarged
+    # (no save on the caster or an ally); Reduce keeps the stored CON-save path. Rides on
+    # SpellAction.enlarge; Single geometry, so it falls through to the normal target dispatch.
+    if sp_.name == "Enlarge/Reduce":
+        size_opts = [("Enlarge (+1d4 weapon damage, Adv. on STR saves)", 1),
+                     ("Reduce (−1d4 weapon damage; CON save)", 0)]
+        def _on_size(chosen, s=s, si_=si_, sp_=sp_, slot_level_=slot_level_):
+            app.cast_setup.enlarge = bool(chosen and chosen[0] == 1)
+            app._combat_log_add(
+                f"Enlarge/Reduce: {'Enlarge' if app.cast_setup.enlarge else 'Reduce'} — click a target.")
+            dispatch_spell_geometry(app, s, si_, sp_, slot_level_, idx)
+        app._ask_actor(idx, "action", "Enlarge/Reduce: choose",
+                        [(lbl, (lambda v=val: _on_size([v]))) for lbl, val in size_opts],
+                        render="picker", on_cancel=lambda: _on_size([]),
                         cancellable=False)
         return
 
@@ -687,6 +705,7 @@ def resolve_spell_cast(app, target_idx: int | None):
     action.command_word   = app.cast_setup.command_word
     action.curse_choice   = app.cast_setup.curse_choice  # Vistani Curse sub-choice (-1 = n/a)
     action.forcecage_sealed = app.cast_setup.forcecage_sealed   # Forcecage form (Box seals the occupant)
+    action.enlarge        = app.cast_setup.enlarge     # Enlarge/Reduce mode (MS2)
     # Chromatic Orb's player-chosen leap chain (empty for every other spell / an un-chained cast).
     action.chromatic_leap_targets = list(app.pending_chromatic_chain)
     action.overchannel   = app.overchannel_armed  # Evoker L14 (engine ignores if ineligible)

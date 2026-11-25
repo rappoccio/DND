@@ -2305,6 +2305,9 @@ void bindTypes(py::module_& m) {
         .def_readwrite("forcecage_sealed", &SpellAction::forcecage_sealed,
              "Forcecage form: False = Cage (20-ft barred, attacks/spells pass through); True = Box\n"
              "(10-ft solid, two-way seal — occupant can't act out and can't be targeted from outside).")
+        .def_readwrite("enlarge", &SpellAction::enlarge,
+             "Enlarge/Reduce mode: False = Reduce (CON save); True = Enlarge (Enlarged condition;\n"
+             "no save on the caster or an ally).")
         .def_readwrite("dispel_terrain_ids", &SpellAction::dispel_terrain_ids,
              "Dispel Magic picker selection: ActiveTerrainEffect ids to end. When any of these three\n"
              "lists is non-empty, a dispels_magic cast ends ONLY the chosen effects (grouped by source\n"
