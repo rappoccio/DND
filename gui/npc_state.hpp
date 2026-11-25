@@ -91,9 +91,6 @@ public:
     void setModel(NpcArchetype a, std::vector<NpcAutomationStrategy> ranked) {
         models_[static_cast<std::size_t>(a)] = std::move(ranked);
     }
-    void clearModels() noexcept {
-        for (auto& m : models_) m.clear();
-    }
     [[nodiscard]] bool anyModel() const noexcept {
         for (const auto& m : models_)
             if (!m.empty()) return true;

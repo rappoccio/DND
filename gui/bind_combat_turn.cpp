@@ -34,10 +34,6 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
                     &CombatEngine::attackModifier,
                     py::arg("weapon"), py::arg("stats"),
                     "Total attack-roll modifier for weapon + attacker stats.")
-        .def_static("damage_ability_mod",
-                    &CombatEngine::damageAbilityMod,
-                    py::arg("weapon"), py::arg("stats"),
-                    "Ability modifier added to damage rolls.")
         .def("roll",              &CombatEngine::roll,            py::arg("sides"), py::arg("modifier") = 0)
         .def("roll_advantage",    &CombatEngine::rollAdvantage,   py::arg("sides"), py::arg("modifier") = 0)
         .def("roll_disadvantage", &CombatEngine::rollDisadvantage,py::arg("sides"), py::arg("modifier") = 0)
@@ -73,18 +69,6 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("attacker_idx"),
              py::arg("target_indices"), py::arg("max_targets") = 8,
              "Fixed-length float vector for NN input (12 + max_targets×14 floats).")
-        .def("get_agent_turns",
-             &CombatEngine::getAgentTurns,
-             py::arg("idx"),
-             "Number of turns agent[idx] takes per round (default 1).")
-        .def("set_agent_turns",
-             &CombatEngine::setAgentTurns,
-             py::arg("idx"), py::arg("turns"),
-             "Override turn count for agent[idx]. set_agent_turns(idx, 1) "
-             "removes the override and restores the default.")
-        .def("clear_agent_turns",
-             &CombatEngine::clearAgentTurns,
-             "Reset every agent to the default of 1 turn per round.")
         .def("begin_turn",
              &CombatEngine::beginTurn,
              py::arg("battle_map"), py::arg("agent_idx"),
@@ -177,7 +161,6 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              py::arg("archetype"), py::arg("ranked"),
              "Step 4 stand-in model: a ranked list of NpcAutomationStrategy for one archetype (what a tree\n"
              "leaf will hold). An empty list clears it. With no model at all, Levels 5/6 run Level 4.")
-        .def("clear_npc_archetype_models", &CombatEngine::clearNpcArchetypeModels)
         .def("npc_models_loaded", &CombatEngine::npcModelsLoaded,
              "True when Levels 5/6 have anything to run: an archetype model or an installed policy.")
         // ── Macro-actions, policy seam, entity observation (NPC_LEARNING_PLAN.md Step 5) ──
@@ -560,10 +543,6 @@ void bindCombatTurn(py::class_<CombatEngine>& engine) {
              &CombatEngine::setAgentConditions,
              py::arg("battle_map"), py::arg("idx"), py::arg("conditions"),
              "Replace the Conditions for agent[idx].")
-        .def("apply_paralyzed",
-             &CombatEngine::applyParalyzed,
-             py::arg("battle_map"), py::arg("idx"),
-             "Apply paralyzed condition to agent[idx]: sets paralyzed=true, incapacitated=true, and all movement speeds to 0.")
         .def("apply_poisoned",
              &CombatEngine::applyPoisoned,
              py::arg("battle_map"), py::arg("idx"),

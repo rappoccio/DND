@@ -551,6 +551,25 @@ RL-facing and deliberate, some are reaction internals that leaked into the API. 
 or documenting them is a behavior/API-surface decision, not a mechanical move, so it's
 out of scope for R1's "no behavior changes" rule — left for a dedicated pass.
 
+**Triaged 2026-11-24.** Re-counted: 33 `CombatEngine` bindings with no Python reference
+(the other 10 had gained callers or tests). Resolved as:
+- *Dead in C++ too* — deleted outright: `applyCounterspell` (pre-cast-stack direct path;
+  Counterspell runs through `pushCounterspell`/the cast stack), `clearNpcArchetypeModels`
+  (+ `NpcState::clearModels`).
+- *Never-wired feature* — deleted: `get/set/clearAgentTurns` and `agentTurns_`. The
+  `"agent_turns"` snapshot key is no longer written; `restore()` ignores it in old saves.
+- *Internals that leaked* — binding removed, C++ kept: `apply_shield`, `apply_uncanny_dodge`,
+  `apply_superior_hunter_defense`, `apply_{bend_luck,cutting_words,restore_balance,silvery_barbs}_to_attack`,
+  `can_{bend_luck,countercharm,cutting_words,glorious_defense,indomitable,silvery_barbs}`,
+  `apply_paralyzed`, `cure_petrified`, `damage_ability_mod`, `has_disadvantage` (static),
+  `shadowy_dodge_teleport`.
+- *Deliberate API* — kept: `get_battle_observation` (RL), `reseed`, `resolve_attack`, the
+  movement-budget family (`spend_fly/swim/burrow`, `get_burrow_remaining`, `clear_movement`),
+  `remove_item_from_agent` / `remove_spell_from_agent` (pair the used `add_*`).
+
+Proof: API dump differs by exactly the 23 removed names; build clean; `./test.sh` 286/0,
+goldens unchanged.
+
 ### R2 — `combat_types.hpp` — **DONE** (2026-09-14)
 
 Moved the struct/free-function region (`combat.hpp` original lines 63–964: `HideResult`,
@@ -1436,7 +1455,7 @@ by class into `combat_<class>.cpp` ×12 + `combat_feats.cpp`, shared code stayin
 method → file table live in `plans/COMBAT_CLASS_SPLIT_PLAN.md`.** Step 0 committed 57357f0
 (baseline 285/0, with `tests/test_arcane_archer_direct.py`). The move landed as one commit on
 2026-11-24: line-identity proof passed, build clean with no new warnings, `./test.sh` 285/0, goldens
-byte-identical. R6b (bindings / header by class) stays optional.
+byte-identical. R6b and R6c followed the same day; see that plan's *Follow-ups*.
 
 ## Rejected options
 

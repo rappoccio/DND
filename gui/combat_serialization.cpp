@@ -256,7 +256,6 @@ nlohmann::json CombatEngine::snapshot() const
     j["visibility"] = vis_.to_json();
 
     // Engine-owned state that never got a sub-engine of its own.
-    j["agent_turns"]       = keyedMapToJson(agentTurns_, "agent", "turns");
     effects_.to_json(j);   // "active_effects", "safe_targets", "zone_applied_turn" (R4e)
     j["death_burst_fired"] = deathBurstFired_;
 
@@ -298,7 +297,8 @@ bool CombatEngine::restore(const nlohmann::json& j)
     if (auto it = j.find("conditions"); it != j.end()) conditions_.from_json(*it);
     if (auto it = j.find("visibility"); it != j.end()) vis_.from_json(*it);
 
-    keyedMapFromJson(j, "agent_turns",       "agent",  "turns",   agentTurns_);
+    // "agent_turns" (an unused per-agent turn-count override, removed 2026-11-24) may still
+    // be present in older saves; it is ignored.
     effects_.from_json(j);   // same three top-level keys, same order as before R4e
     deathBurstFired_.clear();
     readMember(j, "death_burst_fired", deathBurstFired_);

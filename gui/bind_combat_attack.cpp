@@ -34,13 +34,6 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
                     py::arg("as_throw") = false,
                     "True iff weapon can reach target with LoS. as_throw: hurl a Thrown weapon "
                     "(reaches long_range_ft instead of reach_ft).")
-        .def_static("has_disadvantage",
-                    &CombatEngine::hasDisadvantage,
-                    py::arg("weapon"), py::arg("battle_map"),
-                    py::arg("atk_origin"), py::arg("atk_size"),
-                    py::arg("tgt_origin"), py::arg("tgt_size"),
-                    py::arg("as_throw") = false,
-                    "True iff the attack should be rolled at disadvantage (long range).")
         .def("damage_agent",
                     &CombatEngine::damageAgent,
                     py::arg("battle_map"), py::arg("idx"), py::arg("amount"),
@@ -103,21 +96,10 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("target_idx"),
              "True iff target_idx (Rogue L5+, reaction free, not incapacitated, alive) may use Uncanny\n"
              "Dodge to halve an attack's damage. Eligibility gate for the OnHit defender window.")
-        .def("apply_uncanny_dodge", &CombatEngine::applyUncannyDodge,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
-             "Uncanny Dodge (on-hit DEFENDER reaction): halve result.total_damage (round down), spend the\n"
-             "reactor's reaction, and record the reduction in result.damage_breakdown. Re-validates\n"
-             "can_uncanny_dodge. Returns True iff applied. The OnHit window (begin_attack/submit_decision)\n"
-             "drives this for the GUI; auto/RL runs it inline via maybeDefenderOnHitInline.")
         .def("can_superior_hunter_defense", &CombatEngine::canSuperiorHunterDefense,
              py::arg("battle_map"), py::arg("target_idx"),
              "True iff target_idx (Hunter Ranger L15+, reaction free, not incapacitated, alive) may use\n"
              "Superior Hunter's Defense to resist (halve) the triggering damage. OnHit defender window gate.")
-        .def("apply_superior_hunter_defense", &CombatEngine::applySuperiorHunterDefense,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
-             "Superior Hunter's Defense (on-hit DEFENDER reaction): halve result.total_damage (round down),\n"
-             "spend the reactor's reaction, record the reduction. Re-validates can_superior_hunter_defense.\n"
-             "Returns True iff applied. Same OnHit-window plumbing as Uncanny Dodge.")
         .def("horde_breaker_targets", &CombatEngine::hordeBreakerTargets,
              py::arg("battle_map"), py::arg("attacker_idx"),
              "Horde Breaker (Hunter L3): indices the armed extra attack may strike — within 5 ft of the\n"
@@ -137,9 +119,6 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("idx"),
              "Shadowy Dodge's automated pick: the nearest legal cell out of every enemy's reach or sight;\n"
              "Cell(-1, -1) when none, or when the Ranger already stands in one.")
-        .def("shadowy_dodge_teleport", &CombatEngine::shadowyDodgeTeleport,
-             py::arg("battle_map"), py::arg("idx"), py::arg("dest"),
-             "Shadowy Dodge: validate and teleport. Returns True iff the Ranger moved.")
         .def("can_deflect_attacks", &CombatEngine::canDeflectAttacks,
              py::arg("battle_map"), py::arg("defender_idx"),
              "True iff defender_idx (Monk L3+, reaction free, not incapacitated, alive) may use Deflect\n"
@@ -175,27 +154,11 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              "attacker within 5 ft, and neither the attacker nor action's target is itself — RAW: the\n"
              "target must not have the feat) may use Guardian to counter-attack action's attacker.\n"
              "Eligibility gate shared by the GUI flag and the auto/RL OnAllyAttacked window.")
-        .def("can_glorious_defense", &CombatEngine::canGloriousDefense,
-             py::arg("battle_map"), py::arg("action"), py::arg("result"), py::arg("pal_idx"),
-             "True iff pal_idx (L15+ Oath of Glory paladin, a Glorious Defense use, reaction free) may\n"
-             "add +CHA AC to the hit creature (itself or an ally within 10 ft) to flip this hit to a\n"
-             "miss — only when the boost actually would flip it.")
         .def("can_soul_of_vengeance", &CombatEngine::canSoulOfVengeance,
              py::arg("battle_map"), py::arg("action"), py::arg("pal_idx"),
              "True iff pal_idx (L15+ Oath of Vengeance paladin, active Vow of Enmity on action's\n"
              "attacker, reaction free, a melee weapon, and the sworn foe within 5 ft) may use Soul of\n"
              "Vengeance to counter-strike. Shared by the GUI flag and the auto/RL OnAllyAttacked window.")
-        .def("can_bend_luck", &CombatEngine::canBendLuck,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"),
-             "True iff reactor (L6+ Wild Magic Sorcerer, >=1 Sorcery Point, reaction free, within 60ft\n"
-             "+ LoS of the roller) may use Bend Luck on the roller's attack roll.")
-        .def("can_cutting_words", &CombatEngine::canCuttingWords,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"),
-             "True iff reactor (L3+ College of Lore Bard, >=1 Bardic Inspiration, reaction free, 60ft+LoS)\n"
-             "may use Cutting Words on the roller's attack roll.")
-        .def("can_silvery_barbs", &CombatEngine::canSilveryBarbs,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"),
-             "True iff reactor knows Silvery Barbs, has a L1+ slot, reaction free, 60ft+LoS of the roller.")
         .def("can_warding_flare", &CombatEngine::canWardingFlare,
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"), py::arg("target_idx"),
              "True iff reactor (L3+ Light Domain Cleric, >=1 Warding Flare use, reaction free, within\n"
@@ -206,10 +169,6 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              "True iff reactor (L3+ Clockwork Soul Sorcerer, >=1 Restore Balance use, reaction free,\n"
              "within 60ft + LoS of the roller) may cancel advantage on the roller's attack roll. Offered\n"
              "only when the roll was made at advantage (result.advantage && not result.disadvantage).")
-        .def("apply_restore_balance_to_attack", &CombatEngine::applyRestoreBalanceToAttack,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
-             "Spend 1 Restore Balance use + reaction; cancel advantage by reverting result.d20 to\n"
-             "result.d20_primary and re-evaluate hit/crit. Mutates `result`. Returns True if applied.")
         .def("can_restore_balance_miss", &CombatEngine::canRestoreBalanceMiss,
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("roller_idx"), py::arg("result"),
              "True iff reactor (L3+ Clockwork Soul Sorcerer, >=1 Restore Balance use, reaction free,\n"
@@ -222,18 +181,6 @@ void bindCombatAttack(py::class_<CombatEngine>& engine) {
              "result.d20_primary (a RAISE) and re-evaluate hit/crit. If the raised roll meets AC the\n"
              "miss becomes a hit and weapon damage is rolled + applied. Pass the Attack that missed and\n"
              "its AttackResult. Mutates `result`. Returns True if applied.")
-        .def("apply_bend_luck_to_attack", &CombatEngine::applyBendLuckToAttack,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
-             "Spend 1 Sorcery Point + reaction; subtract 1d4 from the in-flight attack result and\n"
-             "re-evaluate hit/crit. Mutates `result`. Returns True if applied.")
-        .def("apply_cutting_words_to_attack", &CombatEngine::applyCuttingWordsToAttack,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
-             "Spend 1 Bardic Inspiration use + reaction; subtract the Bardic die from the attack result\n"
-             "and re-evaluate. Mutates `result`. Returns True if applied.")
-        .def("apply_silvery_barbs_to_attack", &CombatEngine::applySilveryBarbsToAttack,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("result"),
-             "Spend the lowest L1+ slot + reaction; reroll the d20 and re-evaluate (attacker uses the\n"
-             "new roll). Mutates `result`. Returns True if applied.")
         .def("apply_warding_flare_to_attack", &CombatEngine::applyWardingFlareToAttack,
              py::arg("battle_map"), py::arg("reactor_idx"), py::arg("target_idx"), py::arg("result"),
              "Spend 1 Warding Flare use + reaction; impose Disadvantage and re-evaluate hit/crit: a plain\n"

@@ -157,20 +157,6 @@ public:
     int damageAgent(BattleMap& bm, int idx, int amount) noexcept;
     static int healAgent  (BattleMap& bm, int idx, int amount) noexcept;
 
-    // ── Per-agent turn count ──────────────────────────────────────────────
-    //
-    // The common case is exactly 1 turn per round; only store overrides.
-    // Calling setAgentTurns(idx, 1) removes any override (restores default).
-
-    // Number of turns agent[idx] takes each round (default 1).
-    [[nodiscard]] int getAgentTurns(int idx) const noexcept;
-
-    // Override the default.  turns must be >= 1.
-    void setAgentTurns(int idx, int turns) noexcept;
-
-    // Remove all per-agent overrides (every agent reverts to 1 turn/round).
-    void clearAgentTurns() noexcept;
-
     // Calculate AC for an agent based on base AC, armor, shield, DEX, and conditions.
     [[nodiscard]] int calculateAC(const BattleMap& bm, int agent_idx) const noexcept;
 
@@ -283,10 +269,6 @@ public:
     // Shield (reaction): the reactor casts Shield — spend the lowest L1+ slot + its reaction, gain
     // +5 AC until its next turn and Magic Missile immunity. Returns false if it can't (no slot/etc.).
     bool applyShield(BattleMap& bm, int reactor_idx) noexcept;
-    // Counterspell (reaction): the counterspeller spends its lowest L3+ slot + reaction; the original
-    // caster makes a CON save vs the counterspeller's spell save DC. Returns true iff the cast is
-    // countered (save failed) → the in-flight spell fizzles but keeps its slot (2024 rules).
-    bool applyCounterspell(BattleMap& bm, int reactor_idx, int caster_idx) noexcept;
 
     // Check if a destination cell is valid for teleportation (in bounds, not blocked by terrain).
     // Returns true if the cell is valid, false if out of bounds or blocked.
@@ -380,7 +362,6 @@ public:
     // gui/npc_models/). An empty list clears that archetype. With no model for any archetype, Levels 5/6
     // run Level 4; with some, an archetype without one starts the chain at rung 3. Not in a snapshot.
     void setNpcArchetypeModel(NpcArchetype a, std::vector<NpcAutomationStrategy> ranked);
-    void clearNpcArchetypeModels() noexcept;
     // True when Levels 5/6 have anything to run: an archetype model or an installed policy.
     [[nodiscard]] bool npcModelsLoaded() const noexcept;
 
@@ -1217,8 +1198,7 @@ public:
     //   4. Call agent->walk().
     //   5. Call agent->fly().
     //
-    // Callers are responsible for ordering the turns (initiative) and for
-    // repeating an agent's entry when getAgentTurns(idx) > 1.
+    // Callers are responsible for ordering the turns (initiative).
     //
     // Returns one AttackResult per resolved Attack (hits and misses).
     std::vector<AttackResult> runRound(BattleMap& bm,
@@ -2572,10 +2552,6 @@ private:
     // One agent's Initiative d20: at Advantage for Feral Instinct (Barbarian L7+), Assassinate
     // (Assassin L3+) or an armed Tides of Chaos, which this consumes.
     int rollInitiativeD20(const BattleMap& bm, int agent_idx, const Agent::Stats& s);
-
-    // Per-agent turn overrides.  Empty = everyone gets exactly 1 turn/round.
-    // Only agents with turns != 1 are stored here (optimises the common case).
-    std::unordered_map<int, int> agentTurns_;
 
     // Per-turn walk/fly/swim/burrow budgets and the slipping-terrain counter — the maps that
     // used to be walkRemaining_/flyRemaining_/swimRemaining_/burrowRemaining_/slipDistanceMoved_

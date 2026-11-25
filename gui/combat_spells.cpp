@@ -5001,29 +5001,6 @@ bool CombatEngine::maybeDefenderShieldInlineSpell(BattleMap& bm, const SpellActi
     return false;
 }
 
-bool CombatEngine::applyCounterspell(BattleMap& bm, int reactor_idx, int caster_idx) noexcept
-{
-    if (!canCastCounterspell(bm, reactor_idx, caster_idx)) return false;
-    // Spend the counterspeller's payment + its reaction (regardless of the save outcome — Counterspell
-    // itself is cast and the resource is gone; only the *countered* spell keeps its slot).
-    spendCounterspellCost(bm, reactor_idx);
-    // 2024 Counterspell: the original caster makes a CON save vs the counterspeller's spell save DC.
-    const int dc = rules::holderSpellSaveDc(bm.placedAgents()[static_cast<std::size_t>(reactor_idx)]);
-    const Agent::Stats cs = bm.getAgentStats(caster_idx);
-    const int save_mod = abilityMod(cs.con) + (cs.save_prof_con ? cs.prof_bonus : 0);
-    const int d20      = roll(20);
-    const int total    = d20 + save_mod;
-    log_("{} casts Counterspell — {} must make a DC {} CON save (rolled {}{}{} = {})",
-         agentName(bm, reactor_idx), agentName(bm, caster_idx), dc,
-         d20, save_mod >= 0 ? "+" : "", save_mod, total);
-    if (total >= dc) {
-        log_("{} succeeds — the spell resolves normally", agentName(bm, caster_idx));
-        return false;
-    }
-    log_("{}'s spell is countered and fails (its slot is retained)", agentName(bm, caster_idx));
-    return true;
-}
-
 void CombatEngine::applyCastReaction(BattleMap& bm, const ReactionCtx& ctx, const ReactionResponse& resp)
 {
     if (resp.option < 0 || resp.option >= static_cast<int>(ctx.options.size())) return;  // skip/invalid

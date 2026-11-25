@@ -103,7 +103,7 @@ def _canon(obj):
     """Order-insensitive view of a snapshot document.
 
     The engine's int-keyed state lives in unordered_maps, so the ARRAY ORDER of
-    agent_turns / safe_targets / the visibility cache / … is an implementation detail
+    safe_targets / the visibility cache / … is an implementation detail
     that a rebuild after restore is free to change. Sorting every list makes the
     structural comparison in test_round_trip_is_stable check content rather than
     iteration order; the ordering that genuinely matters (condition order, cast stack
@@ -186,7 +186,7 @@ def test_round_trip_is_stable():
     doc = json.loads(first)
     assert doc["version"] == 1
     # Every member group the plan's R4 table and MULTIPLAYER_PLAN.md's TODO name.
-    for key in ("context", "movement", "conditions", "visibility", "agent_turns",
+    for key in ("context", "movement", "conditions", "visibility",
                 "active_effects", "safe_targets", "zone_applied_turn",
                 "death_burst_fired", "pending_decision", "in_flight_move",
                 "in_flight_attack", "in_flight_turn", "cast_stack", "npc_turn"):

@@ -3,13 +3,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //
 //  Part of the split-out CombatEngine implementation (see combat_internal.hpp).
-//  Thin accessors that delegate to BattleMap, plus the per-agent turn counter.
+//  Thin accessors that delegate to BattleMap.
 //  Sections:
 //    · Agent config              — addAgentConfig, applyAgentConfigs
 //    · Stats accessors           — getAgentStats, setAgentStats
 //    · Conditions accessors      — getAgentConditions, setAgentConditions
 //    · Weapon/Armor/Spell access — get/set Weapons/Armor/Spells, add/removeSpell
-//    · Turn counters             — getAgentTurns, setAgentTurns, clearAgentTurns
 //    · NPC spell groups          — initNpcSpellGroups
 //
 #include "combat.hpp"
@@ -211,30 +210,6 @@ void CombatEngine::addItemToAgent(BattleMap& bm, int idx, Item it) noexcept
 void CombatEngine::removeItemFromAgent(BattleMap& bm, int idx, int item_idx) noexcept
 {
     bm.removeItemFromAgent(idx, item_idx);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Turn counters
-// ─────────────────────────────────────────────────────────────────────────────
-
-int CombatEngine::getAgentTurns(int idx) const noexcept
-{
-    auto it = agentTurns_.find(idx);
-    return (it != agentTurns_.end()) ? it->second : 1;
-}
-
-void CombatEngine::setAgentTurns(int idx, int turns) noexcept
-{
-    if (turns <= 1) {
-        agentTurns_.erase(idx);   // restore default — no entry needed
-    } else {
-        agentTurns_[idx] = turns;
-    }
-}
-
-void CombatEngine::clearAgentTurns() noexcept
-{
-    agentTurns_.clear();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

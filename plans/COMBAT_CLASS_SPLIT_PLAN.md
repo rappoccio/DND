@@ -245,9 +245,9 @@ confirm the cluster split. The class files should come out as separate communiti
   `combat_sorcerer.cpp`; `expendArcaneWardSlot` → `combat_wizard.cpp`; `applyBoonOfFate`,
   `consumeStrengthenBonus` → `combat_feats.cpp` (all from `combat_spells.cpp`); the four
   Paladin aura forwarders → `combat_paladin.cpp` (from `combat_core.cpp`). 626 non-blank lines
-  moved as a multiset; API dump byte-identical; 0 warnings; 285/0. Still in shared TUs:
-  Shadowy Dodge (`combat_attack.cpp`) and any other class-flavoured stragglers.
-- **Bound methods no suite names** (D6's list; some are reached indirectly):
+  moved as a multiset; API dump byte-identical; 0 warnings; 285/0. Shadowy Dodge followed
+  to `combat_ranger.cpp` (38bc62c); other class-flavoured stragglers, if any, are uncatalogued.
+- **Bound methods no suite names — done 2026-11-24** (8a50c5b, `tests/test_unnamed_bindings.py`):
   `vanish_orphaned_companions`, `apply_precision_attack_effect`, `can_peerless_aim`,
   `apply_sentinel_guard`, `apply_open_hand_rider`, `consume_bonus_attack`,
   `is_misty_wanderer_ally_cell`, `misty_wanderer_ally_cell`, `tick_light_effects_for_turn`,

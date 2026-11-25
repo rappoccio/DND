@@ -45,17 +45,6 @@ void bindCombatSpells(py::class_<CombatEngine>& engine) {
         .def("last_cast_countered",
              &CombatEngine::lastCastCountered,
              "True if the most recent begin_cast/resolve_cast was countered (spell fizzled, slot kept).")
-        .def("apply_shield",
-             &CombatEngine::applyShield,
-             py::arg("battle_map"), py::arg("reactor_idx"),
-             "Shield (reaction): the reactor casts Shield — spend its lowest L1+ slot + its reaction,\n"
-             "gain +5 AC until its next turn and Magic Missile immunity. Returns False if it can't.")
-        .def("apply_counterspell",
-             &CombatEngine::applyCounterspell,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("caster_idx"),
-             "Counterspell (reaction): the counterspeller spends its lowest L3+ slot + reaction; the\n"
-             "original caster makes a CON save vs the counterspeller's spell save DC. Returns True iff\n"
-             "the cast is countered (save failed) — the spell fizzles but keeps its slot (2024 rules).")
         .def("set_safe_targets",
              &CombatEngine::setSafeTargets,
              py::arg("caster_idx"), py::arg("targets"),
@@ -125,15 +114,6 @@ void bindCombatSpells(py::class_<CombatEngine>& engine) {
              &CombatEngine::clearAllConcentration,
              py::arg("battle_map"),
              "Drop concentration for every concentrating agent (e.g. on End Combat).")
-        .def("can_countercharm", &CombatEngine::canCountercharm,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("save_target_idx"), py::arg("action"),
-             "True iff reactor (L7+ Bard, reaction free, alive, within 30ft+LoS of the save target — or the\n"
-             "target itself) may use Countercharm to reroll the failed save, and the spell would apply\n"
-             "Charmed or Frightened.")
-        .def("can_indomitable", &CombatEngine::canIndomitable,
-             py::arg("battle_map"), py::arg("reactor_idx"), py::arg("save_target_idx"),
-             "True iff reactor == save_target, is a L9+ Fighter with >=1 Indomitable use, and is alive\n"
-             "(reroll your OWN failed save; costs the use, not the reaction).")
         .def("tick_effects",
              &CombatEngine::tickEffects,
              py::arg("battle_map"),
@@ -194,10 +174,5 @@ void bindCombatSpells(py::class_<CombatEngine>& engine) {
              py::arg("battle_map"), py::arg("target_idx"),
              "Greater Restoration: cure curses, end Charmed/Petrified, reduce Exhaustion by one\n"
              "level, and restore any HP-maximum reduction. Returns True if anything changed.")
-        .def("cure_petrified",
-             &CombatEngine::curePetrified,
-             py::arg("battle_map"), py::arg("idx"),
-             "Reverse the Petrified condition: restore speeds and damage multipliers from the\n"
-             "snapshot taken when the creature was petrified.")
         ;
 }

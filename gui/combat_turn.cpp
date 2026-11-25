@@ -4194,11 +4194,6 @@ void CombatEngine::setNpcArchetypeModel(NpcArchetype a, std::vector<NpcAutomatio
     npc_.setModel(a, std::move(ranked));
 }
 
-void CombatEngine::clearNpcArchetypeModels() noexcept
-{
-    npc_.clearModels();
-}
-
 bool CombatEngine::npcModelsLoaded() const noexcept
 {
     if (npc_.policy()) return true;
