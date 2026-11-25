@@ -3,7 +3,7 @@
 Drafted 2026-11-24. Source: `character_origins.pdf` (SRD 5.2, pp. 83–86). Status: **Step 0
 FROZEN 2026-11-24** — D1 signed off and committed (9380611); D2–D14 signed off by the user the
 same day. SP0 audit done 2026-11-24 (results below). SP1 done 2026-11-24 (288/0). SP2 done 2026-11-24
-(289/0), committed 7cd4c1b. SP3 done 2026-11-25 (290/0). SP4 done 2026-11-25 (292/0). SP5 done 2026-11-25 (293/0). SP6 done 2026-11-25 (294/0). SP7 done 2026-11-25 (295/0). Next: SP8 live check.
+(289/0), committed 7cd4c1b. SP3 done 2026-11-25 (290/0). SP4 done 2026-11-25 (292/0). SP5 done 2026-11-25 (293/0). SP6 done 2026-11-25 (294/0). SP7 done 2026-11-25 (295/0). SP8 live check confirmed by the user 2026-11-25. **Plan CLOSED 2026-11-25, complete.** More species to follow in a new plan.
 
 ## Scope
 
@@ -253,6 +253,7 @@ Per-step loop: implement → `./test.sh` in the container → fix → commit on 
   subrace to species and option. Random party generation (`party_gen.py`) can roll species.
   `known_limitations.md` gets the D14 list. Update `memory/` architecture notes.
 - **SP8 — Live check.** Do a `run.sh` pass with one PC of each species, then close the plan.
+  Done 2026-11-25: confirmed by the user; plan closed.
 
 ## SP0 audit results (2026-11-24)
 
