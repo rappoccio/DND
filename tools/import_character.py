@@ -396,6 +396,105 @@ def damage_adjustments(mods):
 
 
 # ── main build ────────────────────────────────────────────────────────────────
+# Species the engine models (gui/species.hpp kSpeciesTable) and each one's option picks, in
+# table order (the first is the engine's default). D&D Beyond names an option as a race option
+# ("High Elf Lineage", "Infernal Legacy", "Gold Dragon", "Stone’s Endurance (Stone Giant)");
+# a pick matches when its name, folded by norm(), is in the option's. "Cthonic" is DDB's
+# spelling of Chthonic.
+SPECIES_OPTIONS = {
+    "Dhampir": [],
+    "Dragonborn": ["Black", "Blue", "Brass", "Bronze", "Copper", "Gold", "Green", "Red",
+                   "Silver", "White"],
+    "Dwarf": [],
+    "Elf": ["Drow", "High Elf", "Wood Elf"],
+    "Gnome": ["Forest Gnome", "Rock Gnome"],
+    "Goliath": ["Cloud", "Fire", "Frost", "Hill", "Stone", "Storm"],
+    "Halfling": [],
+    "Human": [],
+    "Orc": [],
+    "Tiefling": ["Abyssal", "Chthonic", "Infernal"],
+}
+_OPTION_ALIASES = {"cthonic": "chthonic"}
+# Species whose granted spells take a picked ability (D2), and the SaveAbility ordinals.
+SPECIES_SPELL_ABILITY = {"Elf", "Gnome", "Tiefling"}
+_SPELL_ABILITY = {"intelligence": 3, "wisdom": 4, "charisma": 5}
+SPECIES_SKILLS = ("Athletics", "Perception", "Sleight of Hand", "Stealth")   # Skillful (D12)
+_SIZE_BY_ID = {3: "Small", 4: "Medium"}
+
+
+def _choice_label(data, option_id):
+    """The label of a choice option id from DDB's choiceDefinitions ('' if not found)."""
+    for cd in (data.get("choices") or {}).get("choiceDefinitions") or []:
+        for o in cd.get("options") or []:
+            if o.get("id") == option_id:
+                return o.get("label") or ""
+    return ""
+
+
+def map_species(data):
+    """Species fields for the stats block, from DDB's race: {} for a race the engine lacks.
+
+    species / species_option / species_size / species_spell_ability / species_skill. The
+    option is matched among the race's options and its choices' labels; a species with
+    options and no match keeps the engine default (the loader normalizes it) and warns."""
+    race = data.get("race") or {}
+    base = (race.get("baseRaceName") or race.get("fullName") or "").strip()
+    species = next((s for s in SPECIES_OPTIONS if norm(s) == norm(base)), None)
+    if species is None:
+        full = race.get("fullName") or ""
+        species = next((s for s in SPECIES_OPTIONS if norm(s) in norm(full)), None)
+    if species is None:
+        if base:
+            warn(f"species '{base}' not engine-modelled — no species traits")
+        return {}
+    out = {"species": species}
+
+    names = [(o.get("definition") or {}).get("name") or ""
+             for o in (data.get("options") or {}).get("race") or []]
+    race_choices = (data.get("choices") or {}).get("race") or []
+    names += [_choice_label(data, c.get("optionValue")) for c in race_choices
+              if c.get("optionValue") is not None]
+    names.append(race.get("fullName") or "")
+    folded = [norm(n) for n in names if n]
+    for a, b in _OPTION_ALIASES.items():
+        folded = [f.replace(a, b) for f in folded]
+
+    picks = SPECIES_OPTIONS[species]
+    if picks:
+        # Longest pick first, so "High Elf" is not matched as a bare "Elf"-ish substring.
+        hit = next((p for p in sorted(picks, key=len, reverse=True)
+                    if any(norm(p) in f for f in folded)), None)
+        if hit:
+            out["species_option"] = hit
+        else:
+            warn(f"{species}: option not found in D&D Beyond data — using {picks[0]}")
+
+    size = _SIZE_BY_ID.get(race.get("sizeId"))
+    if size is None:
+        for c in race_choices:
+            lab = _choice_label(data, c.get("optionValue"))
+            if lab in ("Small", "Medium"):
+                size = lab
+    if size:
+        out["species_size"] = size
+
+    if species in SPECIES_SPELL_ABILITY:
+        # "High Elf - Charisma" or a bare "Wisdom" race option picks the spellcasting ability.
+        for n in names:
+            tail = n.rsplit("-", 1)[-1].strip().lower()
+            if tail in _SPELL_ABILITY:
+                out["species_spell_ability"] = _SPELL_ABILITY[tail]
+                break
+
+    if species == "Human":
+        for c in race_choices:
+            if c.get("label") == "Choose a Skill":
+                lab = _choice_label(data, c.get("optionValue"))
+                if lab in SPECIES_SKILLS:
+                    out["species_skill"] = lab
+    return out
+
+
 def build_agent(data, catalogs, faction=0):
     weapon_catalog, armor_catalog, spell_catalog = catalogs
     mods = all_modifiers(data)
@@ -503,11 +602,10 @@ def build_agent(data, catalogs, faction=0):
         "temp_hp": int(data.get("temporaryHitPoints") or 0),
         "feats": feats,
     }
-    # Species with engine effects. D&D Beyond's race already carries the speed and the damage
-    # adjustments; the loader re-derives Darkvision from the species.
-    race = data.get("race") or {}
-    if "Dhampir" in (race.get("baseRaceName") or race.get("fullName") or ""):
-        stats["species"] = "Dhampir"
+    # Species with engine effects (SPECIES_PLAN.md SP7). D&D Beyond's race already carries the
+    # speed, the HP (Dwarven Toughness) and the damage adjustments; the loader re-derives
+    # Darkvision, resistances, save advantages and granted spells from species + option.
+    stats.update(map_species(data))
     stats["hp_cur"] = stats["hp_max"]
     stats.update(saves)
     stats.update(damage_adjustments(mods))

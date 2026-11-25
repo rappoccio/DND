@@ -31,7 +31,8 @@ def sheet(rec: dict) -> str:
     s = rec["stats"]
     key, role = rec["pc_build"]["subclass"], rec["pc_build"]["role"]
     b = G.resolved_build(key, role)
-    lines = [f"{rec['name']}  [{key} as {role}]"]
+    sp = " ".join(x for x in (s.get("species_option", ""), s.get("species", "")) if x)
+    lines = [f"{rec['name']}  [{key} as {role}]" + (f"  {sp}" if sp else "")]
     lines.append("  " + "  ".join(f"{a.upper()[:3]} {s[a]}" for a in G.ABILITIES)
                  + f"   HP {s['hp_max']}  base AC {s['ac']} ({AC_TEXT[b['armor']]})"
                  + f"  speed {s['speed_walk']}  attacks {s['num_attacks']}")

@@ -20,6 +20,11 @@ The rules, as frozen (B1–B13):
   · spells: signatures first, then the build's ranked lists round-robin from the highest
     castable spell level down, up to the class's prepared count (B9, B9a).
 
+Species (SPECIES_PLAN.md SP7): ``generate_party`` rolls one of the nine SRD species per PC,
+with its option, from its own random stream, so a seed's classes, roles and level are what
+they were before species existed. ``build_pc(..., species=)`` folds in what the loader takes
+as already applied (Speed, Dwarven Toughness HP); the loader re-derives the rest.
+
 Signature spells go on the record as ``signature_spells`` (names, including ones a subclass
 or a class feature grants, such as Radiance of the Dawn); the arena's automated PCs cast them
 first (``arena.signature_policy``).
@@ -66,6 +71,19 @@ METAMAGIC = ["NONE", "Careful", "Distant", "Empowered", "Extended", "Heightened"
              "Seeking", "Subtle", "Transmuted", "Twinned"]     # rpg.MetamagicOption order
 METAMAGIC_KNOWN = ((2, 2), (10, 4), (17, 6))                    # (Sorcerer level, options known)
 FIGHTER_MASTERY = ((1, 3), (4, 4), (10, 5), (16, 6))
+
+# The nine SRD species and their option picks (gui/species.hpp, in table order). The loader
+# (restore_species) treats Speed and HP as already folded in, so build_pc applies those two
+# here: SPECIES_SPEED is the base walk Speed (default 30), Dwarven Toughness is +1 HP a level.
+SPECIES = {
+    "Dragonborn": ["Black", "Blue", "Brass", "Bronze", "Copper", "Gold", "Green", "Red",
+                   "Silver", "White"],
+    "Dwarf": [], "Elf": ["Drow", "High Elf", "Wood Elf"], "Gnome": ["Forest Gnome", "Rock Gnome"],
+    "Goliath": ["Cloud", "Fire", "Frost", "Hill", "Stone", "Storm"], "Halfling": [], "Human": [],
+    "Orc": [], "Tiefling": ["Abyssal", "Chthonic", "Infernal"],
+}
+SPECIES_SPEED = {("Goliath", ""): 35, ("Elf", "Wood Elf"): 35}
+SPECIES_SPELL_ABILITY = {"intel": 3, "wis": 4, "cha": 5}   # SaveAbility ordinals (D2)
 
 
 def _load(name: str):
@@ -228,8 +246,20 @@ def _choose_spells(names: list, ranked: dict, top: int, count: int, *, cantrip: 
     return out
 
 
-def build_pc(sub_key: str, role: str, level: int, *, name: str | None = None) -> dict:
-    """One PC as a save-format agent record (PC side, unplaced)."""
+def draw_species(rng: random.Random) -> tuple[str, str]:
+    """A species, uniformly, and one of its options, uniformly ("" when it has none)."""
+    sp = rng.choice(sorted(SPECIES))
+    return sp, (rng.choice(SPECIES[sp]) if SPECIES[sp] else "")
+
+
+def build_pc(sub_key: str, role: str, level: int, *, name: str | None = None,
+             species: str | None = None, species_option: str = "") -> dict:
+    """One PC as a save-format agent record (PC side, unplaced). ``species`` is one of
+    ``SPECIES`` (None = no species)."""
+    if species is not None and species not in SPECIES:
+        raise ValueError(f"species {species!r} not in SPECIES")
+    if species and SPECIES[species] and species_option not in SPECIES[species]:
+        raise ValueError(f"{species} has no option {species_option!r}")
     t = data().t
     cls_name = sub_key.split(".")[0]
     sc = subclasses()[sub_key]
@@ -252,6 +282,8 @@ def build_pc(sub_key: str, role: str, level: int, *, name: str | None = None) ->
     hp = hd + con_m + (level - 1) * (hd // 2 + 1 + con_m)
     if "Tough" in feats:
         hp += 2 * level
+    if species == "Dwarf":
+        hp += level                                  # Dwarven Toughness
 
     bonus = 3 if level >= 17 else 2 if level >= 11 else 1 if level >= 5 else 0
     wb = b.get("weapons", {})
@@ -261,7 +293,8 @@ def build_pc(sub_key: str, role: str, level: int, *, name: str | None = None) ->
 
     attacks = dict(cls.get("attacks", {}))
     attacks.update(sc.get("attacks", {}))
-    speed = 30 + (cls.get("fast_movement", 0) if level >= 5 else 0)
+    speed = (SPECIES_SPEED.get((species, ""), SPECIES_SPEED.get((species, species_option), 30))
+             + (cls.get("fast_movement", 0) if level >= 5 else 0))
     speed += _threshold(cls.get("unarmored_movement", {}), level)
     mastery = (_threshold({str(k): v for k, v in FIGHTER_MASTERY}, level) if cls_name == "Fighter"
                else cls.get("mastery", 0))
@@ -293,6 +326,13 @@ def build_pc(sub_key: str, role: str, level: int, *, name: str | None = None) ->
              "luck_points_max": prof if "Lucky" in feats else 0}
     for ab in ABILITIES:
         stats[f"save_prof_{ab}"] = ab in cls["saves"]
+    if species:
+        stats["species"] = species
+        stats["species_option"] = species_option
+        # Granted spells use the class's casting ability when it is one the species allows.
+        ab = SPECIES_SPELL_ABILITY.get(stats["spellcasting_ability"])
+        if ab is not None:
+            stats["species_spell_ability"] = ab
 
     rec = {"name": name or f"{cls_name} ({sc['enum']}·{role}) {level}",
            "sprite_path": "", "size": 1, "col": 0, "row": 0, "faction": 2,
@@ -366,12 +406,15 @@ def generate_party(seed: int, *, level: int | None = None) -> tuple[list[dict], 
     rng = random.Random(f"party:{seed}")
     lv = level if level is not None else draw_level(rng)
     kind, roles = draw_roles(rng)
+    srng = random.Random(f"species:{seed}")     # its own stream: the draws above are unchanged
     taken: set = set()
     party = []
     for role in roles:
         key = pick_subclass(rng, role, taken)
         taken.add(key)
-        party.append(build_pc(key, role, lv))
+        sp, opt = draw_species(srng)
+        party.append(build_pc(key, role, lv, species=sp, species_option=opt))
     meta = {"generated": True, "seed": int(seed), "template": kind, "roles": roles,
-            "level": lv, "builds": [p["pc_build"]["subclass"] for p in party]}
+            "level": lv, "builds": [p["pc_build"]["subclass"] for p in party],
+            "species": [[p["stats"]["species"], p["stats"]["species_option"]] for p in party]}
     return party, meta

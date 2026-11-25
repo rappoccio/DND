@@ -1411,3 +1411,28 @@ DM's call: click the ★ on the tracker row to spend it. The ★ toggle lives on
   caster's turn after that (conditions tick at the caster's turn start), a few initiative
   places late. Heal paths written directly in Python (some GUI-side heals) don't check it.
 - **Faerie Fire**: the Dim Light the outline sheds and outlined objects aren't modelled.
+
+### Species traits not modelled (D14) [LIMITATION] (2026-11-25, SP7)
+Deferred at Step 0 (SPECIES_PLAN.md D14); each is flavour, or table-side:
+- **Elf Trance** (no engine sleep state beyond the existing condition rules); the High Elf
+  cantrip swap on a Long Rest (change the cantrip in the Stats dialog by hand).
+- **Dwarf Stonecunning** Tremorsense (user, 2026-11-24: too much engine work).
+- **Rock Gnome** clockwork devices.
+- **Goliath Powerful Build** carrying capacity (the grapple-escape Advantage is modelled).
+- **Halfling Nimbleness** (moving through a larger creature's space; user, 2026-11-24: too
+  much engine work) and **Naturally Stealthy** (hiding behind a larger creature).
+- Skills other than Athletics, Perception, Sleight of Hand and Stealth (D12): a Skillful pick
+  outside these four is flavour, and the importer drops it.
+
+### Importer and generator species mapping [LIMITATION] (2026-11-25, SP7)
+- `tools/import_character.py` maps the nine SRD species and Dhampir from D&D Beyond's race,
+  with the option (lineage, legacy, ancestry), size, spell ability and Skillful skill. Any
+  other race (Aasimar, Fairy, Kenku, Hexblood, Bugbear, …) imports with no species: its
+  speed, HP and damage adjustments still come from D&D Beyond, but no species features.
+  A 2014 ("legacy") race maps to the 2024 species of that name; a legacy Tiefling has no
+  Fiendish Legacy in the data and takes the default (Abyssal), with a warning.
+- `gui/party_gen.py` rolls species and option uniformly and keeps its own copy of the
+  species list, the Speed overrides and Dwarven Toughness: a species-table change in
+  `species.hpp` has to be mirrored there (`test_species_import.py` loads every pair).
+- Generated Humans get no Versatile feat or Skillful skill, and Small/Medium is always
+  Medium.
