@@ -7,7 +7,8 @@ both mis-grouping fixes, `combat_contested.cpp` and `combat_reactions.cpp`), and
 (`snapshot()`/`restore()`) are done and verified. **R4h closed R4** with a pure TU move of the
 park/resume flow into `combat_reactions.cpp`. The floating follow-on (the
 riders+resources class-family split) became **R6, done 2026-11-24** (14 class/feat/shared TUs, 285/0). See **Handoff (2026-11-18, R4h)** and **R4h** for the
-last step.
+last step. **Plan closed 2026-11-24**: every success criterion is met (see the bottom). The
+optional restoration of misplaced comment banners was dropped.
 
 **Staleness review (2026-11-18)**: no refactor work since 2026-09-25, but the repo moved on
 (~100 suites added, container-only rule, `compile.sh` job cap). Corrections are inline, marked
@@ -1485,9 +1486,16 @@ byte-identical. R6b and R6c followed the same day; see that plan's *Follow-ups*.
 ## Success criteria
 
 - `tests/run_all_tests.py` green after every phase, with byte-identical fixed-seed replay.
-- Adding a new spell or subclass feature no longer requires editing `combat.hpp`.
-- Incremental build after a one-line rules change drops from "all 11 TUs + bindings" to a
-  single TU (measure against the R0 baseline).
+- ~~Adding a new spell or subclass feature no longer requires editing `combat.hpp`.~~
+  **Reworded and met 2026-11-24.** As written this was never true: a new member function still
+  needs a declaration in the header. What R6/R6b deliver is a local edit: a new class feature
+  touches its class TU (`combat_<class>.cpp`), that class's block in `combat.hpp`, and one
+  binding in `bind_combat_<class>.cpp`, and no shared TU. (A header edit still rebuilds every
+  TU that includes `combat.hpp`; that cost is accepted.)
+- ~~Incremental build after a one-line rules change drops from "all 11 TUs + bindings" to a
+  single TU (measure against the R0 baseline).~~ **Met 2026-11-24** (`rpg_map` image, Ninja,
+  4 jobs): from a no-op build, appending one line to `gui/combat_ranger.cpp` rebuilt **2/2
+  targets** (that TU plus the link) in **8.7s** wall time, against R0's 26/32 targets in 50.5s.
 - ~~`rules.hpp` has direct unit tests that construct no `CombatEngine` and no `BattleMap`.~~
   **Met 2026-09-14** — `gui/test_rules.cpp` (62 checks) via `tests/test_rules.py`, the tree's
   only non-Python suite. Only partly achievable as written; see "R3 — what 'done' actually
