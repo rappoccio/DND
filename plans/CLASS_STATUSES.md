@@ -20,7 +20,7 @@ reference counts in the combat sources on 2026-07-07.
 | Class     | Chassis | Subclasses | Remaining                               |
 | --------- | :-----: | :--------: | --------------------------------------- |
 | Barbarian |   [x]   |    4/4     | L14 GUI buttons only                    |
-| Bard      |   [x]   |    4/4     | Countercharm, Dance/Lore L14 (deferred) |
+| Bard      |   [x]   |    5/5     | Countercharm, Dance/Lore L14 (deferred); Whispers L3/L6/L14 non-combat |
 | Cleric    |   [x]   |    5/5     | —                                       |
 | Druid     |   [x]   |    4/4     | —                                       |
 | Fighter   |   [x]   |    5/5     | —                                       |
@@ -48,6 +48,7 @@ reference counts in the combat sources on 2026-07-07.
 - [x] College of Glamour
 - [x] College of Lore
 - [x] College of Valor
+- [x] College of Whispers (Psychic Blades only; Words of Terror / Mantle of Whispers / Shadow Lore out of scope)
 - [ ] Countercharm (deferred — out of combat-sim scope)
 - [ ] Dance / Lore L14 features (deferred)
 

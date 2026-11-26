@@ -3657,6 +3657,25 @@ AttackResult CombatEngine::applyAttackResult(BattleMap& bm, InFlightAttack& s)
         }
     }
 
+    // ── College of Whispers Psychic Blades eligibility (on a weapon hit) ──
+    // L3+ Whispers Bards can spend one Bardic Inspiration use to add psychic dice to a weapon hit,
+    // once per round and only on their own turn (so never on an Opportunity Attack). Unarmed Strikes
+    // are not weapon attacks. Applied out of band via applyPsychicBlades after the GUI asks. Per
+    // attack, like Arcane Shot: an attack that doesn't qualify clears a skipped earlier offer.
+    if (atk_stats.bard_subclass == WhispersPath) {
+        bool qualifies = false;
+        if (r.hit && atk_stats.classLevel(CharacterClass::Bard) >= 3 && !atk_cond.psychic_blades_used &&
+            w.name != "Unarmed" && w.name != "MonkUnarmed" && !action.opportunity &&
+            (ctx_.turn_agent_idx_ < 0 || ctx_.turn_agent_idx_ == action.attacker_idx)) {
+            const Resource* bi = atk_stats.getResource("Bardic Inspiration");
+            qualifies = bi && bi->current > 0;
+        }
+        if (qualifies != updated_atk_cond.psychic_blades_available) {
+            updated_atk_cond.psychic_blades_available = qualifies;
+            bm.setAgentConditions(action.attacker_idx, updated_atk_cond);
+        }
+    }
+
     // ── Arcane Archer Curving Shot eligibility (on a ranged weapon miss, L7) ──
     // A miss with a Ranged weapon (not a thrown one: it already lies at the first target) lets the
     // archer spend the Bonus Action to reroll against another creature (applyCurvingShot). Per

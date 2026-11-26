@@ -407,4 +407,58 @@ int CombatEngine::bardCuttingWords(BattleMap& bm, int bard_idx) noexcept
     return value;
 }
 
+// ── College of Whispers: Psychic Blades (L3) ─────────────────────────────────
+
+int CombatEngine::psychicBladesDice(int bard_level) noexcept
+{
+    if (bard_level >= 15) return 8;
+    if (bard_level >= 10) return 5;
+    if (bard_level >= 5)  return 3;
+    if (bard_level >= 3)  return 2;
+    return 0;
+}
+
+int CombatEngine::applyPsychicBlades(BattleMap& bm, int attacker_idx, int target_idx,
+                                     AttackResult& result) noexcept
+{
+    const int n = static_cast<int>(bm.placedAgents().size());
+    if (attacker_idx < 0 || attacker_idx >= n || target_idx < 0 || target_idx >= n) return -1;
+    Agent::Conditions atk_cond = bm.getAgentConditions(attacker_idx);
+    if (!atk_cond.psychic_blades_available || atk_cond.psychic_blades_used) return -1;
+    const Agent::Stats atk_stats = bm.getAgentStats(attacker_idx);
+    const int dice = psychicBladesDice(atk_stats.classLevel(CharacterClass::Bard));
+    if (atk_stats.bard_subclass != WhispersPath || dice <= 0) return -1;
+    if (!spendResource(bm, attacker_idx, "Bardic Inspiration", 1)) return -1;
+
+    const int rolled = result.critical ? 2 * dice : dice;   // extra damage dice double on a crit
+    int raw = 0;
+    for (int i = 0; i < rolled; ++i) raw += roll(6);
+
+    Agent::Stats tgt_stats = bm.getAgentStats(target_idx);
+    const float mult = tgt_stats.magic_damage_multipliers[MagicDamage_t::Psychic];
+    const int pb = static_cast<int>(static_cast<float>(raw) * mult);
+
+    result.damage_breakdown.push_back({"psychic blades", pb});
+    result.total_damage += pb;
+    result.magic_damage_types.push_back(MagicDamage_t::Psychic);
+    const int overflow = std::max(0, pb - tgt_stats.temp_hp);
+    tgt_stats.temp_hp = std::max(0, tgt_stats.temp_hp - pb);
+    tgt_stats.hp_cur  = std::clamp(tgt_stats.hp_cur - overflow, 0, tgt_stats.hp_max);
+    result.hp_after    = tgt_stats.hp_cur;
+    result.target_down = (tgt_stats.hp_cur <= 0);
+    bm.setAgentStats(target_idx, tgt_stats);
+
+    atk_cond = bm.getAgentConditions(attacker_idx);   // spendResource may have written the agent
+    atk_cond.psychic_blades_used      = true;
+    atk_cond.psychic_blades_available = false;
+    bm.setAgentConditions(attacker_idx, atk_cond);
+
+    log_("{} uses Psychic Blades: +{} Psychic ({}d6)", agentName(bm, attacker_idx), pb, rolled);
+    if (pb > 0) {
+        checkConcentrationOnDamage(bm, target_idx, pb);
+        processDamageTaken(bm, target_idx, pb);
+    }
+    return pb;
+}
+
 } // namespace rpg

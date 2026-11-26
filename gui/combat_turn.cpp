@@ -1343,6 +1343,8 @@ std::vector<AttackResult> CombatEngine::runRound(
         cond.stunning_strike_used = false;
         cond.psionic_strike_available = false;
         cond.psionic_strike_used = false;
+        cond.psychic_blades_available = false;
+        cond.psychic_blades_used = false;
         cond.hand_of_harm_available = false;
         cond.hand_of_harm_used = false;
         cond.hand_of_harm_last_target = -1;

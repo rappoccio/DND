@@ -1598,6 +1598,8 @@ namespace rpg {
       bool psionic_strike_used{false};      // Psi Warrior L3: Psionic Strike already applied this turn (once per turn)
       bool arcane_shot_available{false};    // Arcane Archer L3: a ranged weapon hit can apply an on-hit Arcane Shot option this attack
       bool arcane_shot_used{false};         // Arcane Archer L3: an Arcane Shot was already used this turn (once per turn)
+      bool psychic_blades_available{false}; // College of Whispers L3: this weapon hit (on the bard's turn) may take Psychic Blades
+      bool psychic_blades_used{false};      // College of Whispers L3: Psychic Blades already used this turn (once per round, on its turn)
       bool curving_shot_available{false};   // Arcane Archer L7: this ranged miss can be rerolled at another creature (Curving Shot)
       bool hand_of_harm_available{false};   // Warrior of Mercy L3: a qualifying unarmed hit can apply Hand of Harm this attack
       bool elemental_attunement_move_available{false}; // Warrior of the Elements L3: an unarmed hit while Elemental Attunement is active can push/pull the target 10 ft (per-turn eligibility; the push/pull direction is a player choice)
@@ -1789,6 +1791,8 @@ namespace rpg {
       conditions_.grappler_punch_grab_used      = false;
       conditions_.feral_pounce_available        = false;
       conditions_.feral_pounce_used             = false;
+      conditions_.psychic_blades_available      = false;
+      conditions_.psychic_blades_used           = false;
       conditions_.divine_smite_available       = false;
       conditions_.divine_smite_used            = false;
       conditions_.eldritch_smite_available     = false;

@@ -1175,6 +1175,109 @@ def test_battle_magic_requires_valor_l14():
     print("✅ test_battle_magic_requires_valor_l14 passed")
 
 
+# ── College of Whispers: Psychic Blades (L3) ─────────────────────────────────
+
+PSYCHIC = 7   # MagicDamage_t::Psychic
+
+
+def _whispers_pair(level=3, def_ac=5):
+    bm = setup_battle_map(); engine = setup_combat_engine()
+    atk, deff = _setup_melee_pair(engine, bm, def_ac=def_ac, atk_str=16)
+    _bard(engine, bm, atk, level, subclass=rpg.BardCollege.Whispers)
+    return bm, engine, atk, deff
+
+
+def _bi(engine, bm, idx):
+    return engine.get_agent_stats(bm, idx).get_resource("Bardic Inspiration").current
+
+
+def _blades_amount(r):
+    for label, amount in r.damage_breakdown:
+        if label == "psychic blades":
+            return amount
+    return None
+
+
+def test_psychic_blades_dice_scaling():
+    """2d6 at L3, 3d6 at L5, 5d6 at L10, 8d6 at L15; none below L3."""
+    got = [rpg.CombatEngine.psychic_blades_dice(l) for l in (2, 3, 4, 5, 9, 10, 14, 15, 20)]
+    assert got == [0, 2, 2, 3, 3, 5, 5, 8, 8], f"dice by level, got {got}"
+    print("✅ test_psychic_blades_dice_scaling")
+
+
+def test_psychic_blades_offered_then_applied():
+    """A weapon hit offers it (nothing spent); applying adds 2d6 Psychic and spends one BI use."""
+    bm, engine, atk, deff = _whispers_pair(3)
+    before = _bi(engine, bm, atk)
+    r = _find_attack(engine, bm, atk, deff, lambda x: x.hit and not x.critical)
+    assert r is not None
+    c = engine.get_agent_conditions(bm, atk)
+    assert c.psychic_blades_available, "a weapon hit offers Psychic Blades"
+    assert _blades_amount(r) is None and _bi(engine, bm, atk) == before, "offer only, nothing spent"
+    hp0 = engine.get_agent_stats(bm, deff).hp_cur
+    dmg = engine.apply_psychic_blades(bm, atk, deff, r)
+    assert 2 <= dmg <= 12, f"2d6 psychic, got {dmg}"
+    assert _blades_amount(r) == dmg and PSYCHIC in [int(x) for x in r.magic_damage_types]
+    assert engine.get_agent_stats(bm, deff).hp_cur == hp0 - dmg, "damage reaches the target"
+    assert _bi(engine, bm, atk) == before - 1, "one Bardic Inspiration use spent"
+    c = engine.get_agent_conditions(bm, atk)
+    assert c.psychic_blades_used and not c.psychic_blades_available
+    print("✅ test_psychic_blades_offered_then_applied")
+
+
+def test_psychic_blades_once_per_turn_and_resets():
+    bm, engine, atk, deff = _whispers_pair(3)
+    r = _find_attack(engine, bm, atk, deff, lambda x: x.hit)
+    assert engine.apply_psychic_blades(bm, atk, deff, r) >= 0
+    r2 = _find_attack(engine, bm, atk, deff, lambda x: x.hit)
+    assert not engine.get_agent_conditions(bm, atk).psychic_blades_available, "no second offer this turn"
+    assert engine.apply_psychic_blades(bm, atk, deff, r2) == -1, "a second use this turn is refused"
+    engine.begin_turn(bm, atk)
+    _find_attack(engine, bm, atk, deff, lambda x: x.hit)
+    assert engine.get_agent_conditions(bm, atk).psychic_blades_available, "offered again next turn"
+    print("✅ test_psychic_blades_once_per_turn_and_resets")
+
+
+def test_psychic_blades_only_on_own_turn():
+    bm, engine, atk, deff = _whispers_pair(3)
+    engine.begin_turn(bm, deff)        # someone else's turn
+    _find_attack(engine, bm, atk, deff, lambda x: x.hit)
+    assert not engine.get_agent_conditions(bm, atk).psychic_blades_available, "not on another's turn"
+    print("✅ test_psychic_blades_only_on_own_turn")
+
+
+def test_psychic_blades_needs_bardic_inspiration_and_college():
+    bm, engine, atk, deff = _whispers_pair(3)
+    engine.spend_resource(bm, atk, "Bardic Inspiration", _bi(engine, bm, atk))
+    assert _bi(engine, bm, atk) == 0
+    _find_attack(engine, bm, atk, deff, lambda x: x.hit)
+    assert not engine.get_agent_conditions(bm, atk).psychic_blades_available, "no BI use → no offer"
+    # A Lore bard never gets the offer.
+    bm, engine = setup_battle_map(), setup_combat_engine()
+    atk, deff = _setup_melee_pair(engine, bm, def_ac=5, atk_str=16)
+    _bard(engine, bm, atk, 5, subclass=rpg.BardCollege.Lore)
+    _find_attack(engine, bm, atk, deff, lambda x: x.hit)
+    assert not engine.get_agent_conditions(bm, atk).psychic_blades_available, "Lore bard: no Psychic Blades"
+    print("✅ test_psychic_blades_needs_bardic_inspiration_and_college")
+
+
+def test_psychic_blades_crit_doubles_dice_and_scales():
+    """L15: 8d6 (8-48); on a crit 16d6 (16-96)."""
+    seen_hit, seen_crit = [], []
+    bm, engine, atk, deff = _whispers_pair(15)
+    for _ in range(300):
+        if len(seen_crit) >= 3 and len(seen_hit) >= 3:
+            break
+        _bard(engine, bm, atk, 15, subclass=rpg.BardCollege.Whispers)   # refill BI
+        engine.begin_turn(bm, atk)
+        r = _find_attack(engine, bm, atk, deff, lambda x: x.hit)
+        dmg = engine.apply_psychic_blades(bm, atk, deff, r)
+        (seen_crit if r.critical else seen_hit).append(dmg)
+    assert seen_hit and all(8 <= d <= 48 for d in seen_hit), f"8d6 on a hit, got {seen_hit}"
+    assert seen_crit and all(16 <= d <= 96 for d in seen_crit), f"16d6 on a crit, got {seen_crit}"
+    print("✅ test_psychic_blades_crit_doubles_dice_and_scales")
+
+
 if __name__ == "__main__":
     tests = [
         test_bard_chassis_spellcasting_and_saves,
@@ -1234,6 +1337,13 @@ if __name__ == "__main__":
         test_battle_magic_flag_set_on_bard_spell_cast,
         test_battle_magic_flag_reset_at_turn_start,
         test_battle_magic_requires_valor_l14,
+        # Whispers Bard: Psychic Blades (L3)
+        test_psychic_blades_dice_scaling,
+        test_psychic_blades_offered_then_applied,
+        test_psychic_blades_once_per_turn_and_resets,
+        test_psychic_blades_only_on_own_turn,
+        test_psychic_blades_needs_bardic_inspiration_and_college,
+        test_psychic_blades_crit_doubles_dice_and_scales,
     ]
 
     print("Running Bard Bardic Inspiration Tests...")

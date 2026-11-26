@@ -1198,6 +1198,8 @@ void bindTypes(py::module_& m) {
         .def_readwrite("psionic_strike_used", &Agent::Conditions::psionic_strike_used)
         .def_readwrite("arcane_shot_available", &Agent::Conditions::arcane_shot_available)
         .def_readwrite("arcane_shot_used", &Agent::Conditions::arcane_shot_used)
+        .def_readwrite("psychic_blades_available", &Agent::Conditions::psychic_blades_available)
+        .def_readwrite("psychic_blades_used", &Agent::Conditions::psychic_blades_used)
         .def_readwrite("curving_shot_available", &Agent::Conditions::curving_shot_available)
         .def_readwrite("hand_of_harm_available", &Agent::Conditions::hand_of_harm_available)
         .def_readwrite("hand_of_harm_used", &Agent::Conditions::hand_of_harm_used)
@@ -1937,6 +1939,7 @@ void bindTypes(py::module_& m) {
         .value("Glamour", GlamourPath)
         .value("Lore", LorePath)
         .value("Valor", ValorPath)
+        .value("Whispers", WhispersPath)
         .export_values();
 
     // ── Sorcerer Metamagic Options (2024 D&D) ────────────────────────────────

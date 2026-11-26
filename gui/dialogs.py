@@ -2323,7 +2323,7 @@ class StatsDialog:
             "Warlock": ["NONE", "Archfey", "Celestial", "Fiend", "GreatOldOne"],
             "Rogue": ["NONE", "ArcaneTrickster", "Assassin", "Soulknife", "Thief"],
             "Cleric": ["NONE", "LifeDomain", "LightDomain", "TrickeryDomain", "WarDomain", "GraveDomain"],
-            "Bard": ["NONE", "Dance", "Glamour", "Lore", "Valor"],
+            "Bard": ["NONE", "Dance", "Glamour", "Lore", "Valor", "Whispers"],
             "Sorcerer": ["NONE", "Aberrant", "Clockwork", "Draconic", "WildMagic"],
             "Ranger": ["NONE", "Hunter", "BeastMaster", "FeyWanderer", "GloomStalker"],
         }

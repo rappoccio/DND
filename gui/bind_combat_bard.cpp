@@ -116,5 +116,14 @@ void bindCombatBard(py::class_<CombatEngine>& engine) {
              "per click); the engine caps it to the bard's CHA modifier (min 1) and skips the bard\n"
              "itself. Returns the temp HP granted to each recipient (0 = not a L3+ Glamour Bard / no\n"
              "Bardic Inspiration use).")
+        .def_static("psychic_blades_dice", &CombatEngine::psychicBladesDice, py::arg("bard_level"),
+             "College of Whispers Psychic Blades: number of d6s at a bard level (2/3/5/8 at L3/5/10/15).")
+        .def("apply_psychic_blades",
+             &CombatEngine::applyPsychicBlades,
+             py::arg("battle_map"), py::arg("attacker_idx"), py::arg("target_idx"), py::arg("result"),
+             "College of Whispers Psychic Blades (Bard L3+): after a weapon hit on the bard's own turn\n"
+             "(conditions.psychic_blades_available), spend one Bardic Inspiration use to add psychic\n"
+             "d6s (doubled on a crit) to the target, folded into `result`. Once per turn. Returns the\n"
+             "damage dealt, or -1 if it could not be used.")
         ;
 }

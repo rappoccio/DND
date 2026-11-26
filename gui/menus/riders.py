@@ -360,6 +360,36 @@ def offer_psionic_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, a
     app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Psionic Strike", options)
 
 
+def offer_psychic_blades(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
+    """College of Whispers Psychic Blades: after a weapon hit on the bard's turn, offer to spend one
+    Bardic Inspiration use for extra psychic d6s (apply_psychic_blades; doubled on a crit). Mirrors
+    offer_psionic_strike, including the Mastery chain via on_done."""
+    stats = app.combat.get_agent_stats(app.bm, atk_idx)
+    dice = rpg.CombatEngine.psychic_blades_dice(stats.class_level(rpg.CharacterClass.Bard))
+
+    def _apply(use_it):
+        if use_it and app.combat.apply_psychic_blades(app.bm, atk_idx, target_idx, result) >= 0:
+            dmg_parts = app._get_damage_type_names(result.magic_damage_types, result.physical_damage_types)
+            dmg_type_str = "/".join(dmg_parts) if dmg_parts else "untyped"
+            app._combat_log_add(
+                f"{atk_name}→{tgt_name}: HIT {result.total_damage}{app._damage_breakdown_str(result)} "
+                f"{dmg_type_str}{' CRIT!' if result.critical else ''}{' — DOWN' if result.target_down else ''}")
+            if result.target_down:
+                app._drop_concentration_for_agent(target_idx)
+        else:
+            app._combat_log_add(atk_msg)
+        app._flush_combat_log()
+        if on_done:
+            on_done()
+        else:
+            app._update_attack_overlay()
+    options = [
+        (f"Psychic Blades (1 Bardic Insp. → {dice}d6 Psychic)", lambda: _apply(True)),
+        ("Skip Psychic Blades", lambda: _apply(False)),
+    ]
+    app._ask_actor(atk_idx, "action", f"{atk_name}→{tgt_name}: Psychic Blades", options)
+
+
 def offer_arcane_shot(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=None):
     """After a ranged weapon hit, offer the Arcane Archer's KNOWN on-hit Arcane Shot options
     (Banishing / Beguiling / Bursting / Grasping / Shadow), once per turn for one use. The engine

@@ -939,6 +939,19 @@ Reaction to reroll (with advantage) an ally's just-failed save that would apply 
 
 </details>
 
+<details>
+<summary><b>College of Whispers — Psychic Blades only (2026-11-26)</b></summary>
+
+`BardCollege.Whispers` (Xanathar's). **Psychic Blades (L3):** a weapon hit on the bard's own turn
+sets `psychic_blades_available`; the GUI offers it (`riders.offer_psychic_blades` →
+`apply_psychic_blades`), spending one Bardic Inspiration use for 2d6/3d6/5d6/8d6 Psychic at
+L3/5/10/15, dice doubled on a crit, once per turn. Unarmed Strikes don't qualify (not a weapon
+attack in 2024 rules). The D&D Beyond importer maps "College of Whispers".
+**Not modelled (out-of-combat, user decision):** Words of Terror (L3), Mantle of Whispers (L6),
+Shadow Lore (L14). Not in party generation (`pc_templates.json`). PC only, no NPC policy.
+
+</details>
+
 ### GUI notes for subclasses
 - Cutting Words has **no GUI button yet** (it's a reaction during another creature's turn; the
   engine model primes the negative bonus before that creature's roll). Engine fn + binding + tests

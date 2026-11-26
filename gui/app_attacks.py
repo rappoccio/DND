@@ -699,6 +699,7 @@ def finish_attack(app):
     has_curving_shot = False
     has_psionic_strike = False
     has_arcane_shot = False
+    has_psychic_blades = False
     has_punch_and_grab = False
     has_feral_pounce = False
     has_divine_smite = False
@@ -744,6 +745,8 @@ def finish_attack(app):
             has_psionic_strike = True
         elif result.hit and atk_cond and atk_cond.arcane_shot_available:
             has_arcane_shot = True
+        elif result.hit and atk_cond and atk_cond.psychic_blades_available:
+            has_psychic_blades = True
         elif result.hit and atk_cond and atk_cond.grappler_punch_grab_available:
             has_punch_and_grab = True
         # Lupin Feral Pounce (MORE_SPECIES_PLAN.md D9): after Punch-and-Grab, which wins a tie.
@@ -907,6 +910,8 @@ def finish_attack(app):
             riders.offer_psionic_strike(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_arcane_shot:
             riders.offer_arcane_shot(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
+        elif has_psychic_blades:
+            riders.offer_psychic_blades(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg, on_done=mastery_offer)
         elif has_punch_and_grab:
             riders.offer_punch_and_grab(app, atk_idx, target_idx, atk_name, tgt_name, result, atk_msg)
         elif has_feral_pounce:
@@ -965,7 +970,7 @@ def finish_attack(app):
 
         # Only run this re-prompt logic if NO rider was offered. If a rider was offered,
         # the rider callback will handle re-prompting via _continue_attack_sequence_after_rider().
-        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_guided_strike or has_peerless_aim or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_heroic_reroll or has_curving_shot or has_protective_field or has_interception or has_dreadful_strike or has_giant_ancestry
+        has_rider = has_cunning_strike or has_stunning_strike or has_open_hand_rider or has_quivering_palm or has_hand_of_harm or has_brutal_strike or has_divine_strike or has_psionic_strike or has_psychic_blades or has_guided_strike or has_peerless_aim or has_restore_balance_miss or has_push or has_topple or has_cleave or has_reckless_reroll or has_heroic_reroll or has_curving_shot or has_protective_field or has_interception or has_dreadful_strike or has_giant_ancestry
         if not has_rider:
             # Check if more attacks are queued (action or bonus)
             if has_more_attacks:

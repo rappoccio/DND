@@ -1650,6 +1650,15 @@ public:
     // Inspiration use, or already full).
     int bardRestoreBeguilingMagic(BattleMap& bm, int bard_idx) noexcept;
 
+    // College of Whispers — Psychic Blades (Bard L3+). Number of d6s for a bard level:
+    // 2 (L3), 3 (L5), 5 (L10), 8 (L15); 0 below L3.
+    [[nodiscard]] static int psychicBladesDice(int bard_level) noexcept;
+    // After a weapon hit flagged by conditions.psychic_blades_available, spend one Bardic
+    // Inspiration use and add the psychic dice (doubled on a crit) to the target, folding them into
+    // `result`. Clears the flag and sets psychic_blades_used. Returns the psychic damage dealt, or
+    // -1 when it could not be used (no flag, already used, no Bardic Inspiration left).
+    int applyPsychicBlades(BattleMap& bm, int attacker_idx, int target_idx, AttackResult& result) noexcept;
+
     // College of Glamour — Mantle of Majesty (Bard L6+): Bonus Action that spends the once/long-rest
     // "Mantle of Majesty" resource, opens a 1-minute (10-round) "unearthly appearance" window
     // (mantle_majesty_turns = 10) and starts Concentration on the literal name "Mantle of Majesty"

@@ -226,6 +226,7 @@ enum SorcererSubclass {
 enum BardCollege {
     BardCollegeNone = 0,
     DancePath, GlamourPath, LorePath, ValorPath,
+    WhispersPath,   // College of Whispers (Xanathar's): Psychic Blades only (COLLEGE_OF_WHISPERS_PLAN.md)
     NumBardCollege
 };
 
