@@ -40,6 +40,31 @@ from widgets import Button, IntStepper, TextInput
 
 # FLAG: Move to C++
 # ── D&D Beyond import ─────────────────────────────────────────────────────
+def _importer():
+    """The standalone tools/import_character.py module, imported lazily."""
+    tools_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "tools")
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
+    import import_character as ic
+    return ic
+
+
+def is_ddb_doc(doc) -> bool:
+    """A raw D&D Beyond character as the importer saves it in tools/ddb_sources/:
+    ``{"data": {...the character...}}``."""
+    return (isinstance(doc, dict) and isinstance(doc.get("data"), dict)
+            and "classes" in doc["data"])
+
+
+def agent_from_ddb_doc(doc) -> dict:
+    """Our agent record for a saved D&D Beyond source file (see ``is_ddb_doc``),
+    derived by the same importer as Import DDB. Raises on an import error."""
+    ic = _importer()
+    ic._WARN = []
+    return ic.build_agent(doc["data"], ic.load_catalogs(), faction=0)
+
+
 def import_ddb_character(app):
     """Fetch a public D&D Beyond character, derive our agent record via
     tools/import_character.py, append it to the current encounter file and
@@ -49,13 +74,8 @@ def import_ddb_character(app):
         "Paste a character URL or ID (the sheet must be publicly shared):")
     if not url:
         return
-    # lazy-import the standalone tool from the repo tools/ dir
-    tools_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             "tools")
-    if tools_dir not in sys.path:
-        sys.path.insert(0, tools_dir)
     try:
-        import import_character as ic
+        ic = _importer()
     except Exception as e:                       # noqa: BLE001 — surface any import error
         app._modal_message(["Importer unavailable:", str(e)])
         return

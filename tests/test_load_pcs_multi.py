@@ -123,6 +123,7 @@ def test_load_pcs_from_campaign_folder():
 
         app._on_load_pcs_chosen([camp.pc_path("Aodhan"), camp.pc_path("Hilaria"),
                                  party, notes])
+        _click_place_all(app)
         assert sorted(pt.name for pt in app.bm.placed_agents) == [
             "Aodhan", "Hilaria", "Seungho"]
         app._save_agents()
@@ -169,10 +170,75 @@ def test_save_pc_round_trip():
         app._clear_agents()
         app._save_agents()
         app._on_load_pcs_chosen([camp.pc_path("Aodhan")])
+        _click_place_all(app)
         assert [pt.name for pt in app.bm.placed_agents] == ["Aodhan"]
     finally:
         shutil.rmtree(tmp)
     print("  ✅ Save PC writes one bare PC to pcs/ that Load PCs reads back")
+
+
+def _click_place_all(app, start_col=1, row=4):
+    """Click each floating Load PCs record onto the next free cell along a row."""
+    col = start_col
+    while app.placement_mode_active and app._pending_import_agent:
+        assert app.placement_config.name == app._pending_import_agent["name"]
+        while not app._can_place(rpg.Cell(col, row), app.placement_config.size):
+            col += 1
+        app.placement_cell, app.placement_valid = rpg.Cell(col, row), True
+        app._commit_placement()
+        col += 1
+    assert not app._pending_pc_queue
+
+
+def test_load_pcs_picker():
+    """With no staging room each PC floats for a click, one after another; an invalid
+    click keeps it floating, a PC already on the map is skipped, and a raw D&D Beyond
+    sheet is imported."""
+    tmp = tempfile.mkdtemp(prefix="load_pcs_pick_")
+    try:
+        camp = make_fixture_campaign(os.path.join(tmp, "Test Campaign"))
+        png, manifest = app_main.resolve_start_path(camp.root)
+        app = App(png, seed=1)
+        app._on_open_dungeon_chosen(manifest)
+        for i, n in enumerate(("Aodhan", "Hilaria")):
+            _place(app, n, 1 + i, 1)
+        app._save_agents()
+        party = os.path.join(tmp, "party_pc_agents.json")
+        with open(party, "w") as f:
+            json.dump({"agents": app.store.creatures()["agents"]}, f)
+        app._clear_agents()
+        app._save_agents()
+
+        app._on_load_pcs_chosen([party])
+        assert app.placement_mode_active and app.placement_config.name == "Aodhan"
+        assert len(app.bm.placed_agents) == 0               # nothing lands until clicked
+        app.placement_cell, app.placement_valid = rpg.Cell(5, 5), False
+        app._commit_placement()                             # invalid: still floating
+        assert app.placement_mode_active and len(app.bm.placed_agents) == 0
+        app.placement_cell, app.placement_valid = rpg.Cell(1, 4), True
+        app._commit_placement()
+        assert [pt.name for pt in app.bm.placed_agents] == ["Aodhan"]
+        pt = app.bm.placed_agents[0]
+        assert (pt.origin.col, pt.origin.row) == (1, 4)
+        assert app.bm.get_agent_faction(0) == PC_FACTION
+        assert app.placement_mode_active and app.placement_config.name == "Hilaria"
+
+        app._on_load_pcs_chosen([party])                    # Aodhan already here: skipped
+        assert app.placement_config.name == "Hilaria" and not app._pending_pc_queue
+
+        # A raw D&D Beyond sheet (tools/ddb_sources/*.ddb.json) goes through the importer.
+        ddb = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "tools", "ddb_sources", "158977520_Seungho.ddb.json")
+        app._on_load_pcs_chosen([ddb])
+        assert app.placement_mode_active
+        assert app._pending_import_agent["name"].startswith("Seungho")
+        assert "stats" in app._pending_import_agent
+        _click_place_all(app, row=6)
+        names = [pt.name for pt in app.bm.placed_agents]
+        assert any(n.startswith("Seungho") for n in names), names
+    finally:
+        shutil.rmtree(tmp)
+    print("  ✅ Load PCs floats each PC for a click when there is no staging room")
 
 
 def main():
@@ -180,6 +246,7 @@ def main():
         test_browser_multi_select,
         test_load_pcs_from_campaign_folder,
         test_save_pc_round_trip,
+        test_load_pcs_picker,
     ]
     print("Running Load PCs multi-select tests…")
     for t in tests:

@@ -629,6 +629,7 @@ class App:
         self.placement_cell: rpg.Cell | None = None  # Current cell under mouse
         self.placement_valid = False  # Is current placement location valid?
         self._pending_import_agent: dict | None = None  # D&D Beyond record awaiting its click
+        self._pending_pc_queue: list[dict] = []  # Load PCs records still to float, after the current one
         self._pc_name_input: TextInput | None = None  # Name input for new PC
 
         # ── Selection state ───────────────────────────────────────────────
@@ -1413,6 +1414,7 @@ class App:
             self.placement_mode_active = False
             self.placement_config = None
             self.placement_cell = None
+            self._float_next_pc()                # Load PCs: the next party member, if any
         elif self.placement_cell and self.placement_valid:
             cfg = self.placement_config
             cfg.start_col = self.placement_cell.col
@@ -2557,6 +2559,32 @@ class App:
             return min(dict_rooms, key=lambda m: m.get("path_index", 0)).get("cells")
         return None
 
+    def _float_next_pc(self) -> bool:
+        """Float the next queued Load PCs record at the cursor for a click (the commit
+        lands in ``place_imported_agent``). False when the queue is empty."""
+        if not self._pending_pc_queue:
+            return False
+        pc = dict(self._pending_pc_queue.pop(0))   # don't mutate the source file's dict
+        pc["faction"] = PC_FACTION                  # whole party fights as the blue team
+        pc.pop("land_near", None)
+        pc.pop("on_deck", None)
+        cfg = rpg.AgentConfig()
+        cfg.name = pc.get("name", "PC")
+        sprite = pc.get("sprite_path", "")
+        cfg.sprite_path = os.path.join(self.sprites_dir, sprite) if sprite else ""
+        cfg.size = int(pc.get("size", 1) or 1)
+        self.selected_mob_stats = None
+        self._pending_pc_class = None
+        self._pending_import_agent = pc
+        self.placement_mode_active = True
+        self.placement_config = cfg
+        self.placement_cell = None
+        self.placement_valid = False
+        left = len(self._pending_pc_queue)
+        self._flash_status(f"Click to place {cfg.name}" + (f" ({left} more after)" if left else "")
+                           + " — Esc cancels")
+        return True
+
     def _on_load_pcs_chosen(self, paths):
         """Load PCs from one or more files ADDITIVELY onto the current scene, so the
         PCs drop onto an already-loaded dungeon without the destructive full-scene
@@ -2568,8 +2596,9 @@ class App:
         loadout from the party file. In a generated dungeon the PCs start in room 0 on
         floor 0 (the generator leaves that room empty for them).
 
-        Each file is either a party ({"agents": [...]}) or one bare PC, the shape a
-        campaign's pcs/<name>.json holds."""
+        Each file is a party ({"agents": [...]}), one bare PC (the shape a campaign's
+        pcs/<name>.json holds), or a raw D&D Beyond sheet ({"data": {...}}, as
+        tools/ddb_sources/*.ddb.json holds), which goes through the DDB importer."""
         if isinstance(paths, str):
             paths = [paths]
         pcs = []
@@ -2580,7 +2609,14 @@ class App:
             except Exception as e:                   # noqa: BLE001 — surface read/parse errors
                 self._flash_status(f"Could not read {os.path.basename(path)}: {e}")
                 return
-            if isinstance(pc_doc, dict) and isinstance(pc_doc.get("agents"), list):
+            if app_dungeon_gen.is_ddb_doc(pc_doc):
+                # A raw D&D Beyond sheet (tools/ddb_sources/*.ddb.json): import it.
+                try:
+                    pcs.append(app_dungeon_gen.agent_from_ddb_doc(pc_doc))
+                except Exception as e:           # noqa: BLE001 — surface import errors
+                    self._flash_status(f"Could not import {os.path.basename(path)}: {e}")
+                    return
+            elif isinstance(pc_doc, dict) and isinstance(pc_doc.get("agents"), list):
                 pcs.extend(a for a in pc_doc["agents"] if isinstance(a, dict))
             elif isinstance(pc_doc, dict) and "stats" in pc_doc:
                 pcs.append(pc_doc)
@@ -2595,6 +2631,23 @@ class App:
         room0_cells = self._staging_room()
         if room0_cells is False:
             self._flash_status("Could not switch to floor 0 to place PCs.")
+            return
+
+        if not room0_cells:
+            # No staging room: float each PC at the cursor and let the DM click where
+            # it goes, one after another (Esc cancels the rest).
+            here = {pt.name for pt in self.bm.placed_agents}
+            skipped, queue = [], []
+            for src in pcs:
+                if src.get("name") in here:
+                    skipped.append(src.get("name"))
+                    continue
+                here.add(src.get("name"))
+                queue.append(src)
+            self._pending_pc_queue = queue
+            if not self._float_next_pc():
+                self._flash_status(f"Already here: {', '.join(skipped)}" if skipped
+                                   else "No PCs to load")
             return
 
         added, dropped, skipped = self._merge_pcs_here(pcs, room0_cells)
@@ -9514,6 +9567,7 @@ class App:
                     # Cancel placement
                     self.placement_mode_active = False
                     self._pending_import_agent = None
+                    self._pending_pc_queue = []
                     self.placement_config = None
                     self.placement_cell = None
                     self._pc_name_input = None
